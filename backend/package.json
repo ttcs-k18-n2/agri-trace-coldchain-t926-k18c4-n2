@@ -6,7 +6,7 @@
   "scripts": {
     "start": "node src/server.js",
     "check": "node --check src/server.js && node --check src/index.js && node --check src/migrate.js",
-    "test": "node --test",
+    "test": "NODE_ENV=test node --test",
     "lint": "eslint src test && node scripts/check_tenant_queries.js",
     "migrate": "node src/migrate.js",
     "migrate:up": "node src/migrate.js up",
