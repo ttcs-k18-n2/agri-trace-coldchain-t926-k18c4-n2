@@ -87,3 +87,34 @@ test("POST /api/logout destroys session", async () => {
   const meRes = await agent.get("/api/me");
   assert.equal(meRes.status, 401);
 });
+
+test("Argon2id: hash starts with $argon2id$ format", async () => {
+  const { hashPassword } = require("../src/server");
+  const hash = await hashPassword("TestPassword@123");
+  assert.ok(hash.startsWith("$argon2id$"));
+});
+
+test("Lock expires: user can log in after 15 minutes lock window passes", async () => {
+  // Lock user first
+  for (let i = 0; i < MAX_FAILED_ATTEMPTS; i++) {
+    await request(app)
+      .post("/api/login")
+      .send({ email: "user@example.com", password: "WrongPassword" });
+  }
+
+  const u = users.get("user@example.com");
+  assert.ok(u.lockedUntil > Date.now());
+
+  // Fast forward lock window (simulate 16 minutes passed)
+  u.lockedUntil = Date.now() - 1000;
+
+  // Now login with correct password should succeed
+  const successRes = await request(app)
+    .post("/api/login")
+    .send({ email: "user@example.com", password: "Password@123" });
+
+  assert.equal(successRes.status, 200);
+  assert.equal(successRes.body.message, "Đăng nhập thành công.");
+  assert.equal(u.failedCount, 0);
+  assert.equal(u.lockedUntil, null);
+});
