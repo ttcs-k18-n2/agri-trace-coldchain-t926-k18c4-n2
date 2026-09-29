@@ -7,7 +7,7 @@
     "start": "node src/server.js",
     "check": "node --check src/server.js && node --check src/index.js && node --check src/migrate.js",
     "test": "node --test",
-    "lint": "node --check src/server.js && node --check src/index.js && node --check src/migrate.js",
+    "lint": "eslint src test",
     "migrate": "node src/migrate.js",
     "migrate:up": "node src/migrate.js up",
     "migrate:down": "node src/migrate.js down"
@@ -19,6 +19,7 @@
     "pg": "^8.13.1"
   },
   "devDependencies": {
+    "eslint": "^9.39.5",
     "supertest": "^7.1.4"
   }
 }
