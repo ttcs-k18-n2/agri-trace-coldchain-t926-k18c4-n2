@@ -26,10 +26,10 @@ Nguồn nghiệp vụ của Sprint này là Backlog Excel. Tài liệu này ch�
 
 Backlog dùng cụm từ "nhánh chính" trong S-02/S-03/T-04/T-06. Với repo này team quy ước:
 
-- `develop` = **nhánh tích hợp chính của Sprint**, được bảo vệ và dùng để triển khai staging.
-- `main` = nhánh ổn định/release, chỉ nhận PR từ `develop` khi cuối Sprint đã ổn định.
+- `develop` = **nhánh tích hợp chính của Sprint**, được bảo vệ bởi CI và ruleset, nhận PR từ các nhánh Story sau khi qua review.
+- `main` = **nhánh triển khai staging & release**, chỉ nhận PR từ `develop` khi các Story đã được review và kiểm tra; pipeline tự động đóng gói Docker image và triển khai môi trường staging khi có thay đổi trên `main`.
 
-Nhờ vậy từng Story có thể merge vào `develop`, chạy staging và kiểm Acceptance Criteria trước khi Sprint kết thúc.
+Nhờ vậy từng Story sau khi hoàn tất trên `develop` được kiểm tra kỹ lưỡng trước khi đồng bộ sang `main` để kích hoạt triển khai staging tự động.
 
 ## 4. Task Sprint 1
 
@@ -71,20 +71,20 @@ Nhờ vậy từng Story có thể merge vào `develop`, chạy staging và ki�
 
 - Image chạy độc lập với thư mục source.
 - Không chứa `.env` hay tool build không cần thiết ở runtime.
-- Có thể truy vết image về commit.
+- Có thể truy vết image về commit qua nhãn (LABEL/ARG `GIT_COMMIT`).
 
-**T-06 — Pipeline triển khai staging**
+**T-06 — Pipeline triển khai staging từ main**
 
-- Sau khi PR Story được merge vào `develop`, pipeline đẩy image và cập nhật staging.
+- Sau khi PR từ `develop` được merge vào `main`, pipeline tự động đóng gói Docker image, đẩy lên registry và triển khai staging.
 - Migration chạy trước khi bản mới nhận request.
-- Secret triển khai lưu trong CI secret, không nằm trong repo.
+- Secret triển khai (SSH, Registry) lưu trong GitHub Secrets, không nằm trong repo.
 - Thay đổi nhìn thấy được phải xuất hiện trên staging trong giới hạn AC của Backlog.
 
 **T-07 — Health check và rollback**
 
-- Có endpoint health kiểm kết nối cần thiết.
+- Có endpoint health kiểm kết nối cần thiết (`/health`, `/api/health`).
 - Pipeline kiểm health sau deploy.
-- Bản mới lỗi không thay bản đang chạy; pipeline báo đỏ.
+- Bản mới lỗi không thay bản đang chạy; tự động khôi phục (rollback) về bản trước và pipeline báo đỏ.
 - Health endpoint không lộ thông tin cấu hình nhạy cảm.
 
 ### K-01 — `docs/s1-k01-integrity`
