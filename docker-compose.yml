@@ -28,9 +28,13 @@ services:
         GIT_COMMIT: ${GIT_COMMIT:-unknown}
     container_name: agri-trace-backend
     restart: unless-stopped
+    env_file:
+      - .env
     environment:
       PORT: 3000
       DATABASE_URL: ${DATABASE_URL}
+      SESSION_SECRET: ${SESSION_SECRET:-}
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
     volumes:
       - ./db/migrations:/app/db/migrations:ro
     ports:
