@@ -4,6 +4,7 @@ const { hash, verify, Algorithm } = require("@node-rs/argon2");
 const path = require("path");
 const fs = require("fs");
 const { Pool } = require("pg");
+const { scopedQuery, SHARED_TABLES } = require("./query");
 
 const app = express();
 const PORT = Number(process.env.PORT || 3000);
@@ -34,6 +35,12 @@ app.use(
 
 // Fallback in-memory store for unit test environments without postgres
 const users = new Map();
+const inMemoryLots = [
+  { id: "LOT-001", name: "Lô cà chua Thái Nguyên", status: "Đang vận chuyển", organizationId: "org-001" },
+  { id: "LOT-002", name: "Lô chè Tân Cương", status: "Đã nhập kho", organizationId: "org-001" },
+  { id: "LOT-101", name: "Lô rau cải Bắc Giang", status: "Đã thu hoạch", organizationId: "org-002" },
+  { id: "LOT-102", name: "Lô dưa chuột Hiệp Hòa", status: "Đang vận chuyển", organizationId: "org-002" },
+];
 
 async function hashPassword(plainPassword) {
   return hash(plainPassword, { algorithm: Algorithm.Argon2id });
@@ -195,12 +202,81 @@ async function resetUserLock(user) {
   }
 }
 
+/**
+ * Middleware gắn ngữ cảnh xác thực và tổ chức vào yêu cầu (T-11)
+ */
+function attachAuthContext(req, _res, next) {
+  if (req.session && req.session.userId) {
+    req.auth = {
+      userId: req.session.userId,
+      email: req.session.email,
+      organizationId: req.session.organizationId,
+      roleId: req.session.roleId,
+      isInspector: req.session.roleId === "inspector",
+    };
+  } else {
+    req.auth = null;
+  }
+  next();
+}
+
+app.use(attachAuthContext);
+
+/**
+ * Middleware phân quyền và mặc định từ chối route chưa khai báo quyền (T-11)
+ * @param {string[]} allowedRoles - Danh sách vai trò được phép truy cập
+ */
+function requirePermission(allowedRoles = []) {
+  return (req, res, next) => {
+    if (!req.auth || !req.auth.userId) {
+      if (req.accepts("html") && !req.accepts("json")) {
+        const returnTo = encodeURIComponent(req.originalUrl);
+        return res.redirect(302, `/login?returnTo=${returnTo}`);
+      }
+      return res.status(401).json({ message: "Chưa đăng nhập." });
+    }
+
+    // Mặc định từ chối route chưa khai quyền
+    if (!allowedRoles || allowedRoles.length === 0) {
+      return res.status(403).json({
+        message: "Truy cập bị từ chối: route chưa khai báo quyền rõ ràng.",
+      });
+    }
+
+    const { roleId, isInspector } = req.auth;
+
+    // Cán bộ kiểm tra chỉ được đọc (GET / HEAD), không được ghi (POST, PUT, DELETE, PATCH)
+    if (isInspector && ["POST", "PUT", "PATCH", "DELETE"].includes(req.method)) {
+      return res.status(403).json({
+        message: "Cán bộ kiểm tra chỉ có quyền đọc dữ liệu, không được phép thực hiện thao tác ghi.",
+      });
+    }
+
+    // Cán bộ kiểm tra được đọc mọi tổ chức ở các route đọc
+    if (isInspector && ["GET", "HEAD"].includes(req.method)) {
+      return next();
+    }
+
+    // Admin hệ thống có toàn quyền
+    if (roleId === "admin") {
+      return next();
+    }
+
+    if (!allowedRoles.includes(roleId)) {
+      return res.status(403).json({
+        message: "Bạn không có quyền thực hiện thao tác này.",
+      });
+    }
+
+    next();
+  };
+}
+
 function requireAuth(req, res, next) {
-  if (!req.session.userId) {
+  if (!req.auth || !req.auth.userId) {
     const returnTo = encodeURIComponent(req.originalUrl);
     return res.redirect(302, `/login?returnTo=${returnTo}`);
   }
-
   next();
 }
 
@@ -342,24 +418,142 @@ app.post("/api/logout", (req, res) => {
   });
 });
 
-app.get("/api/organization/lots", requireAuth, (req, res) => {
-  const orgId = req.session.organizationId || "org-001";
-  return res.status(200).json({
-    organizationId: orgId,
-    lots: [
-      {
-        id: "LOT-001",
-        name: "Lô cà chua Thái Nguyên",
-        status: "Đang vận chuyển",
-      },
-      {
-        id: "LOT-002",
-        name: "Lô rau cải Bắc Giang",
-        status: "Đã nhập kho",
-      },
-    ],
-  });
+// Route chưa khai quyền rõ ràng -> mặc định từ chối (T-11)
+app.get("/api/unmapped-protected", requirePermission([]), (_req, res) => {
+  return res.json({ ok: true });
 });
+
+/**
+ * Danh sách lô hàng của tổ chức hiện tại (T-12, T-13)
+ */
+app.get(
+  "/api/organization/lots",
+  requirePermission(["producer", "cooperative", "transporter", "distributor", "inspector", "org_admin", "admin"]),
+  async (req, res) => {
+    const isInspector = req.auth.isInspector;
+    const orgId = req.auth.organizationId;
+
+    if (pool) {
+      try {
+        const queryRes = await scopedQuery(pool, req.auth, "lots", {
+          orderBy: "created_at DESC",
+        });
+        return res.status(200).json({
+          organizationId: orgId,
+          lots: queryRes.rows.map((r) => ({
+            id: r.id,
+            name: r.name,
+            status: r.status,
+            organizationId: r.organization_id,
+          })),
+        });
+      } catch (err) {
+        return res.status(500).json({ message: err.message });
+      }
+    }
+
+    // In-memory fallback
+    const filtered = isInspector
+      ? inMemoryLots
+      : inMemoryLots.filter((lot) => lot.organizationId === orgId);
+
+    return res.status(200).json({
+      organizationId: orgId,
+      lots: filtered,
+    });
+  }
+);
+
+/**
+ * Xem chi tiết lô hàng - chặn truy cập chéo tổ chức (T-13)
+ */
+app.get(
+  "/api/organization/lots/:id",
+  requirePermission(["producer", "cooperative", "transporter", "distributor", "inspector", "org_admin", "admin"]),
+  async (req, res) => {
+    const lotId = req.params.id;
+    const isInspector = req.auth.isInspector;
+    const orgId = req.auth.organizationId;
+
+    let lot = null;
+
+    if (pool) {
+      try {
+        const result = await pool.query("SELECT * FROM lots WHERE id = $1", [lotId]);
+        if (result.rows.length > 0) {
+          const r = result.rows[0];
+          lot = {
+            id: r.id,
+            name: r.name,
+            status: r.status,
+            organizationId: r.organization_id,
+          };
+        }
+      } catch (err) {
+        return res.status(500).json({ message: err.message });
+      }
+    } else {
+      lot = inMemoryLots.find((l) => l.id === lotId) || null;
+    }
+
+    if (!lot) {
+      return res.status(404).json({ message: "Không tìm thấy lô hàng." });
+    }
+
+    // Kiểm tra cách ly dữ liệu: không cho phép đọc chéo tổ chức trừ khi là inspector
+    if (!isInspector && lot.organizationId !== orgId && req.auth.roleId !== "admin") {
+      return res.status(403).json({
+        message: "Truy cập bị từ chối: bạn không có quyền xem dữ liệu của tổ chức khác.",
+      });
+    }
+
+    return res.status(200).json({
+      lot,
+    });
+  }
+);
+
+/**
+ * Thêm lô hàng - Cán bộ kiểm tra chỉ được đọc, không được ghi (T-11, T-13)
+ */
+app.post(
+  "/api/organization/lots",
+  requirePermission(["producer", "cooperative", "transporter", "distributor", "org_admin", "admin"]),
+  async (req, res) => {
+    const { id, name, status } = req.body;
+    const orgId = req.auth.organizationId;
+
+    if (!name) {
+      return res.status(400).json({ message: "Tên lô hàng không được để trống." });
+    }
+
+    const lotId = id || `LOT-${Date.now().toString().slice(-4)}`;
+    const lotStatus = status || "Đang vận chuyển";
+
+    if (pool) {
+      try {
+        await pool.query(
+          "INSERT INTO lots (id, name, status, organization_id) VALUES ($1, $2, $3, $4)",
+          [lotId, name, lotStatus, orgId]
+        );
+      } catch (err) {
+        return res.status(500).json({ message: err.message });
+      }
+    } else {
+      inMemoryLots.push({
+        id: lotId,
+        name,
+        status: lotStatus,
+        organizationId: orgId,
+      });
+    }
+
+    return res.status(201).json({
+      message: "Tạo lô hàng thành công.",
+      lot: { id: lotId, name, status: lotStatus, organizationId: orgId },
+    });
+  }
+);
 
 const frontendIndexPath = path.join(__dirname, "../../frontend/index.html");
 const frontendLotsPath = path.join(__dirname, "../../frontend/lots.html");
@@ -406,6 +600,7 @@ if (require.main === module) {
 module.exports = {
   app,
   users,
+  inMemoryLots,
   seedDemoUser,
   hashPassword,
   verifyPassword,
@@ -413,6 +608,9 @@ module.exports = {
   getUserById,
   updateUserLock,
   resetUserLock,
+  requirePermission,
+  scopedQuery,
+  SHARED_TABLES,
   MAX_FAILED_ATTEMPTS,
   LOCK_MINUTES,
   pool,
