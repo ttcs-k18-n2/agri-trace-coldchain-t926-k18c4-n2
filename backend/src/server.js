@@ -4,7 +4,8 @@ const { hash, verify, Algorithm } = require("@node-rs/argon2");
 const path = require("path");
 const fs = require("fs");
 const { Pool } = require("pg");
-const { scopedQuery, SHARED_TABLES } = require("./query");
+const { scopedQuery, scopedQueryById, SHARED_TABLES } = require("./query");
+const { logSecurityEvent, getRecentSecurityLogs, clearSecurityLogs } = require("./security_logger");
 
 const app = express();
 const PORT = Number(process.env.PORT || 3000);
@@ -12,9 +13,13 @@ const PORT = Number(process.env.PORT || 3000);
 const MAX_FAILED_ATTEMPTS = Number(process.env.MAX_FAILED_ATTEMPTS || 5);
 const LOCK_MINUTES = Number(process.env.LOCK_MINUTES || 15);
 
-const pool = process.env.DATABASE_URL
+let pool = (process.env.DATABASE_URL && process.env.NODE_ENV !== "test")
   ? new Pool({ connectionString: process.env.DATABASE_URL })
   : null;
+
+function setDatabasePool(customPool) {
+  pool = customPool;
+}
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
@@ -486,32 +491,61 @@ app.get(
 
     if (pool) {
       try {
-        const result = await pool.query("SELECT * FROM lots WHERE id = $1", [lotId]);
-        if (result.rows.length > 0) {
-          const r = result.rows[0];
+        const q = await scopedQueryById(pool, req.auth, "lots", lotId);
+        if (q.isCrossTenant) {
+          logSecurityEvent("CROSS_TENANT_ACCESS_DENIED", {
+            userId: req.auth.id,
+            userEmail: req.auth.email,
+            userOrgId: req.auth.organizationId,
+            userRole: req.auth.roleId,
+            resourceType: "lots",
+            resourceId: lotId,
+            targetOrgId: q.targetOrgId,
+            action: "READ",
+            ip: req.ip,
+            userAgent: req.get("User-Agent"),
+          });
+          return res.status(403).json({
+            message: "Truy cập bị từ chối: bạn không có quyền xem dữ liệu của tổ chức khác.",
+          });
+        }
+        if (q.row) {
           lot = {
-            id: r.id,
-            name: r.name,
-            status: r.status,
-            organizationId: r.organization_id,
+            id: q.row.id,
+            name: q.row.name,
+            status: q.row.status,
+            organizationId: q.row.organization_id,
           };
         }
       } catch (err) {
         return res.status(500).json({ message: err.message });
       }
     } else {
-      lot = inMemoryLots.find((l) => l.id === lotId) || null;
+      const match = inMemoryLots.find((l) => l.id === lotId);
+      if (match) {
+        if (!isInspector && match.organizationId !== orgId && req.auth.roleId !== "admin") {
+          logSecurityEvent("CROSS_TENANT_ACCESS_DENIED", {
+            userId: req.auth.id,
+            userEmail: req.auth.email,
+            userOrgId: req.auth.organizationId,
+            userRole: req.auth.roleId,
+            resourceType: "lots",
+            resourceId: lotId,
+            targetOrgId: match.organizationId,
+            action: "READ",
+            ip: req.ip,
+            userAgent: req.get("User-Agent"),
+          });
+          return res.status(403).json({
+            message: "Truy cập bị từ chối: bạn không có quyền xem dữ liệu của tổ chức khác.",
+          });
+        }
+        lot = match;
+      }
     }
 
     if (!lot) {
       return res.status(404).json({ message: "Không tìm thấy lô hàng." });
-    }
-
-    // Kiểm tra cách ly dữ liệu: không cho phép đọc chéo tổ chức trừ khi là inspector
-    if (!isInspector && lot.organizationId !== orgId && req.auth.roleId !== "admin") {
-      return res.status(403).json({
-        message: "Truy cập bị từ chối: bạn không có quyền xem dữ liệu của tổ chức khác.",
-      });
     }
 
     return res.status(200).json({
@@ -618,32 +652,62 @@ app.get(
     let farm = null;
     if (pool) {
       try {
-        const result = await pool.query("SELECT * FROM farms WHERE id = $1", [farmId]);
-        if (result.rows.length > 0) {
-          const r = result.rows[0];
+        const q = await scopedQueryById(pool, req.auth, "farms", farmId);
+        if (q.isCrossTenant) {
+          logSecurityEvent("CROSS_TENANT_ACCESS_DENIED", {
+            userId: req.auth.id,
+            userEmail: req.auth.email,
+            userOrgId: req.auth.organizationId,
+            userRole: req.auth.roleId,
+            resourceType: "farms",
+            resourceId: farmId,
+            targetOrgId: q.targetOrgId,
+            action: "READ",
+            ip: req.ip,
+            userAgent: req.get("User-Agent"),
+          });
+          return res.status(403).json({
+            message: "Truy cập bị từ chối: bạn không có quyền xem dữ liệu của tổ chức khác.",
+          });
+        }
+        if (q.row) {
           farm = {
-            id: r.id,
-            name: r.name,
-            area: parseFloat(r.area),
-            coordinates: r.coordinates,
-            organizationId: r.organization_id,
+            id: q.row.id,
+            name: q.row.name,
+            area: parseFloat(q.row.area),
+            coordinates: q.row.coordinates,
+            organizationId: q.row.organization_id,
           };
         }
       } catch (err) {
         return res.status(500).json({ message: err.message });
       }
     } else {
-      farm = inMemoryFarms.find((f) => f.id === farmId) || null;
+      const match = inMemoryFarms.find((f) => f.id === farmId);
+      if (match) {
+        if (!isInspector && match.organizationId !== orgId && req.auth.roleId !== "admin") {
+          logSecurityEvent("CROSS_TENANT_ACCESS_DENIED", {
+            userId: req.auth.id,
+            userEmail: req.auth.email,
+            userOrgId: req.auth.organizationId,
+            userRole: req.auth.roleId,
+            resourceType: "farms",
+            resourceId: farmId,
+            targetOrgId: match.organizationId,
+            action: "READ",
+            ip: req.ip,
+            userAgent: req.get("User-Agent"),
+          });
+          return res.status(403).json({
+            message: "Truy cập bị từ chối: bạn không có quyền xem dữ liệu của tổ chức khác.",
+          });
+        }
+        farm = match;
+      }
     }
 
     if (!farm) {
       return res.status(404).json({ message: "Không tìm thấy thửa đất." });
-    }
-
-    if (!isInspector && farm.organizationId !== orgId && req.auth.roleId !== "admin") {
-      return res.status(403).json({
-        message: "Truy cập bị từ chối: bạn không có quyền xem dữ liệu của tổ chức khác.",
-      });
     }
 
     return res.status(200).json({ farm });
@@ -725,25 +789,60 @@ app.put(
 
     let existing = null;
     if (pool) {
-      const q = await pool.query("SELECT * FROM farms WHERE id = $1", [farmId]);
-      if (q.rows.length > 0) {
-        existing = {
-          id: q.rows[0].id,
-          organizationId: q.rows[0].organization_id,
-        };
+      try {
+        const q = await scopedQueryById(pool, req.auth, "farms", farmId);
+        if (q.isCrossTenant) {
+          logSecurityEvent("CROSS_TENANT_MUTATION_DENIED", {
+            userId: req.auth.id,
+            userEmail: req.auth.email,
+            userOrgId: req.auth.organizationId,
+            userRole: req.auth.roleId,
+            resourceType: "farms",
+            resourceId: farmId,
+            targetOrgId: q.targetOrgId,
+            action: "UPDATE",
+            ip: req.ip,
+            userAgent: req.get("User-Agent"),
+          });
+          return res.status(403).json({
+            message: "Truy cập bị từ chối: bạn không có quyền sửa dữ liệu của tổ chức khác.",
+          });
+        }
+        if (q.row) {
+          existing = {
+            id: q.row.id,
+            organizationId: q.row.organization_id,
+          };
+        }
+      } catch (err) {
+        return res.status(500).json({ message: err.message });
       }
     } else {
-      existing = inMemoryFarms.find((f) => f.id === farmId);
+      const match = inMemoryFarms.find((f) => f.id === farmId);
+      if (match) {
+        if (match.organizationId !== orgId && req.auth.roleId !== "admin") {
+          logSecurityEvent("CROSS_TENANT_MUTATION_DENIED", {
+            userId: req.auth.id,
+            userEmail: req.auth.email,
+            userOrgId: req.auth.organizationId,
+            userRole: req.auth.roleId,
+            resourceType: "farms",
+            resourceId: farmId,
+            targetOrgId: match.organizationId,
+            action: "UPDATE",
+            ip: req.ip,
+            userAgent: req.get("User-Agent"),
+          });
+          return res.status(403).json({
+            message: "Truy cập bị từ chối: bạn không có quyền sửa dữ liệu của tổ chức khác.",
+          });
+        }
+        existing = match;
+      }
     }
 
     if (!existing) {
       return res.status(404).json({ message: "Không tìm thấy thửa đất." });
-    }
-
-    if (existing.organizationId !== orgId && req.auth.roleId !== "admin") {
-      return res.status(403).json({
-        message: "Truy cập bị từ chối: bạn không có quyền sửa dữ liệu của tổ chức khác.",
-      });
     }
 
     const errors = {};
@@ -763,10 +862,18 @@ app.put(
 
     if (pool) {
       try {
-        const updateRes = await pool.query(
-          "UPDATE farms SET name = $1, area = $2, coordinates = $3, updated_at = NOW() WHERE id = $4 RETURNING id, name, area, coordinates, organization_id",
-          [name, area, coordinates, farmId]
-        );
+        let updateRes;
+        if (req.auth.roleId === "admin") {
+          updateRes = await pool.query(
+            "UPDATE farms SET name = $1, area = $2, coordinates = $3, updated_at = NOW() WHERE id = $4 RETURNING id, name, area, coordinates, organization_id",
+            [name, area, coordinates, farmId]
+          );
+        } else {
+          updateRes = await pool.query(
+            "UPDATE farms SET name = $1, area = $2, coordinates = $3, updated_at = NOW() WHERE id = $4 AND organization_id = $5 RETURNING id, name, area, coordinates, organization_id",
+            [name, area, coordinates, farmId, orgId]
+          );
+        }
         const r = updateRes.rows[0];
         return res.status(200).json({
           message: "Cập nhật thửa đất thành công.",
@@ -859,7 +966,12 @@ module.exports = {
   resetUserLock,
   requirePermission,
   scopedQuery,
+  scopedQueryById,
   SHARED_TABLES,
+  logSecurityEvent,
+  getRecentSecurityLogs,
+  clearSecurityLogs,
+  setDatabasePool,
   MAX_FAILED_ATTEMPTS,
   LOCK_MINUTES,
   pool,
