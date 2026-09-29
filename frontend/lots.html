@@ -294,7 +294,7 @@
     <div class="page-header">
       <div class="page-title-group">
         <h1>Danh sách lô thu hoạch</h1>
-        <p class="page-subtitle">Giám sát trạng thái vận chuyển, lưu kho và chứng thực chuỗi lạnh nông sản</p>
+        <p class="page-subtitle">Giám sát danh sách lô thu hoạch theo phân quyền tổ chức</p>
       </div>
       <div>
         <a href="/farms.html" class="btn-primary">
@@ -315,26 +315,6 @@
           <div class="stat-label">Tổng số lô thu hoạch</div>
         </div>
       </div>
-
-      <div class="stat-card">
-        <div class="stat-icon amber">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 18V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v11a1 1 0 0 0 1 1h2"/><circle cx="7" cy="18" r="2"/><path d="M15 18H9"/><circle cx="17" cy="18" r="2"/><path d="M19 18h2a1 1 0 0 0 1-1v-3.65a1 1 0 0 0-.22-.624l-3.48-4.35A1 1 0 0 0 17.52 8H14"/></svg>
-        </div>
-        <div>
-          <div class="stat-value" id="statInTransit">0</div>
-          <div class="stat-label">Đang trên đường vận chuyển</div>
-        </div>
-      </div>
-
-      <div class="stat-card">
-        <div class="stat-icon blue">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 8.35V20a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V8.35A2 2 0 0 1 3.26 6.5l8-3.2a2 2 0 0 1 1.48 0l8 3.2A2 2 0 0 1 22 8.35Z"/><path d="M6 18h12"/><path d="M6 14h12"/></svg>
-        </div>
-        <div>
-          <div class="stat-value" id="statStored">0</div>
-          <div class="stat-label">Đã lưu trữ kho lạnh an toàn</div>
-        </div>
-      </div>
     </div>
 
     <!-- Filter & Search Toolbar -->
@@ -350,12 +330,6 @@
           placeholder="Tìm theo tên sản phẩm hoặc mã lô (vd: LOT-001)..."
         >
       </div>
-
-      <div class="filter-pills" role="group" aria-label="Bộ lọc trạng thái">
-        <button type="button" class="filter-btn active" data-filter="all">Tất cả</button>
-        <button type="button" class="filter-btn" data-filter="transit">Đang vận chuyển</button>
-        <button type="button" class="filter-btn" data-filter="stored">Đã nhập kho</button>
-      </div>
     </div>
 
     <!-- Lots Container -->
@@ -366,7 +340,6 @@
 
   <script>
     let allLots = [];
-    let currentFilter = "all";
     let searchQuery = "";
 
     async function loadPage() {
@@ -422,10 +395,6 @@
 
     function updateStats(lots) {
       document.getElementById("statTotalLots").textContent = lots.length;
-      const inTransit = lots.filter(l => (l.status || "").toLowerCase().includes("vận chuyển")).length;
-      const stored = lots.filter(l => (l.status || "").toLowerCase().includes("kho")).length;
-      document.getElementById("statInTransit").textContent = inTransit;
-      document.getElementById("statStored").textContent = stored;
     }
 
     function renderLots() {
@@ -436,15 +405,7 @@
         const matchesSearch = 
           (lot.id || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
           (lot.name || "").toLowerCase().includes(searchQuery.toLowerCase());
-        
-        if (!matchesSearch) return false;
-
-        if (currentFilter === "transit") {
-          return (lot.status || "").toLowerCase().includes("vận chuyển");
-        } else if (currentFilter === "stored") {
-          return (lot.status || "").toLowerCase().includes("kho");
-        }
-        return true;
+        return matchesSearch;
       });
 
       if (filtered.length === 0) {
@@ -454,26 +415,23 @@
               <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
             </div>
             <div class="empty-state-title">Không tìm thấy lô hàng phù hợp</div>
-            <div class="empty-state-desc">Hãy thử thay đổi từ khóa tìm kiếm hoặc bấm bộ lọc "Tất cả".</div>
-            <button class="btn-secondary" onclick="resetFilters()">Đặt lại bộ lọc</button>
+            <div class="empty-state-desc">Hãy thử thay đổi từ khóa tìm kiếm.</div>
+            <button class="btn-secondary" onclick="resetFilters()">Đặt lại tìm kiếm</button>
           </div>
         `;
         return;
       }
 
       filtered.forEach(lot => {
-        const isTransit = (lot.status || "").toLowerCase().includes("vận chuyển");
-        const statusClass = isTransit ? "warning" : "success";
-
         const card = document.createElement("div");
         card.className = "lot-card";
         card.innerHTML = `
           <div>
             <div class="lot-card-top">
               <span class="lot-code-tag">${lot.id}</span>
-              <span class="status-pill ${statusClass}">
+              <span class="status-pill success">
                 <span class="status-dot"></span>
-                <span>${lot.status}</span>
+                <span>${lot.status || "Đã ghi nhận"}</span>
               </span>
             </div>
             <h3 class="lot-title">${lot.name}</h3>
@@ -486,15 +444,6 @@
                 Tổ chức sở hữu
               </span>
               <span class="lot-meta-value">${lot.organizationId}</span>
-            </div>
-            <div class="lot-meta-item">
-              <span class="lot-meta-label">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 4v10.54a4 4 0 1 1-4 0V4a2 2 0 0 1 4 0Z"/></svg>
-                Nhiệt độ chuỗi lạnh
-              </span>
-              <span class="lot-meta-value" style="color: var(--color-primary); font-weight: 700;">
-                ${isTransit ? "4.2 °C (Ổn định)" : "2.5 °C (Tiêu chuẩn)"}
-              </span>
             </div>
             <div class="lot-meta-item">
               <span class="lot-meta-label">
@@ -521,10 +470,6 @@
     function resetFilters() {
       document.getElementById("searchInput").value = "";
       searchQuery = "";
-      currentFilter = "all";
-      document.querySelectorAll(".filter-btn").forEach(b => {
-        b.classList.toggle("active", b.dataset.filter === "all");
-      });
       renderLots();
     }
 
@@ -532,16 +477,6 @@
     document.getElementById("searchInput").addEventListener("input", (e) => {
       searchQuery = e.target.value.trim();
       renderLots();
-    });
-
-    // Filter button listeners
-    document.querySelectorAll(".filter-btn").forEach(btn => {
-      btn.addEventListener("click", () => {
-        document.querySelectorAll(".filter-btn").forEach(b => b.classList.remove("active"));
-        btn.classList.add("active");
-        currentFilter = btn.dataset.filter;
-        renderLots();
-      });
     });
 
     // Đăng xuất
