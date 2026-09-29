@@ -5,9 +5,12 @@
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",
-    "check": "node --check src/server.js && node --check src/index.js",
+    "check": "node --check src/server.js && node --check src/index.js && node --check src/migrate.js",
     "test": "node --test",
-    "lint": "node --check src/server.js && node --check src/index.js"
+    "lint": "node --check src/server.js && node --check src/index.js && node --check src/migrate.js",
+    "migrate": "node src/migrate.js",
+    "migrate:up": "node src/migrate.js up",
+    "migrate:down": "node src/migrate.js down"
   },
   "dependencies": {
     "bcryptjs": "^3.0.2",

@@ -78,9 +78,26 @@ Khi hệ thống hoạt động bình thường, `GET /health` trả `status: ok
 
 ### Migration
 
-Migration đầu tiên nằm tại `db/migrations/001_init.sql` và được PostgreSQL chạy khi volume database được tạo lần đầu.
+Hệ thống hỗ trợ migration chạy hai chiều (tiến và lùi) tự động và thủ công:
 
-Chạy lại migration từ đầu:
+- **Tự động:** Khi backend khởi động, hàm migration tự động kiểm tra và áp dụng các file migration mới nhất vào cơ sở dữ liệu.
+- **Quy ước đặt tên:**
+  - File migration tiến: `db/migrations/<stt>_<ten>.sql`
+  - File migration lùi: `db/migrations/down/<stt>_<ten>.down.sql`
+- **Chạy tiến (up) thủ công:**
+  ```bash
+  docker compose exec backend npm run migrate:up
+  # Hoặc trong thư mục backend:
+  npm run migrate:up
+  ```
+- **Chạy lùi (down / rollback) thủ công:**
+  ```bash
+  docker compose exec backend npm run migrate:down
+  # Hoặc trong thư mục backend:
+  npm run migrate:down
+  ```
+
+Chạy lại migration từ đầu (xóa volume):
 
 ```bash
 docker compose down -v
