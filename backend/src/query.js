@@ -84,13 +84,14 @@ async function scopedQueryById(poolOrClient, authContext, tableName, id, options
   }
 
   if (!poolOrClient) {
-    return { rows: [], row: null, sql, params, isCrossTenant: false };
+    return { rows: [], row: null, sql, params, isCrossTenant: false, targetOrgId: null };
   }
 
   const result = await poolOrClient.query(sql, params);
   const row = result.rows[0] || null;
 
   let isCrossTenant = false;
+  let targetOrgId = null;
   // Khi không tìm thấy theo tenant của user hiện tại, probe xem id này có tồn tại ở tenant khác không
   if (!row && !isShared && !isInspector) {
     try {
@@ -100,6 +101,7 @@ async function scopedQueryById(poolOrClient, authContext, tableName, id, options
       );
       if (probe.rows.length > 0 && probe.rows[0].organization_id !== orgId) {
         isCrossTenant = true;
+        targetOrgId = probe.rows[0].organization_id;
       }
     } catch {
       isCrossTenant = false;
@@ -110,6 +112,7 @@ async function scopedQueryById(poolOrClient, authContext, tableName, id, options
     ...result,
     row,
     isCrossTenant,
+    targetOrgId,
     sql,
     params,
   };
