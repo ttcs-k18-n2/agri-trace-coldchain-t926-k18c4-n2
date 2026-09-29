@@ -58,10 +58,10 @@ const inMemoryFarms = [
   { id: "FARM-101", name: "Thửa rau cải Yên Dũng 01", area: 3.0, coordinates: "21.2341, 106.1892", organizationId: "org-002" },
 ];
 const inMemoryLots = [
-  { id: "LOT-001", name: "Lô cà chua Thái Nguyên", status: "Đang vận chuyển", organizationId: "org-001" },
-  { id: "LOT-002", name: "Lô chè Tân Cương", status: "Đã nhập kho", organizationId: "org-001" },
-  { id: "LOT-101", name: "Lô rau cải Bắc Giang", status: "Đã thu hoạch", organizationId: "org-002" },
-  { id: "LOT-102", name: "Lô dưa chuột Hiệp Hòa", status: "Đang vận chuyển", organizationId: "org-002" },
+  { id: "LOT-001", name: "Lô cà chua Thái Nguyên", status: "Đã ghi nhận", organizationId: "org-001" },
+  { id: "LOT-002", name: "Lô chè Tân Cương", status: "Đã ghi nhận", organizationId: "org-001" },
+  { id: "LOT-101", name: "Lô rau cải Bắc Giang", status: "Đã ghi nhận", organizationId: "org-002" },
+  { id: "LOT-102", name: "Lô dưa chuột Hiệp Hòa", status: "Đã ghi nhận", organizationId: "org-002" },
 ];
 
 async function hashPassword(plainPassword) {
@@ -582,7 +582,7 @@ app.post(
     }
 
     const lotId = id || `LOT-${Date.now().toString().slice(-4)}`;
-    const lotStatus = status || "Đang vận chuyển";
+    const lotStatus = status || "Đã ghi nhận";
 
     if (pool) {
       try {
