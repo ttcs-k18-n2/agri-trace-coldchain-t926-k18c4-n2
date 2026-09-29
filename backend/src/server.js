@@ -35,6 +35,11 @@ app.use(
 
 // Fallback in-memory store for unit test environments without postgres
 const users = new Map();
+const inMemoryFarms = [
+  { id: "FARM-001", name: "Thửa đồi chè La Bằng 01", area: 2.5, coordinates: "21.5645, 105.6789", organizationId: "org-001" },
+  { id: "FARM-002", name: "Thửa cà chua Hùng Sơn 02", area: 1.2, coordinates: "21.5712, 105.6841", organizationId: "org-001" },
+  { id: "FARM-101", name: "Thửa rau cải Yên Dũng 01", area: 3.0, coordinates: "21.2341, 106.1892", organizationId: "org-002" },
+];
 const inMemoryLots = [
   { id: "LOT-001", name: "Lô cà chua Thái Nguyên", status: "Đang vận chuyển", organizationId: "org-001" },
   { id: "LOT-002", name: "Lô chè Tân Cương", status: "Đã nhập kho", organizationId: "org-001" },
@@ -555,6 +560,238 @@ app.post(
   }
 );
 
+
+/**
+ * Danh sách thửa đất của tổ chức (T-14, T-15)
+ */
+app.get(
+  "/api/farms",
+  requirePermission(["producer", "cooperative", "transporter", "distributor", "inspector", "org_admin", "admin"]),
+  async (req, res) => {
+    const isInspector = req.auth.isInspector;
+    const orgId = req.auth.organizationId;
+
+    if (pool) {
+      try {
+        const queryRes = await scopedQuery(pool, req.auth, "farms", {
+          orderBy: "created_at DESC",
+        });
+        return res.status(200).json({
+          organizationId: orgId,
+          farms: queryRes.rows.map((r) => ({
+            id: r.id,
+            name: r.name,
+            area: parseFloat(r.area),
+            coordinates: r.coordinates,
+            organizationId: r.organization_id,
+          })),
+        });
+      } catch (err) {
+        return res.status(500).json({ message: err.message });
+      }
+    }
+
+    const filtered = isInspector
+      ? inMemoryFarms
+      : inMemoryFarms.filter((f) => f.organizationId === orgId);
+
+    return res.status(200).json({
+      organizationId: orgId,
+      farms: filtered,
+    });
+  }
+);
+
+/**
+ * Chi tiết thửa đất - kiểm tra cách ly tổ chức (T-15)
+ */
+app.get(
+  "/api/farms/:id",
+  requirePermission(["producer", "cooperative", "transporter", "distributor", "inspector", "org_admin", "admin"]),
+  async (req, res) => {
+    const farmId = req.params.id;
+    const isInspector = req.auth.isInspector;
+    const orgId = req.auth.organizationId;
+
+    let farm = null;
+    if (pool) {
+      try {
+        const result = await pool.query("SELECT * FROM farms WHERE id = $1", [farmId]);
+        if (result.rows.length > 0) {
+          const r = result.rows[0];
+          farm = {
+            id: r.id,
+            name: r.name,
+            area: parseFloat(r.area),
+            coordinates: r.coordinates,
+            organizationId: r.organization_id,
+          };
+        }
+      } catch (err) {
+        return res.status(500).json({ message: err.message });
+      }
+    } else {
+      farm = inMemoryFarms.find((f) => f.id === farmId) || null;
+    }
+
+    if (!farm) {
+      return res.status(404).json({ message: "Không tìm thấy thửa đất." });
+    }
+
+    if (!isInspector && farm.organizationId !== orgId && req.auth.roleId !== "admin") {
+      return res.status(403).json({
+        message: "Truy cập bị từ chối: bạn không có quyền xem dữ liệu của tổ chức khác.",
+      });
+    }
+
+    return res.status(200).json({ farm });
+  }
+);
+
+/**
+ * Khai báo thửa đất mới - ràng buộc diện tích > 0 và lỗi đúng trường (T-14, T-15)
+ */
+app.post(
+  "/api/farms",
+  requirePermission(["producer", "cooperative", "org_admin", "admin"]),
+  async (req, res) => {
+    const orgId = req.auth.organizationId;
+    const name = String(req.body.name || "").trim();
+    const area = parseFloat(req.body.area);
+    const coordinates = String(req.body.coordinates || "").trim();
+
+    const errors = {};
+    if (!name) {
+      errors.name = "Tên thửa đất không được để trống.";
+    }
+    if (isNaN(area) || area <= 0) {
+      errors.area = "Diện tích phải là số lớn hơn 0 ha.";
+    }
+
+    if (Object.keys(errors).length > 0) {
+      return res.status(400).json({
+        message: errors.name || errors.area,
+        errors,
+      });
+    }
+
+    const farmId = req.body.id || ("FARM-" + Date.now().toString().slice(-4));
+
+    if (pool) {
+      try {
+        const insertRes = await pool.query(
+          "INSERT INTO farms (id, name, area, coordinates, organization_id) VALUES ($1, $2, $3, $4, $5) RETURNING id, name, area, coordinates, organization_id",
+          [farmId, name, area, coordinates, orgId]
+        );
+        const r = insertRes.rows[0];
+        return res.status(201).json({
+          message: "Khai báo thửa đất thành công.",
+          farm: {
+            id: r.id,
+            name: r.name,
+            area: parseFloat(r.area),
+            coordinates: r.coordinates,
+            organizationId: r.organization_id,
+          },
+        });
+      } catch (err) {
+        return res.status(500).json({ message: err.message });
+      }
+    }
+
+    const newFarm = { id: farmId, name, area, coordinates, organizationId: orgId };
+    inMemoryFarms.push(newFarm);
+    return res.status(201).json({
+      message: "Khai báo thửa đất thành công.",
+      farm: newFarm,
+    });
+  }
+);
+
+/**
+ * Chỉnh sửa thửa đất - Đổi tên không làm hỏng liên kết với lô (T-15)
+ */
+app.put(
+  "/api/farms/:id",
+  requirePermission(["producer", "cooperative", "org_admin", "admin"]),
+  async (req, res) => {
+    const farmId = req.params.id;
+    const orgId = req.auth.organizationId;
+    const name = String(req.body.name || "").trim();
+    const area = parseFloat(req.body.area);
+    const coordinates = String(req.body.coordinates || "").trim();
+
+    let existing = null;
+    if (pool) {
+      const q = await pool.query("SELECT * FROM farms WHERE id = $1", [farmId]);
+      if (q.rows.length > 0) {
+        existing = {
+          id: q.rows[0].id,
+          organizationId: q.rows[0].organization_id,
+        };
+      }
+    } else {
+      existing = inMemoryFarms.find((f) => f.id === farmId);
+    }
+
+    if (!existing) {
+      return res.status(404).json({ message: "Không tìm thấy thửa đất." });
+    }
+
+    if (existing.organizationId !== orgId && req.auth.roleId !== "admin") {
+      return res.status(403).json({
+        message: "Truy cập bị từ chối: bạn không có quyền sửa dữ liệu của tổ chức khác.",
+      });
+    }
+
+    const errors = {};
+    if (!name) {
+      errors.name = "Tên thửa đất không được để trống.";
+    }
+    if (isNaN(area) || area <= 0) {
+      errors.area = "Diện tích phải là số lớn hơn 0 ha.";
+    }
+
+    if (Object.keys(errors).length > 0) {
+      return res.status(400).json({
+        message: errors.name || errors.area,
+        errors,
+      });
+    }
+
+    if (pool) {
+      try {
+        const updateRes = await pool.query(
+          "UPDATE farms SET name = $1, area = $2, coordinates = $3, updated_at = NOW() WHERE id = $4 RETURNING id, name, area, coordinates, organization_id",
+          [name, area, coordinates, farmId]
+        );
+        const r = updateRes.rows[0];
+        return res.status(200).json({
+          message: "Cập nhật thửa đất thành công.",
+          farm: {
+            id: r.id,
+            name: r.name,
+            area: parseFloat(r.area),
+            coordinates: r.coordinates,
+            organizationId: r.organization_id,
+          },
+        });
+      } catch (err) {
+        return res.status(500).json({ message: err.message });
+      }
+    }
+
+    existing.name = name;
+    existing.area = area;
+    existing.coordinates = coordinates;
+
+    return res.status(200).json({
+      message: "Cập nhật thửa đất thành công.",
+      farm: existing,
+    });
+  }
+);
+
 const frontendIndexPath = path.join(__dirname, "../../frontend/index.html");
 const frontendLotsPath = path.join(__dirname, "../../frontend/lots.html");
 
@@ -563,6 +800,15 @@ app.get("/login", (req, res) => {
     return res.sendFile(frontendIndexPath);
   }
   return res.redirect("http://localhost:8080/index.html");
+});
+
+const frontendFarmsPath = path.join(__dirname, "../../frontend/farms.html");
+
+app.get("/farms", requireAuth, (req, res) => {
+  if (fs.existsSync(frontendFarmsPath)) {
+    return res.sendFile(frontendFarmsPath);
+  }
+  return res.redirect("http://localhost:8080/farms.html");
 });
 
 app.get("/lots", requireAuth, (req, res) => {
@@ -601,6 +847,7 @@ module.exports = {
   app,
   users,
   inMemoryLots,
+  inMemoryFarms,
   seedDemoUser,
   hashPassword,
   verifyPassword,
