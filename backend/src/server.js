@@ -1,6 +1,6 @@
 const express = require("express");
 const session = require("express-session");
-const bcrypt = require("bcryptjs");
+const { hash, verify, Algorithm } = require("@node-rs/argon2");
 const path = require("path");
 const fs = require("fs");
 const { Pool } = require("pg");
@@ -8,8 +8,8 @@ const { Pool } = require("pg");
 const app = express();
 const PORT = Number(process.env.PORT || 3000);
 
-const MAX_FAILED_ATTEMPTS = 5;
-const LOCK_MINUTES = 15;
+const MAX_FAILED_ATTEMPTS = Number(process.env.MAX_FAILED_ATTEMPTS || 5);
+const LOCK_MINUTES = Number(process.env.LOCK_MINUTES || 15);
 
 const pool = process.env.DATABASE_URL
   ? new Pool({ connectionString: process.env.DATABASE_URL })
@@ -20,7 +20,7 @@ app.use(express.urlencoded({ extended: false }));
 
 app.use(
   session({
-    secret: process.env.SESSION_SECRET || "s04-demo-secret",
+    secret: process.env.SESSION_SECRET || "s04-agri-secret-token",
     resave: false,
     saveUninitialized: false,
     cookie: {
@@ -32,18 +32,52 @@ app.use(
   })
 );
 
+// Fallback in-memory store for unit test environments without postgres
 const users = new Map();
 
+async function hashPassword(plainPassword) {
+  return hash(plainPassword, { algorithm: Algorithm.Argon2id });
+}
+
+async function verifyPassword(hashVal, plainPassword) {
+  try {
+    return await verify(hashVal, plainPassword);
+  } catch {
+    return false;
+  }
+}
+
 async function seedDemoUser() {
-  const passwordHash = await bcrypt.hash("Password@123", 10);
+  const passwordHash = await hashPassword("Password@123");
 
   users.set("user@example.com", {
-    id: "u-001",
+    id: "usr-001",
     email: "user@example.com",
     passwordHash,
     failedCount: 0,
     lockedUntil: null,
     organizationId: "org-001",
+    roleId: "producer",
+  });
+
+  users.set("user2@example.com", {
+    id: "usr-002",
+    email: "user2@example.com",
+    passwordHash,
+    failedCount: 0,
+    lockedUntil: null,
+    organizationId: "org-002",
+    roleId: "cooperative",
+  });
+
+  users.set("inspector@example.com", {
+    id: "usr-inspector",
+    email: "inspector@example.com",
+    passwordHash,
+    failedCount: 0,
+    lockedUntil: null,
+    organizationId: "org-inspector",
+    roleId: "inspector",
   });
 }
 
@@ -53,11 +87,9 @@ function normalizeEmail(email) {
 
 function safeReturnTo(value) {
   const returnTo = String(value || "/lots");
-
   if (returnTo.startsWith("/") && !returnTo.startsWith("//")) {
     return returnTo;
   }
-
   return "/lots";
 }
 
@@ -65,7 +97,8 @@ function publicUser(user) {
   return {
     id: user.id,
     email: user.email,
-    organizationId: user.organizationId,
+    organizationId: user.organizationId || user.organization_id,
+    roleId: user.roleId || user.role_id,
   };
 }
 
@@ -73,6 +106,93 @@ function loginError(res) {
   return res.status(401).json({
     message: "Email hoặc mật khẩu không đúng.",
   });
+}
+
+async function getUserByEmail(email) {
+  if (pool) {
+    try {
+      const res = await pool.query(
+        "SELECT id, email, password_hash, organization_id, role_id, failed_count, locked_until FROM users WHERE email = $1",
+        [email]
+      );
+      if (res.rows.length > 0) {
+        const row = res.rows[0];
+        return {
+          id: row.id,
+          email: row.email,
+          passwordHash: row.password_hash,
+          organizationId: row.organization_id,
+          roleId: row.role_id,
+          failedCount: Number(row.failed_count || 0),
+          lockedUntil: row.locked_until ? new Date(row.locked_until).getTime() : null,
+        };
+      }
+    } catch (err) {
+      console.warn("[DB getUserByEmail warning, fallback to memory]", err.message);
+    }
+  }
+
+  return users.get(email) || null;
+}
+
+async function getUserById(id) {
+  if (pool) {
+    try {
+      const res = await pool.query(
+        "SELECT id, email, password_hash, organization_id, role_id, failed_count, locked_until FROM users WHERE id = $1",
+        [id]
+      );
+      if (res.rows.length > 0) {
+        const row = res.rows[0];
+        return {
+          id: row.id,
+          email: row.email,
+          passwordHash: row.password_hash,
+          organizationId: row.organization_id,
+          roleId: row.role_id,
+          failedCount: Number(row.failed_count || 0),
+          lockedUntil: row.locked_until ? new Date(row.locked_until).getTime() : null,
+        };
+      }
+    } catch (err) {
+      console.warn("[DB getUserById warning, fallback to memory]", err.message);
+    }
+  }
+
+  return [...users.values()].find((u) => u.id === id) || null;
+}
+
+async function updateUserLock(user, failedCount, lockedUntil) {
+  user.failedCount = failedCount;
+  user.lockedUntil = lockedUntil;
+
+  if (pool) {
+    try {
+      const lockedDate = lockedUntil ? new Date(lockedUntil).toISOString() : null;
+      await pool.query(
+        "UPDATE users SET failed_count = $1, locked_until = $2, updated_at = NOW() WHERE id = $3",
+        [failedCount, lockedDate, user.id]
+      );
+    } catch (err) {
+      console.warn("[DB updateUserLock warning]", err.message);
+    }
+  }
+}
+
+async function resetUserLock(user) {
+  user.failedCount = 0;
+  user.lockedUntil = null;
+
+  if (pool) {
+    try {
+      await pool.query(
+        "UPDATE users SET failed_count = 0, locked_until = NULL, updated_at = NOW() WHERE id = $1",
+        [user.id]
+      );
+    } catch (err) {
+      console.warn("[DB resetUserLock warning]", err.message);
+    }
+  }
 }
 
 function requireAuth(req, res, next) {
@@ -129,40 +249,36 @@ app.post("/api/login", async (req, res) => {
   const password = String(req.body.password || "");
   const returnTo = safeReturnTo(req.body.returnTo);
 
-  const user = users.get(email);
+  const user = await getUserByEmail(email);
 
   if (!user) {
     return loginError(res);
   }
 
-  // Kiểm tra khóa trước khi kiểm tra mật khẩu
-  if (user.lockedUntil && user.lockedUntil > Date.now()) {
-    const retryAfterSeconds = Math.ceil(
-      (user.lockedUntil - Date.now()) / 1000
-    );
+  const now = Date.now();
 
+  // Kiểm tra khóa trước khi kiểm tra mật khẩu
+  if (user.lockedUntil && user.lockedUntil > now) {
+    const retryAfterSeconds = Math.ceil((user.lockedUntil - now) / 1000);
     return res.status(423).json({
       message: "Tài khoản đang bị khóa tạm thời.",
       retryAfterSeconds,
     });
   }
 
-  // Hết thời gian khóa
-  if (user.lockedUntil && user.lockedUntil <= Date.now()) {
-    user.lockedUntil = null;
-    user.failedCount = 0;
+  // Hết thời gian khóa -> reset tự động
+  if (user.lockedUntil && user.lockedUntil <= now) {
+    await resetUserLock(user);
   }
 
-  const validPassword = await bcrypt.compare(
-    password,
-    user.passwordHash
-  );
+  const validPassword = await verifyPassword(user.passwordHash, password);
 
   if (!validPassword) {
-    user.failedCount += 1;
+    const nextFailedCount = (user.failedCount || 0) + 1;
 
-    if (user.failedCount >= MAX_FAILED_ATTEMPTS) {
-      user.lockedUntil = Date.now() + LOCK_MINUTES * 60 * 1000;
+    if (nextFailedCount >= MAX_FAILED_ATTEMPTS) {
+      const lockUntil = now + LOCK_MINUTES * 60 * 1000;
+      await updateUserLock(user, nextFailedCount, lockUntil);
 
       return res.status(423).json({
         message: "Tài khoản đang bị khóa tạm thời.",
@@ -170,15 +286,17 @@ app.post("/api/login", async (req, res) => {
       });
     }
 
+    await updateUserLock(user, nextFailedCount, null);
     return loginError(res);
   }
 
   // Đăng nhập thành công
-  user.failedCount = 0;
-  user.lockedUntil = null;
+  await resetUserLock(user);
 
   req.session.userId = user.id;
   req.session.email = user.email;
+  req.session.organizationId = user.organizationId;
+  req.session.roleId = user.roleId;
 
   return res.status(200).json({
     message: "Đăng nhập thành công.",
@@ -187,16 +305,14 @@ app.post("/api/login", async (req, res) => {
   });
 });
 
-app.get("/api/me", (req, res) => {
+app.get("/api/me", async (req, res) => {
   if (!req.session.userId) {
     return res.status(401).json({
       message: "Chưa đăng nhập.",
     });
   }
 
-  const user = [...users.values()].find(
-    (item) => item.id === req.session.userId
-  );
+  const user = await getUserById(req.session.userId);
 
   if (!user) {
     req.session.destroy(() => {});
@@ -227,8 +343,9 @@ app.post("/api/logout", (req, res) => {
 });
 
 app.get("/api/organization/lots", requireAuth, (req, res) => {
+  const orgId = req.session.organizationId || "org-001";
   return res.status(200).json({
-    organizationId: "org-001",
+    organizationId: orgId,
     lots: [
       {
         id: "LOT-001",
@@ -266,6 +383,8 @@ if (fs.existsSync(path.join(__dirname, "../../frontend"))) {
 }
 
 async function start() {
+  await seedDemoUser();
+
   if (pool) {
     try {
       const { runMigrations } = require("./migrate");
@@ -274,8 +393,6 @@ async function start() {
       console.warn("[Migration Warning]", err.message);
     }
   }
-
-  await seedDemoUser();
 
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`Backend server running at http://0.0.0.0:${PORT}`);
@@ -290,6 +407,13 @@ module.exports = {
   app,
   users,
   seedDemoUser,
+  hashPassword,
+  verifyPassword,
+  getUserByEmail,
+  getUserById,
+  updateUserLock,
+  resetUserLock,
   MAX_FAILED_ATTEMPTS,
   LOCK_MINUTES,
+  pool,
 };
