@@ -2,7 +2,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const request = require("supertest");
 const { app, users, seedDemoUser } = require("../src/server");
-const { scopedQuery } = require("../src/query");
+const { scopedQuery, scopedQueryById } = require("../src/query");
 
 test.beforeEach(async () => {
   users.clear();
@@ -105,4 +105,133 @@ test("T-13: Inspector reads lots across all organizations (200), but write opera
 
   assert.equal(writeRes.status, 403);
   assert.match(writeRes.body.message, /chỉ có quyền đọc/i);
+});
+
+test("T-12: scopedQueryById strictly enforces WHERE id = $1 AND organization_id = $2 at query layer for regular users", async () => {
+  const farmQuery = await scopedQueryById(
+    null,
+    { organizationId: "org-001", roleId: "producer" },
+    "farms",
+    "FARM-001"
+  );
+  assert.equal(
+    farmQuery.sql,
+    "SELECT * FROM farms WHERE id = $1 AND organization_id = $2"
+  );
+  assert.deepEqual(farmQuery.params, ["FARM-001", "org-001"]);
+
+  const lotQuery = await scopedQueryById(
+    null,
+    { organizationId: "org-001", roleId: "cooperative" },
+    "lots",
+    "LOT-001"
+  );
+  assert.equal(
+    lotQuery.sql,
+    "SELECT * FROM lots WHERE id = $1 AND organization_id = $2"
+  );
+  assert.deepEqual(lotQuery.params, ["LOT-001", "org-001"]);
+});
+
+test("T-12: scopedQueryById enforces WHERE id = $1 for inspectors without tenant restriction", async () => {
+  const inspectorFarmQuery = await scopedQueryById(
+    null,
+    { roleId: "inspector", isInspector: true },
+    "farms",
+    "FARM-001"
+  );
+  assert.equal(inspectorFarmQuery.sql, "SELECT * FROM farms WHERE id = $1");
+  assert.deepEqual(inspectorFarmQuery.params, ["FARM-001"]);
+
+  const inspectorLotQuery = await scopedQueryById(
+    null,
+    { roleId: "inspector" },
+    "lots",
+    "LOT-101"
+  );
+  assert.equal(inspectorLotQuery.sql, "SELECT * FROM lots WHERE id = $1");
+  assert.deepEqual(inspectorLotQuery.params, ["LOT-101"]);
+});
+
+test("T-12: scopedQueryById throws error when called without organization context on tenant table", async () => {
+  await assert.rejects(
+    async () => {
+      await scopedQueryById(null, null, "farms", "FARM-001");
+    },
+    (err) => {
+      assert.match(err.message, /thiếu ngữ cảnh tổ chức/i);
+      return true;
+    }
+  );
+
+  await assert.rejects(
+    async () => {
+      await scopedQueryById(
+        null,
+        { organizationId: null, roleId: "producer" },
+        "lots",
+        "LOT-001"
+      );
+    },
+    (err) => {
+      assert.match(err.message, /thiếu ngữ cảnh tổ chức/i);
+      return true;
+    }
+  );
+});
+
+test("T-12: scopedQueryById with mock pool distinguishes own record, cross-tenant record, and not found", async () => {
+  // Case 1: Own record exists
+  const mockPoolOwn = {
+    async query(sql) {
+      if (sql.includes("AND organization_id = $2")) {
+        return { rows: [{ id: "F-1", name: "Farm 1", organization_id: "org-001" }] };
+      }
+      return { rows: [] };
+    },
+  };
+  const ownResult = await scopedQueryById(
+    mockPoolOwn,
+    { organizationId: "org-001", roleId: "producer" },
+    "farms",
+    "F-1"
+  );
+  assert.ok(ownResult.row);
+  assert.equal(ownResult.isCrossTenant, false);
+
+  // Case 2: Cross-tenant record exists
+  const mockPoolCross = {
+    async query(sql) {
+      if (sql.includes("AND organization_id = $2")) {
+        return { rows: [] };
+      }
+      if (sql.includes("SELECT organization_id FROM")) {
+        return { rows: [{ organization_id: "org-002" }] };
+      }
+      return { rows: [] };
+    },
+  };
+  const crossResult = await scopedQueryById(
+    mockPoolCross,
+    { organizationId: "org-001", roleId: "producer" },
+    "farms",
+    "F-2"
+  );
+  assert.equal(crossResult.row, null);
+  assert.equal(crossResult.isCrossTenant, true);
+
+  // Case 3: Record does not exist anywhere
+  const mockPoolNotFound = {
+    async query() {
+      return { rows: [] };
+    },
+  };
+  const notFoundResult = await scopedQueryById(
+    mockPoolNotFound,
+    { organizationId: "org-001", roleId: "producer" },
+    "farms",
+    "F-999"
+  );
+  assert.equal(notFoundResult.row, null);
+  assert.equal(notFoundResult.isCrossTenant, false);
 });
