@@ -31,7 +31,7 @@ Phạm vi Sprint 1:
 | S-05 | 2 | Mỗi tổ chức chỉ thấy dữ liệu của mình | `feature/s1-s05-org-access` |
 | S-06 | 1 | Vùng trồng khai báo thửa đất | `feature/s1-s06-farm` |
 
-> Ghi chú về cụm từ **"nhánh chính"** trong Backlog: trong workflow của repo này, `develop` là **nhánh tích hợp chính của Sprint** và là nguồn triển khai staging; `main` là nhánh ổn định dùng cho demo/release. Cuối Sprint mới tạo PR `develop -> main`.
+> Ghi chú về cụm từ **"nhánh chính"** trong Backlog: trong workflow của repo này, `develop` là **nhánh tích hợp chính của Sprint**; `main` là **nhánh triển khai staging & release**, tự động triển khai môi trường staging khi có thay đổi đưa vào `main` qua PR từ `develop`.
 
 Chi tiết Sprint 1, T-01 → T-15, phân công và tiêu chí hoàn thành: [docs/SPRINT-1.md](docs/SPRINT-1.md).
 

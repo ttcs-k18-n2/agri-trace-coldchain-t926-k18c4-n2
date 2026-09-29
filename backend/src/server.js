@@ -291,6 +291,7 @@ async function checkHealth(_req, res) {
       service: "agri-trace-backend",
       status: "ok",
       database: "not_configured",
+      commit: process.env.GIT_COMMIT || "unknown",
     });
   }
 
@@ -301,13 +302,14 @@ async function checkHealth(_req, res) {
       status: "ok",
       database: "connected",
       timestamp: result.rows[0].now,
+      commit: process.env.GIT_COMMIT || "unknown",
     });
-  } catch (error) {
+  } catch {
     return res.status(503).json({
       service: "agri-trace-backend",
       status: "error",
       database: "disconnected",
-      message: error.message,
+      message: "Database connection unavailable",
     });
   }
 }
