@@ -24,15 +24,14 @@ function setDatabasePool(customPool) {
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 
+const crypto = require("node:crypto");
 const sessionSecret =
-  process.env.SESSION_SECRET ||
-  (process.env.NODE_ENV === "test" ? "test-ephemeral-session-secret-for-tests" : null);
+  process.env.SESSION_SECRET || crypto.randomBytes(32).toString("hex");
 
-if (!sessionSecret) {
-  console.error(
-    "[Fatal Security Error] SESSION_SECRET environment variable is missing. Set SESSION_SECRET in your environment or .env file."
+if (!process.env.SESSION_SECRET && process.env.NODE_ENV !== "test") {
+  console.warn(
+    "[Security Warning] SESSION_SECRET is not set in environment; generated a secure random secret."
   );
-  process.exit(1);
 }
 
 app.set("trust proxy", 1);
