@@ -1,0 +1,89 @@
+const test = require("node:test");
+const assert = require("node:assert/strict");
+const request = require("supertest");
+const { app, users, seedDemoUser, MAX_FAILED_ATTEMPTS } = require("../src/server");
+
+test.beforeEach(async () => {
+  users.clear();
+  await seedDemoUser();
+});
+
+test("POST /api/login with valid credentials succeeds", async () => {
+  const res = await request(app)
+    .post("/api/login")
+    .send({ email: "user@example.com", password: "Password@123" });
+
+  assert.equal(res.status, 200);
+  assert.equal(res.body.message, "Đăng nhập thành công.");
+  assert.equal(res.body.user.email, "user@example.com");
+  assert.ok(res.headers["set-cookie"]);
+});
+
+test("POST /api/login with wrong password returns 401 generic message", async () => {
+  const res = await request(app)
+    .post("/api/login")
+    .send({ email: "user@example.com", password: "WrongPassword" });
+
+  assert.equal(res.status, 401);
+  assert.equal(res.body.message, "Email hoặc mật khẩu không đúng.");
+});
+
+test("POST /api/login with non-existent email returns 401 identical message", async () => {
+  const res = await request(app)
+    .post("/api/login")
+    .send({ email: "nonexistent@example.com", password: "Password@123" });
+
+  assert.equal(res.status, 401);
+  assert.equal(res.body.message, "Email hoặc mật khẩu không đúng.");
+});
+
+test("POST /api/login locks account after 5 failed attempts and blocks valid password", async () => {
+  for (let i = 0; i < MAX_FAILED_ATTEMPTS - 1; i++) {
+    const res = await request(app)
+      .post("/api/login")
+      .send({ email: "user@example.com", password: "WrongPassword" });
+    assert.equal(res.status, 401);
+  }
+
+  // 5th failed attempt triggers lock
+  const fifthRes = await request(app)
+    .post("/api/login")
+    .send({ email: "user@example.com", password: "WrongPassword" });
+  assert.equal(fifthRes.status, 423);
+  assert.equal(fifthRes.body.message, "Tài khoản đang bị khóa tạm thời.");
+  assert.ok(fifthRes.body.retryAfterSeconds > 0);
+
+  // Next attempt with CORRECT password must still be locked (423)
+  const lockedRes = await request(app)
+    .post("/api/login")
+    .send({ email: "user@example.com", password: "Password@123" });
+  assert.equal(lockedRes.status, 423);
+  assert.equal(lockedRes.body.message, "Tài khoản đang bị khóa tạm thời.");
+});
+
+test("GET /api/me returns 401 when unauthenticated and 200 when authenticated", async () => {
+  const unauthRes = await request(app).get("/api/me");
+  assert.equal(unauthRes.status, 401);
+
+  const agent = request.agent(app);
+  await agent
+    .post("/api/login")
+    .send({ email: "user@example.com", password: "Password@123" });
+
+  const authRes = await agent.get("/api/me");
+  assert.equal(authRes.status, 200);
+  assert.equal(authRes.body.user.email, "user@example.com");
+});
+
+test("POST /api/logout destroys session", async () => {
+  const agent = request.agent(app);
+  await agent
+    .post("/api/login")
+    .send({ email: "user@example.com", password: "Password@123" });
+
+  const logoutRes = await agent.post("/api/logout");
+  assert.equal(logoutRes.status, 200);
+
+  const meRes = await agent.get("/api/me");
+  assert.equal(meRes.status, 401);
+});
