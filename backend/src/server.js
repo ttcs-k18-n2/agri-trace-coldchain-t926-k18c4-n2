@@ -5,6 +5,7 @@ const path = require("path");
 const fs = require("fs");
 const { Pool } = require("pg");
 const { scopedQuery, scopedQueryById, SHARED_TABLES } = require("./query");
+const { logSecurityEvent, getRecentSecurityLogs, clearSecurityLogs } = require("./security_logger");
 
 const app = express();
 const PORT = Number(process.env.PORT || 3000);
@@ -12,9 +13,13 @@ const PORT = Number(process.env.PORT || 3000);
 const MAX_FAILED_ATTEMPTS = Number(process.env.MAX_FAILED_ATTEMPTS || 5);
 const LOCK_MINUTES = Number(process.env.LOCK_MINUTES || 15);
 
-const pool = process.env.DATABASE_URL
+let pool = (process.env.DATABASE_URL && process.env.NODE_ENV !== "test")
   ? new Pool({ connectionString: process.env.DATABASE_URL })
   : null;
+
+function setDatabasePool(customPool) {
+  pool = customPool;
+}
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
@@ -488,6 +493,18 @@ app.get(
       try {
         const q = await scopedQueryById(pool, req.auth, "lots", lotId);
         if (q.isCrossTenant) {
+          logSecurityEvent("CROSS_TENANT_ACCESS_DENIED", {
+            userId: req.auth.id,
+            userEmail: req.auth.email,
+            userOrgId: req.auth.organizationId,
+            userRole: req.auth.roleId,
+            resourceType: "lots",
+            resourceId: lotId,
+            targetOrgId: q.targetOrgId,
+            action: "READ",
+            ip: req.ip,
+            userAgent: req.get("User-Agent"),
+          });
           return res.status(403).json({
             message: "Truy cập bị từ chối: bạn không có quyền xem dữ liệu của tổ chức khác.",
           });
@@ -507,6 +524,18 @@ app.get(
       const match = inMemoryLots.find((l) => l.id === lotId);
       if (match) {
         if (!isInspector && match.organizationId !== orgId && req.auth.roleId !== "admin") {
+          logSecurityEvent("CROSS_TENANT_ACCESS_DENIED", {
+            userId: req.auth.id,
+            userEmail: req.auth.email,
+            userOrgId: req.auth.organizationId,
+            userRole: req.auth.roleId,
+            resourceType: "lots",
+            resourceId: lotId,
+            targetOrgId: match.organizationId,
+            action: "READ",
+            ip: req.ip,
+            userAgent: req.get("User-Agent"),
+          });
           return res.status(403).json({
             message: "Truy cập bị từ chối: bạn không có quyền xem dữ liệu của tổ chức khác.",
           });
@@ -625,6 +654,18 @@ app.get(
       try {
         const q = await scopedQueryById(pool, req.auth, "farms", farmId);
         if (q.isCrossTenant) {
+          logSecurityEvent("CROSS_TENANT_ACCESS_DENIED", {
+            userId: req.auth.id,
+            userEmail: req.auth.email,
+            userOrgId: req.auth.organizationId,
+            userRole: req.auth.roleId,
+            resourceType: "farms",
+            resourceId: farmId,
+            targetOrgId: q.targetOrgId,
+            action: "READ",
+            ip: req.ip,
+            userAgent: req.get("User-Agent"),
+          });
           return res.status(403).json({
             message: "Truy cập bị từ chối: bạn không có quyền xem dữ liệu của tổ chức khác.",
           });
@@ -645,6 +686,18 @@ app.get(
       const match = inMemoryFarms.find((f) => f.id === farmId);
       if (match) {
         if (!isInspector && match.organizationId !== orgId && req.auth.roleId !== "admin") {
+          logSecurityEvent("CROSS_TENANT_ACCESS_DENIED", {
+            userId: req.auth.id,
+            userEmail: req.auth.email,
+            userOrgId: req.auth.organizationId,
+            userRole: req.auth.roleId,
+            resourceType: "farms",
+            resourceId: farmId,
+            targetOrgId: match.organizationId,
+            action: "READ",
+            ip: req.ip,
+            userAgent: req.get("User-Agent"),
+          });
           return res.status(403).json({
             message: "Truy cập bị từ chối: bạn không có quyền xem dữ liệu của tổ chức khác.",
           });
@@ -739,6 +792,18 @@ app.put(
       try {
         const q = await scopedQueryById(pool, req.auth, "farms", farmId);
         if (q.isCrossTenant) {
+          logSecurityEvent("CROSS_TENANT_MUTATION_DENIED", {
+            userId: req.auth.id,
+            userEmail: req.auth.email,
+            userOrgId: req.auth.organizationId,
+            userRole: req.auth.roleId,
+            resourceType: "farms",
+            resourceId: farmId,
+            targetOrgId: q.targetOrgId,
+            action: "UPDATE",
+            ip: req.ip,
+            userAgent: req.get("User-Agent"),
+          });
           return res.status(403).json({
             message: "Truy cập bị từ chối: bạn không có quyền sửa dữ liệu của tổ chức khác.",
           });
@@ -756,6 +821,18 @@ app.put(
       const match = inMemoryFarms.find((f) => f.id === farmId);
       if (match) {
         if (match.organizationId !== orgId && req.auth.roleId !== "admin") {
+          logSecurityEvent("CROSS_TENANT_MUTATION_DENIED", {
+            userId: req.auth.id,
+            userEmail: req.auth.email,
+            userOrgId: req.auth.organizationId,
+            userRole: req.auth.roleId,
+            resourceType: "farms",
+            resourceId: farmId,
+            targetOrgId: match.organizationId,
+            action: "UPDATE",
+            ip: req.ip,
+            userAgent: req.get("User-Agent"),
+          });
           return res.status(403).json({
             message: "Truy cập bị từ chối: bạn không có quyền sửa dữ liệu của tổ chức khác.",
           });
@@ -891,6 +968,10 @@ module.exports = {
   scopedQuery,
   scopedQueryById,
   SHARED_TABLES,
+  logSecurityEvent,
+  getRecentSecurityLogs,
+  clearSecurityLogs,
+  setDatabasePool,
   MAX_FAILED_ATTEMPTS,
   LOCK_MINUTES,
   pool,
