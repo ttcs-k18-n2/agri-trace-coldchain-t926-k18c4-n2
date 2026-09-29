@@ -24,15 +24,28 @@ function setDatabasePool(customPool) {
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 
+const sessionSecret =
+  process.env.SESSION_SECRET ||
+  (process.env.NODE_ENV === "test" ? "test-ephemeral-session-secret-for-tests" : null);
+
+if (!sessionSecret) {
+  console.error(
+    "[Fatal Security Error] SESSION_SECRET environment variable is missing. Set SESSION_SECRET in your environment or .env file."
+  );
+  process.exit(1);
+}
+
+app.set("trust proxy", 1);
+
 app.use(
   session({
-    secret: process.env.SESSION_SECRET || "s04-agri-secret-token",
+    secret: sessionSecret,
     resave: false,
     saveUninitialized: false,
     cookie: {
       httpOnly: true,
       sameSite: "lax",
-      secure: false,
+      secure: process.env.COOKIE_SECURE === "true",
       maxAge: 60 * 60 * 1000,
     },
   })
@@ -218,6 +231,7 @@ async function resetUserLock(user) {
 function attachAuthContext(req, _res, next) {
   if (req.session && req.session.userId) {
     req.auth = {
+      id: req.session.userId,
       userId: req.session.userId,
       email: req.session.email,
       organizationId: req.session.organizationId,
@@ -494,7 +508,7 @@ app.get(
         const q = await scopedQueryById(pool, req.auth, "lots", lotId);
         if (q.isCrossTenant) {
           logSecurityEvent("CROSS_TENANT_ACCESS_DENIED", {
-            userId: req.auth.id,
+            userId: req.auth.userId || req.auth.id,
             userEmail: req.auth.email,
             userOrgId: req.auth.organizationId,
             userRole: req.auth.roleId,
@@ -525,7 +539,7 @@ app.get(
       if (match) {
         if (!isInspector && match.organizationId !== orgId && req.auth.roleId !== "admin") {
           logSecurityEvent("CROSS_TENANT_ACCESS_DENIED", {
-            userId: req.auth.id,
+            userId: req.auth.userId || req.auth.id,
             userEmail: req.auth.email,
             userOrgId: req.auth.organizationId,
             userRole: req.auth.roleId,
@@ -655,7 +669,7 @@ app.get(
         const q = await scopedQueryById(pool, req.auth, "farms", farmId);
         if (q.isCrossTenant) {
           logSecurityEvent("CROSS_TENANT_ACCESS_DENIED", {
-            userId: req.auth.id,
+            userId: req.auth.userId || req.auth.id,
             userEmail: req.auth.email,
             userOrgId: req.auth.organizationId,
             userRole: req.auth.roleId,
@@ -687,7 +701,7 @@ app.get(
       if (match) {
         if (!isInspector && match.organizationId !== orgId && req.auth.roleId !== "admin") {
           logSecurityEvent("CROSS_TENANT_ACCESS_DENIED", {
-            userId: req.auth.id,
+            userId: req.auth.userId || req.auth.id,
             userEmail: req.auth.email,
             userOrgId: req.auth.organizationId,
             userRole: req.auth.roleId,
@@ -793,7 +807,7 @@ app.put(
         const q = await scopedQueryById(pool, req.auth, "farms", farmId);
         if (q.isCrossTenant) {
           logSecurityEvent("CROSS_TENANT_MUTATION_DENIED", {
-            userId: req.auth.id,
+            userId: req.auth.userId || req.auth.id,
             userEmail: req.auth.email,
             userOrgId: req.auth.organizationId,
             userRole: req.auth.roleId,
@@ -822,7 +836,7 @@ app.put(
       if (match) {
         if (match.organizationId !== orgId && req.auth.roleId !== "admin") {
           logSecurityEvent("CROSS_TENANT_MUTATION_DENIED", {
-            userId: req.auth.id,
+            userId: req.auth.userId || req.auth.id,
             userEmail: req.auth.email,
             userOrgId: req.auth.organizationId,
             userRole: req.auth.roleId,
@@ -939,7 +953,8 @@ async function start() {
       const { runMigrations } = require("./migrate");
       await runMigrations("up");
     } catch (err) {
-      console.warn("[Migration Warning]", err.message);
+      console.error("[Migration Fatal Error] Startup aborted due to migration failure:", err.message);
+      process.exit(1);
     }
   }
 

@@ -6,8 +6,9 @@
   "scripts": {
     "start": "node src/server.js",
     "check": "node --check src/server.js && node --check src/index.js && node --check src/migrate.js",
-    "test": "NODE_ENV=test node --test",
+    "test": "node --test --experimental-test-coverage",
     "lint": "eslint src test && node scripts/check_tenant_queries.js",
+    "audit": "npm audit --audit-level=high",
     "migrate": "node src/migrate.js",
     "migrate:up": "node src/migrate.js up",
     "migrate:down": "node src/migrate.js down",

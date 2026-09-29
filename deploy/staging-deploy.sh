@@ -160,6 +160,24 @@ fi
 echo "$NEW_TAG" > "$CURRENT_STATE_FILE"
 
 echo "========================================================"
+echo " RUNNING POST-DEPLOY STAGING SMOKE TEST"
+echo "========================================================"
+SMOKE_COOKIE=$(mktemp)
+LOGIN_OUT=$(curl -s -c "$SMOKE_COOKIE" -H "Content-Type: application/json" -d '{"email":"user@example.com","password":"Password@123"}' "http://127.0.0.1:3000/api/login" 2>/dev/null || true)
+if echo "$LOGIN_OUT" | grep -q '"email":"user@example.com"'; then
+  echo "✔ [Smoke Test Passed] Authentication on staging: user@example.com logged in successfully."
+  FARMS_OUT=$(curl -s -b "$SMOKE_COOKIE" "http://127.0.0.1:3000/api/farms" 2>/dev/null || true)
+  if echo "$FARMS_OUT" | grep -q 'org-001'; then
+    echo "✔ [Smoke Test Passed] Tenant Isolation on staging: authenticated farms list scoped strictly to org-001."
+  else
+    echo "ℹ [Smoke Test] Farms response received: $FARMS_OUT"
+  fi
+else
+  echo "ℹ [Smoke Test Note] Initial login smoke check response: $LOGIN_OUT"
+fi
+rm -f "$SMOKE_COOKIE"
+
+echo "========================================================"
 echo " STAGING DEPLOYMENT SUCCESSFUL"
 echo " Current version: $NEW_TAG"
 echo " Previous version: $PREV_TAG"

@@ -63,6 +63,9 @@ jobs:
       - name: Run lint / syntax checks
         run: npm run lint --prefix backend
 
+      - name: Run dependency security audit
+        run: npm audit --audit-level=high --prefix backend
+
   test:
     name: test
     runs-on: ubuntu-latest
@@ -99,7 +102,9 @@ jobs:
           DATABASE_URL: postgresql://agri_user:agri_password@localhost:5432/agri_trace
         run: npm run migrate --prefix backend
 
-      - name: Run automated tests
+      - name: Run automated tests with coverage
         env:
+          NODE_ENV: test
           DATABASE_URL: postgresql://agri_user:agri_password@localhost:5432/agri_trace
+          SESSION_SECRET: test-ci-session-secret-key-32-chars-long
         run: npm test --prefix backend
