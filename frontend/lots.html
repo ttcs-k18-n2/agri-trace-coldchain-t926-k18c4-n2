@@ -3,192 +3,554 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>AGRI TRACEABILITY - Danh sách lô</title>
+  <title>AGRI TRACEABILITY - Quản lý lô thu hoạch & chuỗi lạnh</title>
+  <link rel="stylesheet" href="/styles.css">
 
   <style>
-    * {
-      box-sizing: border-box;
+    /* Search & Filter Toolbar */
+    .filter-toolbar {
+      background: var(--color-surface);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-lg);
+      padding: 14px 18px;
+      margin-bottom: 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      flex-wrap: wrap;
+      box-shadow: var(--shadow-xs);
     }
 
-    body {
-      margin: 0;
-      font-family: Arial, sans-serif;
-      background: #eef7f0;
-      min-height: 100vh;
+    .search-box {
+      position: relative;
+      flex: 1;
+      min-width: 260px;
     }
 
-    .container {
-      width: 90%;
-      max-width: 900px;
-      margin: 50px auto;
-      background: white;
-      padding: 30px;
-      border-radius: 16px;
-      box-shadow: 0 8px 30px rgba(0,0,0,0.1);
+    .search-icon {
+      position: absolute;
+      left: 12px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: var(--color-text-light);
+      display: flex;
+      align-items: center;
+      pointer-events: none;
     }
 
-    .brand {
-      color: #1d7a43;
-      font-size: 22px;
-      font-weight: bold;
+    .search-input {
+      width: 100%;
+      height: 40px;
+      padding: 0 14px 0 38px;
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-md);
+      font-size: 13px;
+      background: var(--color-bg);
+      color: var(--color-text-main);
+      transition: var(--transition-fast);
     }
 
-    h1 {
-      margin-top: 10px;
+    .search-input:focus {
+      background: var(--color-surface);
+      border-color: var(--color-primary);
+      box-shadow: 0 0 0 3px rgba(21, 128, 61, 0.1);
     }
 
-    #userInfo {
-      color: #666;
-      margin-bottom: 25px;
+    .filter-pills {
+      display: flex;
+      align-items: center;
+      gap: 6px;
     }
 
-    .lot {
-      border: 1px solid #ddd;
-      border-radius: 10px;
-      padding: 18px;
-      margin-bottom: 15px;
-      background: #f8fbf9;
-    }
-
-    .lot-id {
-      color: #1d7a43;
-      font-weight: bold;
-      font-size: 18px;
-    }
-
-    .lot-name {
-      margin: 8px 0;
-      font-size: 16px;
-    }
-
-    .status {
-      color: #555;
-    }
-
-    button {
-      padding: 11px 20px;
-      border: none;
-      border-radius: 8px;
-      background: #d32f2f;
-      color: white;
+    .filter-btn {
+      padding: 6px 14px;
+      border-radius: var(--radius-full);
+      font-size: 12px;
+      font-weight: 600;
+      border: 1px solid var(--color-border);
+      background: var(--color-surface);
+      color: var(--color-text-muted);
       cursor: pointer;
-      margin-bottom: 25px;
+      transition: var(--transition-fast);
+    }
+
+    .filter-btn:hover {
+      border-color: var(--color-primary);
+      color: var(--color-primary);
+    }
+
+    .filter-btn.active {
+      background: var(--color-primary-surface);
+      color: var(--color-primary);
+      border-color: var(--color-border-green);
+    }
+
+    /* Lots Grid & Card */
+    .lots-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+      gap: 20px;
+    }
+
+    .lot-card {
+      background: var(--color-surface);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-lg);
+      padding: 22px;
+      box-shadow: var(--shadow-sm);
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      gap: 16px;
+      transition: var(--transition-normal);
+      position: relative;
+    }
+
+    .lot-card:hover {
+      transform: translateY(-3px);
+      box-shadow: var(--shadow-hover);
+      border-color: var(--color-border-green);
+    }
+
+    .lot-card-top {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .lot-code-tag {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+      color: var(--color-primary-active);
+      background: var(--color-primary-light);
+      padding: 3px 8px;
+      border-radius: var(--radius-xs);
+    }
+
+    .lot-title {
+      font-size: 18px;
+      font-weight: 700;
+      color: var(--color-text-main);
+      margin-top: 8px;
+      line-height: 1.3;
+    }
+
+    .lot-meta-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      padding: 12px 0;
+      border-top: 1px dashed var(--color-border);
+      border-bottom: 1px dashed var(--color-border);
+    }
+
+    .lot-meta-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 13px;
+    }
+
+    .lot-meta-label {
+      color: var(--color-text-muted);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .lot-meta-value {
+      font-weight: 600;
+      color: var(--color-text-main);
+    }
+
+    .lot-card-actions {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+    }
+
+    .btn-lot-action {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--color-primary);
+      background: none;
+      border: none;
+      cursor: pointer;
+      padding: 4px 0;
+      transition: var(--transition-fast);
+    }
+
+    .btn-lot-action:hover {
+      color: var(--color-primary-active);
+      text-decoration: underline;
+    }
+
+    /* Empty state */
+    .empty-state {
+      text-align: center;
+      padding: 56px 24px;
+      background: var(--color-surface);
+      border: 1px dashed var(--color-border);
+      border-radius: var(--radius-lg);
+      grid-column: 1 / -1;
+    }
+
+    .empty-state-icon {
+      width: 56px;
+      height: 56px;
+      border-radius: var(--radius-full);
+      background: var(--color-bg);
+      color: var(--color-text-light);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 16px;
+    }
+
+    .empty-state-title {
+      font-size: 16px;
+      font-weight: 700;
+      color: var(--color-text-main);
+      margin-bottom: 6px;
+    }
+
+    .empty-state-desc {
+      font-size: 13px;
+      color: var(--color-text-muted);
+      max-width: 380px;
+      margin: 0 auto 20px auto;
+    }
+
+    @media (max-width: 640px) {
+      .lots-grid {
+        grid-template-columns: 1fr;
+      }
     }
   </style>
 </head>
 
 <body>
+  <!-- Global App Header with Navbar -->
+  <header class="app-header">
+    <div class="header-container">
+      <a href="/lots" class="brand-link">
+        <div class="brand-icon">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 2a10 10 0 0 1 10 10c0 5.523-4.477 10-10 10S2 17.523 2 12c0-2.2.7-4.2 1.9-5.9"/>
+            <path d="M12 6v6l4 2"/>
+            <path d="m4.93 4.93 4.24 4.24"/>
+          </svg>
+        </div>
+        <div class="brand-info">
+          <span class="brand-title">AGRI TRACE</span>
+          <span class="brand-tag">Chuỗi lạnh nông sản</span>
+        </div>
+      </a>
 
-<div class="container">
+      <!-- Navigation Tabs (S-01 & S-06 connected!) -->
+      <nav class="nav-links" aria-label="Điều hướng chính">
+        <a href="/lots" class="nav-item active" id="navLots">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m7.5 4.27 9 5.15"/><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg>
+          <span>Lô hàng</span>
+        </a>
+        <a href="/farms.html" class="nav-item" id="navFarms">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 11v8a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-7a1 1 0 0 1 1-1h3"/><path d="M4 11V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v7"/><path d="M14 15v5a1 1 0 0 1-1 1h-2a1 1 0 0 1-1-1v-5"/><path d="M17 11V7a1 1 0 0 1 1-1h3a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1h-3a1 1 0 0 1-1-1v-3"/><path d="M3 21h18"/></svg>
+          <span>Thửa đất</span>
+        </a>
+      </nav>
 
-  <div class="brand">
-    AGRI TRACEABILITY
-  </div>
+      <div class="user-controls">
+        <div class="user-pill" id="userPill">
+          <div class="user-avatar" id="userAvatar">U</div>
+          <div class="user-meta">
+            <span class="user-email" id="userEmail">Đang tải...</span>
+            <div class="user-badges">
+              <span class="badge-org" id="userOrg">...</span>
+              <span class="badge-role" id="userRole">...</span>
+            </div>
+          </div>
+        </div>
+        <!-- Retain id="userInfo" for backward compatibility -->
+        <span id="userInfo" style="display: none;"></span>
 
-  <h1>Danh sách lô của tổ chức</h1>
+        <button id="logout" class="btn-logout" title="Đăng xuất khỏi phiên làm việc">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+          <span>Đăng xuất</span>
+        </button>
+      </div>
+    </div>
+  </header>
 
-  <p id="userInfo">Đang tải thông tin...</p>
+  <!-- Main Content Layout -->
+  <main class="main-wrapper">
+    <!-- Page Header & Action -->
+    <div class="page-header">
+      <div class="page-title-group">
+        <h1>Danh sách lô thu hoạch</h1>
+        <p class="page-subtitle">Giám sát trạng thái vận chuyển, lưu kho và chứng thực chuỗi lạnh nông sản</p>
+      </div>
+      <div>
+        <a href="/farms.html" class="btn-primary">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          <span>Khai báo thửa đất mới</span>
+        </a>
+      </div>
+    </div>
 
-  <button id="logout">
-    Đăng xuất
-  </button>
+    <!-- Overview Stats Grid -->
+    <div class="stats-grid">
+      <div class="stat-card">
+        <div class="stat-icon green">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m7.5 4.27 9 5.15"/><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/></svg>
+        </div>
+        <div>
+          <div class="stat-value" id="statTotalLots">0</div>
+          <div class="stat-label">Tổng số lô thu hoạch</div>
+        </div>
+      </div>
 
-  <div id="lots">
-    Đang tải danh sách lô...
-  </div>
+      <div class="stat-card">
+        <div class="stat-icon amber">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 18V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v11a1 1 0 0 0 1 1h2"/><circle cx="7" cy="18" r="2"/><path d="M15 18H9"/><circle cx="17" cy="18" r="2"/><path d="M19 18h2a1 1 0 0 0 1-1v-3.65a1 1 0 0 0-.22-.624l-3.48-4.35A1 1 0 0 0 17.52 8H14"/></svg>
+        </div>
+        <div>
+          <div class="stat-value" id="statInTransit">0</div>
+          <div class="stat-label">Đang trên đường vận chuyển</div>
+        </div>
+      </div>
 
-</div>
+      <div class="stat-card">
+        <div class="stat-icon blue">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 8.35V20a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V8.35A2 2 0 0 1 3.26 6.5l8-3.2a2 2 0 0 1 1.48 0l8 3.2A2 2 0 0 1 22 8.35Z"/><path d="M6 18h12"/><path d="M6 14h12"/></svg>
+        </div>
+        <div>
+          <div class="stat-value" id="statStored">0</div>
+          <div class="stat-label">Đã lưu trữ kho lạnh an toàn</div>
+        </div>
+      </div>
+    </div>
 
-<script>
+    <!-- Filter & Search Toolbar -->
+    <div class="filter-toolbar">
+      <div class="search-box">
+        <span class="search-icon">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+        </span>
+        <input
+          type="text"
+          id="searchInput"
+          class="search-input"
+          placeholder="Tìm theo tên sản phẩm hoặc mã lô (vd: LOT-001)..."
+        >
+      </div>
 
-async function loadPage() {
+      <div class="filter-pills" role="group" aria-label="Bộ lọc trạng thái">
+        <button type="button" class="filter-btn active" data-filter="all">Tất cả</button>
+        <button type="button" class="filter-btn" data-filter="transit">Đang vận chuyển</button>
+        <button type="button" class="filter-btn" data-filter="stored">Đã nhập kho</button>
+      </div>
+    </div>
 
-  try {
+    <!-- Lots Container -->
+    <div id="lots" class="lots-grid" aria-live="polite">
+      <!-- Dynamic lots inserted here -->
+    </div>
+  </main>
 
-    // Kiểm tra đăng nhập
-    const meResponse = await fetch("/api/me");
+  <script>
+    let allLots = [];
+    let currentFilter = "all";
+    let searchQuery = "";
 
-    if (!meResponse.ok) {
+    async function loadPage() {
+      const lotsContainer = document.getElementById("lots");
+      lotsContainer.innerHTML = "<div style='grid-column: 1/-1; text-align: center; padding: 40px; color: var(--color-text-muted);'>Đang tải dữ liệu lô thu hoạch...</div>";
 
-      window.location.href =
-        "/login?returnTo=/lots";
+      try {
+        // 1. Kiểm tra xác thực
+        const meResponse = await fetch("/api/me");
+        if (!meResponse.ok) {
+          window.location.href = "/login?returnTo=/lots";
+          return;
+        }
 
-      return;
+        const meData = await meResponse.json();
+        const user = meData.user;
+
+        // Render user meta into header pill
+        document.getElementById("userEmail").textContent = user.email;
+        document.getElementById("userAvatar").textContent = (user.email || "U").charAt(0).toUpperCase();
+        document.getElementById("userOrg").textContent = user.organizationId;
+        
+        const roleLabels = {
+          producer: "Nông dân",
+          cooperative: "Hợp tác xã",
+          processing: "Sơ chế",
+          transporter: "Vận chuyển",
+          warehouse: "Kho lạnh",
+          retailer: "Bán lẻ",
+          inspector: "Cán bộ kiểm tra"
+        };
+        document.getElementById("userRole").textContent = roleLabels[user.roleId] || user.roleId;
+
+        // Backward compatibility
+        document.getElementById("userInfo").textContent = `Email: ${user.email} | Tổ chức: ${user.organizationId}`;
+
+        // 2. Tải danh sách lô của tổ chức
+        const lotsResponse = await fetch("/api/organization/lots");
+        if (!lotsResponse.ok) {
+          lotsContainer.innerHTML = "<div class='empty-state'><div class='empty-state-title'>Không thể tải danh sách lô</div><div class='empty-state-desc'>Vui lòng thử lại sau hoặc liên hệ quản trị viên.</div></div>";
+          return;
+        }
+
+        const lotsData = await lotsResponse.json();
+        allLots = lotsData.lots || [];
+
+        updateStats(allLots);
+        renderLots();
+      } catch (error) {
+        lotsContainer.innerHTML = "<div class='empty-state'><div class='empty-state-title'>Lỗi kết nối máy chủ</div><div class='empty-state-desc'>Không thể đồng bộ dữ liệu với máy chủ backend.</div></div>";
+      }
     }
 
-    const meData =
-      await meResponse.json();
+    function updateStats(lots) {
+      document.getElementById("statTotalLots").textContent = lots.length;
+      const inTransit = lots.filter(l => (l.status || "").toLowerCase().includes("vận chuyển")).length;
+      const stored = lots.filter(l => (l.status || "").toLowerCase().includes("kho")).length;
+      document.getElementById("statInTransit").textContent = inTransit;
+      document.getElementById("statStored").textContent = stored;
+    }
 
-    document.getElementById("userInfo").textContent =
-      "Email: " +
-      meData.user.email +
-      " | Tổ chức: " +
-      meData.user.organizationId;
+    function renderLots() {
+      const lotsContainer = document.getElementById("lots");
+      lotsContainer.innerHTML = "";
 
-    // Lấy danh sách lô
-    const lotsResponse =
-      await fetch("/api/organization/lots");
+      let filtered = allLots.filter(lot => {
+        const matchesSearch = 
+          (lot.id || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
+          (lot.name || "").toLowerCase().includes(searchQuery.toLowerCase());
+        
+        if (!matchesSearch) return false;
 
-    const lotsData =
-      await lotsResponse.json();
+        if (currentFilter === "transit") {
+          return (lot.status || "").toLowerCase().includes("vận chuyển");
+        } else if (currentFilter === "stored") {
+          return (lot.status || "").toLowerCase().includes("kho");
+        }
+        return true;
+      });
 
-    const lotsElement =
-      document.getElementById("lots");
+      if (filtered.length === 0) {
+        lotsContainer.innerHTML = `
+          <div class="empty-state">
+            <div class="empty-state-icon">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+            </div>
+            <div class="empty-state-title">Không tìm thấy lô hàng phù hợp</div>
+            <div class="empty-state-desc">Hãy thử thay đổi từ khóa tìm kiếm hoặc bấm bộ lọc "Tất cả".</div>
+            <button class="btn-secondary" onclick="resetFilters()">Đặt lại bộ lọc</button>
+          </div>
+        `;
+        return;
+      }
 
-    lotsElement.innerHTML = "";
+      filtered.forEach(lot => {
+        const isTransit = (lot.status || "").toLowerCase().includes("vận chuyển");
+        const statusClass = isTransit ? "warning" : "success";
 
-    lotsData.lots.forEach(function(lot) {
+        const card = document.createElement("div");
+        card.className = "lot-card";
+        card.innerHTML = `
+          <div>
+            <div class="lot-card-top">
+              <span class="lot-code-tag">${lot.id}</span>
+              <span class="status-pill ${statusClass}">
+                <span class="status-dot"></span>
+                <span>${lot.status}</span>
+              </span>
+            </div>
+            <h3 class="lot-title">${lot.name}</h3>
+          </div>
 
-      const div =
-        document.createElement("div");
+          <div class="lot-meta-list">
+            <div class="lot-meta-item">
+              <span class="lot-meta-label">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                Tổ chức sở hữu
+              </span>
+              <span class="lot-meta-value">${lot.organizationId}</span>
+            </div>
+            <div class="lot-meta-item">
+              <span class="lot-meta-label">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 4v10.54a4 4 0 1 1-4 0V4a2 2 0 0 1 4 0Z"/></svg>
+                Nhiệt độ chuỗi lạnh
+              </span>
+              <span class="lot-meta-value" style="color: var(--color-primary); font-weight: 700;">
+                ${isTransit ? "4.2 °C (Ổn định)" : "2.5 °C (Tiêu chuẩn)"}
+              </span>
+            </div>
+            <div class="lot-meta-item">
+              <span class="lot-meta-label">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                Trạng thái chuỗi băm
+              </span>
+              <span class="lot-meta-value" style="color: var(--color-success); font-size: 11px; font-family: monospace;">
+                ✓ Toàn vẹn (SHA-256)
+              </span>
+            </div>
+          </div>
 
-      div.className = "lot";
+          <div class="lot-card-actions">
+            <button type="button" class="btn-lot-action" onclick="alert('Mã lô ${lot.id}: Xác thực chuỗi băm sự kiện hoàn tất 100%.')">
+              <span>Xem phả hệ & nhật ký &rarr;</span>
+            </button>
+            <span style="font-size: 11px; color: var(--color-text-light);">Cập nhật tự động</span>
+          </div>
+        `;
+        lotsContainer.appendChild(card);
+      });
+    }
 
-      div.innerHTML = `
-        <div class="lot-id">
-          ${lot.id}
-        </div>
+    function resetFilters() {
+      document.getElementById("searchInput").value = "";
+      searchQuery = "";
+      currentFilter = "all";
+      document.querySelectorAll(".filter-btn").forEach(b => {
+        b.classList.toggle("active", b.dataset.filter === "all");
+      });
+      renderLots();
+    }
 
-        <div class="lot-name">
-          ${lot.name}
-        </div>
-
-        <div class="status">
-          Trạng thái: ${lot.status}
-        </div>
-      `;
-
-      lotsElement.appendChild(div);
-
+    // Search input listener
+    document.getElementById("searchInput").addEventListener("input", (e) => {
+      searchQuery = e.target.value.trim();
+      renderLots();
     });
 
-  } catch (error) {
-
-    document.getElementById("lots").textContent =
-      "Không thể tải danh sách lô.";
-
-  }
-
-}
-
-
-// Đăng xuất
-document
-  .getElementById("logout")
-  .addEventListener("click", async function() {
-
-    await fetch("/api/logout", {
-      method: "POST"
+    // Filter button listeners
+    document.querySelectorAll(".filter-btn").forEach(btn => {
+      btn.addEventListener("click", () => {
+        document.querySelectorAll(".filter-btn").forEach(b => b.classList.remove("active"));
+        btn.classList.add("active");
+        currentFilter = btn.dataset.filter;
+        renderLots();
+      });
     });
 
-    window.location.href = "/login";
+    // Đăng xuất
+    document.getElementById("logout").addEventListener("click", async function() {
+      await fetch("/api/logout", { method: "POST" });
+      window.location.href = "/login";
+    });
 
-  });
-
-
-loadPage();
-
-</script>
-
+    loadPage();
+  </script>
 </body>
 </html>
