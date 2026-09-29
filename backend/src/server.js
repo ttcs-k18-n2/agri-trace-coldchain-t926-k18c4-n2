@@ -266,6 +266,15 @@ if (fs.existsSync(path.join(__dirname, "../../frontend"))) {
 }
 
 async function start() {
+  if (pool) {
+    try {
+      const { runMigrations } = require("./migrate");
+      await runMigrations("up");
+    } catch (err) {
+      console.warn("[Migration Warning]", err.message);
+    }
+  }
+
   await seedDemoUser();
 
   app.listen(PORT, "0.0.0.0", () => {
