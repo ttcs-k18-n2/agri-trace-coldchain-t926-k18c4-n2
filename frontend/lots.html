@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AGRI TRACEABILITY - Danh sách lô</title>
+
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background: #eef7f0;
+      min-height: 100vh;
+    }
+
+    .container {
+      width: 90%;
+      max-width: 900px;
+      margin: 50px auto;
+      background: white;
+      padding: 30px;
+      border-radius: 16px;
+      box-shadow: 0 8px 30px rgba(0,0,0,0.1);
+    }
+
+    .brand {
+      color: #1d7a43;
+      font-size: 22px;
+      font-weight: bold;
+    }
+
+    h1 {
+      margin-top: 10px;
+    }
+
+    #userInfo {
+      color: #666;
+      margin-bottom: 25px;
+    }
+
+    .lot {
+      border: 1px solid #ddd;
+      border-radius: 10px;
+      padding: 18px;
+      margin-bottom: 15px;
+      background: #f8fbf9;
+    }
+
+    .lot-id {
+      color: #1d7a43;
+      font-weight: bold;
+      font-size: 18px;
+    }
+
+    .lot-name {
+      margin: 8px 0;
+      font-size: 16px;
+    }
+
+    .status {
+      color: #555;
+    }
+
+    button {
+      padding: 11px 20px;
+      border: none;
+      border-radius: 8px;
+      background: #d32f2f;
+      color: white;
+      cursor: pointer;
+      margin-bottom: 25px;
+    }
+  </style>
+</head>
+
+<body>
+
+<div class="container">
+
+  <div class="brand">
+    AGRI TRACEABILITY
+  </div>
+
+  <h1>Danh sách lô của tổ chức</h1>
+
+  <p id="userInfo">Đang tải thông tin...</p>
+
+  <button id="logout">
+    Đăng xuất
+  </button>
+
+  <div id="lots">
+    Đang tải danh sách lô...
+  </div>
+
+</div>
+
+<script>
+
+async function loadPage() {
+
+  try {
+
+    // Kiểm tra đăng nhập
+    const meResponse = await fetch("/api/me");
+
+    if (!meResponse.ok) {
+
+      window.location.href =
+        "/login?returnTo=/lots";
+
+      return;
+    }
+
+    const meData =
+      await meResponse.json();
+
+    document.getElementById("userInfo").textContent =
+      "Email: " +
+      meData.user.email +
+      " | Tổ chức: " +
+      meData.user.organizationId;
+
+    // Lấy danh sách lô
+    const lotsResponse =
+      await fetch("/api/organization/lots");
+
+    const lotsData =
+      await lotsResponse.json();
+
+    const lotsElement =
+      document.getElementById("lots");
+
+    lotsElement.innerHTML = "";
+
+    lotsData.lots.forEach(function(lot) {
+
+      const div =
+        document.createElement("div");
+
+      div.className = "lot";
+
+      div.innerHTML = `
+        <div class="lot-id">
+          ${lot.id}
+        </div>
+
+        <div class="lot-name">
+          ${lot.name}
+        </div>
+
+        <div class="status">
+          Trạng thái: ${lot.status}
+        </div>
+      `;
+
+      lotsElement.appendChild(div);
+
+    });
+
+  } catch (error) {
+
+    document.getElementById("lots").textContent =
+      "Không thể tải danh sách lô.";
+
+  }
+
+}
+
+
+// Đăng xuất
+document
+  .getElementById("logout")
+  .addEventListener("click", async function() {
+
+    await fetch("/api/logout", {
+      method: "POST"
+    });
+
+    window.location.href = "/login";
+
+  });
+
+
+loadPage();
+
+</script>
+
+</body>
+</html>

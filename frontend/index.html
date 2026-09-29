@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Agri Traceability - Đăng nhập</title>
+
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: Arial, Helvetica, sans-serif;
+      min-height: 100vh;
+      background: linear-gradient(135deg, #145a32, #2ca85b);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      padding: 20px;
+    }
+
+    .container {
+      width: 100%;
+      max-width: 950px;
+      min-height: 560px;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      background: white;
+      border-radius: 24px;
+      overflow: hidden;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2);
+    }
+
+    .intro {
+      padding: 55px 45px;
+      color: white;
+      background: linear-gradient(145deg, #12552f, #23834b);
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+    }
+
+    .logo {
+      width: 70px;
+      height: 70px;
+      border-radius: 18px;
+      background: white;
+      color: #1d7a43;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 34px;
+      margin-bottom: 28px;
+    }
+
+    .intro h1 {
+      font-size: 38px;
+      line-height: 1.15;
+      margin-bottom: 18px;
+    }
+
+    .intro h1 span {
+      color: #b9f2c9;
+    }
+
+    .intro p {
+      font-size: 16px;
+      line-height: 1.7;
+      color: #e9fff0;
+      max-width: 390px;
+    }
+
+    .features {
+      margin-top: 35px;
+    }
+
+    .feature {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 16px;
+      font-size: 14px;
+    }
+
+    .check {
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.18);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: bold;
+    }
+
+    .login-area {
+      padding: 55px 50px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+    }
+
+    .login-area h2 {
+      color: #1c2b22;
+      font-size: 30px;
+      margin-bottom: 8px;
+    }
+
+    .subtitle {
+      color: #777;
+      font-size: 14px;
+      margin-bottom: 32px;
+    }
+
+    .form-group {
+      margin-bottom: 20px;
+    }
+
+    label {
+      display: block;
+      font-size: 14px;
+      font-weight: bold;
+      color: #26352c;
+      margin-bottom: 8px;
+    }
+
+    .input-box {
+      position: relative;
+    }
+
+    .input-icon {
+      position: absolute;
+      left: 15px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: #1d7a43;
+      font-size: 17px;
+    }
+
+    input {
+      width: 100%;
+      height: 50px;
+      padding: 0 15px 0 45px;
+      border: 1px solid #d8ded9;
+      border-radius: 10px;
+      outline: none;
+      font-size: 14px;
+    }
+
+    input:focus {
+      border-color: #1d7a43;
+      box-shadow: 0 0 0 3px rgba(29, 122, 67, 0.1);
+    }
+
+    button {
+      width: 100%;
+      height: 52px;
+      margin-top: 5px;
+      border: none;
+      border-radius: 10px;
+      background: linear-gradient(135deg, #1d7a43, #2ca85b);
+      color: white;
+      font-size: 16px;
+      font-weight: bold;
+      cursor: pointer;
+    }
+
+    button:hover {
+      box-shadow: 0 8px 20px rgba(29, 122, 67, 0.25);
+    }
+
+    #message {
+      min-height: 22px;
+      margin-top: 15px;
+      text-align: center;
+      font-size: 14px;
+      font-weight: bold;
+    }
+
+    .demo {
+      margin-top: 28px;
+      padding: 15px;
+      border-radius: 10px;
+      background: #f1f8f3;
+      border: 1px solid #dceee1;
+      color: #52705c;
+      font-size: 12px;
+      line-height: 1.7;
+    }
+
+    .demo strong {
+      color: #1d7a43;
+    }
+
+    .footer {
+      text-align: center;
+      margin-top: 25px;
+      font-size: 11px;
+      color: #aaa;
+    }
+
+    @media (max-width: 750px) {
+      .container {
+        grid-template-columns: 1fr;
+        max-width: 500px;
+      }
+
+      .intro {
+        padding: 35px;
+      }
+
+      .intro h1 {
+        font-size: 30px;
+      }
+
+      .features {
+        display: none;
+      }
+
+      .login-area {
+        padding: 40px 30px;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <div class="container">
+    <div class="intro">
+      <div class="logo">🌱</div>
+      <h1>
+        AGRI<br>
+        <span>TRACEABILITY</span>
+      </h1>
+      <p>
+        Hệ thống truy xuất nguồn gốc và giám sát chuỗi lạnh nông sản.
+      </p>
+
+      <div class="features">
+        <div class="feature">
+          <div class="check">✓</div>
+          <span>Quản lý nguồn gốc nông sản</span>
+        </div>
+        <div class="feature">
+          <div class="check">✓</div>
+          <span>Giám sát chuỗi lạnh</span>
+        </div>
+        <div class="feature">
+          <div class="check">✓</div>
+          <span>Bảo mật tài khoản người dùng</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="login-area">
+      <h2>Đăng nhập</h2>
+      <p class="subtitle">Đăng nhập để tiếp tục vào hệ thống</p>
+
+      <form id="loginForm">
+        <div class="form-group">
+          <label for="email">Email</label>
+          <div class="input-box">
+            <span class="input-icon">✉</span>
+            <input
+              type="email"
+              id="email"
+              placeholder="Nhập email của bạn"
+              value="user@example.com"
+              required
+            >
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="password">Mật khẩu</label>
+          <div class="input-box">
+            <span class="input-icon">🔒</span>
+            <input
+              type="password"
+              id="password"
+              placeholder="Nhập mật khẩu"
+              value="Password@123"
+              required
+            >
+          </div>
+        </div>
+
+        <button type="submit">Đăng nhập</button>
+
+        <div id="message"></div>
+      </form>
+
+      <div class="demo">
+        <strong>Tài khoản demo</strong><br>
+        Email: user@example.com<br>
+        Mật khẩu: Password@123
+      </div>
+
+      <div class="footer">
+        AGRI TRACEABILITY © 2026
+      </div>
+    </div>
+  </div>
+
+  <script>
+    document
+      .getElementById("loginForm")
+      .addEventListener("submit", async function(event) {
+        event.preventDefault();
+
+        const email = document.getElementById("email").value;
+        const password = document.getElementById("password").value;
+        const message = document.getElementById("message");
+
+        message.textContent = "Đang đăng nhập...";
+        message.style.color = "#555";
+
+        const params = new URLSearchParams(window.location.search);
+        const returnTo = params.get("returnTo") || "/lots";
+
+        try {
+          const response = await fetch("/api/login", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+              email,
+              password,
+              returnTo
+            })
+          });
+
+          const data = await response.json();
+
+          if (response.ok) {
+            message.style.color = "#1d7a43";
+            message.textContent = "Đăng nhập thành công!";
+
+            setTimeout(() => {
+              window.location.href = data.redirectTo || "/lots";
+            }, 500);
+          } else {
+            message.style.color = "#d9534f";
+            message.textContent = data.message || "Email hoặc mật khẩu không đúng.";
+          }
+        } catch (error) {
+          message.style.color = "#d9534f";
+          message.textContent = "Không thể kết nối máy chủ.";
+        }
+      });
+  </script>
+</body>
+</html>

@@ -1,0 +1,26 @@
+{
+  "name": "agri-trace-backend",
+  "version": "0.1.0",
+  "private": true,
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "check": "node --check src/server.js && node --check src/index.js && node --check src/migrate.js",
+    "test": "node --test",
+    "lint": "eslint src test",
+    "migrate": "node src/migrate.js",
+    "migrate:up": "node src/migrate.js up",
+    "migrate:down": "node src/migrate.js down"
+  },
+  "dependencies": {
+    "@node-rs/argon2": "^2.2.1",
+    "bcryptjs": "^3.0.2",
+    "express": "^5.1.0",
+    "express-session": "^1.18.2",
+    "pg": "^8.13.1"
+  },
+  "devDependencies": {
+    "eslint": "^9.39.5",
+    "supertest": "^7.1.4"
+  }
+}

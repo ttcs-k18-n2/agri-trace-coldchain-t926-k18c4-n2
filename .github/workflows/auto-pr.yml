@@ -1,0 +1,26 @@
+name: Auto Open PR to Develop
+
+on:
+  push:
+    branches:
+      - "feature/**"
+      - "fix/**"
+      - "docs/**"
+
+jobs:
+  open-pr:
+    name: Auto Open PR
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Execute Auto PR Script
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BRANCH_NAME: ${{ github.ref_name }}
+          ACTOR: ${{ github.actor }}
+        run: bash .github/scripts/auto_pr.sh
