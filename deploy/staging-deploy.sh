@@ -193,11 +193,15 @@ LOGIN_HEADERS=$(mktemp)
 LOGIN_OUT=$(curl -s -c "$SMOKE_COOKIE" -D "$LOGIN_HEADERS" -H "Content-Type: application/json" -d '{"email":"user@example.com","password":"Password@123"}' "http://localhost:8080/api/login" 2>/dev/null || true)
 if echo "$LOGIN_OUT" | grep -q '"email":"user@example.com"'; then
   echo "✔ [Smoke Test Passed] Authentication on staging: user@example.com logged in successfully."
-  if grep -i '^set-cookie:' "$LOGIN_HEADERS" | grep -iq 'HttpOnly' && grep -i '^set-cookie:' "$LOGIN_HEADERS" | grep -iq 'Secure'; then
-    echo "✔ [Smoke Test Passed] NFR HttpOnly + Secure verified on session cookie."
-  else
-    echo "ℹ [Smoke Test Note] Cookie headers: $(grep -i '^set-cookie:' "$LOGIN_HEADERS" || true)"
+  if grep -i '^set-cookie:' "$LOGIN_HEADERS" | grep -iq 'HttpOnly'; then
+    echo "✔ [Smoke Test Passed] HttpOnly verified on session cookie."
   fi
+  HTTPS_HEADERS=$(mktemp)
+  curl -s -o /dev/null -D "$HTTPS_HEADERS" -H "Content-Type: application/json" -H "X-Forwarded-Proto: https" -d '{"email":"user@example.com","password":"Password@123"}' "http://localhost:8080/api/login" 2>/dev/null || true
+  if grep -i '^set-cookie:' "$HTTPS_HEADERS" | grep -iq 'HttpOnly' && grep -i '^set-cookie:' "$HTTPS_HEADERS" | grep -iq 'Secure'; then
+    echo "✔ [Smoke Test Passed] NFR HttpOnly + Secure verified on HTTPS session cookie."
+  fi
+  rm -f "$HTTPS_HEADERS"
   FARMS_OUT=$(curl -s -b "$SMOKE_COOKIE" "http://localhost:8080/api/farms" 2>/dev/null || true)
   if echo "$FARMS_OUT" | grep -q 'org-001'; then
     echo "✔ [Smoke Test Passed] Tenant Isolation on staging: authenticated farms list scoped strictly to org-001."
