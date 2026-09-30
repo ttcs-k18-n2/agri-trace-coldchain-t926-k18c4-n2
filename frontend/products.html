@@ -219,6 +219,7 @@
   <script>
     let currentUser = null;
     let productsList = [];
+    let editingProductId = null;
 
     // Khởi tạo trang
     document.addEventListener("DOMContentLoaded", async () => {
@@ -281,6 +282,8 @@
       grid.style.display = "grid";
       grid.innerHTML = "";
 
+      const isAdmin = currentUser && currentUser.roleId === "admin";
+
       list.forEach((p) => {
         const card = document.createElement("div");
         card.className = "product-card";
@@ -299,12 +302,67 @@
             </div>
           </div>
           <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 1rem; padding-top: 0.75rem; border-top: 1px dashed var(--color-border);">
-            <span style="font-size: 0.85rem; color: var(--color-text-muted);">Đơn vị tính:</span>
-            <span class="unit-tag">${escapeHtml(unitName)}</span>
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span style="font-size: 0.85rem; color: var(--color-text-muted);">Đơn vị tính:</span>
+              <span class="unit-tag">${escapeHtml(unitName)}</span>
+            </div>
+            ${isAdmin ? `
+              <button type="button" class="btn btn-outline btn-sm btn-edit-product" data-id="${escapeHtml(p.id)}" data-name="${escapeHtml(p.name)}" data-unit="${escapeHtml(p.unit)}" style="padding: 4px 10px; font-size: 0.8rem; cursor: pointer; border-radius: var(--radius-sm);">
+                ✏️ Sửa
+              </button>
+            ` : ""}
           </div>
         `;
         grid.appendChild(card);
       });
+
+      // Gắn sự kiện sửa sản phẩm cho Admin
+      if (isAdmin) {
+        grid.querySelectorAll(".btn-edit-product").forEach((btn) => {
+          btn.addEventListener("click", () => {
+            openEditModal(btn.dataset.id, btn.dataset.name, btn.dataset.unit);
+          });
+        });
+      }
+    }
+
+    function openAddModal() {
+      editingProductId = null;
+      document.querySelector(".modal-title").textContent = "Thêm sản phẩm mới";
+      document.getElementById("btn-submit-product").textContent = "Lưu sản phẩm";
+      document.getElementById("form-add-product").reset();
+      document.getElementById("form-error").style.display = "none";
+      updateRadioVisual();
+      document.getElementById("modal-add-product").style.display = "flex";
+      document.getElementById("product-name").focus();
+    }
+
+    function openEditModal(id, name, unit) {
+      editingProductId = id;
+      document.querySelector(".modal-title").textContent = "Chỉnh sửa sản phẩm";
+      document.getElementById("btn-submit-product").textContent = "Cập nhật sản phẩm";
+      document.getElementById("product-name").value = name;
+      const targetRadio = document.querySelector(`input[name="unit"][value="${unit}"]`);
+      if (targetRadio) {
+        targetRadio.checked = true;
+      }
+      document.getElementById("form-error").style.display = "none";
+      updateRadioVisual();
+      document.getElementById("modal-add-product").style.display = "flex";
+      document.getElementById("product-name").focus();
+    }
+
+    function closeModal() {
+      document.getElementById("modal-add-product").style.display = "none";
+      editingProductId = null;
+    }
+
+    function updateRadioVisual() {
+      document.querySelectorAll(".unit-option-label").forEach((lbl) => lbl.classList.remove("active"));
+      const checked = document.querySelector('input[name="unit"]:checked');
+      if (checked && checked.parentElement) {
+        checked.parentElement.classList.add("active");
+      }
     }
 
     function setupEventListeners() {
@@ -333,17 +391,7 @@
       const cancelBtn = document.getElementById("btn-cancel-modal");
 
       if (openBtn) {
-        openBtn.addEventListener("click", () => {
-          document.getElementById("form-add-product").reset();
-          document.getElementById("form-error").style.display = "none";
-          updateRadioVisual();
-          modal.style.display = "flex";
-          document.getElementById("product-name").focus();
-        });
-      }
-
-      function closeModal() {
-        modal.style.display = "none";
+        openBtn.addEventListener("click", openAddModal);
       }
 
       closeBtn.addEventListener("click", closeModal);
@@ -357,15 +405,7 @@
         radio.addEventListener("change", updateRadioVisual);
       });
 
-      function updateRadioVisual() {
-        document.querySelectorAll(".unit-option-label").forEach((lbl) => lbl.classList.remove("active"));
-        const checked = document.querySelector('input[name="unit"]:checked');
-        if (checked && checked.parentElement) {
-          checked.parentElement.classList.add("active");
-        }
-      }
-
-      // Submit form thêm sản phẩm
+      // Submit form thêm/sửa sản phẩm
       document.getElementById("form-add-product").addEventListener("submit", async (e) => {
         e.preventDefault();
         const name = document.getElementById("product-name").value.trim();
@@ -375,11 +415,14 @@
 
         errEl.style.display = "none";
         submitBtn.disabled = true;
-        submitBtn.textContent = "Đang lưu...";
+        submitBtn.textContent = editingProductId ? "Đang cập nhật..." : "Đang lưu...";
 
         try {
-          const res = await fetch("/api/products", {
-            method: "POST",
+          const url = editingProductId ? `/api/products/${editingProductId}` : "/api/products";
+          const method = editingProductId ? "PUT" : "POST";
+
+          const res = await fetch(url, {
+            method,
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ name, unit }),
           });
@@ -387,20 +430,21 @@
           const data = await res.json();
 
           if (!res.ok) {
-            errEl.textContent = data.message || "Lỗi tạo sản phẩm.";
+            errEl.textContent = data.message || "Lỗi thao tác sản phẩm.";
             errEl.style.display = "block";
             return;
           }
 
           closeModal();
-          showBanner("success", `✓ Thêm sản phẩm "${data.product.name}" (${formatUnit(data.product.unit)}) thành công.`);
+          const actionText = editingProductId ? "Cập nhật" : "Thêm";
+          showBanner("success", `✓ ${actionText} sản phẩm "${data.product.name}" (${formatUnit(data.product.unit)}) thành công.`);
           await loadProducts();
         } catch (err) {
           errEl.textContent = err.message || "Không thể kết nối đến máy chủ.";
           errEl.style.display = "block";
         } finally {
           submitBtn.disabled = false;
-          submitBtn.textContent = "Lưu sản phẩm";
+          submitBtn.textContent = editingProductId ? "Cập nhật sản phẩm" : "Lưu sản phẩm";
         }
       });
     }

@@ -149,4 +149,92 @@ test("T-16 & S-07: Products API lifecycle, permissions, and validation", async (
     { name: "KHOAI TÂY", unit: "kg" }
   );
   assert.equal(dupRes.status, 409);
+
+  const createdId = createRes.body.product.id;
+
+  // 7. PUT /api/products/:id by producer returns 403 Forbidden
+  const putForbidden = await request(
+    server,
+    {
+      hostname: "127.0.0.1",
+      port,
+      path: `/api/products/${createdId}`,
+      method: "PUT",
+      headers: { "Content-Type": "application/json", Cookie: producerCookie },
+    },
+    { name: "Khoai tây vàng", unit: "kg" }
+  );
+  assert.equal(putForbidden.status, 403);
+
+  // 8. PUT /api/products/:id with empty name returns 400
+  const putEmptyName = await request(
+    server,
+    {
+      hostname: "127.0.0.1",
+      port,
+      path: `/api/products/${createdId}`,
+      method: "PUT",
+      headers: { "Content-Type": "application/json", Cookie: adminCookie },
+    },
+    { name: "  ", unit: "kg" }
+  );
+  assert.equal(putEmptyName.status, 400);
+
+  // 9. PUT /api/products/:id with invalid unit returns 400
+  const putInvalidUnit = await request(
+    server,
+    {
+      hostname: "127.0.0.1",
+      port,
+      path: `/api/products/${createdId}`,
+      method: "PUT",
+      headers: { "Content-Type": "application/json", Cookie: adminCookie },
+    },
+    { name: "Khoai tây Đà Lạt", unit: "bao" }
+  );
+  assert.equal(putInvalidUnit.status, 400);
+
+  // 10. PUT /api/products/:id non-existent returns 404
+  const putNotFound = await request(
+    server,
+    {
+      hostname: "127.0.0.1",
+      port,
+      path: "/api/products/PROD-NON-EXISTENT",
+      method: "PUT",
+      headers: { "Content-Type": "application/json", Cookie: adminCookie },
+    },
+    { name: "Sản phẩm ảo", unit: "kg" }
+  );
+  assert.equal(putNotFound.status, 404);
+
+  // 11. PUT /api/products/:id with duplicate name of another product returns 409
+  const putDuplicate = await request(
+    server,
+    {
+      hostname: "127.0.0.1",
+      port,
+      path: `/api/products/${createdId}`,
+      method: "PUT",
+      headers: { "Content-Type": "application/json", Cookie: adminCookie },
+    },
+    { name: "CÀ CHUA", unit: "kg" }
+  );
+  assert.equal(putDuplicate.status, 409);
+
+  // 12. PUT /api/products/:id by admin updates product successfully (200)
+  const putSuccess = await request(
+    server,
+    {
+      hostname: "127.0.0.1",
+      port,
+      path: `/api/products/${createdId}`,
+      method: "PUT",
+      headers: { "Content-Type": "application/json", Cookie: adminCookie },
+    },
+    { name: "Khoai tây Đà Lạt", unit: "thung" }
+  );
+  assert.equal(putSuccess.status, 200);
+  assert.equal(putSuccess.body.product.name, "Khoai tây Đà Lạt");
+  assert.equal(putSuccess.body.product.unit, "thung");
 });

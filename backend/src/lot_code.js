@@ -1,17 +1,23 @@
 const crypto = require("node:crypto");
 
-// Unambiguous alphabet excluding: 0, O (zero / letter O), 1, I, L (one / uppercase I / letter L)
+// Bảng mã không chứa ký tự dễ nhìn nhầm (loại trừ: 0, O, 1, I, L)
 const ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
+const LOT_CODE_LENGTH = 8;
 
 /**
- * Sinh mã lô ngẫu nhiên không dự đoán được theo chuẩn T-19.
- * Định dạng: LOT-XXXXXXXXXX (10 ký tự an toàn, không chứa ký tự dễ nhầm lẫn: 0, O, 1, I, L).
- * @returns {string} Mã lô ngẫu nhiên (ví dụ: LOT-7KQX2M9RWD)
+ * Sinh mã lô ngẫu nhiên không suy ra sản lượng/thứ tự theo chuẩn T-19.
+ * Tiêu chí Jira T-19:
+ * - Tiền tố: LOT-
+ * - Độ dài: 8 ký tự ngẫu nhiên (Ví dụ: LOT-7KQX2M9R)
+ * - Không chứa 0, O, 1, I, L để chống nhầm lẫn khi in ấn/đọc nhãn
+ *
+ * @param {number} [length=LOT_CODE_LENGTH] Số ký tự sinh ngẫu nhiên sau LOT-
+ * @returns {string} Mã lô chuẩn
  */
-function generateLotCode() {
-  const bytes = crypto.randomBytes(10);
+function generateLotCode(length = LOT_CODE_LENGTH) {
+  const bytes = crypto.randomBytes(length);
   let result = "LOT-";
-  for (let i = 0; i < 10; i++) {
+  for (let i = 0; i < length; i++) {
     result += ALPHABET[bytes[i] % ALPHABET.length];
   }
   return result;
@@ -20,4 +26,5 @@ function generateLotCode() {
 module.exports = {
   generateLotCode,
   ALPHABET,
+  LOT_CODE_LENGTH,
 };

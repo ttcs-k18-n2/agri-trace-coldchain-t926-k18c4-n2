@@ -1,4 +1,9 @@
 -- Migration 007: Expand lots table for harvest batches
+-- [Domain Alignment Note - Jira T-18]:
+-- Bảng 'batches' trong backlog/Jira = Bảng 'lots' trong cơ sở dữ liệu (lot = batch).
+-- 'batches.code' trong Jira = 'lots.id' (mã lô định danh ngẫu nhiên, không suy đoán được).
+-- 'organization_id' = tổ chức sở hữu / người nắm giữ lô hàng (holder_organization_id).
+
 ALTER TABLE lots
 ADD COLUMN IF NOT EXISTS product_id VARCHAR(50) REFERENCES products(id) ON DELETE SET NULL,
 ADD COLUMN IF NOT EXISTS initial_quantity NUMERIC(14,3),

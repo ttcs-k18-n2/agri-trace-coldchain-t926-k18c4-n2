@@ -162,7 +162,13 @@
 
         <div class="lot-badge-display">
           <div style="font-size: 0.85rem; font-weight: 700; text-transform: uppercase; color: var(--color-primary); letter-spacing: 0.05em;">MÃ ĐỊNH DANH LÔ HÀNG</div>
-          <div id="res-lot-code" class="lot-code-text">LOT-XXXXXXXXXX</div>
+          <div id="res-lot-code" class="lot-code-text">LOT-XXXXXXXX</div>
+          <div style="margin: 10px 0;">
+            <button type="button" id="btn-copy-lot-code" class="btn btn-outline btn-sm" style="display: inline-flex; align-items: center; gap: 6px; font-weight: 600; padding: 6px 16px; cursor: pointer; border-radius: var(--radius-sm);">
+              <span>📋 Sao chép mã</span>
+            </button>
+            <span id="copy-feedback" style="display: none; font-size: 0.85rem; color: var(--color-success); font-weight: 700; margin-left: 8px;">✓ Đã sao chép!</span>
+          </div>
           <div style="font-size: 0.85rem; color: var(--color-text-muted);">Mã lô được in/dán nhãn truy xuất nguồn gốc chống nhầm lẫn</div>
         </div>
 
@@ -349,6 +355,30 @@
         } finally {
           submitBtn.disabled = false;
           submitBtn.textContent = "🌾 Ghi nhận thu hoạch";
+        }
+      });
+
+      // Nút sao chép mã lô (T-20)
+      document.getElementById("btn-copy-lot-code").addEventListener("click", async () => {
+        const code = document.getElementById("res-lot-code").textContent.trim();
+        try {
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+            await navigator.clipboard.writeText(code);
+          } else {
+            const temp = document.createElement("textarea");
+            temp.value = code;
+            document.body.appendChild(temp);
+            temp.select();
+            document.execCommand("copy");
+            document.body.removeChild(temp);
+          }
+          const feedback = document.getElementById("copy-feedback");
+          feedback.style.display = "inline";
+          setTimeout(() => {
+            feedback.style.display = "none";
+          }, 2500);
+        } catch (err) {
+          alert("Mã lô của bạn là: " + code);
         }
       });
 

@@ -540,6 +540,82 @@ app.post(
 );
 
 /**
+ * Chỉnh sửa sản phẩm (T-17, S-07)
+ * Chỉ tài khoản Admin mới có quyền cập nhật tên hoặc đơn vị tính.
+ */
+app.put(
+  "/api/products/:id",
+  requirePermission(["admin"]),
+  async (req, res) => {
+    const { id } = req.params;
+    const { name, unit } = req.body;
+
+    if (!name || !name.trim()) {
+      return res.status(400).json({ message: "Tên sản phẩm không được để trống." });
+    }
+
+    const cleanName = name.trim();
+    const validUnits = ["kg", "tan", "thung"];
+    if (!unit || !validUnits.includes(unit)) {
+      return res.status(400).json({ message: "Đơn vị không hợp lệ. Chỉ chấp nhận: kg, tan, thung." });
+    }
+
+    if (pool) {
+      try {
+        const checkExist = await scopedQueryById(pool, req.auth, "products", id);
+        if (!checkExist.row) {
+          return res.status(404).json({ message: "Không tìm thấy sản phẩm." });
+        }
+
+        const dupCheck = await pool.query(
+          "SELECT id FROM products WHERE LOWER(name) = LOWER($1) AND id != $2",
+          [cleanName, id]
+        );
+        if (dupCheck.rows.length > 0) {
+          return res.status(409).json({ message: "Sản phẩm với tên này đã tồn tại." });
+        }
+
+        const updateRes = await pool.query(
+          "UPDATE products SET name = $1, unit = $2 WHERE id = $3 RETURNING id, name, unit, created_at",
+          [cleanName, unit, id]
+        );
+
+        return res.status(200).json({
+          message: "Cập nhật sản phẩm thành công.",
+          product: updateRes.rows[0],
+        });
+      } catch (err) {
+        if (err.code === "23505") {
+          return res.status(409).json({ message: "Sản phẩm với tên này đã tồn tại." });
+        }
+        return res.status(500).json({ message: err.message });
+      }
+    }
+
+    // In-memory fallback
+    const prod = inMemoryProducts.find((p) => p.id === id);
+    if (!prod) {
+      return res.status(404).json({ message: "Không tìm thấy sản phẩm." });
+    }
+
+    const dup = inMemoryProducts.find(
+      (p) => p.id !== id && p.name.toLowerCase() === cleanName.toLowerCase()
+    );
+    if (dup) {
+      return res.status(409).json({ message: "Sản phẩm với tên này đã tồn tại." });
+    }
+
+    prod.name = cleanName;
+    prod.unit = unit;
+
+    return res.status(200).json({
+      message: "Cập nhật sản phẩm thành công.",
+      product: prod,
+    });
+  }
+);
+
+/**
  * Danh sách lô hàng của tổ chức hiện tại (T-12, T-13, T-20)
  * Trả về thông tin mở rộng: thửa đất, sản phẩm, khối lượng ban đầu/còn lại, ngày thu hoạch
  */
@@ -756,7 +832,9 @@ app.post(
     const harvestDate = harvestedAt
       ? new Date(harvestedAt).toISOString().slice(0, 10)
       : new Date().toISOString().slice(0, 10);
-    const lotId = generateLotCode();
+
+    const MAX_RETRIES = 5;
+    let insertedLot = null;
 
     if (pool) {
       try {
@@ -791,33 +869,50 @@ app.post(
         const lotName = req.body.name || `${product.name} - ${farm.name}`;
         const status = "Đã thu hoạch";
 
-        // 3. Chèn lô mới
-        const insertRes = await pool.query(
-          `INSERT INTO lots (
-            id, name, status, organization_id, farm_id, product_id,
-            initial_quantity, remaining_quantity, harvested_at
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-          RETURNING *`,
-          [lotId, lotName, status, orgId, farmId, productId, qty, qty, harvestDate]
-        );
+        // 3. Chèn lô mới với cơ chế retry tối đa 5 lần nếu collision mã (T-19)
+        for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+          const lotId = generateLotCode();
+          try {
+            const insertRes = await pool.query(
+              `INSERT INTO lots (
+                id, name, status, organization_id, farm_id, product_id,
+                initial_quantity, remaining_quantity, harvested_at
+              ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+              RETURNING *`,
+              [lotId, lotName, status, orgId, farmId, productId, qty, qty, harvestDate]
+            );
 
-        const row = insertRes.rows[0];
+            const row = insertRes.rows[0];
+            insertedLot = {
+              id: row.id,
+              name: row.name,
+              status: row.status,
+              organizationId: row.organization_id,
+              farmId: row.farm_id,
+              farmName: farm.name,
+              productId: row.product_id,
+              productName: product.name,
+              unit: product.unit,
+              initialQuantity: Number(row.initial_quantity),
+              remainingQuantity: Number(row.remaining_quantity),
+              harvestedAt: row.harvested_at,
+            };
+            break;
+          } catch (insertErr) {
+            if (insertErr.code === "23505" && attempt < MAX_RETRIES - 1) {
+              continue;
+            }
+            throw insertErr;
+          }
+        }
+
+        if (!insertedLot) {
+          return res.status(500).json({ message: "Không thể sinh mã lô duy nhất sau 5 lần thử." });
+        }
+
         return res.status(201).json({
           message: "Ghi nhận thu hoạch thành công.",
-          lot: {
-            id: row.id,
-            name: row.name,
-            status: row.status,
-            organizationId: row.organization_id,
-            farmId: row.farm_id,
-            farmName: farm.name,
-            productId: row.product_id,
-            productName: product.name,
-            unit: product.unit,
-            initialQuantity: Number(row.initial_quantity),
-            remainingQuantity: Number(row.remaining_quantity),
-            harvestedAt: row.harvested_at,
-          },
+          lot: insertedLot,
         });
       } catch (err) {
         return res.status(500).json({ message: err.message });
@@ -840,25 +935,36 @@ app.post(
 
     const lotName = req.body.name || `${product.name} - ${farm.name}`;
     const status = "Đã thu hoạch";
-    const newLot = {
-      id: lotId,
-      name: lotName,
-      status,
-      organizationId: orgId,
-      farmId,
-      farmName: farm.name,
-      productId,
-      productName: product.name,
-      unit: product.unit,
-      initialQuantity: qty,
-      remainingQuantity: qty,
-      harvestedAt: harvestDate,
-    };
-    inMemoryLots.push(newLot);
+
+    for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+      const lotId = generateLotCode();
+      if (!inMemoryLots.some((l) => l.id === lotId)) {
+        insertedLot = {
+          id: lotId,
+          name: lotName,
+          status,
+          organizationId: orgId,
+          farmId,
+          farmName: farm.name,
+          productId,
+          productName: product.name,
+          unit: product.unit,
+          initialQuantity: qty,
+          remainingQuantity: qty,
+          harvestedAt: harvestDate,
+        };
+        inMemoryLots.push(insertedLot);
+        break;
+      }
+    }
+
+    if (!insertedLot) {
+      return res.status(500).json({ message: "Không thể sinh mã lô duy nhất sau 5 lần thử." });
+    }
 
     return res.status(201).json({
       message: "Ghi nhận thu hoạch thành công.",
-      lot: newLot,
+      lot: insertedLot,
     });
   }
 );
@@ -878,34 +984,69 @@ app.post(
     const { id, name, status } = req.body;
     const orgId = req.auth.organizationId;
 
-    if (!name) {
+    if (!name || !name.trim()) {
       return res.status(400).json({ message: "Tên lô hàng không được để trống." });
     }
 
-    const lotId = id || generateLotCode();
     const lotStatus = status || "Đã thu hoạch";
+    const MAX_RETRIES = 5;
+    let finalLotId = id;
 
     if (pool) {
       try {
-        await pool.query(
-          "INSERT INTO lots (id, name, status, organization_id) VALUES ($1, $2, $3, $4)",
-          [lotId, name, lotStatus, orgId]
-        );
+        let inserted = false;
+        for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+          finalLotId = id || generateLotCode();
+          try {
+            await pool.query(
+              "INSERT INTO lots (id, name, status, organization_id) VALUES ($1, $2, $3, $4)",
+              [finalLotId, name.trim(), lotStatus, orgId]
+            );
+            inserted = true;
+            break;
+          } catch (insertErr) {
+            if (insertErr.code === "23505" && !id && attempt < MAX_RETRIES - 1) {
+              continue;
+            }
+            if (insertErr.code === "23505" && id) {
+              return res.status(409).json({ message: "Mã lô hàng đã tồn tại." });
+            }
+            throw insertErr;
+          }
+        }
+        if (!inserted) {
+          return res.status(500).json({ message: "Không thể sinh mã lô duy nhất sau 5 lần thử." });
+        }
       } catch (err) {
         return res.status(500).json({ message: err.message });
       }
     } else {
-      inMemoryLots.push({
-        id: lotId,
-        name,
-        status: lotStatus,
-        organizationId: orgId,
-      });
+      let inserted = false;
+      for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+        finalLotId = id || generateLotCode();
+        if (inMemoryLots.some((l) => l.id === finalLotId)) {
+          if (id) {
+            return res.status(409).json({ message: "Mã lô hàng đã tồn tại." });
+          }
+          continue;
+        }
+        inMemoryLots.push({
+          id: finalLotId,
+          name: name.trim(),
+          status: lotStatus,
+          organizationId: orgId,
+        });
+        inserted = true;
+        break;
+      }
+      if (!inserted) {
+        return res.status(500).json({ message: "Không thể sinh mã lô duy nhất sau 5 lần thử." });
+      }
     }
 
     return res.status(201).json({
       message: "Tạo lô hàng thành công.",
-      lot: { id: lotId, name, status: lotStatus, organizationId: orgId },
+      lot: { id: finalLotId, name: name.trim(), status: lotStatus, organizationId: orgId },
     });
   }
 );

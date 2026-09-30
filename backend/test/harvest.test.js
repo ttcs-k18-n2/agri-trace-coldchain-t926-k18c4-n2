@@ -151,7 +151,7 @@ test("T-20 & S-08: Harvest batch registration API, validation, permissions, and 
   assert.equal(harvestRes.status, 201);
   const createdLot = harvestRes.body.lot;
   assert.ok(createdLot);
-  assert.match(createdLot.id, /^LOT-[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{10}$/);
+  assert.match(createdLot.id, /^LOT-[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{8}$/);
   assert.equal(createdLot.organizationId, "org-001");
   assert.equal(createdLot.farmId, "FARM-001");
   assert.equal(createdLot.productId, "PROD-TEA");
@@ -192,4 +192,26 @@ test("T-20 & S-08: Harvest batch registration API, validation, permissions, and 
   });
   assert.equal(inspectorReadRes.status, 200);
   assert.equal(inspectorReadRes.body.lot.id, createdLot.id);
+
+  // 10. Sequential lot creations all generate valid 8-char codes with retry protection (T-19, T-20)
+  for (let i = 0; i < 5; i++) {
+    const multiHarvestRes = await request(
+      server,
+      {
+        hostname: "127.0.0.1",
+        port,
+        path: "/api/lots",
+        method: "POST",
+        headers: { "Content-Type": "application/json", Cookie: org1Cookie },
+      },
+      {
+        farmId: "FARM-001",
+        productId: "PROD-TEA",
+        quantity: 10 + i,
+        harvestedAt: "2026-09-30",
+      }
+    );
+    assert.equal(multiHarvestRes.status, 201);
+    assert.match(multiHarvestRes.body.lot.id, /^LOT-[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{8}$/);
+  }
 });
