@@ -1,0 +1,463 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Danh mục sản phẩm | AgriTrace ColdChain</title>
+  <meta name="description" content="Danh mục quy chuẩn nông sản và đơn vị tính dùng chung toàn hệ thống chuỗi lạnh">
+  <link rel="stylesheet" href="/styles.css">
+  <style>
+    .product-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 1.25rem;
+      margin-top: 1.5rem;
+    }
+    .product-card {
+      background: var(--color-surface);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-lg);
+      padding: 1.25rem;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      transition: var(--transition-normal);
+      box-shadow: var(--shadow-sm);
+    }
+    .product-card:hover {
+      transform: translateY(-2px);
+      box-shadow: var(--shadow-hover);
+      border-color: var(--color-border-green);
+    }
+    .product-header {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      margin-bottom: 0.75rem;
+    }
+    .product-icon {
+      width: 44px;
+      height: 44px;
+      border-radius: var(--radius-md);
+      background: var(--color-primary-surface);
+      color: var(--color-primary);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.25rem;
+      font-weight: 700;
+      border: 1px solid var(--color-border-green);
+    }
+    .product-title {
+      font-size: 1.1rem;
+      font-weight: 700;
+      color: var(--color-text-main);
+    }
+    .unit-tag {
+      display: inline-flex;
+      align-items: center;
+      padding: 0.25rem 0.65rem;
+      border-radius: var(--radius-full);
+      font-size: 0.8rem;
+      font-weight: 600;
+      background: var(--color-primary-light);
+      color: var(--color-primary-hover);
+    }
+    .unit-options {
+      display: flex;
+      gap: 0.75rem;
+      margin-top: 0.5rem;
+    }
+    .unit-option-label {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+      padding: 0.6rem 0.75rem;
+      border: 1.5px solid var(--color-border);
+      border-radius: var(--radius-md);
+      cursor: pointer;
+      font-weight: 600;
+      font-size: 0.9rem;
+      transition: var(--transition-fast);
+    }
+    .unit-option-label input[type="radio"] {
+      accent-color: var(--color-primary);
+    }
+    .unit-option-label:hover {
+      border-color: var(--color-primary);
+      background: var(--color-primary-surface);
+    }
+    .unit-option-label.active {
+      border-color: var(--color-primary);
+      background: var(--color-primary-surface);
+      color: var(--color-primary-hover);
+    }
+  </style>
+</head>
+<body>
+  <!-- Header / Navigation Bar -->
+  <header class="header">
+    <div class="header-inner container">
+      <div class="brand">
+        <div class="brand-logo">🌿</div>
+        <div class="brand-text">
+          <span class="brand-name">AgriTrace</span>
+          <span class="brand-sub">ColdChain Traceability</span>
+        </div>
+      </div>
+
+      <nav class="nav-links">
+        <a href="/lots.html" class="nav-item">📦 Lô hàng</a>
+        <a href="/farms.html" class="nav-item">🌾 Thửa đất</a>
+        <a href="/products.html" class="nav-item active">🍎 Sản phẩm</a>
+        <a href="/harvest.html" class="nav-item">✨ Ghi nhận thu hoạch</a>
+      </nav>
+
+      <div class="user-control">
+        <div class="user-pill">
+          <div class="user-avatar" id="nav-avatar">U</div>
+          <div class="user-details">
+            <span class="user-name" id="nav-user-email">Đang tải...</span>
+            <span class="user-role" id="nav-user-role">...</span>
+          </div>
+        </div>
+        <button id="btn-logout" class="btn btn-outline btn-sm" title="Đăng xuất">Đăng xuất</button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Content -->
+  <main class="main container">
+    <div class="page-header">
+      <div>
+        <h1 class="page-title">DANH MỤC SẢN PHẨM</h1>
+        <p class="page-desc">Danh mục nông sản quy chuẩn và đơn vị tính dùng chung toàn bộ hệ thống chuỗi lạnh.</p>
+      </div>
+      <div id="admin-actions" style="display: none;">
+        <button id="btn-open-modal" class="btn btn-primary">
+          <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+          Thêm sản phẩm
+        </button>
+      </div>
+    </div>
+
+    <!-- Alert Banner -->
+    <div id="alert-banner" class="alert" style="display: none;"></div>
+
+    <!-- Search / Filter -->
+    <div class="card" style="margin-bottom: 1.5rem; padding: 1rem 1.25rem;">
+      <div style="display: flex; gap: 1rem; align-items: center; flex-wrap: wrap;">
+        <div style="flex: 1; min-width: 240px; position: relative;">
+          <input type="text" id="search-input" class="form-input" placeholder="🔍 Tìm kiếm sản phẩm theo tên hoặc đơn vị..." style="padding-left: 2.25rem;">
+        </div>
+        <div style="color: var(--color-text-muted); font-size: 0.9rem;">
+          Tổng số: <strong id="product-count" style="color: var(--color-primary);">0</strong> sản phẩm
+        </div>
+      </div>
+    </div>
+
+    <!-- Product Grid -->
+    <div id="products-loading" class="card" style="text-align: center; padding: 3rem;">
+      <div style="font-size: 1.1rem; color: var(--color-text-muted);">Đang tải danh mục sản phẩm...</div>
+    </div>
+
+    <div id="products-empty" class="card" style="display: none; text-align: center; padding: 3rem;">
+      <div style="font-size: 2.5rem; margin-bottom: 0.5rem;">📦</div>
+      <div style="font-weight: 700; font-size: 1.1rem; color: var(--color-text-main);">Chưa có sản phẩm nào</div>
+      <div style="color: var(--color-text-muted); margin-top: 0.25rem;">Danh mục sản phẩm hiện đang trống.</div>
+    </div>
+
+    <div id="product-grid" class="product-grid" style="display: none;"></div>
+  </main>
+
+  <!-- Modal Thêm sản phẩm (Chỉ dành cho Admin) -->
+  <div id="modal-add-product" class="modal-backdrop" style="display: none;">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h2 class="modal-title">Thêm sản phẩm mới</h2>
+        <button id="btn-close-modal" class="btn-icon" aria-label="Đóng">&times;</button>
+      </div>
+      <form id="form-add-product">
+        <div class="modal-body">
+          <div id="form-error" class="alert alert-danger" style="display: none; margin-bottom: 1rem;"></div>
+
+          <div class="form-group">
+            <label class="form-label" for="product-name">Tên sản phẩm <span style="color: var(--color-danger)">*</span></label>
+            <input type="text" id="product-name" name="name" class="form-input" required placeholder="Ví dụ: Cà chua, Chè, Rau cải, Khoai tây...">
+            <span class="form-hint">Tên sản phẩm là duy nhất (không phân biệt chữ hoa, chữ thường).</span>
+          </div>
+
+          <div class="form-group" style="margin-top: 1rem;">
+            <label class="form-label">Đơn vị tính <span style="color: var(--color-danger)">*</span></label>
+            <div class="unit-options">
+              <label class="unit-option-label active" id="label-kg">
+                <input type="radio" name="unit" value="kg" checked>
+                <span>kg (Kilogram)</span>
+              </label>
+              <label class="unit-option-label" id="label-tan">
+                <input type="radio" name="unit" value="tan">
+                <span>tấn (Tấn)</span>
+              </label>
+              <label class="unit-option-label" id="label-thung">
+                <input type="radio" name="unit" value="thung">
+                <span>thùng (Thùng)</span>
+              </label>
+            </div>
+            <span class="form-hint" style="margin-top: 0.5rem; display: block;">Đơn vị quy chuẩn: kg, tấn hoặc thùng.</span>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" id="btn-cancel-modal" class="btn btn-outline">Hủy bỏ</button>
+          <button type="submit" id="btn-submit-product" class="btn btn-primary">Lưu sản phẩm</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script>
+    let currentUser = null;
+    let productsList = [];
+
+    // Khởi tạo trang
+    document.addEventListener("DOMContentLoaded", async () => {
+      await loadCurrentUser();
+      await loadProducts();
+      setupEventListeners();
+    });
+
+    async function loadCurrentUser() {
+      try {
+        const res = await fetch("/api/me");
+        if (res.status === 401) {
+          window.location.href = "/login?returnTo=/products.html";
+          return;
+        }
+        const data = await res.json();
+        currentUser = data.user;
+
+        document.getElementById("nav-user-email").textContent = currentUser.email;
+        document.getElementById("nav-user-role").textContent = formatRole(currentUser.roleId);
+        document.getElementById("nav-avatar").textContent = currentUser.email.charAt(0).toUpperCase();
+
+        // Hiển thị chức năng thêm sản phẩm nếu là Admin
+        if (currentUser.roleId === "admin") {
+          document.getElementById("admin-actions").style.display = "block";
+        }
+      } catch (err) {
+        console.error("Lỗi xác thực người dùng:", err);
+      }
+    }
+
+    async function loadProducts() {
+      try {
+        const res = await fetch("/api/products");
+        if (!res.ok) throw new Error("Không thể tải danh sách sản phẩm.");
+        const data = await res.json();
+        productsList = data.products || [];
+        renderProducts(productsList);
+      } catch (err) {
+        showBanner("error", err.message);
+      } finally {
+        document.getElementById("products-loading").style.display = "none";
+      }
+    }
+
+    function renderProducts(list) {
+      const grid = document.getElementById("product-grid");
+      const empty = document.getElementById("products-empty");
+      const countEl = document.getElementById("product-count");
+
+      countEl.textContent = list.length;
+
+      if (!list || list.length === 0) {
+        grid.style.display = "none";
+        empty.style.display = "block";
+        return;
+      }
+
+      empty.style.display = "none";
+      grid.style.display = "grid";
+      grid.innerHTML = "";
+
+      list.forEach((p) => {
+        const card = document.createElement("div");
+        card.className = "product-card";
+
+        const iconEmoji = getProductEmoji(p.name);
+        const unitName = formatUnit(p.unit);
+
+        card.innerHTML = `
+          <div>
+            <div class="product-header">
+              <div class="product-icon">${iconEmoji}</div>
+              <div>
+                <div class="product-title">${escapeHtml(p.name)}</div>
+                <div style="font-size: 0.75rem; color: var(--color-text-light); font-family: monospace;">${escapeHtml(p.id)}</div>
+              </div>
+            </div>
+          </div>
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 1rem; padding-top: 0.75rem; border-top: 1px dashed var(--color-border);">
+            <span style="font-size: 0.85rem; color: var(--color-text-muted);">Đơn vị tính:</span>
+            <span class="unit-tag">${escapeHtml(unitName)}</span>
+          </div>
+        `;
+        grid.appendChild(card);
+      });
+    }
+
+    function setupEventListeners() {
+      // Logout
+      document.getElementById("btn-logout").addEventListener("click", async () => {
+        try {
+          await fetch("/api/logout", { method: "POST" });
+        } finally {
+          window.location.href = "/login";
+        }
+      });
+
+      // Search filter
+      document.getElementById("search-input").addEventListener("input", (e) => {
+        const query = e.target.value.toLowerCase().trim();
+        const filtered = productsList.filter(
+          (p) => p.name.toLowerCase().includes(query) || formatUnit(p.unit).toLowerCase().includes(query)
+        );
+        renderProducts(filtered);
+      });
+
+      // Modal controls
+      const modal = document.getElementById("modal-add-product");
+      const openBtn = document.getElementById("btn-open-modal");
+      const closeBtn = document.getElementById("btn-close-modal");
+      const cancelBtn = document.getElementById("btn-cancel-modal");
+
+      if (openBtn) {
+        openBtn.addEventListener("click", () => {
+          document.getElementById("form-add-product").reset();
+          document.getElementById("form-error").style.display = "none";
+          updateRadioVisual();
+          modal.style.display = "flex";
+          document.getElementById("product-name").focus();
+        });
+      }
+
+      function closeModal() {
+        modal.style.display = "none";
+      }
+
+      closeBtn.addEventListener("click", closeModal);
+      cancelBtn.addEventListener("click", closeModal);
+      modal.addEventListener("click", (e) => {
+        if (e.target === modal) closeModal();
+      });
+
+      // Radio button active styling
+      document.querySelectorAll('input[name="unit"]').forEach((radio) => {
+        radio.addEventListener("change", updateRadioVisual);
+      });
+
+      function updateRadioVisual() {
+        document.querySelectorAll(".unit-option-label").forEach((lbl) => lbl.classList.remove("active"));
+        const checked = document.querySelector('input[name="unit"]:checked');
+        if (checked && checked.parentElement) {
+          checked.parentElement.classList.add("active");
+        }
+      }
+
+      // Submit form thêm sản phẩm
+      document.getElementById("form-add-product").addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const name = document.getElementById("product-name").value.trim();
+        const unit = document.querySelector('input[name="unit"]:checked')?.value;
+        const errEl = document.getElementById("form-error");
+        const submitBtn = document.getElementById("btn-submit-product");
+
+        errEl.style.display = "none";
+        submitBtn.disabled = true;
+        submitBtn.textContent = "Đang lưu...";
+
+        try {
+          const res = await fetch("/api/products", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ name, unit }),
+          });
+
+          const data = await res.json();
+
+          if (!res.ok) {
+            errEl.textContent = data.message || "Lỗi tạo sản phẩm.";
+            errEl.style.display = "block";
+            return;
+          }
+
+          closeModal();
+          showBanner("success", `✓ Thêm sản phẩm "${data.product.name}" (${formatUnit(data.product.unit)}) thành công.`);
+          await loadProducts();
+        } catch (err) {
+          errEl.textContent = err.message || "Không thể kết nối đến máy chủ.";
+          errEl.style.display = "block";
+        } finally {
+          submitBtn.disabled = false;
+          submitBtn.textContent = "Lưu sản phẩm";
+        }
+      });
+    }
+
+    function formatRole(role) {
+      const map = {
+        admin: "Quản trị viên",
+        producer: "Nông hộ / Sản xuất",
+        cooperative: "Hợp tác xã",
+        inspector: "Cán bộ kiểm tra",
+        transporter: "Đơn vị vận chuyển",
+        distributor: "Nhà phân phối",
+      };
+      return map[role] || role;
+    }
+
+    function formatUnit(unit) {
+      const map = {
+        kg: "kg (Kilogram)",
+        tan: "tấn (Tấn)",
+        thung: "thùng (Thùng)",
+      };
+      return map[unit] || unit;
+    }
+
+    function getProductEmoji(name) {
+      const n = (name || "").toLowerCase();
+      if (n.includes("cà chua")) return "🍅";
+      if (n.includes("chè") || n.includes("trà")) return "🍵";
+      if (n.includes("rau") || n.includes("cải")) return "🥬";
+      if (n.includes("khoai")) return "🥔";
+      if (n.includes("dưa")) return "🥒";
+      if (n.includes("chuối")) return "🍌";
+      if (n.includes("xoài")) return "🥭";
+      if (n.includes("thóc") || n.includes("gạo")) return "🌾";
+      return "🌱";
+    }
+
+    function showBanner(type, message) {
+      const banner = document.getElementById("alert-banner");
+      banner.className = `alert alert-${type === "success" ? "success" : "danger"}`;
+      banner.textContent = message;
+      banner.style.display = "block";
+      setTimeout(() => {
+        banner.style.display = "none";
+      }, 5000);
+    }
+
+    function escapeHtml(str) {
+      if (!str) return "";
+      return String(str)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+    }
+  </script>
+</body>
+</html>
