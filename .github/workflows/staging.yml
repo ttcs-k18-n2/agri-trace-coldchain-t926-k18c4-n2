@@ -74,6 +74,7 @@ jobs:
           STAGING_SSH_KEY: ${{ secrets.STAGING_SSH_KEY }}
           STAGING_SSH_PORT: ${{ secrets.STAGING_SSH_PORT }}
           STAGING_DEPLOY_PATH: ${{ secrets.STAGING_DEPLOY_PATH }}
+          STAGING_SESSION_SECRET: ${{ secrets.STAGING_SESSION_SECRET || secrets.SESSION_SECRET }}
         run: |
           set -euo pipefail
 
@@ -104,5 +105,5 @@ jobs:
               git fetch origin main
               git checkout -B main origin/main
               chmod +x deploy/staging-deploy.sh
-              ./deploy/staging-deploy.sh '${{ github.sha }}'
+              ./deploy/staging-deploy.sh '${{ github.sha }}' '${STAGING_SESSION_SECRET:-}'
             "

@@ -44,7 +44,12 @@ app.use(
     cookie: {
       httpOnly: true,
       sameSite: "lax",
-      secure: process.env.COOKIE_SECURE === "true",
+      secure:
+        process.env.NODE_ENV === "test"
+          ? false
+          : process.env.COOKIE_SECURE === "true" || process.env.COOKIE_SECURE === "auto"
+          ? "auto"
+          : false,
       maxAge: 60 * 60 * 1000,
     },
   })
@@ -376,18 +381,12 @@ app.post("/api/login", async (req, res) => {
 
   if (!validPassword) {
     const nextFailedCount = (user.failedCount || 0) + 1;
+    const lockUntil =
+      nextFailedCount >= MAX_FAILED_ATTEMPTS
+        ? now + LOCK_MINUTES * 60 * 1000
+        : null;
 
-    if (nextFailedCount >= MAX_FAILED_ATTEMPTS) {
-      const lockUntil = now + LOCK_MINUTES * 60 * 1000;
-      await updateUserLock(user, nextFailedCount, lockUntil);
-
-      return res.status(423).json({
-        message: "Tài khoản đang bị khóa tạm thời.",
-        retryAfterSeconds: LOCK_MINUTES * 60,
-      });
-    }
-
-    await updateUserLock(user, nextFailedCount, null);
+    await updateUserLock(user, nextFailedCount, lockUntil);
     return loginError(res);
   }
 
