@@ -37,28 +37,30 @@ test("POST /api/login with non-existent email returns 401 identical message", as
   assert.equal(res.body.message, "Email hoặc mật khẩu không đúng.");
 });
 
-test("POST /api/login locks account after 5 failed attempts and blocks valid password", async () => {
-  for (let i = 0; i < MAX_FAILED_ATTEMPTS - 1; i++) {
+test("POST /api/login locks account after 5 failed attempts and blocks valid password on 6th attempt", async () => {
+  // First 5 failed attempts must all return 401 Unauthorized
+  for (let i = 0; i < MAX_FAILED_ATTEMPTS; i++) {
     const res = await request(app)
       .post("/api/login")
       .send({ email: "user@example.com", password: "WrongPassword" });
     assert.equal(res.status, 401);
+    assert.equal(res.body.message, "Email hoặc mật khẩu không đúng.");
   }
 
-  // 5th failed attempt triggers lock
-  const fifthRes = await request(app)
-    .post("/api/login")
-    .send({ email: "user@example.com", password: "WrongPassword" });
-  assert.equal(fifthRes.status, 423);
-  assert.equal(fifthRes.body.message, "Tài khoản đang bị khóa tạm thời.");
-  assert.ok(fifthRes.body.retryAfterSeconds > 0);
-
-  // Next attempt with CORRECT password must still be locked (423)
+  // 6th attempt with CORRECT password must be locked (423)
   const lockedRes = await request(app)
     .post("/api/login")
     .send({ email: "user@example.com", password: "Password@123" });
   assert.equal(lockedRes.status, 423);
   assert.equal(lockedRes.body.message, "Tài khoản đang bị khóa tạm thời.");
+  assert.ok(lockedRes.body.retryAfterSeconds > 0);
+
+  // 7th attempt with WRONG password must still be locked (423)
+  const lockedWrongRes = await request(app)
+    .post("/api/login")
+    .send({ email: "user@example.com", password: "WrongPassword" });
+  assert.equal(lockedWrongRes.status, 423);
+  assert.equal(lockedWrongRes.body.message, "Tài khoản đang bị khóa tạm thời.");
 });
 
 test("GET /api/me returns 401 when unauthenticated and 200 when authenticated", async () => {

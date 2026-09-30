@@ -376,18 +376,12 @@ app.post("/api/login", async (req, res) => {
 
   if (!validPassword) {
     const nextFailedCount = (user.failedCount || 0) + 1;
+    const lockUntil =
+      nextFailedCount >= MAX_FAILED_ATTEMPTS
+        ? now + LOCK_MINUTES * 60 * 1000
+        : null;
 
-    if (nextFailedCount >= MAX_FAILED_ATTEMPTS) {
-      const lockUntil = now + LOCK_MINUTES * 60 * 1000;
-      await updateUserLock(user, nextFailedCount, lockUntil);
-
-      return res.status(423).json({
-        message: "Tài khoản đang bị khóa tạm thời.",
-        retryAfterSeconds: LOCK_MINUTES * 60,
-      });
-    }
-
-    await updateUserLock(user, nextFailedCount, null);
+    await updateUserLock(user, nextFailedCount, lockUntil);
     return loginError(res);
   }
 

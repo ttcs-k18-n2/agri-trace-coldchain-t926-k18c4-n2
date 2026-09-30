@@ -11,6 +11,7 @@ DEPLOY_DIR="${DEPLOY_DIR:-$(pwd)}"
 cd "$DEPLOY_DIR"
 
 NEW_TAG="${1:-}"
+INCOMING_SESSION_SECRET="${2:-}"
 BACKEND_PORT="${BACKEND_PORT:-3000}"
 FRONTEND_PORT="${FRONTEND_PORT:-8080}"
 HEALTH_CHECK_URL="${HEALTH_CHECK_URL:-http://localhost:${FRONTEND_PORT}/health}"
@@ -34,6 +35,31 @@ if [ ! -f .env ]; then
   echo "ERROR: $DEPLOY_DIR/.env is missing. Refusing to deploy staging."
   exit 1
 fi
+
+# Ensure persistent SESSION_SECRET and COOKIE_SECURE=true on staging environment
+if [ -n "$INCOMING_SESSION_SECRET" ]; then
+  if grep -q '^SESSION_SECRET=' .env; then
+    sed -i "s/^SESSION_SECRET=.*/SESSION_SECRET=${INCOMING_SESSION_SECRET}/" .env
+  else
+    echo "SESSION_SECRET=${INCOMING_SESSION_SECRET}" >> .env
+  fi
+  echo "[Staging Config] SESSION_SECRET updated from deployment argument."
+elif ! grep -q '^SESSION_SECRET=' .env || [ -z "$(grep '^SESSION_SECRET=' .env | cut -d= -f2-)" ]; then
+  echo "[Staging Config] Generating persistent SESSION_SECRET in .env..."
+  PERSISTENT_SECRET=$(head -c 32 /dev/urandom | xxd -p -c 32 2>/dev/null || openssl rand -hex 32)
+  if grep -q '^SESSION_SECRET=' .env; then
+    sed -i "s/^SESSION_SECRET=.*/SESSION_SECRET=${PERSISTENT_SECRET}/" .env
+  else
+    echo "SESSION_SECRET=${PERSISTENT_SECRET}" >> .env
+  fi
+fi
+
+if grep -q '^COOKIE_SECURE=' .env; then
+  sed -i "s/^COOKIE_SECURE=.*/COOKIE_SECURE=true/" .env
+else
+  echo "COOKIE_SECURE=true" >> .env
+fi
+export COOKIE_SECURE=true
 
 mkdir -p "$STATE_DIR"
 
@@ -163,9 +189,15 @@ echo "========================================================"
 echo " RUNNING POST-DEPLOY STAGING SMOKE TEST"
 echo "========================================================"
 SMOKE_COOKIE=$(mktemp)
-LOGIN_OUT=$(curl -s -c "$SMOKE_COOKIE" -H "Content-Type: application/json" -d '{"email":"user@example.com","password":"Password@123"}' "http://localhost:8080/api/login" 2>/dev/null || true)
+LOGIN_HEADERS=$(mktemp)
+LOGIN_OUT=$(curl -s -c "$SMOKE_COOKIE" -D "$LOGIN_HEADERS" -H "Content-Type: application/json" -d '{"email":"user@example.com","password":"Password@123"}' "http://localhost:8080/api/login" 2>/dev/null || true)
 if echo "$LOGIN_OUT" | grep -q '"email":"user@example.com"'; then
   echo "✔ [Smoke Test Passed] Authentication on staging: user@example.com logged in successfully."
+  if grep -i '^set-cookie:' "$LOGIN_HEADERS" | grep -iq 'HttpOnly' && grep -i '^set-cookie:' "$LOGIN_HEADERS" | grep -iq 'Secure'; then
+    echo "✔ [Smoke Test Passed] NFR HttpOnly + Secure verified on session cookie."
+  else
+    echo "ℹ [Smoke Test Note] Cookie headers: $(grep -i '^set-cookie:' "$LOGIN_HEADERS" || true)"
+  fi
   FARMS_OUT=$(curl -s -b "$SMOKE_COOKIE" "http://localhost:8080/api/farms" 2>/dev/null || true)
   if echo "$FARMS_OUT" | grep -q 'org-001'; then
     echo "✔ [Smoke Test Passed] Tenant Isolation on staging: authenticated farms list scoped strictly to org-001."
@@ -175,7 +207,7 @@ if echo "$LOGIN_OUT" | grep -q '"email":"user@example.com"'; then
 else
   echo "ℹ [Smoke Test Note] Initial login smoke check response: $LOGIN_OUT"
 fi
-rm -f "$SMOKE_COOKIE"
+rm -f "$SMOKE_COOKIE" "$LOGIN_HEADERS"
 
 echo "========================================================"
 echo " STAGING DEPLOYMENT SUCCESSFUL"
