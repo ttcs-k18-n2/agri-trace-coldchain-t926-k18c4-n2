@@ -11,7 +11,7 @@ Tài liệu này quy định cách team làm việc trên GitHub cho toàn dự 
 - `docs/s<sprint>-k<spike>-<short-name>`: Spike/tài liệu kỹ thuật.
 - `docs/s<sprint>-<short-name>`: tài liệu quản lý Sprint.
 
-Trong repo này, khi Backlog dùng cụm từ **"nhánh chính"** cho CI/CD của Sprint thì team quy ước `develop` là **nhánh tích hợp chính của Sprint** và là nguồn triển khai staging. `main` chỉ nhận bản tích hợp đã ổn định qua PR cuối Sprint.
+Trong repo này, khi Backlog dùng cụm từ **"nhánh chính"** cho CI/CD của Sprint thì team quy ước `develop` là **nhánh tích hợp chính của Sprint**; `main` là **nhánh triển khai staging & release**. Sau khi các Story trên `develop` được kiểm tra, PR vào `main` sẽ kích hoạt pipeline tự động triển khai staging.
 
 ## 2. Cấu trúc tên branch
 
@@ -193,7 +193,7 @@ Mục tiêu Sprint 1 yêu cầu CI và staging chạy thật.
 
 - Push/PR: chạy build, lint, typecheck và test theo cấu hình dự án.
 - Story branch không tự triển khai staging.
-- Khi Story PR được review và merge vào `develop`, pipeline của `develop` triển khai staging.
+- Khi thay đổi được đưa vào `main` (qua PR từ `develop`), pipeline của `main` tự động đóng gói image và triển khai staging.
 - Migration phải chạy trước khi bản mới nhận request.
 - Health check thất bại thì giữ/khôi phục bản cũ và pipeline báo đỏ.
 - Secret triển khai nằm trong CI secret, không commit vào repo.

@@ -21,13 +21,20 @@ services:
       retries: 10
 
   backend:
+    image: agri-trace-backend:${BACKEND_TAG:-latest}
     build:
       context: ./backend
+      args:
+        GIT_COMMIT: ${GIT_COMMIT:-unknown}
     container_name: agri-trace-backend
     restart: unless-stopped
+    env_file:
+      - .env
     environment:
       PORT: 3000
       DATABASE_URL: ${DATABASE_URL}
+      SESSION_SECRET: ${SESSION_SECRET:-}
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
     volumes:
       - ./db/migrations:/app/db/migrations:ro
     ports:
@@ -37,8 +44,11 @@ services:
         condition: service_healthy
 
   frontend:
+    image: agri-trace-frontend:${FRONTEND_TAG:-latest}
     build:
       context: ./frontend
+      args:
+        GIT_COMMIT: ${GIT_COMMIT:-unknown}
     container_name: agri-trace-frontend
     restart: unless-stopped
     ports:

@@ -3,355 +3,574 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Agri Traceability - Đăng nhập</title>
+  <title>AGRI TRACEABILITY - Đăng nhập hệ thống chuỗi lạnh</title>
+  <link rel="stylesheet" href="/styles.css">
 
   <style>
-    * {
-      box-sizing: border-box;
-      margin: 0;
-      padding: 0;
-    }
-
     body {
-      font-family: Arial, Helvetica, sans-serif;
       min-height: 100vh;
-      background: linear-gradient(135deg, #145a32, #2ca85b);
       display: flex;
-      justify-content: center;
       align-items: center;
-      padding: 20px;
+      justify-content: center;
+      padding: 24px 16px;
+      background: radial-gradient(circle at 10% 20%, #e8f9ed 0%, #f4fbf6 90%);
     }
 
-    .container {
+    .auth-card {
       width: 100%;
-      max-width: 950px;
-      min-height: 560px;
+      max-width: 960px;
+      background: var(--color-surface);
+      border-radius: var(--radius-xl);
+      box-shadow: 0 20px 50px -10px rgba(21, 128, 61, 0.15), 0 0 0 1px var(--color-border-green);
       display: grid;
-      grid-template-columns: 1fr 1fr;
-      background: white;
-      border-radius: 24px;
+      grid-template-columns: 1.05fr 1fr;
       overflow: hidden;
-      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2);
     }
 
-    .intro {
-      padding: 55px 45px;
+    /* Left Intro / Showcase Panel */
+    .auth-showcase {
+      background: linear-gradient(150deg, #14532d 0%, #15803d 50%, #166534 100%);
       color: white;
-      background: linear-gradient(145deg, #12552f, #23834b);
+      padding: 56px 44px;
       display: flex;
       flex-direction: column;
-      justify-content: center;
+      justify-content: space-between;
+      position: relative;
+      overflow: hidden;
     }
 
-    .logo {
-      width: 70px;
-      height: 70px;
-      border-radius: 18px;
-      background: white;
-      color: #1d7a43;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 34px;
-      margin-bottom: 28px;
+    .auth-showcase::after {
+      content: "";
+      position: absolute;
+      width: 300px;
+      height: 300px;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(34, 197, 94, 0.25) 0%, transparent 70%);
+      bottom: -60px;
+      right: -60px;
+      pointer-events: none;
     }
 
-    .intro h1 {
-      font-size: 38px;
-      line-height: 1.15;
-      margin-bottom: 18px;
+    .showcase-header {
+      position: relative;
+      z-index: 1;
     }
 
-    .intro h1 span {
-      color: #b9f2c9;
-    }
-
-    .intro p {
-      font-size: 16px;
-      line-height: 1.7;
-      color: #e9fff0;
-      max-width: 390px;
-    }
-
-    .features {
-      margin-top: 35px;
-    }
-
-    .feature {
+    .showcase-brand {
       display: flex;
       align-items: center;
       gap: 12px;
-      margin-bottom: 16px;
-      font-size: 14px;
-    }
-
-    .check {
-      width: 28px;
-      height: 28px;
-      border-radius: 50%;
-      background: rgba(255,255,255,0.18);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-weight: bold;
-    }
-
-    .login-area {
-      padding: 55px 50px;
-      display: flex;
-      flex-direction: column;
-      justify-content: center;
-    }
-
-    .login-area h2 {
-      color: #1c2b22;
-      font-size: 30px;
-      margin-bottom: 8px;
-    }
-
-    .subtitle {
-      color: #777;
-      font-size: 14px;
       margin-bottom: 32px;
     }
 
-    .form-group {
+    .showcase-icon {
+      width: 48px;
+      height: 48px;
+      border-radius: var(--radius-md);
+      background: rgba(255, 255, 255, 0.16);
+      backdrop-filter: blur(8px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #bbf7d0;
+      border: 1px solid rgba(255, 255, 255, 0.25);
+    }
+
+    .showcase-title-badge {
+      display: inline-block;
+      padding: 4px 10px;
+      background: rgba(34, 197, 94, 0.2);
+      border: 1px solid rgba(187, 247, 208, 0.3);
+      border-radius: var(--radius-full);
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: #bbf7d0;
+      margin-bottom: 16px;
+    }
+
+    .showcase-headline {
+      font-size: 32px;
+      font-weight: 800;
+      line-height: 1.25;
+      letter-spacing: -0.02em;
+      color: #ffffff;
+      margin-bottom: 14px;
+    }
+
+    .showcase-headline span {
+      color: #86efac;
+    }
+
+    .showcase-desc {
+      font-size: 15px;
+      line-height: 1.6;
+      color: #dcfce7;
+      opacity: 0.92;
+    }
+
+    .feature-list {
+      margin-top: 36px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      position: relative;
+      z-index: 1;
+    }
+
+    .feature-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-size: 14px;
+      color: #f0fdf4;
+      font-weight: 500;
+    }
+
+    .feature-check {
+      width: 24px;
+      height: 24px;
+      border-radius: var(--radius-full);
+      background: rgba(34, 197, 94, 0.25);
+      border: 1px solid rgba(187, 247, 208, 0.4);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #bbf7d0;
+      flex-shrink: 0;
+    }
+
+    .showcase-footer {
+      font-size: 12px;
+      color: #bbf7d0;
+      opacity: 0.75;
+      position: relative;
+      z-index: 1;
+      margin-top: 32px;
+    }
+
+    /* Right Form Area */
+    .auth-form-panel {
+      padding: 52px 44px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      background: var(--color-surface);
+    }
+
+    .form-heading {
+      font-size: 26px;
+      font-weight: 800;
+      color: var(--color-text-main);
+      letter-spacing: -0.02em;
+      margin-bottom: 6px;
+    }
+
+    .form-subheading {
+      font-size: 14px;
+      color: var(--color-text-muted);
+      margin-bottom: 28px;
+    }
+
+    .input-wrapper {
+      position: relative;
+      margin-top: 6px;
+    }
+
+    .input-icon-left {
+      position: absolute;
+      left: 14px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: var(--color-text-light);
+      display: flex;
+      align-items: center;
+      pointer-events: none;
+      transition: var(--transition-fast);
+    }
+
+    .form-control {
+      width: 100%;
+      height: 48px;
+      padding: 0 44px 0 42px;
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-md);
+      background: var(--color-bg);
+      color: var(--color-text-main);
+      font-size: 14px;
+      transition: var(--transition-fast);
+    }
+
+    .form-control:focus {
+      background: var(--color-surface);
+      border-color: var(--color-primary);
+      box-shadow: 0 0 0 3px rgba(21, 128, 61, 0.12);
+    }
+
+    .form-control:focus + .input-icon-left {
+      color: var(--color-primary);
+    }
+
+    .toggle-pwd-btn {
+      position: absolute;
+      right: 12px;
+      top: 50%;
+      transform: translateY(-50%);
+      background: none;
+      border: none;
+      color: var(--color-text-light);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      padding: 4px;
+      border-radius: var(--radius-xs);
+      transition: var(--transition-fast);
+    }
+
+    .toggle-pwd-btn:hover {
+      color: var(--color-text-main);
+    }
+
+    .form-label {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--color-text-main);
+    }
+
+    .field-group {
       margin-bottom: 20px;
     }
 
-    label {
-      display: block;
-      font-size: 14px;
-      font-weight: bold;
-      color: #26352c;
-      margin-bottom: 8px;
-    }
-
-    .input-box {
-      position: relative;
-    }
-
-    .input-icon {
-      position: absolute;
-      left: 15px;
-      top: 50%;
-      transform: translateY(-50%);
-      color: #1d7a43;
-      font-size: 17px;
-    }
-
-    input {
+    .btn-submit {
       width: 100%;
-      height: 50px;
-      padding: 0 15px 0 45px;
-      border: 1px solid #d8ded9;
-      border-radius: 10px;
-      outline: none;
-      font-size: 14px;
+      height: 48px;
+      font-size: 15px;
+      margin-top: 6px;
     }
 
-    input:focus {
-      border-color: #1d7a43;
-      box-shadow: 0 0 0 3px rgba(29, 122, 67, 0.1);
-    }
-
-    button {
-      width: 100%;
-      height: 52px;
-      margin-top: 5px;
-      border: none;
-      border-radius: 10px;
-      background: linear-gradient(135deg, #1d7a43, #2ca85b);
-      color: white;
-      font-size: 16px;
-      font-weight: bold;
-      cursor: pointer;
-    }
-
-    button:hover {
-      box-shadow: 0 8px 20px rgba(29, 122, 67, 0.25);
-    }
-
+    /* Message / Alert */
     #message {
-      min-height: 22px;
-      margin-top: 15px;
+      margin-top: 16px;
+      min-height: 20px;
+      font-size: 13px;
+      font-weight: 600;
       text-align: center;
-      font-size: 14px;
-      font-weight: bold;
+      transition: var(--transition-fast);
     }
 
-    .demo {
+    /* Demo Quick Fill Box */
+    .demo-box {
       margin-top: 28px;
-      padding: 15px;
-      border-radius: 10px;
-      background: #f1f8f3;
-      border: 1px solid #dceee1;
-      color: #52705c;
+      padding: 16px;
+      background: var(--color-primary-surface);
+      border: 1px solid var(--color-border-green);
+      border-radius: var(--radius-md);
+    }
+
+    .demo-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 10px;
+    }
+
+    .demo-title {
       font-size: 12px;
-      line-height: 1.7;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--color-primary-active);
+      display: flex;
+      align-items: center;
+      gap: 6px;
     }
 
-    .demo strong {
-      color: #1d7a43;
+    .demo-chips {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
     }
 
-    .footer {
-      text-align: center;
-      margin-top: 25px;
+    .demo-chip-btn {
+      width: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 12px;
+      background: var(--color-surface);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      text-align: left;
+      transition: var(--transition-fast);
+    }
+
+    .demo-chip-btn:hover {
+      border-color: var(--color-primary);
+      background: #ffffff;
+      transform: translateY(-1px);
+      box-shadow: 0 2px 6px rgba(21, 128, 61, 0.08);
+    }
+
+    .demo-chip-info {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .demo-chip-email {
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--color-text-main);
+    }
+
+    .demo-chip-role {
       font-size: 11px;
-      color: #aaa;
+      color: var(--color-text-muted);
     }
 
-    @media (max-width: 750px) {
-      .container {
+    .demo-chip-action {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--color-primary);
+    }
+
+    @media (max-width: 860px) {
+      .auth-card {
         grid-template-columns: 1fr;
-        max-width: 500px;
+        max-width: 480px;
       }
 
-      .intro {
-        padding: 35px;
+      .auth-showcase {
+        padding: 36px 30px;
       }
 
-      .intro h1 {
-        font-size: 30px;
+      .auth-form-panel {
+        padding: 36px 30px;
       }
 
-      .features {
+      .showcase-headline {
+        font-size: 26px;
+      }
+
+      .feature-list {
         display: none;
-      }
-
-      .login-area {
-        padding: 40px 30px;
       }
     }
   </style>
 </head>
 
 <body>
-  <div class="container">
-    <div class="intro">
-      <div class="logo">🌱</div>
-      <h1>
-        AGRI<br>
-        <span>TRACEABILITY</span>
-      </h1>
-      <p>
-        Hệ thống truy xuất nguồn gốc và giám sát chuỗi lạnh nông sản.
-      </p>
+  <main class="auth-card">
+    <!-- Left Showcase Panel -->
+    <section class="auth-showcase">
+      <div class="showcase-header">
+        <div class="showcase-brand">
+          <div class="showcase-icon">
+            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 2a10 10 0 0 1 10 10c0 5.523-4.477 10-10 10S2 17.523 2 12c0-2.2.7-4.2 1.9-5.9"/>
+              <path d="M12 6v6l4 2"/>
+              <path d="m4.93 4.93 4.24 4.24"/>
+            </svg>
+          </div>
+          <div>
+            <h2 style="font-size: 20px; font-weight: 800; line-height: 1.1;">AGRI TRACE</h2>
+            <span style="font-size: 12px; opacity: 0.8; font-weight: 500;">Cold-Chain Traceability</span>
+          </div>
+        </div>
 
-      <div class="features">
-        <div class="feature">
-          <div class="check">✓</div>
-          <span>Quản lý nguồn gốc nông sản</span>
-        </div>
-        <div class="feature">
-          <div class="check">✓</div>
-          <span>Giám sát chuỗi lạnh</span>
-        </div>
-        <div class="feature">
-          <div class="check">✓</div>
-          <span>Bảo mật tài khoản người dùng</span>
+        <span class="showcase-title-badge">Hệ thống chuẩn VietGAP</span>
+        <h1 class="showcase-headline">
+          Minh bạch nguồn gốc,<br>
+          <span>an toàn chuỗi lạnh.</span>
+        </h1>
+        <p class="showcase-desc">
+          Nền tảng kiểm soát và xác thực hành trình nông sản từ vùng trồng, sơ chế đến kho lạnh và phân phối theo thời gian thực.
+        </p>
+
+        <div class="feature-list">
+          <div class="feature-item">
+            <div class="feature-check">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+            </div>
+            <span>Khai báo và liên kết thửa đất với từng lô thu hoạch</span>
+          </div>
+          <div class="feature-item">
+            <div class="feature-check">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+            </div>
+            <span>Bảo mật chống sửa lén bằng chuỗi băm RFC 8785 SHA-256</span>
+          </div>
+          <div class="feature-item">
+            <div class="feature-check">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+            </div>
+            <span>Cách ly dữ liệu đa tổ chức & khóa bảo vệ tài khoản Argon2id</span>
+          </div>
         </div>
       </div>
-    </div>
 
-    <div class="login-area">
-      <h2>Đăng nhập</h2>
-      <p class="subtitle">Đăng nhập để tiếp tục vào hệ thống</p>
+      <div class="showcase-footer">
+        © 2026 TTCS K18 N2 - Dự án Giám sát Chuỗi Lạnh
+      </div>
+    </section>
 
-      <form id="loginForm">
-        <div class="form-group">
-          <label for="email">Email</label>
-          <div class="input-box">
-            <span class="input-icon">✉</span>
+    <!-- Right Login Form Panel -->
+    <section class="auth-form-panel">
+      <h2 class="form-heading">Đăng nhập</h2>
+      <p class="form-subheading">Nhập thông tin xác thực để vào hệ thống</p>
+
+      <form id="loginForm" novalidate>
+        <div class="field-group">
+          <label for="email" class="form-label">Email tài khoản</label>
+          <div class="input-wrapper">
             <input
               type="email"
               id="email"
-              placeholder="Nhập email của bạn"
+              class="form-control"
+              placeholder="ten@tochuc.vn"
               value="user@example.com"
               required
+              autocomplete="email"
             >
+            <span class="input-icon-left">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg>
+            </span>
           </div>
         </div>
 
-        <div class="form-group">
-          <label for="password">Mật khẩu</label>
-          <div class="input-box">
-            <span class="input-icon">🔒</span>
+        <div class="field-group">
+          <label for="password" class="form-label">Mật khẩu</label>
+          <div class="input-wrapper">
             <input
               type="password"
               id="password"
-              placeholder="Nhập mật khẩu"
+              class="form-control"
+              placeholder="••••••••••••"
               value="Password@123"
               required
+              autocomplete="current-password"
             >
+            <span class="input-icon-left">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+            </span>
+            <button type="button" id="togglePasswordBtn" class="toggle-pwd-btn" title="Hiện/ẩn mật khẩu">
+              <svg id="eyeIcon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+            </button>
           </div>
         </div>
 
-        <button type="submit">Đăng nhập</button>
+        <button type="submit" id="submitBtn" class="btn-primary btn-submit">
+          <span>Đăng nhập hệ thống</span>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+        </button>
 
-        <div id="message"></div>
+        <div id="message" role="alert" aria-live="polite"></div>
       </form>
 
-      <div class="demo">
-        <strong>Tài khoản demo</strong><br>
-        Email: user@example.com<br>
-        Mật khẩu: Password@123
+      <!-- 1-Click Demo Accounts -->
+      <div class="demo-box">
+        <div class="demo-header">
+          <span class="demo-title">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+            Tài khoản kiểm thử nhanh
+          </span>
+          <span style="font-size: 11px; color: var(--color-text-muted);">Bấm để điền mẫu</span>
+        </div>
+        <div class="demo-chips">
+          <button type="button" class="demo-chip-btn" onclick="fillCredentials('user@example.com', 'Password@123')">
+            <div class="demo-chip-info">
+              <span class="demo-chip-email">user@example.com</span>
+              <span class="demo-chip-role">Nông dân (org-001) • Toàn quyền thửa & lô</span>
+            </div>
+            <span class="demo-chip-action">Điền ngay &rarr;</span>
+          </button>
+          <button type="button" class="demo-chip-btn" onclick="fillCredentials('inspector@example.com', 'Password@123')">
+            <div class="demo-chip-info">
+              <span class="demo-chip-email">inspector@example.com</span>
+              <span class="demo-chip-role">Cán bộ kiểm tra (org-001) • Chế độ chỉ đọc</span>
+            </div>
+            <span class="demo-chip-action">Điền ngay &rarr;</span>
+          </button>
+        </div>
       </div>
-
-      <div class="footer">
-        AGRI TRACEABILITY © 2026
-      </div>
-    </div>
-  </div>
+    </section>
+  </main>
 
   <script>
-    document
-      .getElementById("loginForm")
-      .addEventListener("submit", async function(event) {
-        event.preventDefault();
+    // 1-Click Quick Fill helper
+    function fillCredentials(email, pwd) {
+      document.getElementById("email").value = email;
+      document.getElementById("password").value = pwd;
+      document.getElementById("message").textContent = "";
+      document.getElementById("message").className = "";
+      document.getElementById("email").focus();
+    }
 
-        const email = document.getElementById("email").value;
-        const password = document.getElementById("password").value;
-        const message = document.getElementById("message");
+    // Toggle Password Visibility
+    const toggleBtn = document.getElementById("togglePasswordBtn");
+    const pwdInput = document.getElementById("password");
+    toggleBtn.addEventListener("click", () => {
+      const isPwd = pwdInput.type === "password";
+      pwdInput.type = isPwd ? "text" : "password";
+      toggleBtn.innerHTML = isPwd
+        ? `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.88 9.88a3 3 0 1 0 4.24 4.24"/><path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68"/><path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61"/><line x1="2" y1="2" x2="22" y2="22"/></svg>`
+        : `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>`;
+    });
 
-        message.textContent = "Đang đăng nhập...";
-        message.style.color = "#555";
+    // Form Submission
+    document.getElementById("loginForm").addEventListener("submit", async function(event) {
+      event.preventDefault();
 
-        const params = new URLSearchParams(window.location.search);
-        const returnTo = params.get("returnTo") || "/lots";
+      const email = document.getElementById("email").value.trim();
+      const password = document.getElementById("password").value;
+      const message = document.getElementById("message");
+      const submitBtn = document.getElementById("submitBtn");
 
-        try {
-          const response = await fetch("/api/login", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json"
-            },
-            body: JSON.stringify({
-              email,
-              password,
-              returnTo
-            })
-          });
+      if (!email || !password) {
+        message.style.color = "var(--color-danger)";
+        message.textContent = "Vui lòng nhập đầy đủ email và mật khẩu.";
+        return;
+      }
 
-          const data = await response.json();
+      message.style.color = "var(--color-text-muted)";
+      message.textContent = "Đang xác thực thông tin...";
+      submitBtn.disabled = true;
 
-          if (response.ok) {
-            message.style.color = "#1d7a43";
-            message.textContent = "Đăng nhập thành công!";
+      const params = new URLSearchParams(window.location.search);
+      const returnTo = params.get("returnTo") || "/lots";
 
-            setTimeout(() => {
-              window.location.href = data.redirectTo || "/lots";
-            }, 500);
-          } else {
-            message.style.color = "#d9534f";
-            message.textContent = data.message || "Email hoặc mật khẩu không đúng.";
-          }
-        } catch (error) {
-          message.style.color = "#d9534f";
-          message.textContent = "Không thể kết nối máy chủ.";
+      try {
+        const response = await fetch("/api/login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email, password, returnTo })
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+          message.style.color = "var(--color-primary)";
+          message.textContent = "Đăng nhập thành công! Đang chuyển hướng...";
+          setTimeout(() => {
+            window.location.href = data.redirectTo || "/lots";
+          }, 400);
+        } else if (response.status === 423) {
+          // Account Temporarily Locked
+          message.style.color = "var(--color-danger)";
+          message.textContent = data.message + ` Vui lòng thử lại sau ${data.retryAfterSeconds || 900} giây.`;
+          submitBtn.disabled = false;
+        } else {
+          message.style.color = "var(--color-danger)";
+          message.textContent = data.message || "Email hoặc mật khẩu không chính xác.";
+          submitBtn.disabled = false;
         }
-      });
+      } catch (error) {
+        message.style.color = "var(--color-danger)";
+        message.textContent = "Không thể kết nối máy chủ backend.";
+        submitBtn.disabled = false;
+      }
+    });
   </script>
 </body>
 </html>

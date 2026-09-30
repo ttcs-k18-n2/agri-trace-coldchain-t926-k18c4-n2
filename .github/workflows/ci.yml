@@ -63,9 +63,26 @@ jobs:
       - name: Run lint / syntax checks
         run: npm run lint --prefix backend
 
+      - name: Run dependency security audit
+        run: npm audit --audit-level=high --prefix backend
+
   test:
     name: test
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: agri_trace
+          POSTGRES_USER: agri_user
+          POSTGRES_PASSWORD: agri_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U agri_user -d agri_trace"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -80,5 +97,14 @@ jobs:
       - name: Install dependencies
         run: npm ci --prefix backend
 
-      - name: Run automated tests
+      - name: Run database migrations
+        env:
+          DATABASE_URL: postgresql://agri_user:agri_password@localhost:5432/agri_trace
+        run: npm run migrate --prefix backend
+
+      - name: Run automated tests with coverage
+        env:
+          NODE_ENV: test
+          DATABASE_URL: postgresql://agri_user:agri_password@localhost:5432/agri_trace
+          SESSION_SECRET: test-ci-session-secret-key-32-chars-long
         run: npm test --prefix backend
