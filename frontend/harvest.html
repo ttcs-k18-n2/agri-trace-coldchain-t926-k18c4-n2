@@ -1,0 +1,456 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Ghi nhận thu hoạch | AgriTrace ColdChain</title>
+  <meta name="description" content="Ghi nhận lô thu hoạch nông sản từ thửa đất, tự động sinh mã lô ngẫu nhiên chuẩn T-19">
+  <link rel="stylesheet" href="/styles.css">
+  <style>
+    .harvest-container {
+      max-width: 680px;
+      margin: 0 auto;
+    }
+    .lot-badge-display {
+      background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%);
+      border: 2px dashed var(--color-primary);
+      border-radius: var(--radius-xl);
+      padding: 2rem;
+      text-align: center;
+      margin: 1.5rem 0;
+      box-shadow: var(--shadow-sm);
+    }
+    .lot-code-text {
+      font-size: 2.25rem;
+      font-weight: 800;
+      letter-spacing: 0.15em;
+      color: var(--color-primary-active);
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      margin: 0.75rem 0;
+      user-select: all;
+    }
+    .success-summary {
+      background: var(--color-surface);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-lg);
+      padding: 1.25rem;
+      margin-top: 1.25rem;
+      text-align: left;
+    }
+    .summary-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 0.5rem 0;
+      border-bottom: 1px solid var(--color-border);
+      font-size: 0.95rem;
+    }
+    .summary-row:last-child {
+      border-bottom: none;
+    }
+    .summary-label {
+      color: var(--color-text-muted);
+    }
+    .summary-value {
+      font-weight: 700;
+      color: var(--color-text-main);
+    }
+  </style>
+</head>
+<body>
+  <!-- Header / Navigation Bar -->
+  <header class="header">
+    <div class="header-inner container">
+      <div class="brand">
+        <div class="brand-logo">🌿</div>
+        <div class="brand-text">
+          <span class="brand-name">AgriTrace</span>
+          <span class="brand-sub">ColdChain Traceability</span>
+        </div>
+      </div>
+
+      <nav class="nav-links">
+        <a href="/lots.html" class="nav-item">📦 Lô hàng</a>
+        <a href="/farms.html" class="nav-item">🌾 Thửa đất</a>
+        <a href="/products.html" class="nav-item">🍎 Sản phẩm</a>
+        <a href="/harvest.html" class="nav-item active">✨ Ghi nhận thu hoạch</a>
+      </nav>
+
+      <div class="user-control">
+        <div class="user-pill">
+          <div class="user-avatar" id="nav-avatar">U</div>
+          <div class="user-details">
+            <span class="user-name" id="nav-user-email">Đang tải...</span>
+            <span class="user-role" id="nav-user-role">...</span>
+          </div>
+        </div>
+        <button id="btn-logout" class="btn btn-outline btn-sm" title="Đăng xuất">Đăng xuất</button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Content -->
+  <main class="main container">
+    <div class="harvest-container">
+      <div class="page-header" style="text-align: center; display: block; margin-bottom: 2rem;">
+        <h1 class="page-title" style="font-size: 1.85rem;">GHI NHẬN THU HOẠCH</h1>
+        <p class="page-desc" style="margin-top: 0.5rem;">Đăng ký lô hàng mới sau khi thu hoạch tại thửa đất. Hệ thống tự động sinh mã định danh lô chuẩn.</p>
+      </div>
+
+      <!-- Alert Banner -->
+      <div id="alert-banner" class="alert" style="display: none; margin-bottom: 1.5rem;"></div>
+
+      <!-- Form Card -->
+      <div id="harvest-card" class="card" style="padding: 2rem;">
+        <form id="form-harvest">
+          <div class="form-group" style="margin-bottom: 1.25rem;">
+            <label class="form-label" for="select-farm">
+              Thửa đất thu hoạch <span style="color: var(--color-danger)">*</span>
+            </label>
+            <select id="select-farm" class="form-input" required>
+              <option value="">-- Đang tải danh sách thửa đất... --</option>
+            </select>
+            <span class="form-hint">Chỉ hiển thị các thửa đất thuộc quyền sở hữu của tổ chức bạn.</span>
+          </div>
+
+          <div class="form-group" style="margin-bottom: 1.25rem;">
+            <label class="form-label" for="select-product">
+              Loại nông sản thu hoạch <span style="color: var(--color-danger)">*</span>
+            </label>
+            <select id="select-product" class="form-input" required>
+              <option value="">-- Chọn sản phẩm từ danh mục --</option>
+            </select>
+            <span class="form-hint">Sản phẩm thuộc danh mục quy chuẩn của hệ thống.</span>
+          </div>
+
+          <div class="form-group" style="margin-bottom: 1.25rem;">
+            <label class="form-label" for="input-quantity">
+              Khối lượng thu hoạch <span style="color: var(--color-danger)">*</span>
+            </label>
+            <div style="display: flex; gap: 0.75rem; align-items: center;">
+              <input type="number" id="input-quantity" class="form-input" required step="0.001" min="0.001" placeholder="Ví dụ: 100.5" style="flex: 1;">
+              <span id="unit-badge" class="unit-tag" style="padding: 0.65rem 1rem; font-size: 0.95rem;">kg</span>
+            </div>
+            <span class="form-hint">Khối lượng ban đầu của lô hàng (phải là số dương lớn hơn 0).</span>
+          </div>
+
+          <div class="form-group" style="margin-bottom: 1.5rem;">
+            <label class="form-label" for="input-date">
+              Ngày thu hoạch <span style="color: var(--color-danger)">*</span>
+            </label>
+            <input type="date" id="input-date" class="form-input" required>
+            <span class="form-hint">Thời điểm thực hiện thu hoạch thực tế tại nông trại.</span>
+          </div>
+
+          <div class="form-group" style="margin-bottom: 1.5rem;">
+            <label class="form-label" for="input-custom-name">
+              Tên gợi nhớ / Ghi chú lô (Không bắt buộc)
+            </label>
+            <input type="text" id="input-custom-name" class="form-input" placeholder="Tự động ghép Tên sản phẩm - Thửa đất nếu để trống">
+          </div>
+
+          <button type="submit" id="btn-submit-harvest" class="btn btn-primary" style="width: 100%; padding: 0.85rem; font-size: 1.05rem; font-weight: 700;">
+            🌾 Ghi nhận thu hoạch
+          </button>
+        </form>
+      </div>
+
+      <!-- Success Result Card -->
+      <div id="success-card" class="card" style="display: none; padding: 2rem; text-align: center;">
+        <div style="font-size: 3rem; margin-bottom: 0.5rem;">🎉</div>
+        <h2 style="font-size: 1.5rem; font-weight: 800; color: var(--color-success);">GHI NHẬN THÀNH CÔNG</h2>
+        <p style="color: var(--color-text-muted); margin-top: 0.25rem;">Lô hàng đã được khởi tạo và lưu trữ an toàn trong hệ thống.</p>
+
+        <div class="lot-badge-display">
+          <div style="font-size: 0.85rem; font-weight: 700; text-transform: uppercase; color: var(--color-primary); letter-spacing: 0.05em;">MÃ ĐỊNH DANH LÔ HÀNG</div>
+          <div id="res-lot-code" class="lot-code-text">LOT-XXXXXXXX</div>
+          <div style="margin: 10px 0;">
+            <button type="button" id="btn-copy-lot-code" class="btn btn-outline btn-sm" style="display: inline-flex; align-items: center; gap: 6px; font-weight: 600; padding: 6px 16px; cursor: pointer; border-radius: var(--radius-sm);">
+              <span>📋 Sao chép mã</span>
+            </button>
+            <span id="copy-feedback" style="display: none; font-size: 0.85rem; color: var(--color-success); font-weight: 700; margin-left: 8px;">✓ Đã sao chép!</span>
+          </div>
+          <div style="font-size: 0.85rem; color: var(--color-text-muted);">Mã lô được in/dán nhãn truy xuất nguồn gốc chống nhầm lẫn</div>
+        </div>
+
+        <div class="success-summary">
+          <div class="summary-row">
+            <span class="summary-label">Sản phẩm:</span>
+            <span class="summary-value" id="res-product-name">---</span>
+          </div>
+          <div class="summary-row">
+            <span class="summary-label">Khối lượng ban đầu:</span>
+            <span class="summary-value" id="res-quantity">---</span>
+          </div>
+          <div class="summary-row">
+            <span class="summary-label">Thửa đất:</span>
+            <span class="summary-value" id="res-farm-name">---</span>
+          </div>
+          <div class="summary-row">
+            <span class="summary-label">Ngày thu hoạch:</span>
+            <span class="summary-value" id="res-harvest-date">---</span>
+          </div>
+          <div class="summary-row">
+            <span class="summary-label">Trạng thái:</span>
+            <span class="summary-value" style="color: var(--color-primary); font-weight: 700;" id="res-status">Đã thu hoạch</span>
+          </div>
+        </div>
+
+        <div style="display: flex; gap: 1rem; margin-top: 1.5rem; justify-content: center; flex-wrap: wrap;">
+          <a href="/lots.html" class="btn btn-primary" style="flex: 1; min-width: 180px;">📦 Xem danh sách lô hàng</a>
+          <button id="btn-continue-harvest" class="btn btn-outline" style="flex: 1; min-width: 180px;">+ Ghi nhận lô khác</button>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <script>
+    let currentUser = null;
+    let farmsList = [];
+    let productsList = [];
+
+    document.addEventListener("DOMContentLoaded", async () => {
+      // Set default harvest date to today
+      const today = new Date().toISOString().slice(0, 10);
+      document.getElementById("input-date").value = today;
+
+      await loadCurrentUser();
+      await Promise.all([loadFarms(), loadProducts()]);
+      setupEventListeners();
+    });
+
+    async function loadCurrentUser() {
+      try {
+        const res = await fetch("/api/me");
+        if (res.status === 401) {
+          window.location.href = "/login?returnTo=/harvest.html";
+          return;
+        }
+        const data = await res.json();
+        currentUser = data.user;
+
+        document.getElementById("nav-user-email").textContent = currentUser.email;
+        document.getElementById("nav-user-role").textContent = formatRole(currentUser.roleId);
+        document.getElementById("nav-avatar").textContent = currentUser.email.charAt(0).toUpperCase();
+
+        // Kiểm tra quyền: Cán bộ kiểm tra không được ghi nhận lô
+        if (currentUser.roleId === "inspector") {
+          showBanner("danger", "Tài khoản Cán bộ kiểm tra chỉ có quyền đọc dữ liệu, không được phép ghi nhận thu hoạch.");
+          document.getElementById("btn-submit-harvest").disabled = true;
+        }
+      } catch (err) {
+        console.error("Lỗi xác thực người dùng:", err);
+      }
+    }
+
+    async function loadFarms() {
+      const select = document.getElementById("select-farm");
+      try {
+        const res = await fetch("/api/farms");
+        if (!res.ok) throw new Error("Không thể tải danh sách thửa đất.");
+        const data = await res.json();
+        farmsList = data.farms || [];
+
+        if (farmsList.length === 0) {
+          select.innerHTML = '<option value="">-- Tổ chức chưa có thửa đất nào. Vui lòng tạo thửa đất trước! --</option>';
+          select.disabled = true;
+          return;
+        }
+
+        select.innerHTML = '<option value="">-- Chọn thửa đất thu hoạch --</option>' +
+          farmsList.map((f) => `<option value="${escapeHtml(f.id)}">${escapeHtml(f.name)} (${f.area} ha)</option>`).join("");
+      } catch (err) {
+        select.innerHTML = `<option value="">Lỗi: ${escapeHtml(err.message)}</option>`;
+      }
+    }
+
+    async function loadProducts() {
+      const select = document.getElementById("select-product");
+      try {
+        const res = await fetch("/api/products");
+        if (!res.ok) throw new Error("Không thể tải danh sách sản phẩm.");
+        const data = await res.json();
+        productsList = data.products || [];
+
+        if (productsList.length === 0) {
+          select.innerHTML = '<option value="">-- Chưa có sản phẩm trong danh mục --</option>';
+          return;
+        }
+
+        select.innerHTML = '<option value="">-- Chọn loại sản phẩm --</option>' +
+          productsList.map((p) => `<option value="${escapeHtml(p.id)}" data-unit="${escapeHtml(p.unit)}">${escapeHtml(p.name)} (${formatUnit(p.unit)})</option>`).join("");
+      } catch (err) {
+        select.innerHTML = `<option value="">Lỗi: ${escapeHtml(err.message)}</option>`;
+      }
+    }
+
+    function setupEventListeners() {
+      // Logout
+      document.getElementById("btn-logout").addEventListener("click", async () => {
+        try {
+          await fetch("/api/logout", { method: "POST" });
+        } finally {
+          window.location.href = "/login";
+        }
+      });
+
+      // Update unit badge when product changes
+      document.getElementById("select-product").addEventListener("change", (e) => {
+        const opt = e.target.options[e.target.selectedIndex];
+        const unit = opt ? opt.getAttribute("data-unit") : "kg";
+        document.getElementById("unit-badge").textContent = unit || "kg";
+      });
+
+      // Submit form ghi nhận thu hoạch
+      document.getElementById("form-harvest").addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const farmId = document.getElementById("select-farm").value;
+        const productId = document.getElementById("select-product").value;
+        const quantity = parseFloat(document.getElementById("input-quantity").value);
+        const harvestedAt = document.getElementById("input-date").value;
+        const customName = document.getElementById("input-custom-name").value.trim();
+        const submitBtn = document.getElementById("btn-submit-harvest");
+
+        if (!farmId) {
+          showBanner("danger", "Vui lòng chọn thửa đất thu hoạch.");
+          return;
+        }
+        if (!productId) {
+          showBanner("danger", "Vui lòng chọn loại sản phẩm thu hoạch.");
+          return;
+        }
+        if (isNaN(quantity) || quantity <= 0) {
+          showBanner("danger", "Khối lượng thu hoạch phải là số dương lớn hơn 0.");
+          return;
+        }
+
+        submitBtn.disabled = true;
+        submitBtn.textContent = "Đang xử lý...";
+
+        try {
+          const payload = {
+            farmId,
+            productId,
+            quantity,
+            harvestedAt,
+          };
+          if (customName) payload.name = customName;
+
+          const res = await fetch("/api/lots", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          });
+
+          const data = await res.json();
+
+          if (!res.ok) {
+            showBanner("danger", data.message || "Lỗi ghi nhận thu hoạch.");
+            return;
+          }
+
+          // Hiển thị kết quả thành công
+          renderSuccess(data.lot);
+        } catch (err) {
+          showBanner("danger", err.message || "Không thể kết nối đến máy chủ.");
+        } finally {
+          submitBtn.disabled = false;
+          submitBtn.textContent = "🌾 Ghi nhận thu hoạch";
+        }
+      });
+
+      // Nút sao chép mã lô (T-20)
+      document.getElementById("btn-copy-lot-code").addEventListener("click", async () => {
+        const code = document.getElementById("res-lot-code").textContent.trim();
+        try {
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+            await navigator.clipboard.writeText(code);
+          } else {
+            const temp = document.createElement("textarea");
+            temp.value = code;
+            document.body.appendChild(temp);
+            temp.select();
+            document.execCommand("copy");
+            document.body.removeChild(temp);
+          }
+          const feedback = document.getElementById("copy-feedback");
+          feedback.style.display = "inline";
+          setTimeout(() => {
+            feedback.style.display = "none";
+          }, 2500);
+        } catch (err) {
+          alert("Mã lô của bạn là: " + code);
+        }
+      });
+
+      // Nút ghi nhận tiếp
+      document.getElementById("btn-continue-harvest").addEventListener("click", () => {
+        document.getElementById("form-harvest").reset();
+        document.getElementById("input-date").value = new Date().toISOString().slice(0, 10);
+        document.getElementById("unit-badge").textContent = "kg";
+        document.getElementById("success-card").style.display = "none";
+        document.getElementById("harvest-card").style.display = "block";
+      });
+    }
+
+    function renderSuccess(lot) {
+      document.getElementById("harvest-card").style.display = "none";
+      document.getElementById("success-card").style.display = "block";
+
+      document.getElementById("res-lot-code").textContent = lot.id;
+      document.getElementById("res-product-name").textContent = `${lot.productName || "Sản phẩm"} (${lot.unit || "kg"})`;
+      document.getElementById("res-quantity").textContent = `${lot.initialQuantity} ${lot.unit || "kg"}`;
+      document.getElementById("res-farm-name").textContent = lot.farmName || lot.farmId;
+      document.getElementById("res-harvest-date").textContent = formatDate(lot.harvestedAt);
+      document.getElementById("res-status").textContent = lot.status || "Đã thu hoạch";
+    }
+
+    function formatRole(role) {
+      const map = {
+        admin: "Quản trị viên",
+        producer: "Nông hộ / Sản xuất",
+        cooperative: "Hợp tác xã",
+        inspector: "Cán bộ kiểm tra",
+        transporter: "Đơn vị vận chuyển",
+        distributor: "Nhà phân phối",
+      };
+      return map[role] || role;
+    }
+
+    function formatUnit(unit) {
+      const map = {
+        kg: "kg",
+        tan: "tấn",
+        thung: "thùng",
+      };
+      return map[unit] || unit;
+    }
+
+    function formatDate(d) {
+      if (!d) return "---";
+      const date = new Date(d);
+      return date.toLocaleDateString("vi-VN");
+    }
+
+    function showBanner(type, message) {
+      const banner = document.getElementById("alert-banner");
+      banner.className = `alert alert-${type}`;
+      banner.textContent = message;
+      banner.style.display = "block";
+      window.scrollTo({ top: 0, behavior: "smooth" });
+      setTimeout(() => {
+        banner.style.display = "none";
+      }, 6000);
+    }
+
+    function escapeHtml(str) {
+      if (!str) return "";
+      return String(str)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+    }
+  </script>
+</body>
+</html>
