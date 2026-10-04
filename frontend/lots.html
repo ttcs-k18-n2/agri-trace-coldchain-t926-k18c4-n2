@@ -534,12 +534,6 @@
       renderLots();
     });
 
-    // Đăng xuất
-    document.getElementById("logout").addEventListener("click", async function() {
-      await fetch("/api/logout", { method: "POST" });
-      window.location.href = "/login";
-    });
-
     loadPage();
   </script>
 </body>

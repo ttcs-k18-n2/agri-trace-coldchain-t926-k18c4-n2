@@ -64,10 +64,16 @@ async function scopedQuery(poolOrClient, authContext, tableName, options = {}) {
  */
 async function scopedQueryById(poolOrClient, authContext, tableName, id, options = {}) {
   const isShared = SHARED_TABLES.has(tableName) || options.allowGlobal === true;
-  const isInspector = Boolean(authContext && (authContext.roleId === "inspector" || authContext.isInspector));
+  const isGlobalAccess = Boolean(
+    authContext &&
+      (authContext.roleId === "inspector" ||
+        authContext.isInspector ||
+        authContext.roleId === "admin" ||
+        authContext.isAdmin)
+  );
   const orgId = authContext ? (authContext.organizationId || authContext.organization_id) : null;
 
-  if (!isShared && !isInspector && !orgId) {
+  if (!isShared && !isGlobalAccess && !orgId) {
     throw new Error(
       `Truy vấn bị từ chối: thiếu ngữ cảnh tổ chức (organization context required) cho bảng '${tableName}'. Không có quyền truy vấn dữ liệu toàn cục.`
     );
@@ -76,7 +82,7 @@ async function scopedQueryById(poolOrClient, authContext, tableName, id, options
   const params = [id];
   let sql;
 
-  if (isShared || isInspector) {
+  if (isShared || isGlobalAccess) {
     sql = `SELECT * FROM ${tableName} WHERE id = $1`;
   } else {
     params.push(orgId);
@@ -93,7 +99,7 @@ async function scopedQueryById(poolOrClient, authContext, tableName, id, options
   let isCrossTenant = false;
   let targetOrgId = null;
   // Khi không tìm thấy theo tenant của user hiện tại, probe xem id này có tồn tại ở tenant khác không
-  if (!row && !isShared && !isInspector) {
+  if (!row && !isShared && !isGlobalAccess) {
     try {
       const probe = await poolOrClient.query(
         `SELECT organization_id FROM ${tableName} WHERE id = $1`,
