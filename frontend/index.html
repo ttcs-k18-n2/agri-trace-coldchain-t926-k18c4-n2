@@ -298,7 +298,10 @@
     .demo-chips {
       display: flex;
       flex-direction: column;
-      gap: 8px;
+      gap: 6px;
+      max-height: 260px;
+      overflow-y: auto;
+      padding-right: 4px;
     }
 
     .demo-chip-btn {
@@ -487,19 +490,54 @@
           <span style="font-size: 11px; color: var(--color-text-muted);">Bấm để điền mẫu</span>
         </div>
         <div class="demo-chips">
+          <button type="button" class="demo-chip-btn" onclick="fillCredentials('admin@example.com', 'Password@123')">
+            <div class="demo-chip-info">
+              <span class="demo-chip-email">admin@example.com</span>
+              <span class="demo-chip-role">Quản trị viên (org-system) • Toàn quyền hệ thống & sản phẩm</span>
+            </div>
+            <span class="demo-chip-action">Điền &rarr;</span>
+          </button>
+          <button type="button" class="demo-chip-btn" onclick="fillCredentials('orgadmin@example.com', 'Password@123')">
+            <div class="demo-chip-info">
+              <span class="demo-chip-email">orgadmin@example.com</span>
+              <span class="demo-chip-role">Quản trị tổ chức (org-001) • Quản lý thửa & lô tổ chức</span>
+            </div>
+            <span class="demo-chip-action">Điền &rarr;</span>
+          </button>
           <button type="button" class="demo-chip-btn" onclick="fillCredentials('user@example.com', 'Password@123')">
             <div class="demo-chip-info">
               <span class="demo-chip-email">user@example.com</span>
-              <span class="demo-chip-role">Nông dân (org-001) • Toàn quyền thửa & lô</span>
+              <span class="demo-chip-role">Nông dân (org-001) • Khai báo thửa đất & thu hoạch</span>
             </div>
-            <span class="demo-chip-action">Điền ngay &rarr;</span>
+            <span class="demo-chip-action">Điền &rarr;</span>
+          </button>
+          <button type="button" class="demo-chip-btn" onclick="fillCredentials('user2@example.com', 'Password@123')">
+            <div class="demo-chip-info">
+              <span class="demo-chip-email">user2@example.com</span>
+              <span class="demo-chip-role">Hợp tác xã (org-002) • Quản lý lô & thu hoạch HTX</span>
+            </div>
+            <span class="demo-chip-action">Điền &rarr;</span>
+          </button>
+          <button type="button" class="demo-chip-btn" onclick="fillCredentials('transporter@example.com', 'Password@123')">
+            <div class="demo-chip-info">
+              <span class="demo-chip-email">transporter@example.com</span>
+              <span class="demo-chip-role">Đơn vị vận chuyển (org-trans) • Giám sát chuỗi lạnh (Chỉ đọc)</span>
+            </div>
+            <span class="demo-chip-action">Điền &rarr;</span>
+          </button>
+          <button type="button" class="demo-chip-btn" onclick="fillCredentials('distributor@example.com', 'Password@123')">
+            <div class="demo-chip-info">
+              <span class="demo-chip-email">distributor@example.com</span>
+              <span class="demo-chip-role">Nhà phân phối (org-dist) • Theo dõi phân phối (Chỉ đọc)</span>
+            </div>
+            <span class="demo-chip-action">Điền &rarr;</span>
           </button>
           <button type="button" class="demo-chip-btn" onclick="fillCredentials('inspector@example.com', 'Password@123')">
             <div class="demo-chip-info">
               <span class="demo-chip-email">inspector@example.com</span>
-              <span class="demo-chip-role">Cán bộ kiểm tra (org-001) • Chế độ chỉ đọc</span>
+              <span class="demo-chip-role">Cán bộ kiểm tra (org-inspector) • Thanh tra chuỗi (Chỉ đọc)</span>
             </div>
-            <span class="demo-chip-action">Điền ngay &rarr;</span>
+            <span class="demo-chip-action">Điền &rarr;</span>
           </button>
         </div>
       </div>

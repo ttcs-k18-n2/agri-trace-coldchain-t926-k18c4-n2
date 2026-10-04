@@ -251,11 +251,18 @@
       currentUser = await initAppShell({ activeNav: "harvest" });
       if (!currentUser) return;
 
-      const writableRoles = ["producer", "cooperative", "org_admin", "admin"];
-      if (!writableRoles.includes(currentUser.roleId)) {
-        showBanner("danger", "Vai trò hiện tại chỉ có quyền xem dữ liệu và không thể ghi nhận thu hoạch.");
+      const canHarvest = (typeof window.hasPermission === "function")
+        ? window.hasPermission(currentUser.roleId, "harvest.create")
+        : ["producer", "cooperative", "org_admin", "admin"].includes(currentUser.roleId);
+
+      if (!canHarvest) {
+        showBanner("danger", "Tài khoản hiện tại chỉ có quyền xem dữ liệu và không thể ghi nhận thu hoạch.");
         const submitBtn = document.getElementById("btn-submit-harvest");
-        if (submitBtn) submitBtn.disabled = true;
+        if (submitBtn) {
+          submitBtn.disabled = true;
+          submitBtn.style.opacity = "0.55";
+          submitBtn.style.cursor = "not-allowed";
+        }
       }
 
       await Promise.all([loadFarms(), loadProducts()]);

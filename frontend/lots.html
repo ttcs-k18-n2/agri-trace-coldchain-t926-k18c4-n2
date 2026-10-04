@@ -382,9 +382,12 @@
         const user = await initAppShell({ activeNav: "lots" });
         if (!user) return;
 
-        const writableHarvestRoles = ["producer", "cooperative", "org_admin", "admin"];
+        const canHarvest = (typeof window.hasPermission === "function")
+          ? window.hasPermission(user.roleId, "harvest.create")
+          : ["producer", "cooperative", "org_admin", "admin"].includes(user.roleId);
+
         const harvestButton = document.getElementById("btnGoHarvest");
-        if (harvestButton && !writableHarvestRoles.includes(user.roleId)) {
+        if (harvestButton && !canHarvest) {
           harvestButton.removeAttribute("href");
           harvestButton.setAttribute("aria-disabled", "true");
           harvestButton.setAttribute("title", "Vai trò hiện tại không có quyền ghi nhận thu hoạch");
