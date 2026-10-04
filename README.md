@@ -170,6 +170,21 @@ docker compose up --build
 - [Git workflow](docs/WORKFLOW.md)
 - [K-01 - quyết định toàn vẹn dữ liệu](docs/K-01-INTEGRITY.md)
 
+## Bảng sự kiện chỉ-thêm
+
+`batch_events` là bảng append-only.
+
+Tài khoản ứng dụng (`agri_app`) chỉ được:
+- `SELECT`
+- `INSERT`
+
+Không được:
+- `UPDATE`
+- `DELETE`
+- `TRUNCATE`
+
+Nếu cần hiệu chỉnh nghiệp vụ, phải ghi một sự kiện mới, không sửa sự kiện cũ.
+
 ## Definition of Done
 
 Một Story/Task chỉ được coi là Done khi các mục áp dụng đều đạt:

@@ -15,6 +15,7 @@ const {
   inMemoryBatchEvents,
   setAppendHookForTesting,
 } = require("./event_repository");
+const { verifyBatchIntegrity } = require("./integrity_verifier");
 
 const app = express();
 const PORT = Number(process.env.PORT || 3000);
@@ -682,8 +683,9 @@ app.put(
 );
 
 /**
- * Danh sách lô hàng của tổ chức hiện tại (T-12, T-13, T-20)
- * Trả về thông tin mở rộng: thửa đất, sản phẩm, khối lượng ban đầu/còn lại, ngày thu hoạch
+ * Danh sách lô hàng của tổ chức hiện tại (T-12, T-13, T-20, S-14 / T-33)
+ * Hỗ trợ server-side search mã lô, lọc theo sản phẩm, sắp xếp mới nhất (newest first),
+ * và phân trang dạng con trỏ (cursor-based pagination).
  */
 app.get(
   ["/api/lots", "/api/organization/lots"],
@@ -691,6 +693,21 @@ app.get(
   async (req, res) => {
     const isInspector = req.auth.isInspector;
     const orgId = req.auth.organizationId;
+
+    const search = typeof req.query.search === "string" ? req.query.search.trim() : "";
+    const productId = typeof req.query.productId === "string" ? req.query.productId.trim() : "";
+    const limit = Math.min(Math.max(Number(req.query.limit) || 20, 1), 50);
+    const cursor = req.query.cursor ? String(req.query.cursor).trim() : null;
+
+    let cursorData = null;
+    if (cursor) {
+      try {
+        const decoded = Buffer.from(cursor, "base64url").toString("utf-8");
+        cursorData = JSON.parse(decoded);
+      } catch {
+        cursorData = null;
+      }
+    }
 
     if (pool) {
       try {
@@ -704,17 +721,73 @@ app.get(
           LEFT JOIN farms f ON l.farm_id = f.id
           LEFT JOIN products p ON l.product_id = p.id
         `;
+        const conditions = [];
         const params = [];
+
+        // 1. Phân quyền tổ chức (T-12, T-13, S-14)
         if (!isInspector && req.auth.roleId !== "admin") {
           params.push(orgId);
-          sql += ` WHERE l.organization_id = $1`;
+          conditions.push(`l.organization_id = $${params.length}`);
         }
-        sql += ` ORDER BY l.created_at DESC`;
+
+        // 2. Tìm kiếm mã lô không phân biệt hoa/thường (S-14)
+        if (search) {
+          params.push(`%${search}%`);
+          conditions.push(`l.id ILIKE $${params.length}`);
+        }
+
+        // 3. Lọc theo sản phẩm (S-14)
+        if (productId) {
+          params.push(productId);
+          conditions.push(`l.product_id = $${params.length}`);
+        }
+
+        // 4. Cursor pagination (T-33): (harvested_at, created_at, id) < (cursorHarvest, cursorCreated, cursorId)
+        if (cursorData && cursorData.harvestedAt && cursorData.id) {
+          params.push(cursorData.harvestedAt);
+          const p1 = params.length;
+          params.push(cursorData.createdAt || cursorData.harvestedAt);
+          const p2 = params.length;
+          params.push(cursorData.id);
+          const p3 = params.length;
+
+          conditions.push(`(
+            l.harvested_at < $${p1}
+            OR (l.harvested_at = $${p1} AND l.created_at < $${p2})
+            OR (l.harvested_at = $${p1} AND l.created_at = $${p2} AND l.id < $${p3})
+          )`);
+        }
+
+        if (conditions.length > 0) {
+          sql += ` WHERE ${conditions.join(" AND ")}`;
+        }
+
+        // Sắp xếp mới nhất trước (newest first)
+        sql += ` ORDER BY l.harvested_at DESC, l.created_at DESC, l.id DESC`;
+
+        // Lấy limit + 1 để xác định hasMore mà không cần COUNT(*)
+        params.push(limit + 1);
+        sql += ` LIMIT $${params.length}`;
 
         const queryRes = await pool.query(sql, params);
+        const hasMore = queryRes.rows.length > limit;
+        const rows = hasMore ? queryRes.rows.slice(0, limit) : queryRes.rows;
+
+        let nextCursor = null;
+        if (hasMore && rows.length > 0) {
+          const last = rows[rows.length - 1];
+          nextCursor = Buffer.from(
+            JSON.stringify({
+              harvestedAt: last.harvested_at,
+              createdAt: last.created_at,
+              id: last.id,
+            })
+          ).toString("base64url");
+        }
+
         return res.status(200).json({
           organizationId: orgId,
-          lots: queryRes.rows.map((r) => ({
+          lots: rows.map((r) => ({
             id: r.id,
             name: r.name,
             status: r.status,
@@ -729,6 +802,8 @@ app.get(
             harvestedAt: r.harvested_at,
             createdAt: r.created_at,
           })),
+          nextCursor,
+          hasMore,
         });
       } catch (err) {
         return res.status(500).json({ message: err.message });
@@ -736,13 +811,66 @@ app.get(
     }
 
     // In-memory fallback
-    const filtered = isInspector || req.auth.roleId === "admin"
-      ? inMemoryLots
+    let filtered = isInspector || req.auth.roleId === "admin"
+      ? [...inMemoryLots]
       : inMemoryLots.filter((lot) => lot.organizationId === orgId);
+
+    if (search) {
+      const searchLower = search.toLowerCase();
+      filtered = filtered.filter((l) => l.id && l.id.toLowerCase().includes(searchLower));
+    }
+
+    if (productId) {
+      filtered = filtered.filter((l) => l.productId === productId);
+    }
+
+    // Sort newest first: harvestedAt DESC, createdAt DESC, id DESC
+    filtered.sort((a, b) => {
+      const hA = new Date(a.harvestedAt || 0).getTime();
+      const hB = new Date(b.harvestedAt || 0).getTime();
+      if (hB !== hA) return hB - hA;
+
+      const cA = new Date(a.createdAt || 0).getTime();
+      const cB = new Date(b.createdAt || 0).getTime();
+      if (cB !== cA) return cB - cA;
+
+      return (b.id || "").localeCompare(a.id || "");
+    });
+
+    if (cursorData && cursorData.id) {
+      const curHA = new Date(cursorData.harvestedAt || 0).getTime();
+      const curCA = new Date(cursorData.createdAt || 0).getTime();
+      const curId = cursorData.id;
+
+      filtered = filtered.filter((l) => {
+        const lHA = new Date(l.harvestedAt || 0).getTime();
+        const lCA = new Date(l.createdAt || 0).getTime();
+        if (lHA < curHA) return true;
+        if (lHA > curHA) return false;
+        if (lCA < curCA) return true;
+        if (lCA > curCA) return false;
+        return (l.id || "") < curId;
+      });
+    }
+
+    const hasMore = filtered.length > limit;
+    const sliced = hasMore ? filtered.slice(0, limit) : filtered;
+
+    let nextCursor = null;
+    if (hasMore && sliced.length > 0) {
+      const last = sliced[sliced.length - 1];
+      nextCursor = Buffer.from(
+        JSON.stringify({
+          harvestedAt: last.harvestedAt,
+          createdAt: last.createdAt || last.harvestedAt,
+          id: last.id,
+        })
+      ).toString("base64url");
+    }
 
     return res.status(200).json({
       organizationId: orgId,
-      lots: filtered.map((l) => {
+      lots: sliced.map((l) => {
         const farm = inMemoryFarms.find((f) => f.id === l.farmId);
         const product = inMemoryProducts.find((p) => p.id === l.productId);
         return {
@@ -758,8 +886,11 @@ app.get(
           initialQuantity: l.initialQuantity !== undefined ? l.initialQuantity : 100,
           remainingQuantity: l.remainingQuantity !== undefined ? l.remainingQuantity : 100,
           harvestedAt: l.harvestedAt || "2026-09-30",
+          createdAt: l.createdAt || "2026-09-30T00:00:00.000Z",
         };
       }),
+      nextCursor,
+      hasMore,
     });
   }
 );
@@ -950,6 +1081,80 @@ app.get(
       count: events.length,
       isIntegrityValid: integrityCheck.valid,
       integrityError: integrityCheck.error || null,
+    });
+  }
+);
+
+/**
+ * Kiểm tra tính toàn vẹn chuỗi sự kiện và ghi nhận lịch sử kiểm tra (S-12 / T-28, T-29)
+ * Dành riêng cho cán bộ kiểm tra (inspector) và quản trị viên (admin).
+ */
+app.get(
+  "/api/lots/:id/integrity",
+  requirePermission(["inspector", "admin"]),
+  async (req, res) => {
+    const lotId = req.params.id;
+
+    if (pool) {
+      try {
+        const lotRes = await pool.query(
+          "SELECT id, organization_id FROM lots WHERE id = $1",
+          [lotId]
+        );
+        if (lotRes.rows.length === 0) {
+          return res.status(404).json({ message: "Không tìm thấy lô hàng." });
+        }
+
+        const integrity = await verifyBatchIntegrity(pool, lotId);
+        const checkId = `CHK-${crypto.randomUUID()}`;
+        const checkedAt = new Date().toISOString();
+        const checkedBy = req.auth ? (req.auth.userId || req.auth.id || req.auth.email) : null;
+
+        // Lưu vào bảng integrity_checks (T-29)
+        try {
+          await pool.query(
+            `INSERT INTO integrity_checks (
+              id, batch_id, checked_by, checked_at, valid,
+              first_invalid_sequence, error_type, final_hash
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+            [
+              checkId,
+              lotId,
+              checkedBy,
+              checkedAt,
+              integrity.valid,
+              integrity.firstInvalidSequence || null,
+              integrity.type || null,
+              integrity.finalHash || null,
+            ]
+          );
+        } catch (auditErr) {
+          console.error("[Integrity Audit Log Error]:", auditErr.message);
+        }
+
+        return res.status(200).json({
+          lotId,
+          checkedAt,
+          integrity,
+        });
+      } catch (err) {
+        return res.status(500).json({ message: err.message });
+      }
+    }
+
+    // In-memory fallback
+    const lot = inMemoryLots.find((l) => l.id === lotId);
+    if (!lot) {
+      return res.status(404).json({ message: "Không tìm thấy lô hàng." });
+    }
+
+    const integrity = await verifyBatchIntegrity(null, lotId);
+    const checkedAt = new Date().toISOString();
+
+    return res.status(200).json({
+      lotId,
+      checkedAt,
+      integrity,
     });
   }
 );
@@ -1761,6 +1966,7 @@ module.exports = {
   appendBatchEvent,
   getBatchEvents,
   verifyBatchEventChain,
+  verifyBatchIntegrity,
   inMemoryBatchEvents,
   setAppendHookForTesting,
 };
