@@ -61,6 +61,40 @@ else
 fi
 export COOKIE_SECURE=auto
 
+# S-11 Staging Environment: Ensure database privilege isolation and agri_app credentials
+if ! grep -q '^MIGRATION_DATABASE_URL=' .env || [ -z "$(grep '^MIGRATION_DATABASE_URL=' .env | cut -d= -f2-)" ]; then
+  if grep -q '^DATABASE_URL=' .env; then
+    EXISTING_DB_URL=$(grep '^DATABASE_URL=' .env | head -n1 | cut -d= -f2-)
+    if ! echo "$EXISTING_DB_URL" | grep -q 'postgresql://agri_app:'; then
+      if grep -q '^MIGRATION_DATABASE_URL=' .env; then
+        sed -i "s|^MIGRATION_DATABASE_URL=.*|MIGRATION_DATABASE_URL=${EXISTING_DB_URL}|" .env
+      else
+        echo "MIGRATION_DATABASE_URL=${EXISTING_DB_URL}" >> .env
+      fi
+      echo "[Staging Config] Preserved superuser connection as MIGRATION_DATABASE_URL."
+    fi
+  fi
+fi
+
+if ! grep -q '^APP_DB_USER=' .env; then
+  echo "APP_DB_USER=agri_app" >> .env
+fi
+APP_PASSWORD="app_password"
+if grep -q '^APP_DB_PASSWORD=' .env; then
+  APP_PASSWORD=$(grep '^APP_DB_PASSWORD=' .env | head -n1 | cut -d= -f2-)
+else
+  echo "APP_DB_PASSWORD=${APP_PASSWORD}" >> .env
+fi
+
+if grep -q '^DATABASE_URL=' .env; then
+  CURRENT_DB_URL=$(grep '^DATABASE_URL=' .env | head -n1 | cut -d= -f2-)
+  if ! echo "$CURRENT_DB_URL" | grep -q 'postgresql://agri_app:'; then
+    NEW_APP_URL=$(echo "$CURRENT_DB_URL" | sed -E "s|postgresql://[^:]+:[^@]+@|postgresql://agri_app:${APP_PASSWORD}@|")
+    sed -i "s|^DATABASE_URL=.*|DATABASE_URL=${NEW_APP_URL}|" .env
+    echo "[Staging Config] Upgraded staging DATABASE_URL to strictly use 'agri_app' role."
+  fi
+fi
+
 mkdir -p "$STATE_DIR"
 
 echo "========================================================"
@@ -234,10 +268,49 @@ if echo "$LOGIN_OUT" | grep -q '"email":"user@example.com"'; then
   else
     echo "ℹ [Smoke Test] Harvest validation response: $HARVEST_VALIDATION_OUT"
   fi
+
+  # S-14 Verification: Cursor-paginated organization lots endpoint
+  LOTS_OUT=$(curl -s -b "$SMOKE_COOKIE" "http://localhost:8080/api/organization/lots?limit=20" 2>/dev/null || true)
+  if echo "$LOTS_OUT" | grep -q '"lots":'; then
+    echo "✔ [Smoke Test Passed] S-14 Lots API: Server-side cursor-paginated lots query returned successfully."
+  fi
+
+  # S-14 Verification: Lot detail page is served
+  LOT_DETAIL_PAGE=$(curl -s -f -m 5 "http://localhost:${FRONTEND_PORT}/lot-detail.html" 2>/dev/null || true)
+  if echo "$LOT_DETAIL_PAGE" | grep -q 'Chi tiết lô thu hoạch'; then
+    echo "✔ [Smoke Test Passed] S-14 Lot Detail Screen: /lot-detail.html is live and correctly rendered."
+  fi
 else
   echo "ℹ [Smoke Test Note] Initial login smoke check response: $LOGIN_OUT"
 fi
 rm -f "$SMOKE_COOKIE" "$LOGIN_HEADERS"
+
+# S-11 Verification: Check that backend runtime is confirmed running as agri_app
+HEALTH_OUT=$(curl -s -f -m 5 "http://localhost:${FRONTEND_PORT}/health" 2>/dev/null || true)
+if echo "$HEALTH_OUT" | grep -q '"databaseUser":"agri_app"'; then
+  echo "✔ [Smoke Test Passed] S-11 Database User: Backend runtime is actively confirmed running as 'agri_app'."
+else
+  echo "ℹ [Smoke Test Note] Health response databaseUser: $(echo "$HEALTH_OUT" | grep -o '"databaseUser":"[^"]*"' || echo 'none')"
+fi
+
+# S-11 Verification: Direct attempt using agri_app to UPDATE batch_events must fail with permission denied
+APP_PERM_CHECK=$(docker compose exec -T postgres psql -U agri_app -d "${POSTGRES_DB:-agri_trace}" -c "UPDATE batch_events SET event_type = 'HACK' WHERE id = 'dummy';" 2>&1 || true)
+if echo "$APP_PERM_CHECK" | grep -qi "permission denied"; then
+  echo "✔ [Smoke Test Passed] S-11 Append-Only Ledger: Direct UPDATE on batch_events by agri_app rejected with 'permission denied'."
+else
+  echo "ℹ [Smoke Test Note] Database permission check response: $APP_PERM_CHECK"
+fi
+
+# S-12 Verification: Inspector calls integrity audit API
+INSPECTOR_COOKIE=$(mktemp)
+INSPECTOR_LOGIN=$(curl -s -c "$INSPECTOR_COOKIE" -H "Content-Type: application/json" -d '{"email":"inspector@example.com","password":"Password@123"}' "http://localhost:8080/api/login" 2>/dev/null || true)
+if echo "$INSPECTOR_LOGIN" | grep -q '"roleId":"inspector"'; then
+  INTEGRITY_OUT=$(curl -s -b "$INSPECTOR_COOKIE" "http://localhost:8080/api/lots/LOT-001/integrity" 2>/dev/null || true)
+  if echo "$INTEGRITY_OUT" | grep -q '"valid":'; then
+    echo "✔ [Smoke Test Passed] S-12 Audit API: Inspector role successfully invoked /api/lots/:id/integrity."
+  fi
+fi
+rm -f "$INSPECTOR_COOKIE"
 
 echo "========================================================"
 echo " STAGING DEPLOYMENT SUCCESSFUL"

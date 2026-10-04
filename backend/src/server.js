@@ -392,11 +392,12 @@ async function checkHealth(_req, res) {
   }
 
   try {
-    const result = await pool.query("SELECT NOW() AS now");
+    const result = await pool.query("SELECT NOW() AS now, CURRENT_USER AS db_user");
     return res.json({
       service: "agri-trace-backend",
       status: "ok",
       database: "connected",
+      databaseUser: result.rows[0].db_user,
       timestamp: result.rows[0].now,
       commit: process.env.GIT_COMMIT || "unknown",
     });
@@ -1849,7 +1850,8 @@ function sendFrontendFile(res, filePath) {
     Pragma: "no-cache",
     Expires: "0",
   });
-  return res.sendFile(filePath);
+  const resolved = path.resolve(filePath);
+  return res.sendFile(path.basename(resolved), { root: path.dirname(resolved) });
 }
 
 const frontendIndexPath = path.join(__dirname, "../../frontend/index.html");
@@ -1893,6 +1895,16 @@ app.get("/harvest", requireAuth, (req, res) => {
     return sendFrontendFile(res, frontendHarvestPath);
   }
   return res.redirect("http://localhost:8080/harvest.html");
+});
+
+const frontendLotDetailPath = path.join(__dirname, "../../frontend/lot-detail.html");
+
+app.get(["/lot-detail", "/lot-detail.html"], requireAuth, (req, res) => {
+  if (fs.existsSync(frontendLotDetailPath)) {
+    return sendFrontendFile(res, frontendLotDetailPath);
+  }
+  const query = req.url.includes("?") ? req.url.substring(req.url.indexOf("?")) : "";
+  return res.redirect("http://localhost:8080/lot-detail.html" + query);
 });
 
 if (fs.existsSync(path.join(__dirname, "../../frontend"))) {

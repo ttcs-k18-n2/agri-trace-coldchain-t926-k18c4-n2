@@ -211,7 +211,8 @@
         </div>
 
         <div style="display: flex; gap: 1rem; margin-top: 1.5rem; justify-content: center; flex-wrap: wrap;">
-          <a href="/lots.html" class="btn btn-primary" style="flex: 1; min-width: 180px;">📦 Xem danh sách lô hàng</a>
+          <a id="res-btn-lot-detail" href="/lots.html" class="btn btn-primary" style="flex: 1; min-width: 180px;">🔍 Xem chi tiết lô</a>
+          <a href="/lots.html" class="btn btn-secondary" style="flex: 1; min-width: 180px; border: 1px solid var(--color-border);">📦 Danh sách lô hàng</a>
           <button id="btn-continue-harvest" class="btn btn-outline" style="flex: 1; min-width: 180px;">+ Ghi nhận lô khác</button>
         </div>
       </div>
@@ -437,6 +438,11 @@
       document.getElementById("res-farm-name").textContent = lot.farmName || lot.farmId;
       document.getElementById("res-harvest-date").textContent = formatDate(lot.harvestedAt);
       document.getElementById("res-status").textContent = lot.status || "Đã thu hoạch";
+
+      const btnLotDetail = document.getElementById("res-btn-lot-detail");
+      if (btnLotDetail && lot.id) {
+        btnLotDetail.href = `/lot-detail.html?id=${encodeURIComponent(lot.id)}`;
+      }
     }
 
     function formatRole(role) {
