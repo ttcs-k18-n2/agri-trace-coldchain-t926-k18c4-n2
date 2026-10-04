@@ -138,19 +138,29 @@ fi
 echo "[Step 4/5] Start application version $NEW_TAG..."
 docker compose up -d --no-build --force-recreate --remove-orphans backend frontend
 
-echo "[Step 5/5] Health and deployed-version check at $HEALTH_CHECK_URL..."
+echo "[Step 5/5] Health, deployed-version and frontend page checks at $HEALTH_CHECK_URL..."
 HEALTH_OK=0
 for i in $(seq 1 "$HEALTH_RETRIES"); do
   echo "Health check ($i/$HEALTH_RETRIES)..."
   if response=$(curl -s -f -m 5 "$HEALTH_CHECK_URL" 2>/dev/null); then
     if echo "$response" | grep -q '"status":"ok"'       && echo "$response" | grep -q '"database":"connected"'       && echo "$response" | grep -q "\"commit\":\"${NEW_TAG}\""; then
-      echo "Health check PASSED."
+      PRODUCTS_PAGE=$(curl -s -f -m 5 "http://localhost:${FRONTEND_PORT}/products.html" 2>/dev/null || true)
+      HARVEST_PAGE=$(curl -s -f -m 5 "http://localhost:${FRONTEND_PORT}/harvest.html" 2>/dev/null || true)
+
+      if echo "$PRODUCTS_PAGE" | grep -q "DANH MỤC SẢN PHẨM"         && echo "$HARVEST_PAGE" | grep -q "GHI NHẬN THU HOẠCH"; then
+        echo "Health/version/frontend page checks PASSED."
+        echo "Response: $response"
+        HEALTH_OK=1
+        break
+      fi
+
+      echo "Backend is healthy, but Sprint 2 frontend pages are missing or incorrect."
+      echo "products.html marker present: $(echo "$PRODUCTS_PAGE" | grep -q "DANH MỤC SẢN PHẨM" && echo yes || echo no)"
+      echo "harvest.html marker present: $(echo "$HARVEST_PAGE" | grep -q "GHI NHẬN THU HOẠCH" && echo yes || echo no)"
+    else
+      echo "Service responded but is not yet the expected healthy commit."
       echo "Response: $response"
-      HEALTH_OK=1
-      break
     fi
-    echo "Service responded but is not yet the expected healthy commit."
-    echo "Response: $response"
   fi
   sleep "$HEALTH_INTERVAL"
 done
