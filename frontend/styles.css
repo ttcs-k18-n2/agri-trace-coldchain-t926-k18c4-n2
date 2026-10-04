@@ -31,15 +31,15 @@
   --color-border-green: #bbf7d0;
   --color-border-focus: #15803d;
 
-  /* Liquid Glass Design System Tokens */
-  --liquid-glass-bg: rgba(255, 255, 255, 0.82);
-  --liquid-glass-bg-hover: rgba(255, 255, 255, 0.92);
-  --liquid-glass-blur: blur(20px) saturate(190%);
+  /* Apple Liquid Glass Design System Tokens */
+  --liquid-glass-bg: rgba(255, 255, 255, 0.72);
+  --liquid-glass-bg-hover: rgba(255, 255, 255, 0.85);
+  --liquid-glass-blur: blur(28px) saturate(210%);
   --liquid-glass-border: 1px solid rgba(255, 255, 255, 0.85);
-  --liquid-glass-border-green: 1px solid rgba(187, 247, 208, 0.85);
-  --liquid-glass-shadow: 0 12px 32px -4px rgba(22, 101, 52, 0.08), 0 4px 12px -2px rgba(0, 0, 0, 0.03), inset 0 1px 1px 0 rgba(255, 255, 255, 0.95);
-  --liquid-glass-shadow-hover: 0 18px 40px -4px rgba(22, 101, 52, 0.14), 0 6px 16px -2px rgba(0, 0, 0, 0.05), inset 0 1px 2px 0 #ffffff;
-  --liquid-glass-sheen: linear-gradient(135deg, rgba(255, 255, 255, 0.45) 0%, rgba(255, 255, 255, 0.08) 50%, rgba(255, 255, 255, 0.25) 100%);
+  --liquid-glass-border-green: 1px solid rgba(187, 247, 208, 0.9);
+  --liquid-glass-shadow: 0 16px 36px -6px rgba(15, 23, 42, 0.08), 0 4px 12px -2px rgba(0, 0, 0, 0.03), inset 0 1px 1px 0 rgba(255, 255, 255, 0.95), inset 0 0 0 1px rgba(255, 255, 255, 0.55);
+  --liquid-glass-shadow-hover: 0 24px 48px -8px rgba(22, 101, 52, 0.16), 0 8px 18px -3px rgba(0, 0, 0, 0.06), inset 0 1px 2px 0 #ffffff, inset 0 0 0 1px rgba(255, 255, 255, 0.8);
+  --liquid-glass-sheen: linear-gradient(135deg, rgba(255, 255, 255, 0.6) 0%, rgba(255, 255, 255, 0.1) 45%, rgba(255, 255, 255, 0.35) 100%);
   
   /* Status Semantics */
   --color-success: #16a34a;
@@ -59,27 +59,27 @@
   --color-info-border: #bae6fd;
   
   /* Spacing & Radii */
-  --radius-xs: 4px;
-  --radius-sm: 8px;
-  --radius-md: 12px;
-  --radius-lg: 16px;
-  --radius-xl: 24px;
+  --radius-xs: 6px;
+  --radius-sm: 10px;
+  --radius-md: 14px;
+  --radius-lg: 18px;
+  --radius-xl: 26px;
   --radius-full: 9999px;
   
   /* Natural Depth Shadows */
   --shadow-xs: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
-  --shadow-sm: 0 1px 3px 0 rgba(0, 0, 0, 0.08), 0 1px 2px -1px rgba(0, 0, 0, 0.08);
-  --shadow-card: 0 4px 20px -2px rgba(22, 101, 52, 0.06), 0 2px 6px -1px rgba(0, 0, 0, 0.03);
-  --shadow-hover: 0 12px 28px -4px rgba(22, 101, 52, 0.12), 0 4px 10px -2px rgba(0, 0, 0, 0.04);
-  --shadow-modal: 0 25px 50px -12px rgba(15, 23, 42, 0.25);
+  --shadow-sm: 0 2px 6px 0 rgba(0, 0, 0, 0.06), inset 0 1px 0 rgba(255, 255, 255, 0.8);
+  --shadow-card: var(--liquid-glass-shadow);
+  --shadow-hover: var(--liquid-glass-shadow-hover);
+  --shadow-modal: 0 30px 60px -12px rgba(15, 23, 42, 0.28), 0 0 0 1px rgba(255, 255, 255, 0.8) inset;
   
   /* Transitions */
-  --transition-fast: all 0.15s cubic-bezier(0.16, 1, 0.3, 1);
-  --transition-normal: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  --transition-fast: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+  --transition-normal: all 0.28s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 /* ==============================================================================
-   Base Reset & Ambient Liquid Backdrop
+   Base Reset & Ambient Liquid Backdrop (Apple Aurora Glass)
    ============================================================================== */
 *, *::before, *::after {
   box-sizing: border-box;
@@ -90,17 +90,62 @@
 body {
   font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   color: var(--color-text-main);
-  background-color: var(--color-bg);
+  background-color: #f1f8f3;
   background-image: 
-    radial-gradient(circle at 10% 12%, rgba(34, 197, 94, 0.09) 0%, transparent 45%),
-    radial-gradient(circle at 90% 15%, rgba(21, 128, 61, 0.08) 0%, transparent 40%),
-    radial-gradient(circle at 50% 88%, rgba(161, 98, 7, 0.05) 0%, transparent 50%);
+    radial-gradient(circle at 12% 15%, rgba(34, 197, 94, 0.18) 0%, transparent 48%),
+    radial-gradient(circle at 88% 22%, rgba(16, 185, 129, 0.16) 0%, transparent 45%),
+    radial-gradient(circle at 50% 85%, rgba(56, 189, 248, 0.14) 0%, transparent 55%),
+    radial-gradient(circle at 80% 70%, rgba(245, 158, 11, 0.09) 0%, transparent 42%);
   background-attachment: fixed;
   min-height: 100vh;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
+  position: relative;
+  overflow-x: hidden;
 }
 
+/* Ambient Floating Liquid Orbs (Provides underlying colors for glass refraction) */
+body::before {
+  content: "";
+  position: fixed;
+  top: -120px;
+  left: -80px;
+  width: 580px;
+  height: 580px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(34, 197, 94, 0.26) 0%, rgba(16, 185, 129, 0.13) 40%, transparent 70%);
+  filter: blur(80px);
+  pointer-events: none;
+  z-index: -1;
+  animation: liquid-float-1 18s ease-in-out infinite alternate;
+}
+
+body::after {
+  content: "";
+  position: fixed;
+  top: 35%;
+  right: -120px;
+  width: 650px;
+  height: 650px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(14, 165, 233, 0.18) 0%, rgba(34, 197, 94, 0.14) 40%, transparent 70%);
+  filter: blur(90px);
+  pointer-events: none;
+  z-index: -1;
+  animation: liquid-float-2 22s ease-in-out infinite alternate;
+}
+
+@keyframes liquid-float-1 {
+  0% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(80px, 60px) scale(1.12); }
+  100% { transform: translate(40px, 120px) scale(0.96); }
+}
+
+@keyframes liquid-float-2 {
+  0% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(-80px, 70px) scale(1.1); }
+  100% { transform: translate(-40px, -50px) scale(0.94); }
+}
 
 a {
   color: inherit;
@@ -118,24 +163,24 @@ button, input, select, textarea {
 }
 
 /* ==============================================================================
-   Shared Navigation Bar (App Header)
+   Shared Navigation Bar (Apple Liquid Glass Header)
    ============================================================================== */
 .app-header {
   position: sticky;
   top: 0;
   z-index: 100;
-  background: var(--liquid-glass-bg);
-  backdrop-filter: var(--liquid-glass-blur);
-  -webkit-backdrop-filter: var(--liquid-glass-blur);
-  border-bottom: var(--liquid-glass-border-green);
-  box-shadow: 0 4px 20px -2px rgba(21, 128, 61, 0.06), inset 0 -1px 0 0 rgba(255, 255, 255, 0.6);
+  background: rgba(255, 255, 255, 0.72);
+  backdrop-filter: blur(30px) saturate(210%);
+  -webkit-backdrop-filter: blur(30px) saturate(210%);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.85);
+  box-shadow: 0 8px 32px -4px rgba(22, 101, 52, 0.07), inset 0 -1px 0 0 rgba(255, 255, 255, 0.9);
 }
 
 .header-container {
   max-width: 1200px;
   margin: 0 auto;
   padding: 0 24px;
-  height: 70px;
+  height: 72px;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -156,16 +201,16 @@ button, input, select, textarea {
 }
 
 .brand-icon {
-  width: 42px;
-  height: 42px;
+  width: 44px;
+  height: 44px;
   border-radius: var(--radius-md);
-  background: linear-gradient(135deg, var(--color-primary), var(--color-secondary));
+  background: linear-gradient(135deg, #15803d, #22c55e);
   color: white;
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 4px 14px rgba(21, 128, 61, 0.3), inset 0 1px 1px rgba(255, 255, 255, 0.4);
-  border: 1px solid rgba(255, 255, 255, 0.3);
+  box-shadow: 0 6px 18px rgba(21, 128, 61, 0.32), inset 0 1px 1px rgba(255, 255, 255, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.35);
 }
 
 .brand-info {
@@ -189,18 +234,18 @@ button, input, select, textarea {
   letter-spacing: 0.05em;
 }
 
-/* Navigation Tabs - Liquid Glass Capsule */
+/* Navigation Tabs - Apple Dynamic Capsule */
 .nav-links {
   display: flex;
   align-items: center;
-  gap: 6px;
-  background: rgba(241, 245, 249, 0.75);
-  backdrop-filter: blur(14px) saturate(180%);
-  -webkit-backdrop-filter: blur(14px) saturate(180%);
-  padding: 4px;
+  gap: 4px;
+  background: rgba(230, 240, 235, 0.55);
+  backdrop-filter: blur(20px) saturate(190%);
+  -webkit-backdrop-filter: blur(20px) saturate(190%);
+  padding: 5px;
   border-radius: var(--radius-full);
-  border: 1px solid rgba(255, 255, 255, 0.9);
-  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.85);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.04), 0 2px 8px rgba(0, 0, 0, 0.02);
 }
 
 .nav-item {
@@ -212,7 +257,7 @@ button, input, select, textarea {
   font-size: 14px;
   font-weight: 600;
   color: var(--color-text-muted);
-  transition: var(--transition-fast);
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
   cursor: pointer;
   text-decoration: none;
 }
@@ -223,15 +268,15 @@ button, input, select, textarea {
 
 .nav-item:hover {
   color: var(--color-primary);
-  background: rgba(255, 255, 255, 0.7);
+  background: rgba(255, 255, 255, 0.65);
 }
 
 .nav-item.active {
   color: var(--color-primary-active);
   background: rgba(255, 255, 255, 0.95);
   backdrop-filter: blur(8px);
-  box-shadow: 0 3px 10px rgba(21, 128, 61, 0.12), inset 0 1px 1px #ffffff;
-  border: 1px solid rgba(255, 255, 255, 0.85);
+  box-shadow: 0 4px 14px rgba(21, 128, 61, 0.14), inset 0 1px 1px #ffffff;
+  border: 1px solid rgba(255, 255, 255, 0.9);
 }
 
 .nav-item.active svg {
@@ -251,12 +296,12 @@ button, input, select, textarea {
   align-items: center;
   gap: 10px;
   padding: 6px 14px 6px 6px;
-  background: rgba(240, 253, 244, 0.85);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(187, 247, 208, 0.85);
+  background: rgba(255, 255, 255, 0.72);
+  backdrop-filter: blur(20px) saturate(190%);
+  -webkit-backdrop-filter: blur(20px) saturate(190%);
+  border: 1px solid rgba(255, 255, 255, 0.9);
   border-radius: var(--radius-full);
-  box-shadow: 0 2px 8px rgba(21, 128, 61, 0.06), inset 0 1px 1px #fff;
+  box-shadow: 0 4px 16px -2px rgba(0, 0, 0, 0.05), inset 0 1px 1px #fff;
 }
 
 .user-avatar {
@@ -347,24 +392,26 @@ button, input, select, textarea {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 8px 14px;
+  padding: 8px 16px;
   border-radius: var(--radius-full);
-  border: 1px solid rgba(226, 232, 240, 0.9);
-  background: rgba(255, 255, 255, 0.85);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.85);
+  background: rgba(255, 255, 255, 0.7);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
   color: var(--color-text-muted);
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
-  transition: var(--transition-fast);
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04), inset 0 1px 1px #ffffff;
 }
 
 .btn-logout:hover {
-  background: var(--color-danger-bg);
+  background: #fee2e2;
   color: var(--color-danger);
-  border-color: var(--color-danger-border);
+  border-color: #fca5a5;
   transform: translateY(-1px);
+  box-shadow: 0 4px 14px rgba(220, 38, 38, 0.16);
 }
 
 /* ==============================================================================
@@ -412,18 +459,18 @@ button, input, select, textarea {
   -webkit-backdrop-filter: var(--liquid-glass-blur);
   border: var(--liquid-glass-border);
   border-radius: var(--radius-lg);
-  padding: 18px 20px;
-  box-shadow: 0 4px 16px -2px rgba(22, 101, 52, 0.06), inset 0 1px 1px 0 rgba(255, 255, 255, 0.95);
+  padding: 20px 22px;
+  box-shadow: var(--liquid-glass-shadow);
   display: flex;
   align-items: center;
-  gap: 16px;
-  transition: var(--transition-fast);
+  gap: 18px;
+  transition: var(--transition-normal);
 }
 
 .stat-card:hover {
-  transform: translateY(-2px);
+  transform: translateY(-3px) scale(1.01);
   box-shadow: var(--liquid-glass-shadow-hover);
-  border-color: rgba(187, 247, 208, 0.9);
+  border-color: rgba(187, 247, 208, 0.95);
 }
 
 .stat-icon {
@@ -785,18 +832,21 @@ button, input, select, textarea {
   align-items: center;
   justify-content: center;
   padding: 20px;
-  background: rgba(15, 23, 42, 0.48);
-  backdrop-filter: blur(5px);
+  background: rgba(15, 23, 42, 0.4);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
 }
 
 .modal-card {
   width: min(100%, 520px);
   max-height: calc(100vh - 40px);
   overflow: auto;
-  border: 1px solid var(--color-border);
+  border: 1px solid rgba(255, 255, 255, 0.9);
   border-radius: var(--radius-xl);
-  background: var(--color-surface);
-  box-shadow: var(--shadow-modal);
+  background: rgba(255, 255, 255, 0.88);
+  backdrop-filter: blur(32px) saturate(210%);
+  -webkit-backdrop-filter: blur(32px) saturate(210%);
+  box-shadow: 0 32px 72px -12px rgba(15, 23, 42, 0.35), inset 0 1px 2px #fff;
 }
 
 .modal-header,
@@ -804,39 +854,44 @@ button, input, select, textarea {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 18px 22px;
+  padding: 18px 24px;
 }
 
 .modal-header {
   justify-content: space-between;
-  border-bottom: 1px solid var(--color-border);
+  border-bottom: 1px solid rgba(226, 232, 240, 0.8);
 }
 
 .modal-footer {
   justify-content: flex-end;
-  border-top: 1px solid var(--color-border);
+  border-top: 1px solid rgba(226, 232, 240, 0.8);
+  background: rgba(248, 250, 252, 0.6);
 }
 
 .modal-body {
-  padding: 22px;
+  padding: 24px;
 }
 
 .modal-title {
-  font-size: 19px;
+  font-size: 20px;
   font-weight: 800;
   color: var(--color-text-main);
+  letter-spacing: -0.01em;
 }
 
 .btn-icon {
   width: 36px;
   height: 36px;
-  border: 1px solid var(--color-border);
+  border: 1px solid rgba(226, 232, 240, 0.9);
   border-radius: var(--radius-md);
-  background: var(--color-surface);
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
   color: var(--color-text-muted);
   cursor: pointer;
   font-size: 22px;
   line-height: 1;
+  transition: var(--transition-fast);
 }
 
 .btn-icon:hover {
