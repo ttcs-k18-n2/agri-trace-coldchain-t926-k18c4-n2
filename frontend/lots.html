@@ -387,12 +387,8 @@
           : ["producer", "cooperative", "org_admin", "admin"].includes(user.roleId);
 
         const harvestButton = document.getElementById("btnGoHarvest");
-        if (harvestButton && !canHarvest) {
-          harvestButton.removeAttribute("href");
-          harvestButton.setAttribute("aria-disabled", "true");
-          harvestButton.setAttribute("title", "Vai trò hiện tại không có quyền ghi nhận thu hoạch");
-          harvestButton.style.opacity = "0.55";
-          harvestButton.style.cursor = "not-allowed";
+        if (harvestButton) {
+          harvestButton.style.display = canHarvest ? "" : "none";
         }
 
         // Backward compatibility

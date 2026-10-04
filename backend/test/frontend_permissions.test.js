@@ -106,3 +106,37 @@ test("Frontend Resilience: all HTML pages have fail-safe logout button", () => {
     assert.match(html, /handleLogout/);
   }
 });
+
+test("Frontend Role Scoping: NAV_PERMISSIONS strictly filters nav items per role", () => {
+  const { NAV_PERMISSIONS } = require("../../frontend/app-shell.js");
+  assert.ok(NAV_PERMISSIONS);
+
+  // Transporter & Distributor only see Lots and Products
+  assert.equal(NAV_PERMISSIONS.navLots.includes("transporter"), true);
+  assert.equal(NAV_PERMISSIONS.navProducts.includes("transporter"), true);
+  assert.equal(NAV_PERMISSIONS.navFarms.includes("transporter"), false);
+  assert.equal(NAV_PERMISSIONS.navHarvest.includes("transporter"), false);
+
+  assert.equal(NAV_PERMISSIONS.navLots.includes("distributor"), true);
+  assert.equal(NAV_PERMISSIONS.navProducts.includes("distributor"), true);
+  assert.equal(NAV_PERMISSIONS.navFarms.includes("distributor"), false);
+  assert.equal(NAV_PERMISSIONS.navHarvest.includes("distributor"), false);
+
+  // Inspector can view Lots, Farms, Products, but NOT Harvest
+  assert.equal(NAV_PERMISSIONS.navLots.includes("inspector"), true);
+  assert.equal(NAV_PERMISSIONS.navFarms.includes("inspector"), true);
+  assert.equal(NAV_PERMISSIONS.navProducts.includes("inspector"), true);
+  assert.equal(NAV_PERMISSIONS.navHarvest.includes("inspector"), false);
+
+  // Producer and Cooperative see all 4
+  assert.equal(NAV_PERMISSIONS.navLots.includes("producer"), true);
+  assert.equal(NAV_PERMISSIONS.navFarms.includes("producer"), true);
+  assert.equal(NAV_PERMISSIONS.navProducts.includes("producer"), true);
+  assert.equal(NAV_PERMISSIONS.navHarvest.includes("producer"), true);
+});
+
+test("Frontend Role Scoping: farms.html has farmFormCard and completely hides form for non-writers", () => {
+  const html = fs.readFileSync(path.join(frontendDir, "farms.html"), "utf8");
+  assert.match(html, /id=["']farmFormCard["']/);
+  assert.match(html, /formCard\.style\.display\s*=\s*["']none["']/);
+});
