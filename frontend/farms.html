@@ -408,16 +408,26 @@
         const orgBadgeEl = document.getElementById("orgBadge");
         if (orgBadgeEl) orgBadgeEl.innerHTML = `Tổ chức: <strong>${user.organizationId}</strong>`;
 
-        // If non-writable role (inspector, transporter, distributor), disable inputs
-        const writableFarmRoles = ["producer", "cooperative", "org_admin", "admin"];
-        if (!writableFarmRoles.includes(user.roleId)) {
+        // Kiểm tra quyền ghi thửa đất qua ma trận quyền dùng chung
+        const canWriteFarm = (typeof window.hasPermission === "function")
+          ? window.hasPermission(user.roleId, "farm.write")
+          : ["producer", "cooperative", "org_admin", "admin"].includes(user.roleId);
+
+        if (!canWriteFarm) {
           const submitBtn = document.getElementById("submitFarmBtn");
-          if (submitBtn) submitBtn.disabled = true;
+          if (submitBtn) {
+            submitBtn.disabled = true;
+            submitBtn.style.opacity = "0.55";
+            submitBtn.style.cursor = "not-allowed";
+          }
           document.getElementById("farmName").disabled = true;
           document.getElementById("farmArea").disabled = true;
           document.getElementById("farmCoordinates").disabled = true;
-          if (user.roleId === "inspector") {
-            document.getElementById("inspectorNotice").style.display = "block";
+          const noticeEl = document.getElementById("inspectorNotice");
+          if (noticeEl) {
+            noticeEl.style.display = "block";
+            const roleName = (typeof window.formatRole === "function") ? formatRole(user.roleId) : user.roleId;
+            noticeEl.textContent = `Tài khoản vai trò ${roleName} có chế độ chỉ xem, không có quyền tạo hoặc chỉnh sửa thửa đất.`;
           }
         }
 
@@ -459,7 +469,11 @@
           const div = document.createElement("div");
           div.className = "farm-item";
           
-          const editBtnHtml = (currentUserRole === "inspector") 
+          const canWriteFarm = (typeof window.hasPermission === "function")
+            ? window.hasPermission(currentUserRole, "farm.write")
+            : ["producer", "cooperative", "org_admin", "admin"].includes(currentUserRole);
+
+          const editBtnHtml = !canWriteFarm 
             ? `<span style="font-size: 11px; color: var(--color-text-muted);">(Chỉ xem)</span>`
             : `<button class="btn-edit" onclick="startEdit('${f.id}', '${encodeURIComponent(f.name)}', ${f.area}, '${encodeURIComponent(f.coordinates || '')}')">
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>
@@ -519,6 +533,14 @@
     }
 
     window.startEdit = function(id, encName, area, encCoords) {
+      const canWriteFarm = (typeof window.hasPermission === "function")
+        ? window.hasPermission(currentUserRole, "farm.write")
+        : ["producer", "cooperative", "org_admin", "admin"].includes(currentUserRole);
+
+      if (!canWriteFarm) {
+        showAlert("Tài khoản của bạn chỉ có quyền xem, không được phép chỉnh sửa thửa đất.", false);
+        return;
+      }
       document.getElementById("farmId").value = id;
       document.getElementById("farmName").value = decodeURIComponent(encName);
       document.getElementById("farmArea").value = area;

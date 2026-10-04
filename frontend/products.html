@@ -244,7 +244,11 @@
       currentUser = await initAppShell({ activeNav: "products" });
       if (!currentUser) return;
 
-      if (currentUser.roleId === "admin") {
+      const canWriteProduct = (typeof window.hasPermission === "function")
+        ? window.hasPermission(currentUser.roleId, "product.write")
+        : currentUser.roleId === "admin";
+
+      if (canWriteProduct) {
         const adminActions = document.getElementById("admin-actions");
         if (adminActions) adminActions.style.display = "block";
       }
