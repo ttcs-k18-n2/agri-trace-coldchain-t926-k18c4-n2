@@ -147,7 +147,7 @@ for i in $(seq 1 "$HEALTH_RETRIES"); do
       PRODUCTS_PAGE=$(curl -s -f -m 5 "http://localhost:${FRONTEND_PORT}/products.html" 2>/dev/null || true)
       HARVEST_PAGE=$(curl -s -f -m 5 "http://localhost:${FRONTEND_PORT}/harvest.html" 2>/dev/null || true)
 
-      if echo "$PRODUCTS_PAGE" | grep -q "DANH MỤC SẢN PHẨM"         && echo "$HARVEST_PAGE" | grep -q "GHI NHẬN THU HOẠCH"; then
+      if echo "$PRODUCTS_PAGE" | grep -q 'id="product-grid"'         && echo "$HARVEST_PAGE" | grep -q 'id="form-harvest"'; then
         echo "Health/version/frontend page checks PASSED."
         echo "Response: $response"
         HEALTH_OK=1
@@ -155,8 +155,8 @@ for i in $(seq 1 "$HEALTH_RETRIES"); do
       fi
 
       echo "Backend is healthy, but Sprint 2 frontend pages are missing or incorrect."
-      echo "products.html marker present: $(echo "$PRODUCTS_PAGE" | grep -q "DANH MỤC SẢN PHẨM" && echo yes || echo no)"
-      echo "harvest.html marker present: $(echo "$HARVEST_PAGE" | grep -q "GHI NHẬN THU HOẠCH" && echo yes || echo no)"
+      echo "products.html marker present: $(echo "$PRODUCTS_PAGE" | grep -q 'id="product-grid"' && echo yes || echo no)"
+      echo "harvest.html marker present: $(echo "$HARVEST_PAGE" | grep -q 'id="form-harvest"' && echo yes || echo no)"
     else
       echo "Service responded but is not yet the expected healthy commit."
       echo "Response: $response"
