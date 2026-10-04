@@ -16,12 +16,16 @@
     }
 
     .farm-card {
-      background: var(--color-surface);
-      border: 1px solid var(--color-border);
-      border-radius: var(--radius-lg);
+      background: var(--liquid-glass-bg);
+      backdrop-filter: var(--liquid-glass-blur);
+      -webkit-backdrop-filter: var(--liquid-glass-blur);
+      border: var(--liquid-glass-border);
+      border-radius: var(--radius-xl);
       padding: 24px 28px;
-      box-shadow: var(--shadow-sm);
+      box-shadow: var(--liquid-glass-shadow);
+      transition: var(--transition-normal);
     }
+
 
     .card-header-group {
       margin-bottom: 20px;
