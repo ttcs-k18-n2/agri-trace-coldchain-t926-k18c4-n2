@@ -78,14 +78,13 @@ async function appendBatchEvent(client, data) {
     // 1.1 Khóa hàng của lô hàng với FOR UPDATE (K-01) để tuần tự hóa và ngăn race condition
     await client.query(`SELECT id FROM lots WHERE id = $1 FOR UPDATE`, [batchId]);
 
-    // 1.2 Lấy sự kiện cuối cùng của lô hàng với FOR UPDATE (K-01) để xếp hàng tuần tự các giao dịch ghi đồng thời
+    // 1.2 Lấy sự kiện cuối cùng của lô hàng (hàng cha lots đã được khóa FOR UPDATE ở trên)
     const lastEventRes = await client.query(
       `SELECT sequence_no, event_hash 
        FROM batch_events 
        WHERE batch_id = $1 
        ORDER BY sequence_no DESC 
-       LIMIT 1
-       FOR UPDATE`,
+       LIMIT 1`,
       [batchId]
     );
 

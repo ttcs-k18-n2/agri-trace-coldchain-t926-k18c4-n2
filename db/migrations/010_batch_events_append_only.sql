@@ -25,9 +25,9 @@ $$;
 
 GRANT USAGE ON SCHEMA public TO agri_app;
 
--- Cấp quyền DML tiêu chuẩn cho các bảng nghiệp vụ có thể cập nhật
+-- Cấp toàn quyền thao tác dữ liệu trên schema public cho agri_app
 GRANT SELECT, INSERT, UPDATE, DELETE
-ON products, farms, lots, users, roles, schema_migrations
+ON ALL TABLES IN SCHEMA public
 TO agri_app;
 
 -- Cấp quyền sử dụng sequences
