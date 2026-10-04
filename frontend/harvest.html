@@ -8,58 +8,42 @@
   <link rel="stylesheet" href="/styles.css">
   <style>
     .harvest-container {
-      max-width: 680px;
+      max-width: 640px;
       margin: 0 auto;
     }
     .lot-badge-display {
-      background: linear-gradient(135deg, rgba(240, 253, 244, 0.92) 0%, rgba(220, 252, 231, 0.75) 100%);
-      backdrop-filter: blur(20px) saturate(190%);
-      -webkit-backdrop-filter: blur(20px) saturate(190%);
-      border: 2px dashed rgba(21, 128, 61, 0.6);
-      border-radius: var(--radius-xl);
-      padding: 2.25rem 2rem;
+      background: var(--color-surface);
+      border: 1px dashed rgba(36, 138, 61, 0.4);
+      border-radius: var(--radius-lg);
+      padding: 2rem 1.5rem;
       text-align: center;
       margin: 1.5rem 0;
-      box-shadow: 0 10px 30px -4px rgba(21, 128, 61, 0.12), inset 0 1px 2px rgba(255, 255, 255, 0.95);
-      position: relative;
-      overflow: hidden;
-    }
-    .lot-badge-display::after {
-      content: "";
-      position: absolute;
-      top: 0;
-      left: 0;
-      right: 0;
-      height: 45%;
-      background: linear-gradient(180deg, rgba(255, 255, 255, 0.45) 0%, rgba(255, 255, 255, 0) 100%);
-      pointer-events: none;
+      box-shadow: var(--shadow-sm);
     }
     .lot-code-text {
-      font-size: 2.25rem;
-      font-weight: 800;
-      letter-spacing: 0.15em;
-      color: var(--color-primary-active);
+      font-size: 2rem;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      color: var(--color-primary);
       font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-      margin: 0.75rem 0;
+      margin: 0.5rem 0;
       user-select: all;
     }
     .success-summary {
-      background: rgba(255, 255, 255, 0.85);
-      backdrop-filter: blur(12px);
-      -webkit-backdrop-filter: blur(12px);
-      border: 1px solid rgba(226, 232, 240, 0.9);
-      border-radius: var(--radius-lg);
-      padding: 1.25rem;
+      background: var(--color-surface);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-md);
+      padding: 1rem 1.25rem;
       margin-top: 1.25rem;
       text-align: left;
-      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.02), inset 0 1px 1px #fff;
+      box-shadow: var(--shadow-xs);
     }
     .summary-row {
       display: flex;
       justify-content: space-between;
-      padding: 0.5rem 0;
-      border-bottom: 1px solid var(--color-border);
-      font-size: 0.95rem;
+      padding: 0.4rem 0;
+      border-bottom: 1px solid var(--color-border-subtle);
+      font-size: 0.9rem;
     }
     .summary-row:last-child {
       border-bottom: none;
@@ -68,7 +52,7 @@
       color: var(--color-text-muted);
     }
     .summary-value {
-      font-weight: 700;
+      font-weight: 600;
       color: var(--color-text-main);
     }
   </style>
