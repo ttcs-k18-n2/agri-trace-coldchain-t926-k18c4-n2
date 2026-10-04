@@ -11,6 +11,19 @@
 (function () {
   const STORAGE_KEY = "agriUser";
 
+  const APP_PERMISSIONS = {
+    "farm.write": ["producer", "cooperative", "org_admin", "admin"],
+    "harvest.create": ["producer", "cooperative", "org_admin", "admin"],
+    "product.write": ["admin"],
+    "global.read": ["inspector", "admin"],
+  };
+
+  function hasPermission(roleId, action) {
+    if (!roleId || !action) return false;
+    const allowed = APP_PERMISSIONS[action];
+    return Array.isArray(allowed) && allowed.includes(roleId);
+  }
+
   function formatRole(role) {
     const map = {
       admin: "Quản trị viên",
@@ -181,9 +194,24 @@
     }
   }
 
-  // Export to global scope
-  window.initAppShell = initAppShell;
-  window.setAgriUserCache = setCachedUser;
-  window.getAgriUserCache = getCachedUser;
-  window.formatRole = formatRole;
+  // Export to global scope & module
+  if (typeof window !== "undefined") {
+    window.initAppShell = initAppShell;
+    window.setAgriUserCache = setCachedUser;
+    window.getAgriUserCache = getCachedUser;
+    window.formatRole = formatRole;
+    window.APP_PERMISSIONS = APP_PERMISSIONS;
+    window.hasPermission = hasPermission;
+  }
+
+  if (typeof module !== "undefined" && module.exports) {
+    module.exports = {
+      initAppShell,
+      setCachedUser,
+      getCachedUser,
+      formatRole,
+      APP_PERMISSIONS,
+      hasPermission,
+    };
+  }
 })();

@@ -1,0 +1,88 @@
+const test = require("node:test");
+const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const path = require("node:path");
+
+const frontendDir = path.join(__dirname, "../../frontend");
+const { hasPermission, APP_PERMISSIONS, formatRole } = require("../../frontend/app-shell.js");
+
+test("Frontend Permissions: App Shell exposes permission matrix and hasPermission helper", () => {
+  assert.ok(APP_PERMISSIONS);
+  assert.equal(typeof hasPermission, "function");
+
+  // Farm write permissions
+  assert.equal(hasPermission("producer", "farm.write"), true);
+  assert.equal(hasPermission("cooperative", "farm.write"), true);
+  assert.equal(hasPermission("org_admin", "farm.write"), true);
+  assert.equal(hasPermission("admin", "farm.write"), true);
+  assert.equal(hasPermission("transporter", "farm.write"), false);
+  assert.equal(hasPermission("distributor", "farm.write"), false);
+  assert.equal(hasPermission("inspector", "farm.write"), false);
+
+  // Harvest create permissions
+  assert.equal(hasPermission("producer", "harvest.create"), true);
+  assert.equal(hasPermission("cooperative", "harvest.create"), true);
+  assert.equal(hasPermission("org_admin", "harvest.create"), true);
+  assert.equal(hasPermission("admin", "harvest.create"), true);
+  assert.equal(hasPermission("transporter", "harvest.create"), false);
+  assert.equal(hasPermission("distributor", "harvest.create"), false);
+  assert.equal(hasPermission("inspector", "harvest.create"), false);
+
+  // Product write permissions (Admin only)
+  assert.equal(hasPermission("admin", "product.write"), true);
+  assert.equal(hasPermission("org_admin", "product.write"), false);
+  assert.equal(hasPermission("producer", "product.write"), false);
+  assert.equal(hasPermission("inspector", "product.write"), false);
+
+  // Global read permissions
+  assert.equal(hasPermission("inspector", "global.read"), true);
+  assert.equal(hasPermission("admin", "global.read"), true);
+  assert.equal(hasPermission("producer", "global.read"), false);
+});
+
+test("Frontend Permissions: Role labels include org_admin across all formatRole implementations", () => {
+  assert.equal(formatRole("org_admin"), "Quản trị tổ chức");
+  assert.equal(formatRole("admin"), "Quản trị viên");
+  assert.equal(formatRole("producer"), "Nông dân / Sản xuất");
+});
+
+test("Frontend Permissions: farms.html guards write actions against Transporter, Distributor, and Inspector", () => {
+  const html = fs.readFileSync(path.join(frontendDir, "farms.html"), "utf8");
+  assert.match(html, /hasPermission\([^)]*farm\.write/);
+  assert.match(html, /canWriteFarm/);
+  assert.match(html, /\(Chỉ xem\)/);
+});
+
+test("Frontend Permissions: products.html only exposes management controls to product.write authorized role (Admin)", () => {
+  const html = fs.readFileSync(path.join(frontendDir, "products.html"), "utf8");
+  assert.match(html, /hasPermission\([^)]*product\.write/);
+  assert.match(html, /admin-actions/);
+});
+
+test("Frontend Permissions: harvest.html and lots.html guard harvest creation using harvest.create permission", () => {
+  const harvestHtml = fs.readFileSync(path.join(frontendDir, "harvest.html"), "utf8");
+  assert.match(harvestHtml, /hasPermission\([^)]*harvest\.create/);
+
+  const lotsHtml = fs.readFileSync(path.join(frontendDir, "lots.html"), "utf8");
+  assert.match(lotsHtml, /hasPermission\([^)]*harvest\.create/);
+});
+
+test("Frontend Permissions: index.html contains all 7 demo accounts and fixes Inspector org to org-inspector without role dropdown", () => {
+  const html = fs.readFileSync(path.join(frontendDir, "index.html"), "utf8");
+  
+  // All 7 test accounts present
+  assert.match(html, /admin@example\.com/);
+  assert.match(html, /orgadmin@example\.com/);
+  assert.match(html, /user@example\.com/);
+  assert.match(html, /user2@example\.com/);
+  assert.match(html, /transporter@example\.com/);
+  assert.match(html, /distributor@example\.com/);
+  assert.match(html, /inspector@example\.com/);
+
+  // Inspector org is correctly org-inspector
+  assert.match(html, /inspector@example\.com[\s\S]*?org-inspector/);
+  assert.doesNotMatch(html, /inspector@example\.com[\s\S]*?org-001/);
+
+  // Security: No role dropdown selection element in form
+  assert.doesNotMatch(html, /<select[^>]*name=["']role["']/);
+});
