@@ -263,7 +263,7 @@
 
       <!-- Navigation Tabs (S-01, S-06, S-07, S-08 connected!) -->
       <nav class="nav-links" aria-label="Điều hướng chính">
-        <a href="/lots.html" class="nav-item active" id="navLots">
+        <a href="/lots.html" class="nav-item active" id="navLots" aria-current="page">
           <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m7.5 4.27 9 5.15"/><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg>
           <span>Lô hàng</span>
         </a>
@@ -311,10 +311,10 @@
         <h1>Danh sách lô thu hoạch</h1>
         <p class="page-subtitle">Giám sát danh sách lô thu hoạch theo phân quyền tổ chức</p>
       </div>
-      <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+      <div class="page-actions">
         <a href="/harvest.html" class="btn-primary" id="btnGoHarvest">
           <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-          <span>+ Ghi nhận thu hoạch</span>
+          <span>Ghi nhận thu hoạch</span>
         </a>
         <a href="/farms.html" class="btn-secondary" style="border: 1px solid var(--color-border);">
           <span>Khai báo thửa đất</span>
@@ -390,6 +390,16 @@
           inspector: "Cán bộ kiểm tra"
         };
         document.getElementById("userRole").textContent = roleLabels[user.roleId] || user.roleId;
+
+        const writableHarvestRoles = ["producer", "cooperative", "org_admin", "admin"];
+        const harvestButton = document.getElementById("btnGoHarvest");
+        if (!writableHarvestRoles.includes(user.roleId)) {
+          harvestButton.removeAttribute("href");
+          harvestButton.setAttribute("aria-disabled", "true");
+          harvestButton.setAttribute("title", "Vai trò hiện tại không có quyền ghi nhận thu hoạch");
+          harvestButton.style.opacity = "0.55";
+          harvestButton.style.cursor = "not-allowed";
+        }
 
         // Backward compatibility
         document.getElementById("userInfo").textContent = `Email: ${user.email} | Tổ chức: ${user.organizationId}`;
