@@ -1356,12 +1356,21 @@ app.put(
   }
 );
 
+function sendFrontendFile(res, filePath) {
+  res.set({
+    "Cache-Control": "no-cache, no-store, must-revalidate, max-age=0",
+    Pragma: "no-cache",
+    Expires: "0",
+  });
+  return res.sendFile(filePath);
+}
+
 const frontendIndexPath = path.join(__dirname, "../../frontend/index.html");
 const frontendLotsPath = path.join(__dirname, "../../frontend/lots.html");
 
 app.get("/login", (req, res) => {
   if (fs.existsSync(frontendIndexPath)) {
-    return res.sendFile(frontendIndexPath);
+    return sendFrontendFile(res, frontendIndexPath);
   }
   return res.redirect("http://localhost:8080/index.html");
 });
@@ -1370,14 +1379,14 @@ const frontendFarmsPath = path.join(__dirname, "../../frontend/farms.html");
 
 app.get("/farms", requireAuth, (req, res) => {
   if (fs.existsSync(frontendFarmsPath)) {
-    return res.sendFile(frontendFarmsPath);
+    return sendFrontendFile(res, frontendFarmsPath);
   }
   return res.redirect("http://localhost:8080/farms.html");
 });
 
 app.get("/lots", requireAuth, (req, res) => {
   if (fs.existsSync(frontendLotsPath)) {
-    return res.sendFile(frontendLotsPath);
+    return sendFrontendFile(res, frontendLotsPath);
   }
   return res.redirect("http://localhost:8080/lots.html");
 });
@@ -1387,20 +1396,32 @@ const frontendHarvestPath = path.join(__dirname, "../../frontend/harvest.html");
 
 app.get("/products", requireAuth, (req, res) => {
   if (fs.existsSync(frontendProductsPath)) {
-    return res.sendFile(frontendProductsPath);
+    return sendFrontendFile(res, frontendProductsPath);
   }
   return res.redirect("http://localhost:8080/products.html");
 });
 
 app.get("/harvest", requireAuth, (req, res) => {
   if (fs.existsSync(frontendHarvestPath)) {
-    return res.sendFile(frontendHarvestPath);
+    return sendFrontendFile(res, frontendHarvestPath);
   }
   return res.redirect("http://localhost:8080/harvest.html");
 });
 
 if (fs.existsSync(path.join(__dirname, "../../frontend"))) {
-  app.use(express.static(path.join(__dirname, "../../frontend")));
+  app.use(
+    express.static(path.join(__dirname, "../../frontend"), {
+      setHeaders(res, filePath) {
+        if (filePath.endsWith(".html") || filePath.endsWith(".css") || filePath.endsWith(".js")) {
+          res.set({
+            "Cache-Control": "no-cache, no-store, must-revalidate, max-age=0",
+            Pragma: "no-cache",
+            Expires: "0",
+          });
+        }
+      },
+    })
+  );
 }
 
 async function start() {
