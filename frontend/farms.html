@@ -408,13 +408,17 @@
         const orgBadgeEl = document.getElementById("orgBadge");
         if (orgBadgeEl) orgBadgeEl.innerHTML = `Tổ chức: <strong>${user.organizationId}</strong>`;
 
-        // If inspector, display role notice and disable form inputs
-        if (user.roleId === "inspector") {
-          document.getElementById("inspectorNotice").style.display = "block";
-          document.getElementById("submitFarmBtn").disabled = true;
+        // If non-writable role (inspector, transporter, distributor), disable inputs
+        const writableFarmRoles = ["producer", "cooperative", "org_admin", "admin"];
+        if (!writableFarmRoles.includes(user.roleId)) {
+          const submitBtn = document.getElementById("submitFarmBtn");
+          if (submitBtn) submitBtn.disabled = true;
           document.getElementById("farmName").disabled = true;
           document.getElementById("farmArea").disabled = true;
           document.getElementById("farmCoordinates").disabled = true;
+          if (user.roleId === "inspector") {
+            document.getElementById("inspectorNotice").style.display = "block";
+          }
         }
 
         await loadFarms();
@@ -625,14 +629,6 @@
         }
       }
     });
-
-    const logoutEl = document.getElementById("logout") || document.getElementById("logoutBtn");
-    if (logoutEl) {
-      logoutEl.addEventListener("click", async () => {
-        await fetch("/api/logout", { method: "POST" });
-        window.location.href = "/login";
-      });
-    }
 
     checkAuthAndLoad();
   </script>

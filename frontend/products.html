@@ -368,15 +368,6 @@
     }
 
     function setupEventListeners() {
-      // Logout
-      document.getElementById("logout").addEventListener("click", async () => {
-        try {
-          await fetch("/api/logout", { method: "POST" });
-        } finally {
-          window.location.href = "/login";
-        }
-      });
-
       // Search filter
       document.getElementById("search-input").addEventListener("input", (e) => {
         const query = e.target.value.toLowerCase().trim();
@@ -454,6 +445,7 @@
     function formatRole(role) {
       const map = {
         admin: "Quản trị viên",
+        org_admin: "Quản trị tổ chức",
         producer: "Nông hộ / Sản xuất",
         cooperative: "Hợp tác xã",
         inspector: "Cán bộ kiểm tra",
