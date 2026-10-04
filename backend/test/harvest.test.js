@@ -288,6 +288,26 @@ test("T-21 & S-09: Server-side validation, future date rejection, and idempotenc
   assert.equal(zeroQtyRes.status, 400);
   assert.equal(zeroQtyRes.body.message, "Khối lượng phải là số dương lớn hơn 0.");
 
+  // AC2: Khối lượng âm (quantity = -5) bị chặn (400)
+  const neg5QtyRes = await request(
+    server,
+    {
+      hostname: "127.0.0.1",
+      port,
+      path: "/api/lots",
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: org1Cookie },
+    },
+    {
+      farmId: "FARM-001",
+      productId: "PROD-TEA",
+      quantity: -5,
+      harvestedAt: "2026-09-30",
+    }
+  );
+  assert.equal(neg5QtyRes.status, 400);
+  assert.equal(neg5QtyRes.body.message, "Khối lượng phải là số dương lớn hơn 0.");
+
   // AC2: Khối lượng không phải số bị chặn (400)
   const nanQtyRes = await request(
     server,
@@ -307,6 +327,26 @@ test("T-21 & S-09: Server-side validation, future date rejection, and idempotenc
   );
   assert.equal(nanQtyRes.status, 400);
   assert.equal(nanQtyRes.body.message, "Khối lượng phải là số dương lớn hơn 0.");
+
+  // AC3: Gửi farmId của tổ chức khác (FARM-101 thuộc org-002) bị chặn (403)
+  const crossOrgFarmRes = await request(
+    server,
+    {
+      hostname: "127.0.0.1",
+      port,
+      path: "/api/lots",
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: org1Cookie },
+    },
+    {
+      farmId: "FARM-101",
+      productId: "PROD-TEA",
+      quantity: 50,
+      harvestedAt: "2026-09-30",
+    }
+  );
+  assert.equal(crossOrgFarmRes.status, 403);
+  assert.match(crossOrgFarmRes.body.message, /không có quyền thao tác trên thửa đất của tổ chức khác/);
 
   // AC3: Thửa đất không tồn tại (404)
   const notFoundFarmRes = await request(
