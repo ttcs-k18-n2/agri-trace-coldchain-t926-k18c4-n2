@@ -215,3 +215,242 @@ test("T-20 & S-08: Harvest batch registration API, validation, permissions, and 
     assert.match(multiHarvestRes.body.lot.id, /^LOT-[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{8}$/);
   }
 });
+
+test("T-21 & S-09: Server-side validation, future date rejection, and idempotency protection", async (t) => {
+  await seedDemoUser();
+
+  const server = http.createServer(app);
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const port = server.address().port;
+
+  t.after(() => server.close());
+
+  const org1Cookie = await loginUser(server, "user@example.com", "Password@123");
+
+  // AC1: Ngày thu hoạch nằm trong tương lai bị chặn tại máy chủ (400)
+  const tomorrow = new Date(Date.now() + 86400000 * 2).toISOString().slice(0, 10);
+  const futureRes = await request(
+    server,
+    {
+      hostname: "127.0.0.1",
+      port,
+      path: "/api/lots",
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: org1Cookie },
+    },
+    {
+      farmId: "FARM-001",
+      productId: "PROD-TEA",
+      quantity: 50,
+      harvestedAt: tomorrow,
+    }
+  );
+  assert.equal(futureRes.status, 400);
+  assert.equal(futureRes.body.message, "Ngày thu hoạch không được nằm trong tương lai.");
+
+  // AC1: Định dạng ngày thu hoạch không hợp lệ bị chặn (400)
+  const invalidDateRes = await request(
+    server,
+    {
+      hostname: "127.0.0.1",
+      port,
+      path: "/api/lots",
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: org1Cookie },
+    },
+    {
+      farmId: "FARM-001",
+      productId: "PROD-TEA",
+      quantity: 50,
+      harvestedAt: "not-a-valid-date",
+    }
+  );
+  assert.equal(invalidDateRes.status, 400);
+  assert.equal(invalidDateRes.body.message, "Ngày thu hoạch không hợp lệ.");
+
+  // AC2: Khối lượng = 0 bị chặn (400)
+  const zeroQtyRes = await request(
+    server,
+    {
+      hostname: "127.0.0.1",
+      port,
+      path: "/api/lots",
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: org1Cookie },
+    },
+    {
+      farmId: "FARM-001",
+      productId: "PROD-TEA",
+      quantity: 0,
+      harvestedAt: "2026-09-30",
+    }
+  );
+  assert.equal(zeroQtyRes.status, 400);
+  assert.equal(zeroQtyRes.body.message, "Khối lượng phải là số dương lớn hơn 0.");
+
+  // AC2: Khối lượng không phải số bị chặn (400)
+  const nanQtyRes = await request(
+    server,
+    {
+      hostname: "127.0.0.1",
+      port,
+      path: "/api/lots",
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: org1Cookie },
+    },
+    {
+      farmId: "FARM-001",
+      productId: "PROD-TEA",
+      quantity: "mười-hai-kg",
+      harvestedAt: "2026-09-30",
+    }
+  );
+  assert.equal(nanQtyRes.status, 400);
+  assert.equal(nanQtyRes.body.message, "Khối lượng phải là số dương lớn hơn 0.");
+
+  // AC3: Thửa đất không tồn tại (404)
+  const notFoundFarmRes = await request(
+    server,
+    {
+      hostname: "127.0.0.1",
+      port,
+      path: "/api/lots",
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: org1Cookie },
+    },
+    {
+      farmId: "FARM-NON-EXISTENT",
+      productId: "PROD-TEA",
+      quantity: 50,
+      harvestedAt: "2026-09-30",
+    }
+  );
+  assert.equal(notFoundFarmRes.status, 404);
+  assert.equal(notFoundFarmRes.body.message, "Không tìm thấy thửa đất.");
+
+  // AC3: Sản phẩm không tồn tại (400)
+  const notFoundProdRes = await request(
+    server,
+    {
+      hostname: "127.0.0.1",
+      port,
+      path: "/api/lots",
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: org1Cookie },
+    },
+    {
+      farmId: "FARM-001",
+      productId: "PROD-NON-EXISTENT",
+      quantity: 50,
+      harvestedAt: "2026-09-30",
+    }
+  );
+  assert.equal(notFoundProdRes.status, 400);
+  assert.equal(notFoundProdRes.body.message, "Sản phẩm không tồn tại trong danh mục.");
+
+  // Chưa đăng nhập (401)
+  const unauthRes = await request(
+    server,
+    {
+      hostname: "127.0.0.1",
+      port,
+      path: "/api/lots",
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+    },
+    {
+      farmId: "FARM-001",
+      productId: "PROD-TEA",
+      quantity: 50,
+    }
+  );
+  assert.equal(unauthRes.status, 401);
+
+  // AC4: Bấm nút lưu 2 lần / Idempotency bảo vệ không sinh 2 lô trùng nhau
+  const idempotencyKey = "test-idempotency-" + Date.now();
+  const firstReq = await request(
+    server,
+    {
+      hostname: "127.0.0.1",
+      port,
+      path: "/api/lots",
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Cookie: org1Cookie,
+        "X-Idempotency-Key": idempotencyKey,
+      },
+    },
+    {
+      farmId: "FARM-001",
+      productId: "PROD-TEA",
+      quantity: 88.5,
+      harvestedAt: "2026-09-29",
+    }
+  );
+  assert.equal(firstReq.status, 201);
+  const firstLotId = firstReq.body.lot.id;
+
+  // Gửi lại cùng idempotency key -> máy chủ trả lại kết quả lô trước đó, không sinh lô mới
+  const secondReq = await request(
+    server,
+    {
+      hostname: "127.0.0.1",
+      port,
+      path: "/api/lots",
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Cookie: org1Cookie,
+        "X-Idempotency-Key": idempotencyKey,
+      },
+    },
+    {
+      farmId: "FARM-001",
+      productId: "PROD-TEA",
+      quantity: 88.5,
+      harvestedAt: "2026-09-29",
+    }
+  );
+  assert.equal(secondReq.status, 201);
+  assert.equal(secondReq.body.lot.id, firstLotId);
+
+  // Chống double-click tức thì (cùng thông số trong 1 giây từ cùng user không sinh 2 lô)
+  const doubleClickReq1 = await request(
+    server,
+    {
+      hostname: "127.0.0.1",
+      port,
+      path: "/api/lots",
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: org1Cookie },
+    },
+    {
+      farmId: "FARM-001",
+      productId: "PROD-TEA",
+      quantity: 99.2,
+      harvestedAt: "2026-09-28",
+    }
+  );
+  assert.equal(doubleClickReq1.status, 201);
+
+  const doubleClickReq2 = await request(
+    server,
+    {
+      hostname: "127.0.0.1",
+      port,
+      path: "/api/lots",
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: org1Cookie },
+    },
+    {
+      farmId: "FARM-001",
+      productId: "PROD-TEA",
+      quantity: 99.2,
+      harvestedAt: "2026-09-28",
+    }
+  );
+  assert.equal(doubleClickReq2.status, 201);
+  assert.equal(doubleClickReq2.body.lot.id, doubleClickReq1.body.lot.id);
+});
+

@@ -53,8 +53,8 @@ Phụ trách migration, hash chain, chống sửa/xóa, kiểm tra toàn vẹn v
 | N2-79 | S-15 | Bàn giao lô sang tổ chức khác ở trạng thái chờ xác nhận | dtc245200406 | To Do | `feature/s2-backend` |
 | N2-80 | S-16 | Bên nhận xác nhận hoặc từ chối bàn giao kèm lý do | Nguyen Van Dung | To Do | `feature/s2-backend` |
 | N2-81 | S-07 | Khai báo danh mục sản phẩm và đơn vị tính | HOANG NGOC HUY | To Do | `feature/s2-backend` |
-| N2-82 | S-08 | Ghi nhận lô thu hoạch với mã lô sinh tự động | TRAN QUANG DU | To Do | `feature/s2-backend` |
-| N2-83 | S-09 | Dữ liệu thu hoạch không hợp lệ bị chặn ở máy chủ | BUI DUY HUNG | To Do | `feature/s2-backend` |
+| N2-82 | S-08 | Ghi nhận lô thu hoạch với mã lô sinh tự động | TRAN QUANG DU | Done | `feature/s2-backend` |
+| N2-83 | S-09 | Dữ liệu thu hoạch không hợp lệ bị chặn ở máy chủ | BUI DUY HUNG | Done | `feature/s2-backend` |
 | N2-84 | S-14 | Danh sách lô tổ chức tôi đang giữ, tìm theo mã lô | HOANG TRANG HIEN | To Do | `feature/s2-frontend` |
 | N2-85 | S-24 | Bàn giao quá hạn chưa xác nhận bị đánh dấu cho cả hai bên | HOANG TRANG HIEN | To Do | `feature/s2-backend` |
 | N2-86 | S-23 | Lô có nguồn gốc từ tổ chức khác thì xem được phần lịch sử trước đó | NGUYEN THANH HAI | To Do | `feature/s2-backend` |
