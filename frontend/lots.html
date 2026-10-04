@@ -211,39 +211,45 @@
       text-decoration: underline;
     }
 
-    /* Empty state */
+    /* Empty state - Liquid Glass */
     .empty-state {
       text-align: center;
       padding: 56px 24px;
-      background: var(--color-surface);
-      border: 1px dashed var(--color-border);
-      border-radius: var(--radius-lg);
+      background: var(--liquid-glass-bg);
+      backdrop-filter: var(--liquid-glass-blur);
+      -webkit-backdrop-filter: var(--liquid-glass-blur);
+      border: 1px dashed rgba(21, 128, 61, 0.4);
+      border-radius: var(--radius-xl);
+      box-shadow: var(--liquid-glass-shadow);
       grid-column: 1 / -1;
     }
 
     .empty-state-icon {
-      width: 56px;
-      height: 56px;
+      width: 60px;
+      height: 60px;
       border-radius: var(--radius-full);
-      background: var(--color-bg);
-      color: var(--color-text-light);
+      background: rgba(240, 253, 244, 0.9);
+      backdrop-filter: blur(8px);
+      border: 1px solid rgba(187, 247, 208, 0.9);
+      color: var(--color-primary);
       display: inline-flex;
       align-items: center;
       justify-content: center;
       margin-bottom: 16px;
+      box-shadow: 0 4px 12px rgba(21, 128, 61, 0.1), inset 0 1px 1px #fff;
     }
 
     .empty-state-title {
-      font-size: 16px;
+      font-size: 17px;
       font-weight: 700;
       color: var(--color-text-main);
       margin-bottom: 6px;
     }
 
     .empty-state-desc {
-      font-size: 13px;
+      font-size: 14px;
       color: var(--color-text-muted);
-      max-width: 380px;
+      max-width: 420px;
       margin: 0 auto 20px auto;
     }
 
