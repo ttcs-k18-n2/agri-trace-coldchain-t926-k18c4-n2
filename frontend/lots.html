@@ -7,19 +7,19 @@
   <link rel="stylesheet" href="/styles.css">
 
   <style>
-    /* Search & Filter Toolbar - Liquid Glass */
+    /* Search & Filter Toolbar - Layer 3: Liquid Glass Floating Bar */
     .filter-toolbar {
       background: var(--liquid-glass-bg);
       backdrop-filter: var(--liquid-glass-blur);
       -webkit-backdrop-filter: var(--liquid-glass-blur);
       border: var(--liquid-glass-border);
-      border-radius: var(--radius-xl);
-      padding: 14px 18px;
+      border-radius: var(--radius-full);
+      padding: 10px 16px;
       margin-bottom: 24px;
       display: flex;
       align-items: center;
       justify-content: space-between;
-      gap: 16px;
+      gap: 12px;
       flex-wrap: wrap;
       box-shadow: var(--liquid-glass-shadow);
     }
@@ -27,7 +27,7 @@
     .search-box {
       position: relative;
       flex: 1;
-      min-width: 260px;
+      min-width: 240px;
     }
 
     .search-icon {
@@ -43,145 +43,138 @@
 
     .search-input {
       width: 100%;
-      height: 40px;
-      padding: 0 14px 0 38px;
-      border: 1px solid rgba(203, 213, 225, 0.85);
-      border-radius: var(--radius-md);
+      height: 36px;
+      padding: 0 14px 0 34px;
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-full);
       font-size: 13px;
-      background: rgba(255, 255, 255, 0.85);
-      backdrop-filter: blur(8px);
+      background: #ffffff;
       color: var(--color-text-main);
-      box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.02);
+      box-shadow: inset 0 1px 1px rgba(0, 0, 0, 0.02);
       transition: var(--transition-fast);
     }
 
     .search-input:focus {
       background: #ffffff;
       border-color: var(--color-primary);
-      box-shadow: 0 0 0 3px rgba(21, 128, 61, 0.16);
+      box-shadow: 0 0 0 3px rgba(36, 138, 61, 0.16);
     }
 
     .filter-pills {
       display: flex;
       align-items: center;
-      gap: 6px;
+      gap: 4px;
     }
 
     .filter-btn {
-      padding: 6px 14px;
+      padding: 5px 12px;
       border-radius: var(--radius-full);
       font-size: 12px;
-      font-weight: 600;
-      border: 1px solid rgba(226, 232, 240, 0.85);
-      background: rgba(255, 255, 255, 0.7);
-      backdrop-filter: blur(8px);
+      font-weight: 500;
+      border: 1px solid transparent;
+      background: rgba(0, 0, 0, 0.04);
       color: var(--color-text-muted);
       cursor: pointer;
       transition: var(--transition-fast);
     }
 
     .filter-btn:hover {
-      border-color: var(--color-primary);
-      color: var(--color-primary);
-      background: rgba(255, 255, 255, 0.95);
+      color: var(--color-text-main);
+      background: rgba(0, 0, 0, 0.07);
     }
 
     .filter-btn.active {
-      background: rgba(220, 252, 231, 0.9);
-      color: var(--color-primary-active);
-      border-color: rgba(187, 247, 208, 0.95);
-      box-shadow: 0 2px 6px rgba(21, 128, 61, 0.1), inset 0 1px 1px #fff;
+      background: #ffffff;
+      color: var(--color-text-main);
+      font-weight: 600;
+      border-color: var(--color-border);
+      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
     }
 
-    /* Lots Grid & Card - Liquid Glass Panels */
+    /* Lots Grid & Card - Layer 2: Clean Content Cards */
     .lots-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
-      gap: 20px;
+      grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+      gap: 16px;
     }
 
     .lot-card {
-      background: var(--liquid-glass-bg);
-      backdrop-filter: var(--liquid-glass-blur);
-      -webkit-backdrop-filter: var(--liquid-glass-blur);
-      border: var(--liquid-glass-border);
-      border-radius: var(--radius-xl);
-      padding: 22px;
-      box-shadow: var(--liquid-glass-shadow);
+      background: var(--color-surface);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-lg);
+      padding: 20px;
+      box-shadow: var(--shadow-sm);
       display: flex;
       flex-direction: column;
       justify-content: space-between;
-      gap: 16px;
+      gap: 14px;
       transition: var(--transition-normal);
       position: relative;
     }
 
     .lot-card:hover {
-      transform: translateY(-3px);
-      box-shadow: var(--liquid-glass-shadow-hover);
-      border-color: rgba(187, 247, 208, 0.95);
+      transform: translateY(-1px);
+      box-shadow: var(--shadow-hover);
+      border-color: rgba(0, 0, 0, 0.12);
     }
 
     .lot-card-top {
       display: flex;
       align-items: flex-start;
       justify-content: space-between;
-      gap: 12px;
+      gap: 10px;
     }
 
     .lot-code-tag {
-      font-size: 11px;
-      font-weight: 700;
-      letter-spacing: 0.05em;
-      color: var(--color-primary-active);
-      background: rgba(220, 252, 231, 0.85);
-      border: 1px solid rgba(187, 247, 208, 0.9);
-      padding: 4px 10px;
+      font-size: 11.5px;
+      font-weight: 600;
+      color: var(--color-primary);
+      background: var(--color-primary-light);
+      padding: 3px 8px;
       border-radius: var(--radius-full);
-      box-shadow: inset 0 1px 1px #ffffff;
     }
 
-
     .lot-title {
-      font-size: 18px;
+      font-size: 17px;
       font-weight: 700;
       color: var(--color-text-main);
-      margin-top: 8px;
+      margin-top: 6px;
       line-height: 1.3;
+      letter-spacing: -0.015em;
     }
 
     .lot-quantity-sub {
-      font-size: 14px;
-      font-weight: 700;
+      font-size: 13.5px;
+      font-weight: 600;
       color: var(--color-primary);
-      margin-top: 3px;
+      margin-top: 2px;
     }
 
     .lot-meta-list {
       display: flex;
       flex-direction: column;
-      gap: 8px;
-      padding: 12px 0;
-      border-top: 1px dashed var(--color-border);
-      border-bottom: 1px dashed var(--color-border);
+      gap: 7px;
+      padding: 10px 0;
+      border-top: 1px solid var(--color-border-subtle);
+      border-bottom: 1px solid var(--color-border-subtle);
     }
 
     .lot-meta-item {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      font-size: 13px;
+      font-size: 12.5px;
     }
 
     .lot-meta-label {
       color: var(--color-text-muted);
       display: flex;
       align-items: center;
-      gap: 6px;
+      gap: 5px;
     }
 
     .lot-meta-value {
-      font-weight: 600;
+      font-weight: 500;
       color: var(--color-text-main);
     }
 
@@ -195,9 +188,9 @@
     .btn-lot-action {
       display: inline-flex;
       align-items: center;
-      gap: 6px;
-      font-size: 12px;
-      font-weight: 600;
+      gap: 5px;
+      font-size: 12.5px;
+      font-weight: 500;
       color: var(--color-primary);
       background: none;
       border: none;
@@ -207,55 +200,54 @@
     }
 
     .btn-lot-action:hover {
-      color: var(--color-primary-active);
+      color: var(--color-primary-hover);
       text-decoration: underline;
     }
 
-    /* Empty state - Liquid Glass */
+    /* Empty state - Clean Content Surface */
     .empty-state {
       text-align: center;
-      padding: 56px 24px;
-      background: var(--liquid-glass-bg);
-      backdrop-filter: var(--liquid-glass-blur);
-      -webkit-backdrop-filter: var(--liquid-glass-blur);
-      border: 1px dashed rgba(21, 128, 61, 0.4);
-      border-radius: var(--radius-xl);
-      box-shadow: var(--liquid-glass-shadow);
+      padding: 48px 24px;
+      background: var(--color-surface);
+      border: 1px dashed var(--color-border);
+      border-radius: var(--radius-lg);
+      box-shadow: var(--shadow-xs);
       grid-column: 1 / -1;
     }
 
     .empty-state-icon {
-      width: 60px;
-      height: 60px;
+      width: 48px;
+      height: 48px;
       border-radius: var(--radius-full);
-      background: rgba(240, 253, 244, 0.9);
-      backdrop-filter: blur(8px);
-      border: 1px solid rgba(187, 247, 208, 0.9);
+      background: var(--color-primary-light);
       color: var(--color-primary);
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      margin-bottom: 16px;
-      box-shadow: 0 4px 12px rgba(21, 128, 61, 0.1), inset 0 1px 1px #fff;
+      margin-bottom: 14px;
     }
 
     .empty-state-title {
-      font-size: 17px;
-      font-weight: 700;
+      font-size: 16px;
+      font-weight: 600;
       color: var(--color-text-main);
-      margin-bottom: 6px;
+      margin-bottom: 4px;
     }
 
     .empty-state-desc {
-      font-size: 14px;
+      font-size: 13px;
       color: var(--color-text-muted);
-      max-width: 420px;
-      margin: 0 auto 20px auto;
+      max-width: 400px;
+      margin: 0 auto 16px auto;
     }
 
     @media (max-width: 640px) {
       .lots-grid {
         grid-template-columns: 1fr;
+      }
+
+      .filter-toolbar {
+        border-radius: var(--radius-lg);
       }
     }
   </style>
