@@ -18,10 +18,33 @@
     "global.read": ["inspector", "admin"],
   };
 
+  const NAV_PERMISSIONS = {
+    navLots: ["producer", "cooperative", "transporter", "distributor", "inspector", "org_admin", "admin", "warehouse", "processing", "retailer"],
+    navFarms: ["producer", "cooperative", "inspector", "org_admin", "admin"],
+    navProducts: ["producer", "cooperative", "transporter", "distributor", "inspector", "org_admin", "admin", "warehouse", "processing", "retailer"],
+    navHarvest: ["producer", "cooperative", "org_admin", "admin"],
+  };
+
   function hasPermission(roleId, action) {
     if (!roleId || !action) return false;
     const allowed = APP_PERMISSIONS[action];
     return Array.isArray(allowed) && allowed.includes(roleId);
+  }
+
+  function applyRoleNavigation(roleId) {
+    if (!roleId) return;
+
+    Object.entries(NAV_PERMISSIONS).forEach(([navId, allowedRoles]) => {
+      const el = document.getElementById(navId);
+      if (el) {
+        el.style.display = allowedRoles.includes(roleId) ? "" : "none";
+      }
+    });
+
+    const canHarvest = hasPermission(roleId, "harvest.create");
+    document.querySelectorAll("#btnGoHarvest, .btn-go-harvest").forEach((btn) => {
+      btn.style.display = canHarvest ? "" : "none";
+    });
   }
 
   function formatRole(role) {
@@ -89,6 +112,8 @@
     if (roleEl) {
       roleEl.textContent = formatRole(user.roleId);
     }
+
+    applyRoleNavigation(user.roleId);
   }
 
   async function handleLogout(e) {
@@ -235,7 +260,9 @@
     window.getAgriUserCache = getCachedUser;
     window.formatRole = formatRole;
     window.APP_PERMISSIONS = APP_PERMISSIONS;
+    window.NAV_PERMISSIONS = NAV_PERMISSIONS;
     window.hasPermission = hasPermission;
+    window.applyRoleNavigation = applyRoleNavigation;
   }
 
   if (typeof module !== "undefined" && module.exports) {
@@ -247,7 +274,9 @@
       getCachedUser,
       formatRole,
       APP_PERMISSIONS,
+      NAV_PERMISSIONS,
       hasPermission,
+      applyRoleNavigation,
     };
   }
 })();

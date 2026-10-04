@@ -306,7 +306,7 @@
     <!-- Main Form & List Grid -->
     <div class="farm-layout">
       <!-- Left Column: Farm Form Card -->
-      <section class="farm-card">
+      <section class="farm-card" id="farmFormCard">
         <div class="card-header-group">
           <h2 class="card-title" id="formTitle">Khai báo thửa đất mới</h2>
           <span style="font-size: 11px; font-weight: 700; color: var(--color-primary); background: var(--color-primary-light); padding: 2px 8px; border-radius: var(--radius-xs);">
@@ -413,22 +413,35 @@
           ? window.hasPermission(user.roleId, "farm.write")
           : ["producer", "cooperative", "org_admin", "admin"].includes(user.roleId);
 
+        const formCard = document.getElementById("farmFormCard");
+        const farmLayout = document.querySelector(".farm-layout");
+        const noticeEl = document.getElementById("inspectorNotice");
+
         if (!canWriteFarm) {
-          const submitBtn = document.getElementById("submitFarmBtn");
-          if (submitBtn) {
-            submitBtn.disabled = true;
-            submitBtn.style.opacity = "0.55";
-            submitBtn.style.cursor = "not-allowed";
+          if (formCard) formCard.style.display = "none";
+          if (farmLayout) farmLayout.style.gridTemplateColumns = "1fr";
+
+          const roleName = (typeof window.formatRole === "function") ? formatRole(user.roleId) : user.roleId;
+
+          if (user.roleId === "inspector") {
+            if (noticeEl) {
+              noticeEl.style.display = "block";
+              noticeEl.textContent = `Chế độ kiểm tra: Bạn đang xem danh sách thửa đất toàn hệ thống với vai trò ${roleName}. Biểu mẫu khai báo đã được ẩn theo phân quyền.`;
+            }
+          } else {
+            // Vai trò không quản lý vùng trồng (transporter, distributor,...)
+            if (noticeEl) {
+              noticeEl.style.display = "block";
+              noticeEl.innerHTML = `Tài khoản vai trò <strong>${roleName}</strong> không quản lý vùng trồng / thửa đất. Đang chuyển hướng về <a href="/lots.html" style="text-decoration: underline; font-weight: 700;">Danh sách lô hàng</a>...`;
+            }
+            setTimeout(() => {
+              window.location.href = "/lots.html";
+            }, 2000);
+            return;
           }
-          document.getElementById("farmName").disabled = true;
-          document.getElementById("farmArea").disabled = true;
-          document.getElementById("farmCoordinates").disabled = true;
-          const noticeEl = document.getElementById("inspectorNotice");
-          if (noticeEl) {
-            noticeEl.style.display = "block";
-            const roleName = (typeof window.formatRole === "function") ? formatRole(user.roleId) : user.roleId;
-            noticeEl.textContent = `Tài khoản vai trò ${roleName} có chế độ chỉ xem, không có quyền tạo hoặc chỉnh sửa thửa đất.`;
-          }
+        } else {
+          if (formCard) formCard.style.display = "";
+          if (noticeEl) noticeEl.style.display = "none";
         }
 
         await loadFarms();

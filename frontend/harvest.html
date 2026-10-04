@@ -256,13 +256,14 @@
         : ["producer", "cooperative", "org_admin", "admin"].includes(currentUser.roleId);
 
       if (!canHarvest) {
-        showBanner("danger", "Tài khoản hiện tại chỉ có quyền xem dữ liệu và không thể ghi nhận thu hoạch.");
-        const submitBtn = document.getElementById("btn-submit-harvest");
-        if (submitBtn) {
-          submitBtn.disabled = true;
-          submitBtn.style.opacity = "0.55";
-          submitBtn.style.cursor = "not-allowed";
-        }
+        const formHarvest = document.getElementById("form-harvest");
+        if (formHarvest) formHarvest.style.display = "none";
+        const roleName = (typeof window.formatRole === "function") ? formatRole(currentUser.roleId) : currentUser.roleId;
+        showBanner("danger", `Tài khoản vai trò ${roleName} không có quyền tạo lô thu hoạch. Đang chuyển về Danh sách lô hàng...`);
+        setTimeout(() => {
+          window.location.href = "/lots.html";
+        }, 1800);
+        return;
       }
 
       await Promise.all([loadFarms(), loadProducts()]);
