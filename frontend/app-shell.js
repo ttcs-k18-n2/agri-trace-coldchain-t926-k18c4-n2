@@ -16,6 +16,7 @@
     "harvest.create": ["producer", "cooperative", "org_admin", "admin"],
     "product.write": ["admin"],
     "global.read": ["inspector", "admin"],
+    "integrity.check": ["inspector", "admin"],
   };
 
   const NAV_PERMISSIONS = {
@@ -23,6 +24,7 @@
     navFarms: ["producer", "cooperative", "inspector", "org_admin", "admin"],
     navProducts: ["producer", "cooperative", "transporter", "distributor", "inspector", "org_admin", "admin", "warehouse", "processing", "retailer"],
     navHarvest: ["producer", "cooperative", "org_admin", "admin"],
+    navIntegrity: ["inspector", "admin"],
   };
 
   function hasPermission(roleId, action) {

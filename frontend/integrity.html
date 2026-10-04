@@ -1,0 +1,625 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AGRI TRACEABILITY - Kiểm tra toàn vẹn dữ liệu chuỗi lạnh</title>
+  <link rel="stylesheet" href="/styles.css">
+
+  <style>
+    .integrity-container {
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 32px 20px 80px 20px;
+    }
+
+    .page-header {
+      margin-bottom: 28px;
+    }
+
+    .page-title {
+      font-size: 26px;
+      font-weight: 700;
+      color: var(--color-text-main);
+      letter-spacing: -0.02em;
+      margin-bottom: 6px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .page-subtitle {
+      font-size: 14px;
+      color: var(--color-text-muted);
+    }
+
+    /* Floating Liquid Glass Audit Panel */
+    .audit-card {
+      background: var(--liquid-glass-bg);
+      backdrop-filter: var(--liquid-glass-blur);
+      -webkit-backdrop-filter: var(--liquid-glass-blur);
+      border: var(--liquid-glass-border);
+      border-radius: var(--radius-xl);
+      padding: 24px;
+      margin-bottom: 24px;
+      box-shadow: var(--liquid-glass-shadow);
+      position: relative;
+    }
+
+    .audit-input-group {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+
+    .audit-input-wrapper {
+      flex: 1;
+      min-width: 280px;
+      position: relative;
+    }
+
+    .audit-input {
+      width: 100%;
+      height: 44px;
+      padding: 0 16px;
+      font-family: inherit;
+      font-size: 14.5px;
+      font-weight: 600;
+      letter-spacing: 0.03em;
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-md);
+      background: #ffffff;
+      color: var(--color-text-main);
+      transition: var(--transition-fast);
+    }
+
+    .audit-input:focus {
+      border-color: var(--color-primary);
+      box-shadow: 0 0 0 3px rgba(36, 138, 61, 0.16);
+      outline: none;
+    }
+
+    .btn-audit {
+      height: 44px;
+      padding: 0 24px;
+      font-size: 14px;
+      font-weight: 600;
+      border-radius: var(--radius-md);
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      white-space: nowrap;
+    }
+
+    /* Result Panel */
+    .result-panel {
+      margin-top: 24px;
+      display: none;
+      animation: fadeIn 0.25s ease-out;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(6px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .status-banner {
+      padding: 20px;
+      border-radius: var(--radius-lg);
+      margin-bottom: 20px;
+      display: flex;
+      align-items: flex-start;
+      gap: 16px;
+      border: 1px solid transparent;
+    }
+
+    .status-banner.valid {
+      background: rgba(36, 138, 61, 0.08);
+      border-color: rgba(36, 138, 61, 0.25);
+    }
+
+    .status-banner.invalid {
+      background: rgba(220, 38, 38, 0.08);
+      border-color: rgba(220, 38, 38, 0.25);
+    }
+
+    .status-icon-box {
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    .valid .status-icon-box {
+      background: rgba(36, 138, 61, 0.16);
+      color: var(--color-primary);
+    }
+
+    .invalid .status-icon-box {
+      background: rgba(220, 38, 38, 0.16);
+      color: #dc2626;
+    }
+
+    .status-details h3 {
+      font-size: 18px;
+      font-weight: 700;
+      margin: 0 0 6px 0;
+      color: var(--color-text-main);
+    }
+
+    .status-meta-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 12px;
+      margin-top: 16px;
+      padding-top: 16px;
+      border-top: 1px solid rgba(0, 0, 0, 0.06);
+    }
+
+    .status-meta-item {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .status-meta-label {
+      font-size: 11.5px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--color-text-muted);
+    }
+
+    .status-meta-value {
+      font-size: 13.5px;
+      font-weight: 600;
+      color: var(--color-text-main);
+      font-family: monospace;
+      word-break: break-all;
+    }
+
+    .suspicious-notice {
+      margin-top: 14px;
+      padding: 12px 14px;
+      background: rgba(220, 38, 38, 0.12);
+      border-radius: var(--radius-md);
+      font-size: 13px;
+      font-weight: 600;
+      color: #b91c1c;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    /* Event Chain Timeline */
+    .events-section {
+      margin-top: 24px;
+    }
+
+    .events-section-title {
+      font-size: 16px;
+      font-weight: 700;
+      margin-bottom: 12px;
+      color: var(--color-text-main);
+    }
+
+    .timeline-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+
+    .timeline-table th {
+      text-align: left;
+      padding: 10px 12px;
+      background: rgba(0, 0, 0, 0.02);
+      border-bottom: 1px solid var(--color-border);
+      font-size: 11.5px;
+      color: var(--color-text-muted);
+      font-weight: 600;
+      text-transform: uppercase;
+    }
+
+    .timeline-table td {
+      padding: 12px;
+      border-bottom: 1px solid var(--color-border-subtle);
+      color: var(--color-text-main);
+    }
+
+    .timeline-table tr.tampered-row {
+      background: rgba(220, 38, 38, 0.05);
+    }
+
+    .badge-tampered {
+      display: inline-block;
+      padding: 2px 8px;
+      background: #dc2626;
+      color: #fff;
+      font-size: 10.5px;
+      font-weight: 700;
+      border-radius: var(--radius-full);
+      text-transform: uppercase;
+    }
+
+    .badge-ok {
+      display: inline-block;
+      padding: 2px 8px;
+      background: var(--color-primary-light);
+      color: var(--color-primary);
+      font-size: 10.5px;
+      font-weight: 700;
+      border-radius: var(--radius-full);
+    }
+
+    .hash-snippet {
+      font-family: monospace;
+      font-size: 11.5px;
+      color: var(--color-text-muted);
+    }
+
+    /* Role Restricted Box */
+    .restricted-box {
+      display: none;
+      text-align: center;
+      padding: 48px 24px;
+      background: rgba(245, 158, 11, 0.08);
+      border: 1px solid rgba(245, 158, 11, 0.3);
+      border-radius: var(--radius-xl);
+      margin-top: 20px;
+    }
+  </style>
+</head>
+
+<body>
+  <!-- Global App Header with Navbar -->
+  <header class="app-header">
+    <div class="header-container">
+      <a href="/lots.html" class="brand-link">
+        <div class="brand-icon">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 2a10 10 0 0 1 10 10c0 5.523-4.477 10-10 10S2 17.523 2 12c0-2.2.7-4.2 1.9-5.9"/>
+            <path d="M12 6v6l4 2"/>
+            <path d="m4.93 4.93 4.24 4.24"/>
+          </svg>
+        </div>
+        <div class="brand-info">
+          <span class="brand-title">AGRI TRACE</span>
+          <span class="brand-tag">Chuỗi lạnh nông sản</span>
+        </div>
+      </a>
+
+      <!-- Navigation Tabs -->
+      <nav class="nav-links" aria-label="Điều hướng chính">
+        <a href="/lots.html" class="nav-item" id="navLots">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m7.5 4.27 9 5.15"/><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg>
+          <span>Lô hàng</span>
+        </a>
+        <a href="/farms.html" class="nav-item" id="navFarms">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 11v8a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-7a1 1 0 0 1 1-1h3"/><path d="M4 11V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v7"/><path d="M14 15v5a1 1 0 0 1-1 1h-2a1 1 0 0 1-1-1v-5"/><path d="M17 11V7a1 1 0 0 1 1-1h3a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1h-3a1 1 0 0 1-1-1v-3"/><path d="M3 21h18"/></svg>
+          <span>Thửa đất</span>
+        </a>
+        <a href="/products.html" class="nav-item" id="navProducts">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="m10 15 5-3-5-3v6Z"/></svg>
+          <span>Sản phẩm</span>
+        </a>
+        <a href="/harvest.html" class="nav-item" id="navHarvest">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+          <span>Ghi nhận thu hoạch</span>
+        </a>
+        <a href="/integrity.html" class="nav-item active" id="navIntegrity" aria-current="page">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg>
+          <span>Kiểm tra toàn vẹn</span>
+        </a>
+      </nav>
+
+      <div class="user-controls">
+        <div class="user-pill" id="userPill">
+          <div class="user-avatar" id="userAvatar"><span class="skeleton-shimmer skeleton-avatar"></span></div>
+          <div class="user-meta">
+            <span class="user-email" id="userEmail"><span class="skeleton-shimmer skeleton-text"></span></span>
+            <div class="user-badges">
+              <span class="badge-org" id="userOrg"><span class="skeleton-shimmer skeleton-badge"></span></span>
+              <span class="badge-role" id="userRole"><span class="skeleton-shimmer skeleton-badge"></span></span>
+            </div>
+          </div>
+        </div>
+        <button id="logout" class="btn-logout" title="Đăng xuất khỏi hệ thống">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+            <polyline points="16 17 21 12 16 7"></polyline>
+            <line x1="21" y1="12" x2="9" y2="12"></line>
+          </svg>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Content Container -->
+  <main class="integrity-container">
+    <div class="page-header">
+      <h1 class="page-title">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--color-primary)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg>
+        Kiểm tra toàn vẹn dữ liệu
+      </h1>
+      <p class="page-subtitle">Kiểm toán mật mã học chuỗi sự kiện hash-chain (S-12 / K-01) dành riêng cho Cán bộ kiểm tra và Quản trị viên.</p>
+    </div>
+
+    <!-- Restricted Box if Unauthorized -->
+    <div id="restrictedNotice" class="restricted-box">
+      <h3 style="color: #b45309; margin-bottom: 8px;">Quyền truy cập hạn chế</h3>
+      <p style="color: var(--color-text-main); font-size: 14px;">Chức năng kiểm tra toàn vẹn dữ liệu chỉ dành cho Cán bộ kiểm tra (Inspector) và Quản trị viên (Admin).</p>
+      <a href="/lots.html" class="btn btn-outline" style="margin-top: 16px;">Quay lại danh sách lô hàng</a>
+    </div>
+
+    <!-- Audit Tool Card -->
+    <div id="auditSection" class="audit-card">
+      <form id="integrityForm">
+        <label for="lotIdInput" style="display: block; font-size: 13.5px; font-weight: 600; margin-bottom: 8px; color: var(--color-text-main);">
+          Mã lô hàng (Lot ID):
+        </label>
+        <div class="audit-input-group">
+          <div class="audit-input-wrapper">
+            <input
+              type="text"
+              id="lotIdInput"
+              class="audit-input"
+              placeholder="Ví dụ: LOT-X82KP92A"
+              required
+              autocomplete="off"
+              spellcheck="false"
+            />
+          </div>
+          <button type="submit" id="btnCheckIntegrity" class="btn btn-primary btn-audit">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="11" cy="11" r="8"></circle>
+              <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+            </svg>
+            <span>Kiểm tra</span>
+          </button>
+        </div>
+      </form>
+
+      <!-- Alert Box for Error Messages -->
+      <div id="alertBox" class="alert-box alert-error" style="display: none; margin-top: 16px;"></div>
+
+      <!-- Result Panel -->
+      <div id="resultPanel" class="result-panel">
+        <div id="statusBanner" class="status-banner">
+          <div class="status-icon-box" id="statusIconBox">
+            <!-- Icon dynamically inserted -->
+          </div>
+          <div class="status-details" style="flex: 1;">
+            <h3 id="statusTitle">Chuỗi dữ liệu toàn vẹn</h3>
+            <p id="statusDesc" style="font-size: 13.5px; margin: 0; color: var(--color-text-muted);"></p>
+
+            <div id="suspiciousNotice" class="suspicious-notice" style="display: none;">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+              <span id="suspiciousText">Các sự kiện từ #5 trở đi được đánh dấu là nghi vấn.</span>
+            </div>
+
+            <div class="status-meta-grid">
+              <div class="status-meta-item">
+                <span class="status-meta-label">Mã lô hàng</span>
+                <span class="status-meta-value" id="resLotId">-</span>
+              </div>
+              <div class="status-meta-item">
+                <span class="status-meta-label">Tổng số sự kiện</span>
+                <span class="status-meta-value" id="resEventCount">-</span>
+              </div>
+              <div class="status-meta-item">
+                <span class="status-meta-label">Mã băm cuối (Final Hash)</span>
+                <span class="status-meta-value" id="resFinalHash">-</span>
+              </div>
+              <div class="status-meta-item">
+                <span class="status-meta-label">Thời điểm kiểm tra</span>
+                <span class="status-meta-value" id="resCheckedAt">-</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Event Chain Details -->
+        <div class="events-section">
+          <h4 class="events-section-title">Nhật ký sự kiện chi tiết của lô</h4>
+          <div style="overflow-x: auto; border: 1px solid var(--color-border); border-radius: var(--radius-md);">
+            <table class="timeline-table">
+              <thead>
+                <tr>
+                  <th>Seq</th>
+                  <th>Loại sự kiện</th>
+                  <th>Thời điểm ghi nhận</th>
+                  <th>Mã băm sự kiện (SHA-256)</th>
+                  <th>Trạng thái</th>
+                </tr>
+              </thead>
+              <tbody id="eventsTableBody">
+                <!-- Dynamically filled -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <script src="/app-shell.js"></script>
+  <script>
+    document.addEventListener("DOMContentLoaded", async () => {
+      const lotInput = document.getElementById("lotIdInput");
+      const form = document.getElementById("integrityForm");
+      const btnCheck = document.getElementById("btnCheckIntegrity");
+      const alertBox = document.getElementById("alertBox");
+      const resultPanel = document.getElementById("resultPanel");
+      const statusBanner = document.getElementById("statusBanner");
+      const statusIconBox = document.getElementById("statusIconBox");
+      const statusTitle = document.getElementById("statusTitle");
+      const statusDesc = document.getElementById("statusDesc");
+      const suspiciousNotice = document.getElementById("suspiciousNotice");
+      const suspiciousText = document.getElementById("suspiciousText");
+      const resLotId = document.getElementById("resLotId");
+      const resEventCount = document.getElementById("resEventCount");
+      const resFinalHash = document.getElementById("resFinalHash");
+      const resCheckedAt = document.getElementById("resCheckedAt");
+      const eventsTableBody = document.getElementById("eventsTableBody");
+      const restrictedNotice = document.getElementById("restrictedNotice");
+      const auditSection = document.getElementById("auditSection");
+
+      // Check current user role
+      try {
+        const meRes = await fetch("/api/me", { credentials: "same-origin" });
+        if (meRes.ok) {
+          const user = await meRes.json();
+          const allowedRoles = ["inspector", "admin"];
+          if (!allowedRoles.includes(user.roleId)) {
+            restrictedNotice.style.display = "block";
+            auditSection.style.display = "none";
+            return;
+          }
+        }
+      } catch {
+        // Fall through to let backend reject if unauthenticated
+      }
+
+      // Pre-fill lotId from query string ?lotId=...
+      const urlParams = new URLSearchParams(window.location.search);
+      const prefillId = urlParams.get("lotId");
+      if (prefillId) {
+        lotInput.value = prefillId.trim();
+        performCheck(prefillId.trim());
+      }
+
+      form.addEventListener("submit", (e) => {
+        e.preventDefault();
+        const lotId = lotInput.value.trim();
+        if (lotId) {
+          performCheck(lotId);
+        }
+      });
+
+      async function performCheck(lotId) {
+        alertBox.style.display = "none";
+        resultPanel.style.display = "none";
+        btnCheck.disabled = true;
+        btnCheck.innerHTML = `
+          <div class="spinner-small" style="width:16px;height:16px;border:2px solid #fff;border-top-color:transparent;border-radius:50%;animation:spin 0.6s linear infinite;"></div>
+          <span>Đang kiểm tra...</span>
+        `;
+
+        try {
+          // 1. Fetch integrity result
+          const integrityRes = await fetch(`/api/lots/${encodeURIComponent(lotId)}/integrity`, {
+            credentials: "same-origin",
+          });
+          const integrityData = await integrityRes.json();
+
+          if (!integrityRes.ok) {
+            throw new Error(integrityData.message || "Không thể kiểm tra tính toàn vẹn của lô hàng.");
+          }
+
+          // 2. Fetch event list for detail timeline
+          let events = [];
+          try {
+            const eventsRes = await fetch(`/api/lots/${encodeURIComponent(lotId)}/events`, {
+              credentials: "same-origin",
+            });
+            if (eventsRes.ok) {
+              const eventsData = await eventsRes.json();
+              events = eventsData.events || [];
+            }
+          } catch {
+            events = [];
+          }
+
+          renderResult(integrityData, events);
+        } catch (err) {
+          alertBox.textContent = err.message;
+          alertBox.style.display = "block";
+        } finally {
+          btnCheck.disabled = false;
+          btnCheck.innerHTML = `
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="11" cy="11" r="8"></circle>
+              <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+            </svg>
+            <span>Kiểm tra</span>
+          `;
+        }
+      }
+
+      function renderResult(data, events) {
+        const { lotId, checkedAt, integrity } = data;
+        resultPanel.style.display = "block";
+
+        resLotId.textContent = lotId;
+        resEventCount.textContent = `${integrity.eventCount || events.length || 0} sự kiện`;
+        resFinalHash.textContent = integrity.finalHash ? `${integrity.finalHash.substring(0, 16)}...${integrity.finalHash.substring(48)}` : "N/A";
+        resCheckedAt.textContent = new Date(checkedAt).toLocaleString("vi-VN");
+
+        if (integrity.valid) {
+          statusBanner.className = "status-banner valid";
+          statusIconBox.innerHTML = `
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+          `;
+          statusTitle.textContent = "✅ Chuỗi dữ liệu toàn vẹn";
+          statusDesc.textContent = "Toàn bộ chuỗi hash-chain hợp lệ, không phát hiện bất kỳ sự can thiệp hoặc sửa đổi dữ liệu trái phép nào.";
+          suspiciousNotice.style.display = "none";
+        } else {
+          statusBanner.className = "status-banner invalid";
+          statusIconBox.innerHTML = `
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+          `;
+          statusTitle.textContent = "⚠ Phát hiện can thiệp dữ liệu!";
+
+          let errorMsg = `Sự kiện sai đầu tiên: #${integrity.firstInvalidSequence || "?"}. `;
+          if (integrity.type === "CONTENT_TAMPERED") {
+            errorMsg += `Loại lỗi: Nội dung sự kiện bị sửa đổi (Event ID: ${integrity.eventId || "N/A"}).`;
+          } else if (integrity.type === "BROKEN_CHAIN") {
+            errorMsg += `Loại lỗi: Đứt chuỗi sự kiện hoặc thiếu sự kiện liên kết.`;
+          }
+          statusDesc.textContent = errorMsg;
+
+          suspiciousNotice.style.display = "flex";
+          suspiciousText.textContent = `Các sự kiện từ #${integrity.suspiciousFrom || integrity.firstInvalidSequence} trở đi được đánh dấu là nghi vấn và không đáng tin cậy.`;
+        }
+
+        // Render event timeline table
+        eventsTableBody.innerHTML = "";
+        if (events.length === 0) {
+          eventsTableBody.innerHTML = `<tr><td colspan="5" style="text-align:center;color:var(--color-text-muted);padding:20px;">Chưa có sự kiện nào được ghi nhận cho lô này.</td></tr>`;
+          return;
+        }
+
+        const suspiciousStart = integrity.valid ? Infinity : (integrity.suspiciousFrom || integrity.firstInvalidSequence || 1);
+
+        events.forEach((ev) => {
+          const seq = Number(ev.sequenceNo || ev.sequence_no);
+          const isSuspicious = seq >= suspiciousStart;
+          const tr = document.createElement("tr");
+          if (isSuspicious) {
+            tr.className = "tampered-row";
+          }
+
+          const occurred = new Date(ev.occurredAt || ev.occurred_at).toLocaleString("vi-VN");
+          const evHash = ev.eventHash || ev.event_hash || "";
+          const hashShort = evHash ? `${evHash.substring(0, 10)}...${evHash.substring(54)}` : "-";
+
+          tr.innerHTML = `
+            <td><strong>#${seq}</strong></td>
+            <td><strong>${ev.eventType || ev.event_type}</strong></td>
+            <td>${occurred}</td>
+            <td class="hash-snippet" title="${evHash}">${hashShort}</td>
+            <td>
+              ${isSuspicious ? '<span class="badge-tampered">Nghi vấn</span>' : '<span class="badge-ok">Toàn vẹn</span>'}
+            </td>
+          `;
+          eventsTableBody.appendChild(tr);
+        });
+      }
+    });
+  </script>
+</body>
+</html>

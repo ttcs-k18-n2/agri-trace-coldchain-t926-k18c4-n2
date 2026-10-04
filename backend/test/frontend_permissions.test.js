@@ -38,6 +38,13 @@ test("Frontend Permissions: App Shell exposes permission matrix and hasPermissio
   assert.equal(hasPermission("inspector", "global.read"), true);
   assert.equal(hasPermission("admin", "global.read"), true);
   assert.equal(hasPermission("producer", "global.read"), false);
+
+  // Integrity check permissions (Inspector and Admin only - S-12)
+  assert.equal(hasPermission("inspector", "integrity.check"), true);
+  assert.equal(hasPermission("admin", "integrity.check"), true);
+  assert.equal(hasPermission("producer", "integrity.check"), false);
+  assert.equal(hasPermission("cooperative", "integrity.check"), false);
+  assert.equal(hasPermission("transporter", "integrity.check"), false);
 });
 
 test("Frontend Permissions: Role labels include org_admin across all formatRole implementations", () => {
