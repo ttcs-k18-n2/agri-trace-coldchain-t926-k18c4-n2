@@ -58,6 +58,13 @@ test("S-11 Database Privileges: agri_app can INSERT but CANNOT UPDATE, DELETE, o
     return;
   }
 
+  // 0. Verify CURRENT_USER roles for both pools (S-11)
+  const appUserCheck = await appDb.query("SELECT CURRENT_USER AS db_user;");
+  assert.equal(appUserCheck.rows[0].db_user, "agri_app", "Application database pool must connect strictly as agri_app");
+
+  const migrationUserCheck = await migrationDb.query("SELECT CURRENT_USER AS db_user;");
+  assert.equal(migrationUserCheck.rows[0].db_user, "agri_migration", "Migration database pool must connect strictly as agri_migration");
+
   const testBatchId = `LOT-TEST-APPEND-${Date.now().toString(36).toUpperCase()}`;
   const testEventId = `EVT-TEST-${Date.now().toString(36).toUpperCase()}`;
 

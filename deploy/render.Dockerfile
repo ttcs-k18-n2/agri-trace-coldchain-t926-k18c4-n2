@@ -16,6 +16,9 @@ COPY backend/src ./src
 COPY db/migrations /app/db/migrations
 COPY frontend /app/frontend
 
+COPY deploy/render-start.sh /app/render-start.sh
+RUN chmod +x /app/render-start.sh
+
 EXPOSE 10000
 
-CMD ["npm", "start"]
+CMD ["/app/render-start.sh"]
