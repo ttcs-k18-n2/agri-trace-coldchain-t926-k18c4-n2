@@ -7,11 +7,13 @@
   <link rel="stylesheet" href="/styles.css">
 
   <style>
-    /* Search & Filter Toolbar */
+    /* Search & Filter Toolbar - Liquid Glass */
     .filter-toolbar {
-      background: var(--color-surface);
-      border: 1px solid var(--color-border);
-      border-radius: var(--radius-lg);
+      background: var(--liquid-glass-bg);
+      backdrop-filter: var(--liquid-glass-blur);
+      -webkit-backdrop-filter: var(--liquid-glass-blur);
+      border: var(--liquid-glass-border);
+      border-radius: var(--radius-xl);
       padding: 14px 18px;
       margin-bottom: 24px;
       display: flex;
@@ -19,7 +21,7 @@
       justify-content: space-between;
       gap: 16px;
       flex-wrap: wrap;
-      box-shadow: var(--shadow-xs);
+      box-shadow: var(--liquid-glass-shadow);
     }
 
     .search-box {
@@ -43,18 +45,20 @@
       width: 100%;
       height: 40px;
       padding: 0 14px 0 38px;
-      border: 1px solid var(--color-border);
+      border: 1px solid rgba(203, 213, 225, 0.85);
       border-radius: var(--radius-md);
       font-size: 13px;
-      background: var(--color-bg);
+      background: rgba(255, 255, 255, 0.85);
+      backdrop-filter: blur(8px);
       color: var(--color-text-main);
+      box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.02);
       transition: var(--transition-fast);
     }
 
     .search-input:focus {
-      background: var(--color-surface);
+      background: #ffffff;
       border-color: var(--color-primary);
-      box-shadow: 0 0 0 3px rgba(21, 128, 61, 0.1);
+      box-shadow: 0 0 0 3px rgba(21, 128, 61, 0.16);
     }
 
     .filter-pills {
@@ -68,8 +72,9 @@
       border-radius: var(--radius-full);
       font-size: 12px;
       font-weight: 600;
-      border: 1px solid var(--color-border);
-      background: var(--color-surface);
+      border: 1px solid rgba(226, 232, 240, 0.85);
+      background: rgba(255, 255, 255, 0.7);
+      backdrop-filter: blur(8px);
       color: var(--color-text-muted);
       cursor: pointer;
       transition: var(--transition-fast);
@@ -78,15 +83,17 @@
     .filter-btn:hover {
       border-color: var(--color-primary);
       color: var(--color-primary);
+      background: rgba(255, 255, 255, 0.95);
     }
 
     .filter-btn.active {
-      background: var(--color-primary-surface);
-      color: var(--color-primary);
-      border-color: var(--color-border-green);
+      background: rgba(220, 252, 231, 0.9);
+      color: var(--color-primary-active);
+      border-color: rgba(187, 247, 208, 0.95);
+      box-shadow: 0 2px 6px rgba(21, 128, 61, 0.1), inset 0 1px 1px #fff;
     }
 
-    /* Lots Grid & Card */
+    /* Lots Grid & Card - Liquid Glass Panels */
     .lots-grid {
       display: grid;
       grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
@@ -94,11 +101,13 @@
     }
 
     .lot-card {
-      background: var(--color-surface);
-      border: 1px solid var(--color-border);
-      border-radius: var(--radius-lg);
+      background: var(--liquid-glass-bg);
+      backdrop-filter: var(--liquid-glass-blur);
+      -webkit-backdrop-filter: var(--liquid-glass-blur);
+      border: var(--liquid-glass-border);
+      border-radius: var(--radius-xl);
       padding: 22px;
-      box-shadow: var(--shadow-sm);
+      box-shadow: var(--liquid-glass-shadow);
       display: flex;
       flex-direction: column;
       justify-content: space-between;
@@ -109,8 +118,8 @@
 
     .lot-card:hover {
       transform: translateY(-3px);
-      box-shadow: var(--shadow-hover);
-      border-color: var(--color-border-green);
+      box-shadow: var(--liquid-glass-shadow-hover);
+      border-color: rgba(187, 247, 208, 0.95);
     }
 
     .lot-card-top {
@@ -125,10 +134,13 @@
       font-weight: 700;
       letter-spacing: 0.05em;
       color: var(--color-primary-active);
-      background: var(--color-primary-light);
-      padding: 3px 8px;
-      border-radius: var(--radius-xs);
+      background: rgba(220, 252, 231, 0.85);
+      border: 1px solid rgba(187, 247, 208, 0.9);
+      padding: 4px 10px;
+      border-radius: var(--radius-full);
+      box-shadow: inset 0 1px 1px #ffffff;
     }
+
 
     .lot-title {
       font-size: 18px;
