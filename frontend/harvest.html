@@ -58,42 +58,55 @@
 </head>
 <body>
   <!-- Header / Navigation Bar -->
-  <header class="header">
-    <div class="header-inner container">
-      <div class="brand">
-        <div class="brand-logo">🌿</div>
-        <div class="brand-text">
-          <span class="brand-name">AgriTrace</span>
-          <span class="brand-sub">ColdChain Traceability</span>
+  <header class="app-header">
+    <div class="header-container">
+      <a href="/lots" class="brand-link">
+        <div class="brand-icon">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 2a10 10 0 0 1 10 10c0 5.523-4.477 10-10 10S2 17.523 2 12c0-2.2.7-4.2 1.9-5.9"/>
+            <path d="M12 6v6l4 2"/>
+            <path d="m4.93 4.93 4.24 4.24"/>
+          </svg>
         </div>
-      </div>
-
-      <nav class="nav-links">
-        <a href="/lots.html" class="nav-item">📦 Lô hàng</a>
-        <a href="/farms.html" class="nav-item">🌾 Thửa đất</a>
-        <a href="/products.html" class="nav-item">🍎 Sản phẩm</a>
-        <a href="/harvest.html" class="nav-item active">✨ Ghi nhận thu hoạch</a>
+        <div class="brand-info">
+          <span class="brand-title">AGRI TRACE</span>
+          <span class="brand-tag">Chuỗi lạnh nông sản</span>
+        </div>
+      </a>
+      <nav class="nav-links" aria-label="Điều hướng chính">
+        <a href="/lots.html" class="nav-item" id="navLots"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m7.5 4.27 9 5.15"/><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg><span>Lô hàng</span></a>
+        <a href="/farms.html" class="nav-item" id="navFarms"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 11v8a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-7a1 1 0 0 1 1-1h3"/><path d="M4 11V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v7"/><path d="M14 15v5a1 1 0 0 1-1 1h-2a1 1 0 0 1-1-1v-5"/><path d="M17 11V7a1 1 0 0 1 1-1h3a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1h-3a1 1 0 0 1-1-1v-3"/><path d="M3 21h18"/></svg><span>Thửa đất</span></a>
+        <a href="/products.html" class="nav-item" id="navProducts"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="m10 15 5-3-5-3v6Z"/></svg><span>Sản phẩm</span></a>
+        <a href="/harvest.html" class="nav-item active" id="navHarvest"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg><span>Ghi nhận thu hoạch</span></a>
       </nav>
-
-      <div class="user-control">
+      <div class="user-controls">
         <div class="user-pill">
-          <div class="user-avatar" id="nav-avatar">U</div>
-          <div class="user-details">
-            <span class="user-name" id="nav-user-email">Đang tải...</span>
-            <span class="user-role" id="nav-user-role">...</span>
+          <div class="user-avatar" id="userAvatar">U</div>
+          <div class="user-meta">
+            <span class="user-email" id="userEmail">Đang tải...</span>
+            <div class="user-badges">
+              <span class="badge-org" id="userOrg">...</span>
+              <span class="badge-role" id="userRole">...</span>
+            </div>
           </div>
         </div>
-        <button id="btn-logout" class="btn btn-outline btn-sm" title="Đăng xuất">Đăng xuất</button>
+        <button id="logout" class="btn-logout" title="Đăng xuất khỏi hệ thống">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+          <span>Đăng xuất</span>
+        </button>
       </div>
     </div>
   </header>
 
   <!-- Main Content -->
-  <main class="main container">
+  <main class="main-wrapper">
     <div class="harvest-container">
-      <div class="page-header" style="text-align: center; display: block; margin-bottom: 2rem;">
-        <h1 class="page-title" style="font-size: 1.85rem;">GHI NHẬN THU HOẠCH</h1>
-        <p class="page-desc" style="margin-top: 0.5rem;">Đăng ký lô hàng mới sau khi thu hoạch tại thửa đất. Hệ thống tự động sinh mã định danh lô chuẩn.</p>
+      <div class="page-header">
+        <div class="page-title-group">
+          <h1>Ghi nhận thu hoạch</h1>
+          <p class="page-subtitle">Tạo lô mới từ thửa đất và sản phẩm đã khai báo; mã lô được sinh tự động.</p>
+        </div>
+        <a href="/lots.html" class="btn-secondary">Xem danh sách lô</a>
       </div>
 
       <!-- Alert Banner -->
@@ -211,9 +224,13 @@
     document.addEventListener("DOMContentLoaded", async () => {
       // Set default harvest date to today
       const today = new Date().toISOString().slice(0, 10);
-      document.getElementById("input-date").value = today;
+      const dateInput = document.getElementById("input-date");
+      dateInput.value = today;
+      dateInput.max = today;
 
-      await loadCurrentUser();
+      const authenticated = await loadCurrentUser();
+      if (!authenticated) return;
+
       await Promise.all([loadFarms(), loadProducts()]);
       setupEventListeners();
     });
@@ -223,29 +240,37 @@
         const res = await fetch("/api/me");
         if (res.status === 401) {
           window.location.href = "/login?returnTo=/harvest.html";
-          return;
+          return false;
         }
         const data = await res.json();
         currentUser = data.user;
 
-        document.getElementById("nav-user-email").textContent = currentUser.email;
-        document.getElementById("nav-user-role").textContent = formatRole(currentUser.roleId);
-        document.getElementById("nav-avatar").textContent = currentUser.email.charAt(0).toUpperCase();
+        document.getElementById("userEmail").textContent = currentUser.email;
+        document.getElementById("userRole").textContent = formatRole(currentUser.roleId);
+        document.getElementById("userAvatar").textContent = currentUser.email.charAt(0).toUpperCase();
+        document.getElementById("userOrg").textContent = currentUser.organizationId || "Không có tổ chức";
 
-        // Kiểm tra quyền: Cán bộ kiểm tra không được ghi nhận lô
-        if (currentUser.roleId === "inspector") {
-          showBanner("danger", "Tài khoản Cán bộ kiểm tra chỉ có quyền đọc dữ liệu, không được phép ghi nhận thu hoạch.");
+        const writableRoles = ["producer", "cooperative", "org_admin", "admin"];
+        if (!writableRoles.includes(currentUser.roleId)) {
+          showBanner("danger", "Vai trò hiện tại chỉ có quyền xem dữ liệu và không thể ghi nhận thu hoạch.");
           document.getElementById("btn-submit-harvest").disabled = true;
         }
+        return true;
       } catch (err) {
         console.error("Lỗi xác thực người dùng:", err);
+        showBanner("danger", "Không thể xác thực phiên đăng nhập. Vui lòng tải lại trang.");
+        return false;
       }
     }
 
     async function loadFarms() {
       const select = document.getElementById("select-farm");
       try {
-        const res = await fetch("/api/farms");
+        const res = await fetch("/api/farms", { credentials: "same-origin" });
+        if (res.status === 401) {
+          window.location.href = "/login?returnTo=/harvest.html";
+          return;
+        }
         if (!res.ok) throw new Error("Không thể tải danh sách thửa đất.");
         const data = await res.json();
         farmsList = data.farms || [];
@@ -266,7 +291,11 @@
     async function loadProducts() {
       const select = document.getElementById("select-product");
       try {
-        const res = await fetch("/api/products");
+        const res = await fetch("/api/products", { credentials: "same-origin" });
+        if (res.status === 401) {
+          window.location.href = "/login?returnTo=/harvest.html";
+          return;
+        }
         if (!res.ok) throw new Error("Không thể tải danh sách sản phẩm.");
         const data = await res.json();
         productsList = data.products || [];
@@ -285,7 +314,7 @@
 
     function setupEventListeners() {
       // Logout
-      document.getElementById("btn-logout").addEventListener("click", async () => {
+      document.getElementById("logout").addEventListener("click", async () => {
         try {
           await fetch("/api/logout", { method: "POST" });
         } finally {
@@ -297,7 +326,7 @@
       document.getElementById("select-product").addEventListener("change", (e) => {
         const opt = e.target.options[e.target.selectedIndex];
         const unit = opt ? opt.getAttribute("data-unit") : "kg";
-        document.getElementById("unit-badge").textContent = unit || "kg";
+        document.getElementById("unit-badge").textContent = formatUnit(unit || "kg");
       });
 
       // Submit form ghi nhận thu hoạch
@@ -322,6 +351,15 @@
           showBanner("danger", "Khối lượng thu hoạch phải là số dương lớn hơn 0.");
           return;
         }
+        if (!harvestedAt) {
+          showBanner("danger", "Vui lòng chọn ngày thu hoạch.");
+          return;
+        }
+        const today = new Date().toISOString().slice(0, 10);
+        if (harvestedAt > today) {
+          showBanner("danger", "Ngày thu hoạch không được nằm trong tương lai.");
+          return;
+        }
 
         submitBtn.disabled = true;
         submitBtn.textContent = "Đang xử lý...";
@@ -338,8 +376,14 @@
           const res = await fetch("/api/lots", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
+            credentials: "same-origin",
             body: JSON.stringify(payload),
           });
+
+          if (res.status === 401) {
+            window.location.href = "/login?returnTo=/harvest.html";
+            return;
+          }
 
           const data = await res.json();
 
