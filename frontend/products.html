@@ -137,7 +137,7 @@
             </div>
           </div>
         </div>
-        <button id="logout" class="btn-logout" title="Đăng xuất khỏi hệ thống">
+        <button id="logout" class="btn-logout" onclick="window.handleLogout ? window.handleLogout(event) : (sessionStorage.clear(), window.location.href='/index.html')" title="Đăng xuất khỏi hệ thống">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
           <span>Đăng xuất</span>
         </button>
@@ -239,23 +239,39 @@
     let productsList = [];
     let editingProductId = null;
 
-    // Khởi tạo trang
-    document.addEventListener("DOMContentLoaded", async () => {
-      currentUser = await initAppShell({ activeNav: "products" });
-      if (!currentUser) return;
+    // Khởi tạo trang an toàn, không treo loading
+    async function initPage() {
+      setupEventListeners();
 
-      const canWriteProduct = (typeof window.hasPermission === "function")
-        ? window.hasPermission(currentUser.roleId, "product.write")
-        : currentUser.roleId === "admin";
+      try {
+        if (typeof window.initAppShell === "function") {
+          currentUser = await initAppShell({ activeNav: "products" });
+        } else if (typeof window.getAgriUserCache === "function") {
+          currentUser = window.getAgriUserCache();
+        }
 
-      if (canWriteProduct) {
-        const adminActions = document.getElementById("admin-actions");
-        if (adminActions) adminActions.style.display = "block";
+        if (currentUser) {
+          const canWriteProduct = (typeof window.hasPermission === "function")
+            ? window.hasPermission(currentUser.roleId, "product.write")
+            : currentUser.roleId === "admin";
+
+          if (canWriteProduct) {
+            const adminActions = document.getElementById("admin-actions");
+            if (adminActions) adminActions.style.display = "block";
+          }
+        }
+      } catch (err) {
+        console.warn("Lỗi khởi tạo App Shell trên trang sản phẩm:", err);
       }
 
       await loadProducts();
-      setupEventListeners();
-    });
+    }
+
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", initPage);
+    } else {
+      initPage();
+    }
 
     async function loadProducts() {
       try {

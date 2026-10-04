@@ -86,3 +86,23 @@ test("Frontend Permissions: index.html contains all 7 demo accounts and fixes In
   // Security: No role dropdown selection element in form
   assert.doesNotMatch(html, /<select[^>]*name=["']role["']/);
 });
+
+test("Frontend Resilience: Dockerfile copies app-shell.js into nginx web root", () => {
+  const dockerfile = fs.readFileSync(path.join(frontendDir, "Dockerfile"), "utf8");
+  assert.match(dockerfile, /COPY\s+app-shell\.js\s+\/usr\/share\/nginx\/html\/app-shell\.js/);
+});
+
+test("Frontend Resilience: app-shell.js exports handleLogout and setupLogout", () => {
+  const appShell = require("../../frontend/app-shell.js");
+  assert.equal(typeof appShell.handleLogout, "function");
+  assert.equal(typeof appShell.setupLogout, "function");
+});
+
+test("Frontend Resilience: all HTML pages have fail-safe logout button", () => {
+  const pages = ["lots.html", "farms.html", "products.html", "harvest.html"];
+  for (const page of pages) {
+    const html = fs.readFileSync(path.join(frontendDir, page), "utf8");
+    assert.match(html, /id=["']logout["']/);
+    assert.match(html, /handleLogout/);
+  }
+});

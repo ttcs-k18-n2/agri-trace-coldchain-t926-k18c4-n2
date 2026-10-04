@@ -55,11 +55,11 @@ elif ! grep -q '^SESSION_SECRET=' .env || [ -z "$(grep '^SESSION_SECRET=' .env |
 fi
 
 if grep -q '^COOKIE_SECURE=' .env; then
-  sed -i "s/^COOKIE_SECURE=.*/COOKIE_SECURE=true/" .env
+  sed -i "s/^COOKIE_SECURE=.*/COOKIE_SECURE=auto/" .env
 else
-  echo "COOKIE_SECURE=true" >> .env
+  echo "COOKIE_SECURE=auto" >> .env
 fi
-export COOKIE_SECURE=true
+export COOKIE_SECURE=auto
 
 mkdir -p "$STATE_DIR"
 
