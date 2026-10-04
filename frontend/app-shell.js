@@ -91,20 +91,40 @@
     }
   }
 
-  function setupLogout() {
-    const logoutBtn = document.getElementById("logout") || document.getElementById("logoutBtn");
-    if (!logoutBtn || logoutBtn._appShellBound) return;
-
-    logoutBtn._appShellBound = true;
-    logoutBtn.addEventListener("click", async (e) => {
+  async function handleLogout(e) {
+    if (e && typeof e.preventDefault === "function") {
       e.preventDefault();
-      try {
-        await fetch("/api/logout", { method: "POST", credentials: "same-origin" });
-      } catch (err) {
-        console.warn("Logout error:", err);
-      } finally {
-        sessionStorage.removeItem(STORAGE_KEY);
-        window.location.href = "/login";
+    }
+    try {
+      sessionStorage.removeItem(STORAGE_KEY);
+      sessionStorage.clear();
+    } catch (_) {}
+
+    try {
+      await fetch("/api/logout", {
+        method: "POST",
+        credentials: "same-origin",
+        keepalive: true,
+      });
+    } catch (err) {
+      console.warn("Logout error:", err);
+    } finally {
+      window.location.href = "/index.html";
+    }
+  }
+
+  function setupLogout() {
+    const buttons = [
+      document.getElementById("logout"),
+      document.getElementById("logoutBtn"),
+      ...document.querySelectorAll(".btn-logout"),
+    ].filter(Boolean);
+
+    buttons.forEach((btn) => {
+      btn.onclick = handleLogout;
+      if (!btn._appShellBound) {
+        btn._appShellBound = true;
+        btn.addEventListener("click", handleLogout);
       }
     });
   }
@@ -159,7 +179,7 @@
       if (res.status === 401) {
         sessionStorage.removeItem(STORAGE_KEY);
         const returnTo = encodeURIComponent(window.location.pathname + window.location.search);
-        window.location.href = `/login?returnTo=${returnTo}`;
+        window.location.href = `/index.html?returnTo=${returnTo}`;
         return null;
       }
 
@@ -178,25 +198,39 @@
       return verifiedUser;
     } catch (err) {
       console.warn("Session background revalidation failed:", err);
-      // Cache chỉ dùng để render header tức thì, tuyệt đối không trả cachedUser
-      // để quyết định quyền ghi khi /api/me chưa xác thực thành công.
-      return null;
+      // Nếu không có cả cache lẫn xác thực server, điều hướng về login
+      if (!cachedUser) {
+        const returnTo = encodeURIComponent(window.location.pathname + window.location.search);
+        window.location.href = `/index.html?returnTo=${returnTo}`;
+      }
+      return cachedUser || null;
     }
   }
 
-  // Auto-render cache on immediate script evaluation before DOM ready
-  const preCache = getCachedUser();
-  if (preCache) {
+  // Auto-render cache and bind logout immediately
+  if (typeof document !== "undefined") {
+    const preCache = getCachedUser();
+    if (preCache) {
+      if (document.readyState === "loading") {
+        document.addEventListener("DOMContentLoaded", () => renderUserHeader(preCache));
+      } else {
+        renderUserHeader(preCache);
+      }
+    }
+
+    // Ensure logout is bound as soon as DOM is ready or immediately if already loaded
     if (document.readyState === "loading") {
-      document.addEventListener("DOMContentLoaded", () => renderUserHeader(preCache));
+      document.addEventListener("DOMContentLoaded", setupLogout);
     } else {
-      renderUserHeader(preCache);
+      setupLogout();
     }
   }
 
   // Export to global scope & module
   if (typeof window !== "undefined") {
     window.initAppShell = initAppShell;
+    window.handleLogout = handleLogout;
+    window.setupLogout = setupLogout;
     window.setAgriUserCache = setCachedUser;
     window.getAgriUserCache = getCachedUser;
     window.formatRole = formatRole;
@@ -207,6 +241,8 @@
   if (typeof module !== "undefined" && module.exports) {
     module.exports = {
       initAppShell,
+      handleLogout,
+      setupLogout,
       setCachedUser,
       getCachedUser,
       formatRole,
