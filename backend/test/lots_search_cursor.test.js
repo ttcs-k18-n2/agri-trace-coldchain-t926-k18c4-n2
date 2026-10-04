@@ -234,5 +234,70 @@ test("S-14 / T-33 Live PostgreSQL: Cursor pagination and indices test", async (t
     );
   `);
 
-  assert.ok(indexCheck.rows.length >= 0, "Indices should be registered in migration");
+  assert.equal(
+    indexCheck.rows.length,
+    2,
+    "Both idx_lots_org_harvest_created_id and idx_lots_org_product_harvest must exist in PostgreSQL"
+  );
+
+  // S-14 / T-33 Benchmark on real PostgreSQL: 5,000 lots query < 300ms
+  const testOrgId = `perf-pg-${Date.now()}`;
+  const testProductId = "PROD-TEA";
+
+  await migrationDb.query(`
+    INSERT INTO organizations (id, name, type) VALUES ($1, 'Perf Org', 'producer') ON CONFLICT (id) DO NOTHING;
+  `, [testOrgId]);
+
+  await migrationDb.query(`
+    INSERT INTO lots (id, name, status, organization_id, farm_id, product_id, initial_quantity, remaining_quantity, harvested_at, created_at)
+    SELECT
+      'LOT-PERF-' || lpad(i::text, 5, '0'),
+      'Lô kiểm thử ' || i,
+      'Đã thu hoạch',
+      $1,
+      'FARM-001',
+      $2,
+      100 + (i % 50),
+      100 + (i % 50),
+      (CURRENT_DATE - (i || ' days')::interval)::date,
+      (NOW() - (i || ' minutes')::interval)
+    FROM generate_series(1, 5000) AS s(i);
+  `, [testOrgId, testProductId]);
+
+  try {
+    const start = performance.now();
+    const queryResult = await migrationDb.query(`
+      SELECT id, name, status, organization_id, farm_id, product_id, initial_quantity, remaining_quantity, harvested_at, created_at
+      FROM lots
+      WHERE organization_id = $1
+        AND id ILIKE $2
+        AND product_id = $3
+      ORDER BY harvested_at DESC, created_at DESC, id DESC
+      LIMIT 21;
+    `, [testOrgId, "%PERF%", testProductId]);
+    const elapsed = performance.now() - start;
+
+    assert.equal(queryResult.rows.length, 21, "Should retrieve 21 rows for cursor calculation");
+    assert.ok(
+      elapsed < 300,
+      `PostgreSQL query on 5,000 indexed lots took ${elapsed.toFixed(2)}ms (must be < 300ms)`
+    );
+  } finally {
+    try {
+      await migrationDb.query("DELETE FROM lots WHERE id LIKE 'LOT-PERF-%'");
+      await migrationDb.query("DELETE FROM organizations WHERE id = $1", [testOrgId]);
+    } catch {
+      // cleanup best effort
+    }
+  }
+});
+
+test("S-14 / T-34 Frontend Route: /lot-detail requires auth and returns 200 for authenticated session", async () => {
+  const unauthRes = await request(app).get("/lot-detail");
+  assert.equal(unauthRes.status, 302, "Unauthenticated access should redirect to /login");
+
+  const agent = await loginAs("user@example.com");
+  const authRes = await agent.get("/lot-detail?id=LOT-001");
+  assert.equal(authRes.status, 200, "Authenticated user should receive lot-detail.html");
+  assert.match(authRes.text, /Chi tiết lô thu hoạch/);
 });

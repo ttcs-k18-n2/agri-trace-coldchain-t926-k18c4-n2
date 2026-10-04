@@ -289,6 +289,10 @@
           <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
           <span>Ghi nhận thu hoạch</span>
         </a>
+        <a href="/integrity.html" class="nav-item" id="navIntegrity">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg>
+          <span>Kiểm tra toàn vẹn</span>
+        </a>
       </nav>
 
       <div class="user-controls">
@@ -345,7 +349,7 @@
       </div>
     </div>
 
-    <!-- Filter & Search Toolbar -->
+    <!-- Filter & Search Toolbar (S-14) -->
     <div class="filter-toolbar">
       <div class="search-box">
         <span class="search-icon">
@@ -355,8 +359,15 @@
           type="text"
           id="searchInput"
           class="search-input"
-          placeholder="Tìm theo tên sản phẩm hoặc mã lô (vd: LOT-001)..."
+          placeholder="Tìm kiếm mã lô (vd: LOT-X82KP92A)..."
+          autocomplete="off"
         >
+      </div>
+
+      <div class="product-filter-box" style="min-width: 180px;">
+        <select id="productFilter" class="search-input" style="padding-left: 14px; cursor: pointer;">
+          <option value="">Tất cả sản phẩm</option>
+        </select>
       </div>
     </div>
 
@@ -364,54 +375,224 @@
     <div id="lots" class="lots-grid" aria-live="polite">
       <!-- Dynamic lots inserted here -->
     </div>
+
+    <!-- Load More Action (S-14 / T-33) -->
+    <div id="loadMoreContainer" style="text-align: center; margin: 32px 0 48px 0; display: none;">
+      <button id="btnLoadMore" class="btn btn-secondary" style="min-width: 180px; height: 42px; border-radius: var(--radius-full); font-weight: 600; box-shadow: var(--shadow-sm);">
+        <span>Tải thêm</span>
+      </button>
+    </div>
   </main>
 
   <script src="/app-shell.js"></script>
   <script>
-    let allLots = [];
-    let searchQuery = "";
+    let currentCursor = null;
+    let hasMore = false;
+    let isLoading = false;
+    let debounceTimer = null;
+    let totalLoadedCount = 0;
+    let currentUser = null;
 
     async function loadPage() {
-      const lotsContainer = document.getElementById("lots");
-      lotsContainer.innerHTML = "<div style='grid-column: 1/-1; text-align: center; padding: 40px; color: var(--color-text-muted);'>Đang tải dữ liệu lô thu hoạch...</div>";
-
       try {
-        // 1. Khởi tạo App Shell (hiển thị tức thì từ sessionStorage + revalidate nền)
-        const user = await initAppShell({ activeNav: "lots" });
-        if (!user) return;
+        // 1. Khởi tạo App Shell
+        currentUser = await initAppShell({ activeNav: "lots" });
+        if (!currentUser) return;
 
         const canHarvest = (typeof window.hasPermission === "function")
-          ? window.hasPermission(user.roleId, "harvest.create")
-          : ["producer", "cooperative", "org_admin", "admin"].includes(user.roleId);
+          ? window.hasPermission(currentUser.roleId, "harvest.create")
+          : ["producer", "cooperative", "org_admin", "admin"].includes(currentUser.roleId);
 
         const harvestButton = document.getElementById("btnGoHarvest");
         if (harvestButton) {
           harvestButton.style.display = canHarvest ? "" : "none";
         }
 
-        // Backward compatibility
-        const userInfoEl = document.getElementById("userInfo");
-        if (userInfoEl) userInfoEl.textContent = `Email: ${user.email} | Tổ chức: ${user.organizationId}`;
+        // 2. Tải danh mục sản phẩm vào dropdown lọc
+        await loadProductsDropdown();
 
-        // 2. Tải danh sách lô của tổ chức
-        const lotsResponse = await fetch("/api/organization/lots");
-        if (!lotsResponse.ok) {
-          lotsContainer.innerHTML = "<div class='empty-state'><div class='empty-state-title'>Không thể tải danh sách lô</div><div class='empty-state-desc'>Vui lòng thử lại sau hoặc liên hệ quản trị viên.</div></div>";
-          return;
-        }
-
-        const lotsData = await lotsResponse.json();
-        allLots = lotsData.lots || [];
-
-        updateStats(allLots);
-        renderLots();
+        // 3. Tải danh sách lô đầu tiên (20 lô)
+        await fetchLots(true);
       } catch (error) {
+        const lotsContainer = document.getElementById("lots");
         lotsContainer.innerHTML = "<div class='empty-state'><div class='empty-state-title'>Lỗi kết nối máy chủ</div><div class='empty-state-desc'>Không thể đồng bộ dữ liệu với máy chủ backend.</div></div>";
       }
     }
 
-    function updateStats(lots) {
-      document.getElementById("statTotalLots").textContent = lots.length;
+    async function loadProductsDropdown() {
+      try {
+        const res = await fetch("/api/products", { credentials: "same-origin" });
+        if (res.ok) {
+          const data = await res.json();
+          const select = document.getElementById("productFilter");
+          const products = data.products || [];
+          products.forEach((p) => {
+            const opt = document.createElement("option");
+            opt.value = p.id;
+            opt.textContent = `${p.name} (${p.unit})`;
+            select.appendChild(opt);
+          });
+        }
+      } catch (err) {
+        console.warn("Could not load products dropdown", err);
+      }
+    }
+
+    async function fetchLots(isReset = true) {
+      if (isLoading) return;
+      isLoading = true;
+
+      const lotsContainer = document.getElementById("lots");
+      const loadMoreContainer = document.getElementById("loadMoreContainer");
+      const btnLoadMore = document.getElementById("btnLoadMore");
+
+      if (isReset) {
+        currentCursor = null;
+        totalLoadedCount = 0;
+        lotsContainer.innerHTML = "<div style='grid-column: 1/-1; text-align: center; padding: 40px; color: var(--color-text-muted);'>Đang tải dữ liệu lô thu hoạch...</div>";
+      } else {
+        btnLoadMore.disabled = true;
+        btnLoadMore.innerHTML = `<span>Đang tải thêm...</span>`;
+      }
+
+      const searchVal = document.getElementById("searchInput").value.trim();
+      const productVal = document.getElementById("productFilter").value;
+
+      const queryParams = new URLSearchParams({ limit: 20 });
+      if (searchVal) queryParams.append("search", searchVal);
+      if (productVal) queryParams.append("productId", productVal);
+      if (!isReset && currentCursor) queryParams.append("cursor", currentCursor);
+
+      try {
+        const res = await fetch(`/api/organization/lots?${queryParams.toString()}`, {
+          credentials: "same-origin",
+        });
+
+        if (!res.ok) {
+          if (isReset) {
+            lotsContainer.innerHTML = "<div class='empty-state'><div class='empty-state-title'>Không thể tải danh sách lô</div><div class='empty-state-desc'>Vui lòng thử lại sau.</div></div>";
+          }
+          return;
+        }
+
+        const data = await res.json();
+        const lots = data.lots || [];
+        currentCursor = data.nextCursor || null;
+        hasMore = Boolean(data.hasMore);
+
+        if (isReset) {
+          lotsContainer.innerHTML = "";
+          if (lots.length === 0) {
+            lotsContainer.innerHTML = `
+              <div class="empty-state">
+                <div class="empty-state-icon">
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+                </div>
+                <div class="empty-state-title">Không tìm thấy lô hàng phù hợp</div>
+                <div class="empty-state-desc">Hãy thử thay đổi từ khóa hoặc bộ lọc sản phẩm.</div>
+                <button class="btn-secondary" onclick="resetFilters()">Đặt lại bộ lọc</button>
+              </div>
+            `;
+          }
+        }
+
+        lots.forEach((lot) => {
+          renderLotCard(lot, lotsContainer);
+          totalLoadedCount++;
+        });
+
+        document.getElementById("statTotalLots").textContent = totalLoadedCount;
+
+        // Cập nhật nút Tải thêm
+        if (hasMore) {
+          loadMoreContainer.style.display = "block";
+          btnLoadMore.disabled = false;
+          btnLoadMore.innerHTML = `<span>Tải thêm</span>`;
+        } else {
+          loadMoreContainer.style.display = "none";
+        }
+      } catch (err) {
+        if (isReset) {
+          lotsContainer.innerHTML = "<div class='empty-state'><div class='empty-state-title'>Lỗi kết nối máy chủ</div></div>";
+        }
+      } finally {
+        isLoading = false;
+      }
+    }
+
+    function renderLotCard(lot, container) {
+      const card = document.createElement("div");
+      card.className = "lot-card";
+
+      const unit = lot.productUnit || "kg";
+      const initialQtyFormatted = (lot.initialQuantity !== null && lot.initialQuantity !== undefined)
+        ? `${Number(lot.initialQuantity).toFixed(3)} ${unit}`
+        : "";
+      const remainingQtyFormatted = (lot.remainingQuantity !== null && lot.remainingQuantity !== undefined)
+        ? `${Number(lot.remainingQuantity).toFixed(3)} ${unit}`
+        : "N/A";
+      const harvestDateFormatted = formatDate(lot.harvestedAt || lot.createdAt);
+      const displayName = lot.productName || lot.name || "Nông sản";
+      const farmDisplay = lot.farmName || lot.farmId || "Thửa chưa gán";
+
+      const isInspectorOrAdmin = currentUser && ["inspector", "admin"].includes(currentUser.roleId);
+
+      card.innerHTML = `
+        <div>
+          <div class="lot-card-top">
+            <span class="lot-code-tag">${lot.id}</span>
+            <span class="status-pill success">
+              <span class="status-dot"></span>
+              <span>${lot.status || "Đã thu hoạch"}</span>
+            </span>
+          </div>
+          <h3 class="lot-title">
+            <a href="/lot-detail.html?id=${encodeURIComponent(lot.id)}" style="color: inherit; text-decoration: none;">
+              ${displayName}
+            </a>
+          </h3>
+          ${initialQtyFormatted ? `<div class="lot-quantity-sub">${initialQtyFormatted}</div>` : ""}
+        </div>
+
+        <div class="lot-meta-list" onclick="window.location.href='/lot-detail.html?id=${encodeURIComponent(lot.id)}'" style="cursor: pointer;" title="Bấm để xem chi tiết lô ${lot.id}">
+          <div class="lot-meta-item">
+            <span class="lot-meta-label">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+              Thu hoạch:
+            </span>
+            <span class="lot-meta-value">${harvestDateFormatted}</span>
+          </div>
+          <div class="lot-meta-item">
+            <span class="lot-meta-label">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+              Thửa:
+            </span>
+            <span class="lot-meta-value">${farmDisplay}</span>
+          </div>
+          <div class="lot-meta-item">
+            <span class="lot-meta-label">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/></svg>
+              Còn lại:
+            </span>
+            <span class="lot-meta-value" style="color: var(--color-primary); font-weight: 700;">
+              ${remainingQtyFormatted}
+            </span>
+          </div>
+        </div>
+
+        <div class="lot-card-actions">
+          <a href="/lot-detail.html?id=${encodeURIComponent(lot.id)}" class="btn-lot-action" title="Xem chi tiết lô ${lot.id}">
+            <span>Chi tiết</span> &rarr;
+          </a>
+          ${isInspectorOrAdmin ? `
+            <a href="/integrity.html?lotId=${encodeURIComponent(lot.id)}" class="btn-lot-action" title="Kiểm tra toàn vẹn chuỗi sự kiện" style="background: rgba(36, 138, 61, 0.08); color: var(--color-primary); border-color: rgba(36, 138, 61, 0.25);">
+              <span>Toàn vẹn</span>
+            </a>
+          ` : ""}
+          <span style="font-size: 11px; color: var(--color-text-light); margin-left: auto;">${lot.organizationId || ""}</span>
+        </div>
+      `;
+      container.appendChild(card);
     }
 
     function formatDate(dateVal) {
@@ -426,109 +607,28 @@
       return String(dateVal);
     }
 
-    function renderLots() {
-      const lotsContainer = document.getElementById("lots");
-      lotsContainer.innerHTML = "";
-
-      let filtered = allLots.filter(lot => {
-        const q = searchQuery.toLowerCase();
-        return (
-          (lot.id || "").toLowerCase().includes(q) ||
-          (lot.name || "").toLowerCase().includes(q) ||
-          (lot.productName || "").toLowerCase().includes(q) ||
-          (lot.farmName || "").toLowerCase().includes(q)
-        );
-      });
-
-      if (filtered.length === 0) {
-        lotsContainer.innerHTML = `
-          <div class="empty-state">
-            <div class="empty-state-icon">
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
-            </div>
-            <div class="empty-state-title">Không tìm thấy lô hàng phù hợp</div>
-            <div class="empty-state-desc">Hãy thử thay đổi từ khóa tìm kiếm.</div>
-            <button class="btn-secondary" onclick="resetFilters()">Đặt lại tìm kiếm</button>
-          </div>
-        `;
-        return;
-      }
-
-      filtered.forEach(lot => {
-        const card = document.createElement("div");
-        card.className = "lot-card";
-
-        const unit = lot.productUnit || "kg";
-        const initialQtyFormatted = (lot.initialQuantity !== null && lot.initialQuantity !== undefined)
-          ? `${Number(lot.initialQuantity).toFixed(3)} ${unit}`
-          : "";
-        const remainingQtyFormatted = (lot.remainingQuantity !== null && lot.remainingQuantity !== undefined)
-          ? `${Number(lot.remainingQuantity).toFixed(3)} ${unit}`
-          : "N/A";
-        const harvestDateFormatted = formatDate(lot.harvestedAt || lot.createdAt);
-        const displayName = lot.productName || lot.name || "Nông sản";
-        const farmDisplay = lot.farmName || lot.farmId || "Thửa chưa gán";
-
-        card.innerHTML = `
-          <div>
-            <div class="lot-card-top">
-              <span class="lot-code-tag">${lot.id}</span>
-              <span class="status-pill success">
-                <span class="status-dot"></span>
-                <span>${lot.status || "Đã thu hoạch"}</span>
-              </span>
-            </div>
-            <h3 class="lot-title">${displayName}</h3>
-            ${initialQtyFormatted ? `<div class="lot-quantity-sub">${initialQtyFormatted}</div>` : ""}
-          </div>
-
-          <div class="lot-meta-list">
-            <div class="lot-meta-item">
-              <span class="lot-meta-label">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-                Thu hoạch:
-              </span>
-              <span class="lot-meta-value">${harvestDateFormatted}</span>
-            </div>
-            <div class="lot-meta-item">
-              <span class="lot-meta-label">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
-                Thửa:
-              </span>
-              <span class="lot-meta-value">${farmDisplay}</span>
-            </div>
-            <div class="lot-meta-item">
-              <span class="lot-meta-label">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/></svg>
-                Còn lại:
-              </span>
-              <span class="lot-meta-value" style="color: var(--color-primary); font-weight: 700;">
-                ${remainingQtyFormatted}
-              </span>
-            </div>
-          </div>
-
-          <div class="lot-card-actions">
-            <button type="button" class="btn-lot-action" onclick="alert('Chi tiết lô: ${lot.id}\\nSản phẩm: ${displayName}\\nKhối lượng ban đầu: ${initialQtyFormatted || \"--\"}\\nCòn lại: ${remainingQtyFormatted}\\nThửa đất: ${farmDisplay}\\nNgày thu hoạch: ${harvestDateFormatted}')">
-              <span>[Chi tiết] &rarr;</span>
-            </button>
-            <span style="font-size: 11px; color: var(--color-text-light);">${lot.organizationId || ""}</span>
-          </div>
-        `;
-        lotsContainer.appendChild(card);
-      });
-    }
-
     function resetFilters() {
       document.getElementById("searchInput").value = "";
-      searchQuery = "";
-      renderLots();
+      document.getElementById("productFilter").value = "";
+      fetchLots(true);
     }
 
-    // Search input listener
-    document.getElementById("searchInput").addEventListener("input", (e) => {
-      searchQuery = e.target.value.trim();
-      renderLots();
+    // Debounce search input (300ms) (S-14 / T-34)
+    document.getElementById("searchInput").addEventListener("input", () => {
+      clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => {
+        fetchLots(true);
+      }, 300);
+    });
+
+    // Product filter change
+    document.getElementById("productFilter").addEventListener("change", () => {
+      fetchLots(true);
+    });
+
+    // Load More click
+    document.getElementById("btnLoadMore").addEventListener("click", () => {
+      fetchLots(false);
     });
 
     loadPage();
