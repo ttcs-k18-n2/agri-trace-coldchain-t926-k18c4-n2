@@ -75,6 +75,24 @@ const inMemoryLots = [
   { id: "LOT-102", name: "Lô dưa chuột Hiệp Hòa", status: "Đã thu hoạch", organizationId: "org-002", farmId: null, productId: null, initialQuantity: 250, remainingQuantity: 250, harvestedAt: "2026-09-28" },
 ];
 
+// Idempotency cache for S-09 AC4: Chống double-click & retry tạo trùng lô thu hoạch
+const harvestIdempotencyCache = new Map();
+const IDEMPOTENCY_TTL_MS = 10 * 60 * 1000; // 10 phút
+
+function cleanupHarvestIdempotency() {
+  const now = Date.now();
+  for (const [key, item] of harvestIdempotencyCache.entries()) {
+    if (now - item.createdAt > IDEMPOTENCY_TTL_MS) {
+      harvestIdempotencyCache.delete(key);
+    }
+  }
+}
+
+function clearHarvestIdempotencyCache() {
+  harvestIdempotencyCache.clear();
+}
+
+
 async function hashPassword(plainPassword) {
   return hash(plainPassword, { algorithm: Algorithm.Argon2id });
 }
@@ -808,8 +826,12 @@ app.get(
 );
 
 /**
- * Ghi nhận lô thu hoạch (T-20, S-08)
- * Tự sinh mã lô LOT-XXXXXXXXXX, kiểm tra thửa đất thuộc tổ chức, khởi tạo khối lượng
+ * Ghi nhận lô thu hoạch (T-20, S-08, S-09)
+ * Chặn dữ liệu không hợp lệ tại máy chủ (S-09):
+ * - AC1: Ngày thu hoạch không được nằm trong tương lai (400)
+ * - AC2: Khối lượng phải là số dương lớn hơn 0 (400)
+ * - AC3: Kiểm tra quyền sở hữu thửa đất thuộc tổ chức (403 + security log)
+ * - AC4: Chống tạo trùng lô khi bấm lưu nhiều lần / idempotency (X-Idempotency-Key / requestId / double-click fingerprint)
  */
 app.post(
   "/api/lots",
@@ -817,28 +839,59 @@ app.post(
   async (req, res) => {
     const { farmId, productId, quantity, harvestedAt } = req.body;
     const orgId = req.auth.organizationId;
+    const userId = req.auth.userId || req.auth.id || req.auth.email || "user";
 
+    // 1. Kiểm tra thửa đất và sản phẩm bắt buộc
     if (!farmId) {
       return res.status(400).json({ message: "Vui lòng chọn thửa đất." });
     }
     if (!productId) {
       return res.status(400).json({ message: "Vui lòng chọn sản phẩm." });
     }
+
+    // 2. AC2: Khối lượng phải là số dương lớn hơn 0
     const qty = Number(quantity);
     if (isNaN(qty) || qty <= 0) {
       return res.status(400).json({ message: "Khối lượng phải là số dương lớn hơn 0." });
     }
 
-    const harvestDate = harvestedAt
-      ? new Date(harvestedAt).toISOString().slice(0, 10)
-      : new Date().toISOString().slice(0, 10);
+    // 3. AC1: Ngày thu hoạch không được nằm trong tương lai
+    let harvestDate;
+    if (harvestedAt) {
+      const parsedDate = new Date(harvestedAt);
+      if (isNaN(parsedDate.getTime())) {
+        return res.status(400).json({ message: "Ngày thu hoạch không hợp lệ." });
+      }
+      harvestDate = parsedDate.toISOString().slice(0, 10);
+      const todayStr = new Date().toISOString().slice(0, 10);
+      if (harvestDate > todayStr) {
+        return res.status(400).json({ message: "Ngày thu hoạch không được nằm trong tương lai." });
+      }
+    } else {
+      harvestDate = new Date().toISOString().slice(0, 10);
+    }
+
+    // 4. AC4: Idempotency & chống bấm lưu 2 lần
+    const idempotencyKey = req.get("X-Idempotency-Key") || req.body.requestId || req.body.idempotencyKey;
+    const idempotencyLookupKey = idempotencyKey ? `${orgId}:${idempotencyKey}` : null;
+    const fingerprintKey = `fp:${orgId}:${userId}:${farmId}:${productId}:${qty}:${harvestDate}`;
+
+    if (idempotencyLookupKey && harvestIdempotencyCache.has(idempotencyLookupKey)) {
+      const cached = harvestIdempotencyCache.get(idempotencyLookupKey);
+      return res.status(cached.status).json(cached.body);
+    }
+
+    const recentFp = harvestIdempotencyCache.get(fingerprintKey);
+    if (recentFp && Date.now() - recentFp.createdAt < 2500) {
+      return res.status(recentFp.status).json(recentFp.body);
+    }
 
     const MAX_RETRIES = 5;
     let insertedLot = null;
 
     if (pool) {
       try {
-        // 1. Kiểm tra thửa đất thuộc tổ chức hiện tại qua scopedQueryById
+        // 5. AC3: Kiểm tra thửa đất thuộc tổ chức hiện tại qua scopedQueryById
         const farmRes = await scopedQueryById(pool, req.auth, "farms", farmId);
         if (farmRes.isCrossTenant) {
           logSecurityEvent("CROSS_TENANT_MUTATION_DENIED", {
@@ -860,7 +913,7 @@ app.post(
         }
         const farm = farmRes.row;
 
-        // 2. Kiểm tra sản phẩm tồn tại
+        // 6. Kiểm tra sản phẩm tồn tại
         const prodRes = await scopedQueryById(pool, req.auth, "products", productId);
         if (!prodRes.row) {
           return res.status(400).json({ message: "Sản phẩm không tồn tại trong danh mục." });
@@ -869,7 +922,7 @@ app.post(
         const lotName = req.body.name || `${product.name} - ${farm.name}`;
         const status = "Đã thu hoạch";
 
-        // 3. Chèn lô mới với cơ chế retry tối đa 5 lần nếu collision mã (T-19)
+        // 7. Chèn lô mới với cơ chế retry tối đa 5 lần nếu collision mã (T-19)
         for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
           const lotId = generateLotCode();
           try {
@@ -910,10 +963,26 @@ app.post(
           return res.status(500).json({ message: "Không thể sinh mã lô duy nhất sau 5 lần thử." });
         }
 
-        return res.status(201).json({
+        const successResponse = {
           message: "Ghi nhận thu hoạch thành công.",
           lot: insertedLot,
+        };
+
+        if (idempotencyLookupKey) {
+          harvestIdempotencyCache.set(idempotencyLookupKey, {
+            status: 201,
+            body: successResponse,
+            createdAt: Date.now(),
+          });
+        }
+        harvestIdempotencyCache.set(fingerprintKey, {
+          status: 201,
+          body: successResponse,
+          createdAt: Date.now(),
         });
+        cleanupHarvestIdempotency();
+
+        return res.status(201).json(successResponse);
       } catch (err) {
         return res.status(500).json({ message: err.message });
       }
@@ -925,6 +994,18 @@ app.post(
       return res.status(404).json({ message: "Không tìm thấy thửa đất." });
     }
     if (farm.organizationId !== orgId && req.auth.roleId !== "admin") {
+      logSecurityEvent("CROSS_TENANT_MUTATION_DENIED", {
+        userId: req.auth.userId || req.auth.id,
+        userEmail: req.auth.email,
+        userOrgId: orgId,
+        userRole: req.auth.roleId,
+        resourceType: "farms",
+        resourceId: farmId,
+        targetOrgId: farm.organizationId,
+        action: "HARVEST_ON_FOREIGN_FARM",
+        ip: req.ip,
+        userAgent: req.get("User-Agent"),
+      });
       return res.status(403).json({ message: "Bạn không có quyền thao tác trên thửa đất của tổ chức khác." });
     }
 
@@ -962,10 +1043,26 @@ app.post(
       return res.status(500).json({ message: "Không thể sinh mã lô duy nhất sau 5 lần thử." });
     }
 
-    return res.status(201).json({
+    const successResponse = {
       message: "Ghi nhận thu hoạch thành công.",
       lot: insertedLot,
+    };
+
+    if (idempotencyLookupKey) {
+      harvestIdempotencyCache.set(idempotencyLookupKey, {
+        status: 201,
+        body: successResponse,
+        createdAt: Date.now(),
+      });
+    }
+    harvestIdempotencyCache.set(fingerprintKey, {
+      status: 201,
+      body: successResponse,
+      createdAt: Date.now(),
     });
+    cleanupHarvestIdempotency();
+
+    return res.status(201).json(successResponse);
   }
 );
 
@@ -1470,4 +1567,7 @@ module.exports = {
   MAX_FAILED_ATTEMPTS,
   LOCK_MINUTES,
   pool,
+  clearHarvestIdempotencyCache,
+  harvestIdempotencyCache,
 };
+
