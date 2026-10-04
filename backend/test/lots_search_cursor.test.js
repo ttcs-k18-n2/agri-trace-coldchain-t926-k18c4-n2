@@ -245,6 +245,10 @@ test("S-14 / T-33 Live PostgreSQL: Cursor pagination and indices test", async (t
   const testProductId = "PROD-TEA";
 
   await migrationDb.query(`
+    INSERT INTO organizations (id, name) VALUES ($1, 'Perf Org') ON CONFLICT (id) DO NOTHING;
+  `, [testOrgId]);
+
+  await migrationDb.query(`
     INSERT INTO lots (id, name, status, organization_id, farm_id, product_id, initial_quantity, remaining_quantity, harvested_at, created_at)
     SELECT
       'LOT-PERF-' || lpad(i::text, 5, '0'),
@@ -279,7 +283,12 @@ test("S-14 / T-33 Live PostgreSQL: Cursor pagination and indices test", async (t
       `PostgreSQL query on 5,000 indexed lots took ${elapsed.toFixed(2)}ms (must be < 300ms)`
     );
   } finally {
-    await migrationDb.query("DELETE FROM lots WHERE organization_id = $1", [testOrgId]);
+    try {
+      await migrationDb.query("DELETE FROM lots WHERE organization_id = $1", [testOrgId]);
+      await migrationDb.query("DELETE FROM organizations WHERE id = $1", [testOrgId]);
+    } catch {
+      // cleanup best effort
+    }
   }
 });
 
