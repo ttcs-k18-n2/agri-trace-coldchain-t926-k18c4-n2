@@ -559,11 +559,26 @@
         const data = await response.json();
 
         if (response.ok) {
+          if (data.user) {
+            try {
+              sessionStorage.setItem(
+                "agriUser",
+                JSON.stringify({
+                  id: data.user.id || data.user.userId,
+                  email: data.user.email,
+                  organizationId: data.user.organizationId,
+                  roleId: data.user.roleId,
+                })
+              );
+            } catch (err) {
+              console.warn("Could not cache user", err);
+            }
+          }
           message.style.color = "var(--color-primary)";
           message.textContent = "Đăng nhập thành công! Đang chuyển hướng...";
           setTimeout(() => {
             window.location.href = data.redirectTo || "/lots";
-          }, 400);
+          }, 300);
         } else if (response.status === 423) {
           // Account Temporarily Locked
           message.style.color = "var(--color-danger)";

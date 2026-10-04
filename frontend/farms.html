@@ -223,18 +223,18 @@
       </nav>
 
       <div class="user-controls">
-        <div class="user-pill">
-          <div class="user-avatar" id="avatarLetter">U</div>
+        <div class="user-pill" id="userPill">
+          <div class="user-avatar" id="userAvatar"><span class="skeleton-shimmer skeleton-avatar"></span></div>
           <div class="user-meta">
-            <span class="user-email" id="headerUserEmail">Đang tải...</span>
+            <span class="user-email" id="userEmail"><span class="skeleton-shimmer skeleton-text"></span></span>
             <div class="user-badges">
-              <span class="badge-org" id="headerOrg">...</span>
-              <span class="badge-role" id="headerRole">...</span>
+              <span class="badge-org" id="userOrg"><span class="skeleton-shimmer skeleton-badge"></span></span>
+              <span class="badge-role" id="userRole"><span class="skeleton-shimmer skeleton-badge"></span></span>
             </div>
           </div>
         </div>
 
-        <button id="logoutBtn" class="btn-logout" title="Đăng xuất khỏi hệ thống">
+        <button id="logout" class="btn-logout" title="Đăng xuất khỏi hệ thống">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
           <span>Đăng xuất</span>
         </button>
@@ -391,40 +391,22 @@
     </div>
   </main>
 
+  <script src="/app-shell.js"></script>
   <script>
     let isSubmitting = false;
     let currentUserRole = "";
 
     async function checkAuthAndLoad() {
       try {
-        const meRes = await fetch("/api/me");
-        if (!meRes.ok) {
-          window.location.href = "/login?returnTo=/farms.html";
-          return;
-        }
-        const me = await meRes.json();
-        const user = me.user;
+        const user = await initAppShell({ activeNav: "farms" });
+        if (!user) return;
         currentUserRole = user.roleId;
 
-        // Render header user meta
-        document.getElementById("headerUserEmail").textContent = user.email;
-        document.getElementById("avatarLetter").textContent = (user.email || "U").charAt(0).toUpperCase();
-        document.getElementById("headerOrg").textContent = user.organizationId;
-        
-        const roleLabels = {
-          producer: "Nông dân",
-          cooperative: "Hợp tác xã",
-          processing: "Sơ chế",
-          transporter: "Vận chuyển",
-          warehouse: "Kho lạnh",
-          retailer: "Bán lẻ",
-          inspector: "Cán bộ kiểm tra"
-        };
-        document.getElementById("headerRole").textContent = roleLabels[user.roleId] || user.roleId;
-
         // Backward compatibility
-        document.getElementById("userInfo").innerHTML = `Xin chào <strong>${user.email}</strong> | Vai trò: <strong>${user.roleId}</strong>`;
-        document.getElementById("orgBadge").innerHTML = `Tổ chức: <strong>${user.organizationId}</strong>`;
+        const userInfoEl = document.getElementById("userInfo");
+        if (userInfoEl) userInfoEl.innerHTML = `Xin chào <strong>${user.email}</strong> | Vai trò: <strong>${user.roleId}</strong>`;
+        const orgBadgeEl = document.getElementById("orgBadge");
+        if (orgBadgeEl) orgBadgeEl.innerHTML = `Tổ chức: <strong>${user.organizationId}</strong>`;
 
         // If inspector, display role notice and disable form inputs
         if (user.roleId === "inspector") {
@@ -644,10 +626,13 @@
       }
     });
 
-    document.getElementById("logoutBtn").addEventListener("click", async () => {
-      await fetch("/api/logout", { method: "POST" });
-      window.location.href = "/login";
-    });
+    const logoutEl = document.getElementById("logout") || document.getElementById("logoutBtn");
+    if (logoutEl) {
+      logoutEl.addEventListener("click", async () => {
+        await fetch("/api/logout", { method: "POST" });
+        window.location.href = "/login";
+      });
+    }
 
     checkAuthAndLoad();
   </script>

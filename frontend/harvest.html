@@ -97,13 +97,13 @@
         <a href="/harvest.html" class="nav-item active" id="navHarvest"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg><span>Ghi nhận thu hoạch</span></a>
       </nav>
       <div class="user-controls">
-        <div class="user-pill">
-          <div class="user-avatar" id="userAvatar">U</div>
+        <div class="user-pill" id="userPill">
+          <div class="user-avatar" id="userAvatar"><span class="skeleton-shimmer skeleton-avatar"></span></div>
           <div class="user-meta">
-            <span class="user-email" id="userEmail">Đang tải...</span>
+            <span class="user-email" id="userEmail"><span class="skeleton-shimmer skeleton-text"></span></span>
             <div class="user-badges">
-              <span class="badge-org" id="userOrg">...</span>
-              <span class="badge-role" id="userRole">...</span>
+              <span class="badge-org" id="userOrg"><span class="skeleton-shimmer skeleton-badge"></span></span>
+              <span class="badge-role" id="userRole"><span class="skeleton-shimmer skeleton-badge"></span></span>
             </div>
           </div>
         </div>
@@ -233,6 +233,7 @@
     </div>
   </main>
 
+  <script src="/app-shell.js"></script>
   <script>
     let currentUser = null;
     let farmsList = [];
@@ -242,43 +243,24 @@
       // Set default harvest date to today
       const today = new Date().toISOString().slice(0, 10);
       const dateInput = document.getElementById("input-date");
-      dateInput.value = today;
-      dateInput.max = today;
+      if (dateInput) {
+        dateInput.value = today;
+        dateInput.max = today;
+      }
 
-      const authenticated = await loadCurrentUser();
-      if (!authenticated) return;
+      currentUser = await initAppShell({ activeNav: "harvest" });
+      if (!currentUser) return;
+
+      const writableRoles = ["producer", "cooperative", "org_admin", "admin"];
+      if (!writableRoles.includes(currentUser.roleId)) {
+        showBanner("danger", "Vai trò hiện tại chỉ có quyền xem dữ liệu và không thể ghi nhận thu hoạch.");
+        const submitBtn = document.getElementById("btn-submit-harvest");
+        if (submitBtn) submitBtn.disabled = true;
+      }
 
       await Promise.all([loadFarms(), loadProducts()]);
       setupEventListeners();
     });
-
-    async function loadCurrentUser() {
-      try {
-        const res = await fetch("/api/me");
-        if (res.status === 401) {
-          window.location.href = "/login?returnTo=/harvest.html";
-          return false;
-        }
-        const data = await res.json();
-        currentUser = data.user;
-
-        document.getElementById("userEmail").textContent = currentUser.email;
-        document.getElementById("userRole").textContent = formatRole(currentUser.roleId);
-        document.getElementById("userAvatar").textContent = currentUser.email.charAt(0).toUpperCase();
-        document.getElementById("userOrg").textContent = currentUser.organizationId || "Không có tổ chức";
-
-        const writableRoles = ["producer", "cooperative", "org_admin", "admin"];
-        if (!writableRoles.includes(currentUser.roleId)) {
-          showBanner("danger", "Vai trò hiện tại chỉ có quyền xem dữ liệu và không thể ghi nhận thu hoạch.");
-          document.getElementById("btn-submit-harvest").disabled = true;
-        }
-        return true;
-      } catch (err) {
-        console.error("Lỗi xác thực người dùng:", err);
-        showBanner("danger", "Không thể xác thực phiên đăng nhập. Vui lòng tải lại trang.");
-        return false;
-      }
-    }
 
     async function loadFarms() {
       const select = document.getElementById("select-farm");
