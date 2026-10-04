@@ -218,6 +218,22 @@ if echo "$LOGIN_OUT" | grep -q '"email":"user@example.com"'; then
   else
     echo "ℹ [Smoke Test] Farms response: $FARMS_OUT"
   fi
+
+  PRODUCTS_OUT=$(curl -s -b "$SMOKE_COOKIE" "http://localhost:8080/api/products" 2>/dev/null || true)
+  if echo "$PRODUCTS_OUT" | grep -q 'PROD-TEA'; then
+    echo "✔ [Smoke Test Passed] Product catalog is available to the authenticated harvest flow."
+  else
+    echo "ℹ [Smoke Test] Products response: $PRODUCTS_OUT"
+  fi
+
+  HARVEST_VALIDATION_OUT=$(curl -s -b "$SMOKE_COOKIE" -H "Content-Type: application/json" \
+    -d '{"farmId":"FARM-001","productId":"PROD-TEA","quantity":0,"harvestedAt":"2026-10-04"}' \
+    "http://localhost:8080/api/lots" 2>/dev/null || true)
+  if echo "$HARVEST_VALIDATION_OUT" | grep -q 'Khối lượng phải là số dương'; then
+    echo "✔ [Smoke Test Passed] Harvest API is authenticated and reachable on staging."
+  else
+    echo "ℹ [Smoke Test] Harvest validation response: $HARVEST_VALIDATION_OUT"
+  fi
 else
   echo "ℹ [Smoke Test Note] Initial login smoke check response: $LOGIN_OUT"
 fi
