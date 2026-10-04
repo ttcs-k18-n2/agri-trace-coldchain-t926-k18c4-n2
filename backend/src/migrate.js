@@ -49,6 +49,11 @@ async function runMigrations(direction = "up") {
   const client = await pool.connect();
 
   try {
+    if (process.env.APP_DB_PASSWORD) {
+      await client.query("SELECT set_config('app.db_password', $1, false)", [
+        process.env.APP_DB_PASSWORD,
+      ]);
+    }
     await ensureMigrationTable(client);
 
     if (direction === "up") {

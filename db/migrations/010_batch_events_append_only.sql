@@ -2,14 +2,27 @@
 -- Tách tài khoản:
 --   agri_migration: DDL / schema migrations
 --   agri_app: DML ứng dụng chạy thật, batch_events CHỈ ĐƯỢC SELECT và INSERT
+--
+-- Password của agri_app được lấy từ session setting 'app.db_password' (nếu có)
+-- hoặc fallback về 'app_password' cho môi trường phát triển cục bộ.
 
 DO $$
+DECLARE
+  configured_pwd text := current_setting('app.db_password', true);
 BEGIN
+  IF configured_pwd IS NULL OR configured_pwd = '' THEN
+    configured_pwd := 'app_password';
+  END IF;
+
   IF NOT EXISTS (
     SELECT FROM pg_catalog.pg_roles
     WHERE rolname = 'agri_app'
   ) THEN
-    CREATE ROLE agri_app WITH LOGIN PASSWORD 'app_password';
+    EXECUTE format('CREATE ROLE agri_app WITH LOGIN PASSWORD %L', configured_pwd);
+  ELSE
+    IF current_setting('app.db_password', true) IS NOT NULL AND current_setting('app.db_password', true) <> '' THEN
+      EXECUTE format('ALTER ROLE agri_app WITH PASSWORD %L', configured_pwd);
+    END IF;
   END IF;
 END
 $$;
