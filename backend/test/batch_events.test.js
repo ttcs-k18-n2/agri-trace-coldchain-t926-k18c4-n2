@@ -53,7 +53,7 @@ async function loginUser(server, email, password) {
   return res.headers["set-cookie"] ? res.headers["set-cookie"][0].split(";")[0] : null;
 }
 
-test("S-10 Core: Canonical JSON and Deterministic Hash calculation (RFC 8785)", async () => {
+test("S-10 Core: Canonical JSON nội bộ và Mã băm tất định (Internal Canonical JSON theo K-01)", async () => {
   // 1. Genesis hash is 64 zeros
   assert.equal(GENESIS_HASH, "0".repeat(64));
   assert.equal(GENESIS_HASH.length, 64);
@@ -89,42 +89,88 @@ test("S-10 Core: Canonical JSON and Deterministic Hash calculation (RFC 8785)", 
   );
 });
 
-test("S-10 Core: Hash chain verification and tampering detection", async () => {
-  const testBatchId = "BATCH-TEST-CHAIN";
-  inMemoryBatchEvents.length = 0;
-
-  // Event #1: Genesis
-  const event1 = await appendBatchEvent(null, {
+test("S-10 Core: Hash đóng gói toàn bộ metadata (eventType, orgId, actor, occurredAt) chống giả mạo toàn diện", async () => {
+  const testBatchId = "BATCH-TEST-METADATA-TAMPER";
+  const event = await appendBatchEvent(null, {
     batchId: testBatchId,
     eventType: "HARVEST_CREATED",
     payload: { farmId: "FARM-001", productId: "PROD-TEA", quantity: 100 },
     organizationId: "org-001",
+    actorUserId: "usr-001",
   });
-  assert.equal(event1.sequenceNo, 1);
-  assert.equal(event1.previousHash, GENESIS_HASH);
+  assert.equal(event.sequenceNo, 1);
+  assert.equal(event.previousHash, GENESIS_HASH);
 
-  // Event #2: Sequential
-  const event2 = await appendBatchEvent(null, {
-    batchId: testBatchId,
-    eventType: "QUALITY_INSPECTED",
-    payload: { grade: "A", passed: true },
-    organizationId: "org-001",
-  });
-  assert.equal(event2.sequenceNo, 2);
-  assert.equal(event2.previousHash, event1.eventHash);
-
-  // Verify intact chain
+  // 1. Kiểm tra chuỗi nguyên bản hợp lệ
   const events = await getBatchEvents(null, testBatchId);
-  assert.equal(events.length, 2);
+  assert.equal(verifyBatchEventChain(events).valid, true);
+
+  // 2. Giả mạo eventType: sửa HARVEST_CREATED thành TRANSFER_CONFIRMED giữ nguyên payload
+  const tamperedType = JSON.parse(JSON.stringify(events));
+  tamperedType[0].eventType = "TRANSFER_CONFIRMED";
+  const checkType = verifyBatchEventChain(tamperedType);
+  assert.equal(checkType.valid, false, "Phải phát hiện sửa đổi trái phép eventType");
+  assert.match(checkType.error, /tampered/);
+
+  // 3. Giả mạo organizationId: sửa org-001 thành org-999
+  const tamperedOrg = JSON.parse(JSON.stringify(events));
+  tamperedOrg[0].organizationId = "org-999";
+  const checkOrg = verifyBatchEventChain(tamperedOrg);
+  assert.equal(checkOrg.valid, false, "Phải phát hiện sửa đổi trái phép organizationId");
+
+  // 4. Giả mạo actorUserId
+  const tamperedActor = JSON.parse(JSON.stringify(events));
+  tamperedActor[0].actorUserId = "attacker-user";
+  const checkActor = verifyBatchEventChain(tamperedActor);
+  assert.equal(checkActor.valid, false, "Phải phát hiện sửa đổi trái phép actorUserId");
+
+  // 5. Giả mạo payload.quantity
+  const tamperedPayload = JSON.parse(JSON.stringify(events));
+  tamperedPayload[0].payload.quantity = 9999;
+  const checkPayload = verifyBatchEventChain(tamperedPayload);
+  assert.equal(checkPayload.valid, false, "Phải phát hiện sửa đổi trái phép payload");
+});
+
+test("S-10 Concurrency: Khóa tuần tự hóa ngăn ngừa race condition khi ghi event đồng thời", async () => {
+  const concurrentBatchId = "BATCH-CONCURRENT-LOCK-TEST";
+  const concurrentTasks = [];
+
+  // Bắn đồng thời 5 sự kiện cho cùng một lô hàng
+  for (let i = 0; i < 5; i++) {
+    concurrentTasks.push(
+      appendBatchEvent(null, {
+        batchId: concurrentBatchId,
+        eventType: `STEP_${i + 1}`,
+        payload: { step: i + 1, data: `Concurrent step ${i + 1}` },
+        organizationId: "org-001",
+        actorUserId: "usr-001",
+      })
+    );
+  }
+
+  const results = await Promise.all(concurrentTasks);
+  assert.equal(results.length, 5);
+
+  // Đọc danh sách sự kiện sau khi ghi đồng thời
+  const events = await getBatchEvents(null, concurrentBatchId);
+  assert.equal(events.length, 5);
+
+  // Tất cả sequenceNo phải liên tục và không bị trùng
+  const seqs = events.map((e) => e.sequenceNo);
+  assert.deepEqual(seqs, [1, 2, 3, 4, 5]);
+
+  // Mỗi sự kiện sau phải có previousHash khớp chính xác với eventHash của sự kiện trước
+  for (let i = 1; i < events.length; i++) {
+    assert.equal(
+      events[i].previousHash,
+      events[i - 1].eventHash,
+      `Sự kiện #${i + 1} phải nối tiếp chính xác vào hash của sự kiện #${i}`
+    );
+  }
+
+  // Toàn bộ chuỗi sự kiện được xác minh hợp lệ 100%
   const verifyRes = verifyBatchEventChain(events);
   assert.equal(verifyRes.valid, true);
-
-  // Tampering detection: if payload is secretly altered
-  const tamperedEvents = JSON.parse(JSON.stringify(events));
-  tamperedEvents[0].payload.quantity = 9999; // Giả mạo số lượng
-  const tamperedCheck = verifyBatchEventChain(tamperedEvents);
-  assert.equal(tamperedCheck.valid, false);
-  assert.match(tamperedCheck.error, /tampered/);
 });
 
 test("S-10 Integration: Lot creation emits HARVEST_CREATED event with Genesis Hash in atomic transaction", async (t) => {

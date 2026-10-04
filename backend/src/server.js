@@ -7,7 +7,7 @@ const { Pool } = require("pg");
 const { scopedQuery, scopedQueryById, SHARED_TABLES } = require("./query");
 const { logSecurityEvent, getRecentSecurityLogs, clearSecurityLogs } = require("./security_logger");
 const { generateLotCode } = require("./lot_code");
-const { GENESIS_HASH, canonicalize, calculateEventHash } = require("./integrity");
+const { GENESIS_HASH, canonicalize, calculateEventHash, createEventHashPayload } = require("./integrity");
 const {
   appendBatchEvent,
   getBatchEvents,
@@ -1757,6 +1757,7 @@ module.exports = {
   GENESIS_HASH,
   canonicalize,
   calculateEventHash,
+  createEventHashPayload,
   appendBatchEvent,
   getBatchEvents,
   verifyBatchEventChain,
