@@ -78,14 +78,13 @@ async function appendBatchEvent(client, data) {
     // 1.1 Khóa hàng của lô hàng với FOR UPDATE (K-01) để tuần tự hóa và ngăn race condition
     await client.query(`SELECT id FROM lots WHERE id = $1 FOR UPDATE`, [batchId]);
 
-    // 1.2 Lấy sự kiện cuối cùng của lô hàng với FOR UPDATE (K-01) để xếp hàng tuần tự các giao dịch ghi đồng thời
+    // 1.2 Lấy sự kiện cuối cùng của lô hàng (hàng cha lots đã được khóa FOR UPDATE ở trên)
     const lastEventRes = await client.query(
       `SELECT sequence_no, event_hash 
        FROM batch_events 
        WHERE batch_id = $1 
        ORDER BY sequence_no DESC 
-       LIMIT 1
-       FOR UPDATE`,
+       LIMIT 1`,
       [batchId]
     );
 
@@ -236,67 +235,7 @@ async function getBatchEvents(client, batchId) {
     }));
 }
 
-/**
- * Kiểm tra tính toàn vẹn của chuỗi hash chain cho danh sách sự kiện.
- *
- * @param {Array<object>} events - Danh sách sự kiện được sắp xếp theo sequenceNo tăng dần
- * @returns {{ valid: boolean, error?: string, brokenIndex?: number }}
- */
-function verifyBatchEventChain(events) {
-  if (!Array.isArray(events) || events.length === 0) {
-    return { valid: true };
-  }
-
-  for (let i = 0; i < events.length; i++) {
-    const event = events[i];
-    const prevHash = event.previousHash || event.previous_hash;
-    const currentHash = event.eventHash || event.event_hash;
-    const seq = Number(event.sequenceNo || event.sequence_no);
-
-    // 1. Kiểm tra sequence liên tục bắt đầu từ 1
-    if (seq !== i + 1) {
-      return {
-        valid: false,
-        error: `Sequence bị đứt đoạn tại vị trí ${i}: mong đợi ${i + 1}, nhận được ${seq}`,
-        brokenIndex: i,
-      };
-    }
-
-    // 2. Kiểm tra genesis hash cho event đầu tiên
-    if (i === 0) {
-      if (prevHash !== GENESIS_HASH) {
-        return {
-          valid: false,
-          error: `Sự kiện đầu tiên (#1) phải có previous_hash là GENESIS_HASH (64 số 0).`,
-          brokenIndex: 0,
-        };
-      }
-    } else {
-      // 3. Kiểm tra previous_hash phải trỏ đúng vào event_hash của sự kiện trước đó
-      const prevEvent = events[i - 1];
-      const expectedPrevHash = prevEvent.eventHash || prevEvent.event_hash;
-      if (prevHash !== expectedPrevHash) {
-        return {
-          valid: false,
-          error: `Chuỗi hash bị gãy tại sự kiện #${seq}: previous_hash không khớp với event_hash của sự kiện trước.`,
-          brokenIndex: i,
-        };
-      }
-    }
-
-    // 4. Tính toán lại event_hash từ toàn bộ metadata của sự kiện (chuẩn K-01) và kiểm tra tính toàn vẹn
-    const recomputedHash = calculateEventHash(prevHash, event);
-    if (recomputedHash !== currentHash) {
-      return {
-        valid: false,
-        error: `Nội dung sự kiện #${seq} đã bị sửa đổi trái phép (tampered): hash tính lại không khớp với event_hash được lưu.`,
-        brokenIndex: i,
-      };
-    }
-  }
-
-  return { valid: true };
-}
+const { verifyBatchEventChain } = require("./integrity_verifier");
 
 module.exports = {
   appendBatchEvent,
