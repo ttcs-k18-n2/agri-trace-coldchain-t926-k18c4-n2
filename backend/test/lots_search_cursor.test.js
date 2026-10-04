@@ -245,7 +245,7 @@ test("S-14 / T-33 Live PostgreSQL: Cursor pagination and indices test", async (t
   const testProductId = "PROD-TEA";
 
   await migrationDb.query(`
-    INSERT INTO organizations (id, name) VALUES ($1, 'Perf Org') ON CONFLICT (id) DO NOTHING;
+    INSERT INTO organizations (id, name, type) VALUES ($1, 'Perf Org', 'producer') ON CONFLICT (id) DO NOTHING;
   `, [testOrgId]);
 
   await migrationDb.query(`
@@ -284,7 +284,7 @@ test("S-14 / T-33 Live PostgreSQL: Cursor pagination and indices test", async (t
     );
   } finally {
     try {
-      await migrationDb.query("DELETE FROM lots WHERE organization_id = $1", [testOrgId]);
+      await migrationDb.query("DELETE FROM lots WHERE id LIKE 'LOT-PERF-%'");
       await migrationDb.query("DELETE FROM organizations WHERE id = $1", [testOrgId]);
     } catch {
       // cleanup best effort
