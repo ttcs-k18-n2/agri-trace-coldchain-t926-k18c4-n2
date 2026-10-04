@@ -14,11 +14,15 @@
   function formatRole(role) {
     const map = {
       admin: "Quản trị viên",
+      org_admin: "Quản trị tổ chức",
       producer: "Nông dân / Sản xuất",
       cooperative: "Hợp tác xã",
       inspector: "Cán bộ kiểm tra",
       transporter: "Đơn vị vận chuyển",
       distributor: "Nhà phân phối",
+      warehouse: "Kho lạnh",
+      processing: "Sơ chế",
+      retailer: "Bán lẻ",
     };
     return map[role] || role || "Thành viên";
   }
@@ -161,13 +165,8 @@
       return verifiedUser;
     } catch (err) {
       console.warn("Session background revalidation failed:", err);
-      // If we already had cached credentials, permit graceful usage
-      if (cachedUser) {
-        if (typeof options.onUserLoaded === "function") {
-          options.onUserLoaded(cachedUser);
-        }
-        return cachedUser;
-      }
+      // Cache chỉ dùng để render header tức thì, tuyệt đối không trả cachedUser
+      // để quyết định quyền ghi khi /api/me chưa xác thực thành công.
       return null;
     }
   }

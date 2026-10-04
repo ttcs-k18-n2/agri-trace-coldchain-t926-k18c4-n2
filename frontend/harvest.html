@@ -312,15 +312,6 @@
     }
 
     function setupEventListeners() {
-      // Logout
-      document.getElementById("logout").addEventListener("click", async () => {
-        try {
-          await fetch("/api/logout", { method: "POST" });
-        } finally {
-          window.location.href = "/login";
-        }
-      });
-
       // Update unit badge when product changes
       document.getElementById("select-product").addEventListener("change", (e) => {
         const opt = e.target.options[e.target.selectedIndex];
@@ -458,6 +449,7 @@
     function formatRole(role) {
       const map = {
         admin: "Quản trị viên",
+        org_admin: "Quản trị tổ chức",
         producer: "Nông hộ / Sản xuất",
         cooperative: "Hợp tác xã",
         inspector: "Cán bộ kiểm tra",

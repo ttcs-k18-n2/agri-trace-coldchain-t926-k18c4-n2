@@ -137,6 +137,46 @@ async function seedDemoUser() {
     organizationId: "org-inspector",
     roleId: "inspector",
   });
+
+  users.set("admin@example.com", {
+    id: "usr-admin",
+    email: "admin@example.com",
+    passwordHash,
+    failedCount: 0,
+    lockedUntil: null,
+    organizationId: "org-system",
+    roleId: "admin",
+  });
+
+  users.set("orgadmin@example.com", {
+    id: "usr-orgadmin",
+    email: "orgadmin@example.com",
+    passwordHash,
+    failedCount: 0,
+    lockedUntil: null,
+    organizationId: "org-001",
+    roleId: "org_admin",
+  });
+
+  users.set("transporter@example.com", {
+    id: "usr-transporter",
+    email: "transporter@example.com",
+    passwordHash,
+    failedCount: 0,
+    lockedUntil: null,
+    organizationId: "org-trans",
+    roleId: "transporter",
+  });
+
+  users.set("distributor@example.com", {
+    id: "usr-distributor",
+    email: "distributor@example.com",
+    passwordHash,
+    failedCount: 0,
+    lockedUntil: null,
+    organizationId: "org-dist",
+    roleId: "distributor",
+  });
 }
 
 function normalizeEmail(email) {
@@ -1071,7 +1111,7 @@ app.post(
  */
 app.post(
   "/api/organization/lots",
-  requirePermission(["producer", "cooperative", "transporter", "distributor", "org_admin", "admin"]),
+  requirePermission(["producer", "cooperative", "org_admin", "admin"]),
   async (req, res) => {
     // Nếu request truyền farmId và productId, chuyển tiếp xử lý theo nghiệp vụ thu hoạch mới (T-20)
     if (req.body.farmId && req.body.productId) {
