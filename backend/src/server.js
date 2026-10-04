@@ -942,7 +942,7 @@ app.get(
 
       if (pool) {
         if (farmId && !farmName) {
-          const f = await pool.query("SELECT name FROM farms WHERE id = $1", [farmId]);
+          const f = await scopedQueryById(pool, req.auth, "farms", farmId, { allowGlobal: true });
           if (f.rows[0]) farmName = f.rows[0].name;
         }
         if (productId && !productName) {

@@ -3,6 +3,8 @@ const assert = require("node:assert/strict");
 const request = require("supertest");
 const {
   app,
+  users,
+  hashPassword,
   inMemoryLots,
   inMemoryBatchEvents,
   appendBatchEvent,
@@ -16,6 +18,25 @@ async function loginAs(email, password = "Password123!") {
 }
 
 test("S-23 (T-54, T-55): Quy tắc quyền xem lịch sử tổ tiên, chặn 403 lô không liên quan và giới hạn sau bàn giao giữa 3 tổ chức", async (t) => {
+  const passwordHash = await hashPassword("Password123!");
+  users.set("producer@org1.vn", {
+    id: "usr-prod-org1",
+    email: "producer@org1.vn",
+    passwordHash,
+    failedCount: 0,
+    lockedUntil: null,
+    organizationId: "org-001",
+    roleId: "producer",
+  });
+  users.set("distributor@org3.vn", {
+    id: "usr-dist-org3",
+    email: "distributor@org3.vn",
+    passwordHash,
+    failedCount: 0,
+    lockedUntil: null,
+    organizationId: "org-003",
+    roleId: "distributor",
+  });
   const testLotIds = ["LOT-S23-ORG1", "LOT-S23-ORG2", "LOT-S23-ORG3", "LOT-S23-UNRELATED", "LOT-S23-HANDOVER"];
   for (let i = inMemoryLots.length - 1; i >= 0; i--) {
     if (testLotIds.includes(inMemoryLots[i].id)) inMemoryLots.splice(i, 1);
