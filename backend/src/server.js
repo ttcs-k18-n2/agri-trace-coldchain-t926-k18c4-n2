@@ -16,7 +16,7 @@ const {
   setAppendHookForTesting,
 } = require("./event_repository");
 const { verifyBatchIntegrity } = require("./integrity_verifier");
-
+const { evaluateLotAccess } = require("./lot_access");
 const app = express();
 const PORT = Number(process.env.PORT || 3000);
 
@@ -904,188 +904,147 @@ app.get(
   requirePermission(["producer", "cooperative", "transporter", "distributor", "inspector", "org_admin", "admin"]),
   async (req, res) => {
     const lotId = req.params.id;
-    const isInspector = req.auth.isInspector;
-    const orgId = req.auth.organizationId;
+    try {
+      const access = await evaluateLotAccess({
+        pool,
+        authContext: req.auth,
+        lotId,
+        inMemoryLots,
+      });
 
-    let lot = null;
-
-    if (pool) {
-      try {
-        const q = await scopedQueryById(pool, req.auth, "lots", lotId);
-        if (q.isCrossTenant) {
-          logSecurityEvent("CROSS_TENANT_ACCESS_DENIED", {
-            userId: req.auth.userId || req.auth.id,
-            userEmail: req.auth.email,
-            userOrgId: req.auth.organizationId,
-            userRole: req.auth.roleId,
-            resourceType: "lots",
-            resourceId: lotId,
-            targetOrgId: q.targetOrgId,
-            action: "READ",
-            ip: req.ip,
-            userAgent: req.get("User-Agent"),
-          });
-          return res.status(403).json({
-            message: "Truy cập bị từ chối: bạn không có quyền xem dữ liệu của tổ chức khác.",
-          });
-        }
-        if (q.row) {
-          let farmName = null;
-          let productName = null;
-          let productUnit = null;
-
-          if (q.row.farm_id) {
-            const f = await scopedQueryById(pool, req.auth, "farms", q.row.farm_id);
-            if (f.row) farmName = f.row.name;
-          }
-          if (q.row.product_id) {
-            const p = await scopedQueryById(pool, req.auth, "products", q.row.product_id);
-            if (p.row) {
-              productName = p.row.name;
-              productUnit = p.row.unit;
-            }
-          }
-
-          lot = {
-            id: q.row.id,
-            name: q.row.name,
-            status: q.row.status,
-            organizationId: q.row.organization_id,
-            farmId: q.row.farm_id,
-            farmName,
-            productId: q.row.product_id,
-            productName,
-            productUnit,
-            initialQuantity: q.row.initial_quantity !== null && q.row.initial_quantity !== undefined ? Number(q.row.initial_quantity) : null,
-            remainingQuantity: q.row.remaining_quantity !== null && q.row.remaining_quantity !== undefined ? Number(q.row.remaining_quantity) : null,
-            harvestedAt: q.row.harvested_at,
-          };
-        }
-      } catch (err) {
-        return res.status(500).json({ message: err.message });
+      if (access.status === "NOT_FOUND") {
+        return res.status(404).json({ message: "Không tìm thấy lô hàng." });
       }
-    } else {
-      const match = inMemoryLots.find((l) => l.id === lotId);
-      if (match) {
-        if (!isInspector && match.organizationId !== orgId && req.auth.roleId !== "admin") {
-          logSecurityEvent("CROSS_TENANT_ACCESS_DENIED", {
-            userId: req.auth.userId || req.auth.id,
-            userEmail: req.auth.email,
-            userOrgId: req.auth.organizationId,
-            userRole: req.auth.roleId,
-            resourceType: "lots",
-            resourceId: lotId,
-            targetOrgId: match.organizationId,
-            action: "READ",
-            ip: req.ip,
-            userAgent: req.get("User-Agent"),
-          });
-          return res.status(403).json({
-            message: "Truy cập bị từ chối: bạn không có quyền xem dữ liệu của tổ chức khác.",
-          });
-        }
-        const farm = inMemoryFarms.find((f) => f.id === match.farmId);
-        const product = inMemoryProducts.find((p) => p.id === match.productId);
-        lot = {
-          ...match,
-          farmName: farm ? farm.name : null,
-          productName: product ? product.name : null,
-          productUnit: product ? product.unit : "kg",
-        };
+
+      if (!access.allowed) {
+        logSecurityEvent("CROSS_TENANT_ACCESS_DENIED", {
+          userId: req.auth.userId || req.auth.id,
+          userEmail: req.auth.email,
+          userOrgId: req.auth.organizationId,
+          userRole: req.auth.roleId,
+          resourceType: "lots",
+          resourceId: lotId,
+          targetOrgId: access.targetOrgId,
+          action: "READ",
+          ip: req.ip,
+          userAgent: req.get("User-Agent"),
+        });
+        return res.status(403).json({
+          message: "Truy cập bị từ chối: bạn không có quyền xem dữ liệu của tổ chức khác.",
+        });
       }
-    }
 
-    if (!lot) {
-      return res.status(404).json({ message: "Không tìm thấy lô hàng." });
-    }
+      const rawLot = access.lot;
+      let farmName = rawLot.farmName || null;
+      let productName = rawLot.productName || null;
+      let productUnit = rawLot.productUnit || null;
+      const farmId = rawLot.farmId || rawLot.farm_id || null;
+      const productId = rawLot.productId || rawLot.product_id || null;
 
-    return res.status(200).json({
-      lot,
-    });
+      if (pool) {
+        if (farmId && !farmName) {
+          const f = await scopedQueryById(pool, req.auth, "farms", farmId, { allowGlobal: true });
+          if (f.rows[0]) farmName = f.rows[0].name;
+        }
+        if (productId && !productName) {
+          const p = await pool.query("SELECT name, unit FROM products WHERE id = $1", [productId]);
+          if (p.rows[0]) {
+            productName = p.rows[0].name;
+            productUnit = p.rows[0].unit;
+          }
+        }
+      } else {
+        const farm = inMemoryFarms.find((f) => f.id === farmId);
+        const product = inMemoryProducts.find((p) => p.id === productId);
+        if (!farmName) farmName = farm ? farm.name : null;
+        if (!productName) productName = product ? product.name : null;
+        if (!productUnit) productUnit = product ? product.unit : "kg";
+      }
+
+      const initQty = rawLot.initialQuantity !== undefined ? rawLot.initialQuantity : rawLot.initial_quantity;
+      const remQty = rawLot.remainingQuantity !== undefined ? rawLot.remainingQuantity : rawLot.remaining_quantity;
+
+      const lot = {
+        id: rawLot.id,
+        name: rawLot.name,
+        status: rawLot.status,
+        organizationId: rawLot.organizationId || rawLot.organization_id,
+        organizationName: rawLot.organizationName,
+        farmId,
+        farmName,
+        productId,
+        productName,
+        productUnit,
+        initialQuantity: initQty !== null && initQty !== undefined ? Number(initQty) : null,
+        remainingQuantity: remQty !== null && remQty !== undefined ? Number(remQty) : null,
+        harvestedAt: rawLot.harvestedAt || rawLot.harvested_at || null,
+        accessType: access.accessType,
+        ancestors: access.ancestors,
+      };
+
+      return res.status(200).json({ lot });
+    } catch (err) {
+      return res.status(500).json({ message: err.message });
+    }
   }
 );
 
 /**
- * Lấy chuỗi sự kiện hash-chain của lô hàng (S-10, S-11)
+ * Lấy chuỗi sự kiện hash-chain và lịch sử nguồn gốc của lô hàng (S-10, S-11, S-21, S-23)
  */
 app.get(
-  "/api/lots/:id/events",
-  requirePermission(["producer", "cooperative", "org_admin", "admin", "inspector"]),
+  ["/api/lots/:id/events", "/api/lots/:id/lineage", "/api/lots/:id/origins"],
+  requirePermission(["producer", "cooperative", "transporter", "distributor", "org_admin", "admin", "inspector"]),
   async (req, res) => {
     const lotId = req.params.id;
-
-    if (pool) {
-      try {
-        const lotRes = await scopedQueryById(pool, req.auth, "lots", lotId);
-        if (lotRes.isCrossTenant) {
-          logSecurityEvent("CROSS_TENANT_ACCESS_DENIED", {
-            userId: req.auth.userId || req.auth.id,
-            userEmail: req.auth.email,
-            userOrgId: req.auth.organizationId,
-            userRole: req.auth.roleId,
-            resourceType: "lots",
-            resourceId: lotId,
-            targetOrgId: lotRes.targetOrgId,
-            action: "READ_EVENTS",
-            ip: req.ip,
-            userAgent: req.get("User-Agent"),
-          });
-          return res.status(403).json({ message: "Bạn không có quyền truy cập dữ liệu của tổ chức khác." });
-        }
-        if (!lotRes.row) {
-          return res.status(404).json({ message: "Không tìm thấy lô hàng." });
-        }
-
-        const events = await getBatchEvents(pool, lotId);
-        const integrityCheck = verifyBatchEventChain(events);
-
-        return res.status(200).json({
-          lotId,
-          events,
-          count: events.length,
-          isIntegrityValid: integrityCheck.valid,
-          integrityError: integrityCheck.error || null,
-        });
-      } catch (err) {
-        return res.status(500).json({ message: err.message });
-      }
-    }
-
-    // In-memory fallback
-    const lot = inMemoryLots.find((l) => l.id === lotId);
-    if (!lot) {
-      return res.status(404).json({ message: "Không tìm thấy lô hàng." });
-    }
-    const isGlobal = req.auth.roleId === "admin" || req.auth.roleId === "inspector";
-    if (!isGlobal && lot.organizationId !== req.auth.organizationId) {
-      logSecurityEvent("CROSS_TENANT_ACCESS_DENIED", {
-        userId: req.auth.userId || req.auth.id,
-        userEmail: req.auth.email,
-        userOrgId: req.auth.organizationId,
-        userRole: req.auth.roleId,
-        resourceType: "lots",
-        resourceId: lotId,
-        targetOrgId: lot.organizationId,
-        action: "READ_EVENTS",
-        ip: req.ip,
-        userAgent: req.get("User-Agent"),
+    try {
+      const access = await evaluateLotAccess({
+        pool,
+        authContext: req.auth,
+        lotId,
+        inMemoryLots,
       });
-      return res.status(403).json({ message: "Bạn không có quyền truy cập dữ liệu của tổ chức khác." });
+
+      if (access.status === "NOT_FOUND") {
+        return res.status(404).json({ message: "Không tìm thấy lô hàng." });
+      }
+
+      if (!access.allowed) {
+        logSecurityEvent("CROSS_TENANT_ACCESS_DENIED", {
+          userId: req.auth.userId || req.auth.id,
+          userEmail: req.auth.email,
+          userOrgId: req.auth.organizationId,
+          userRole: req.auth.roleId,
+          resourceType: "lots",
+          resourceId: lotId,
+          targetOrgId: access.targetOrgId,
+          action: "READ_EVENTS",
+          ip: req.ip,
+          userAgent: req.get("User-Agent"),
+        });
+        return res.status(403).json({
+          message: "Bạn không có quyền truy cập dữ liệu của tổ chức khác.",
+        });
+      }
+
+      const allEventsRaw = await getBatchEvents(pool, lotId);
+      const integrityCheck = verifyBatchEventChain(allEventsRaw);
+
+      return res.status(200).json({
+        lotId,
+        accessType: access.accessType,
+        events: access.events,
+        ancestorEvents: access.ancestorEvents,
+        ancestors: access.ancestors,
+        count: access.events.length,
+        isIntegrityValid: integrityCheck.valid,
+        integrityError: integrityCheck.error || null,
+      });
+    } catch (err) {
+      return res.status(500).json({ message: err.message });
     }
-
-    const events = await getBatchEvents(null, lotId);
-    const integrityCheck = verifyBatchEventChain(events);
-
-    return res.status(200).json({
-      lotId,
-      events,
-      count: events.length,
-      isIntegrityValid: integrityCheck.valid,
-      integrityError: integrityCheck.error || null,
-    });
   }
 );
-
 /**
  * Kiểm tra tính toàn vẹn chuỗi sự kiện và ghi nhận lịch sử kiểm tra (S-12 / T-28, T-29)
  * Dành riêng cho cán bộ kiểm tra (inspector) và quản trị viên (admin).

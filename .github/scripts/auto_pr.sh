@@ -47,8 +47,11 @@ fi
 if OUTPUT=$(gh pr create "${CREATE_ARGS[@]}" 2>&1); then
   echo "$OUTPUT"
   echo "Created Pull Request successfully!"
+  echo "Enabling auto-merge for $BRANCH_NAME..."
+  gh pr merge "$BRANCH_NAME" --auto --merge 2>&1 || true
 elif echo "$OUTPUT" | grep -qi "already exists"; then
   echo "Pull Request already exists: $OUTPUT"
+  gh pr merge "$BRANCH_NAME" --auto --merge 2>&1 || true
   exit 0
 else
   echo "$OUTPUT" >&2
