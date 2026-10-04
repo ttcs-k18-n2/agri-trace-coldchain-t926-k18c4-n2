@@ -13,8 +13,32 @@ function setAppendHookForTesting(hook) {
 }
 
 /**
+ * Khóa tuần tự hóa in-memory để đảm bảo xếp hàng an toàn khi có nhiều request đồng thời ghi vào cùng batchId.
+ */
+const batchLocks = new Map();
+
+async function withBatchLock(batchId, fn) {
+  const currentLock = batchLocks.get(batchId) || Promise.resolve();
+  let release;
+  const nextLock = new Promise((resolve) => {
+    release = resolve;
+  });
+  batchLocks.set(batchId, currentLock.then(() => nextLock));
+  await currentLock;
+  try {
+    return await fn();
+  } finally {
+    release();
+    if (batchLocks.get(batchId) === nextLock) {
+      batchLocks.delete(batchId);
+    }
+  }
+}
+
+/**
  * Ghi nhận một sự kiện mới vào chuỗi hash chain của lô hàng (batch).
  * Hàm này có thể chạy trong một transaction của client PostgreSQL hoặc in-memory.
+ * Sử dụng SELECT ... FOR UPDATE (K-01) để khóa dòng sự kiện cuối cùng, ngăn chặn race condition khi ghi đồng thời.
  *
  * @param {object|null} client - pg.Client hoặc pg.Pool (nếu chạy với PostgreSQL) hoặc null (in-memory)
  * @param {object} data - Thông tin sự kiện
@@ -49,20 +73,37 @@ async function appendBatchEvent(client, data) {
 
   // 1. Nếu có PostgreSQL client
   if (client && typeof client.query === "function") {
-    // Lấy sự kiện cuối cùng của lô hàng để lấy previous_hash và sequence_no
+    // 1.1 Khóa hàng của lô hàng (nếu có) để ngăn race condition khi chưa có event nào
+    try {
+      await client.query(`SELECT id FROM lots WHERE id = $1 FOR UPDATE`, [batchId]);
+    } catch (_) {}
+
+    // 1.2 Lấy sự kiện cuối cùng của lô hàng với FOR UPDATE (K-01) để xếp hàng tuần tự các giao dịch ghi đồng thời
     const lastEventRes = await client.query(
       `SELECT sequence_no, event_hash 
        FROM batch_events 
        WHERE batch_id = $1 
        ORDER BY sequence_no DESC 
-       LIMIT 1`,
+       LIMIT 1
+       FOR UPDATE`,
       [batchId]
     );
 
     const lastEvent = lastEventRes.rows[0];
     const sequenceNo = lastEvent ? Number(lastEvent.sequence_no) + 1 : 1;
     const previousHash = lastEvent ? lastEvent.event_hash : GENESIS_HASH;
-    const eventHash = calculateEventHash(previousHash, payload);
+
+    // Đóng gói toàn bộ metadata của sự kiện vào chuỗi băm chuẩn K-01
+    const eventDataToHash = {
+      batchId,
+      sequenceNo,
+      eventType,
+      payload,
+      organizationId,
+      actorUserId: actorUserId || null,
+      occurredAt: eventOccurredAt,
+    };
+    const eventHash = calculateEventHash(previousHash, eventDataToHash);
     const eventId = "EVT-" + crypto.randomUUID();
 
     const insertRes = await client.query(
@@ -101,42 +142,55 @@ async function appendBatchEvent(client, data) {
     };
   }
 
-  // 2. In-memory fallback
-  const batchExistingEvents = inMemoryBatchEvents
-    .filter((e) => e.batch_id === batchId || e.batchId === batchId)
-    .sort((a, b) => (a.sequence_no || a.sequenceNo) - (b.sequence_no || b.sequenceNo));
+  // 2. In-memory fallback: Sử dụng mutex queue theo batchId để đảm bảo an toàn ghi đồng thời
+  return await withBatchLock(batchId, async () => {
+    const batchExistingEvents = inMemoryBatchEvents
+      .filter((e) => e.batch_id === batchId || e.batchId === batchId)
+      .sort((a, b) => (a.sequence_no || a.sequenceNo) - (b.sequence_no || b.sequenceNo));
 
-  const lastEvent = batchExistingEvents[batchExistingEvents.length - 1];
-  const sequenceNo = lastEvent ? (lastEvent.sequence_no || lastEvent.sequenceNo) + 1 : 1;
-  const previousHash = lastEvent ? (lastEvent.event_hash || lastEvent.eventHash) : GENESIS_HASH;
-  const eventHash = calculateEventHash(previousHash, payload);
-  const eventId = "EVT-" + crypto.randomUUID();
+    const lastEvent = batchExistingEvents[batchExistingEvents.length - 1];
+    const sequenceNo = lastEvent ? (lastEvent.sequence_no || lastEvent.sequenceNo) + 1 : 1;
+    const previousHash = lastEvent ? (lastEvent.event_hash || lastEvent.eventHash) : GENESIS_HASH;
 
-  const newEvent = {
-    id: eventId,
-    batchId,
-    batch_id: batchId,
-    sequenceNo,
-    sequence_no: sequenceNo,
-    eventType,
-    event_type: eventType,
-    payload,
-    organizationId,
-    organization_id: organizationId,
-    actorUserId: actorUserId || null,
-    actor_user_id: actorUserId || null,
-    occurredAt: eventOccurredAt.toISOString(),
-    occurred_at: eventOccurredAt.toISOString(),
-    previousHash,
-    previous_hash: previousHash,
-    eventHash,
-    event_hash: eventHash,
-    createdAt: new Date().toISOString(),
-    created_at: new Date().toISOString(),
-  };
+    // Đóng gói toàn bộ metadata của sự kiện vào chuỗi băm chuẩn K-01
+    const eventDataToHash = {
+      batchId,
+      sequenceNo,
+      eventType,
+      payload,
+      organizationId,
+      actorUserId: actorUserId || null,
+      occurredAt: eventOccurredAt,
+    };
+    const eventHash = calculateEventHash(previousHash, eventDataToHash);
+    const eventId = "EVT-" + crypto.randomUUID();
 
-  inMemoryBatchEvents.push(newEvent);
-  return newEvent;
+    const newEvent = {
+      id: eventId,
+      batchId,
+      batch_id: batchId,
+      sequenceNo,
+      sequence_no: sequenceNo,
+      eventType,
+      event_type: eventType,
+      payload,
+      organizationId,
+      organization_id: organizationId,
+      actorUserId: actorUserId || null,
+      actor_user_id: actorUserId || null,
+      occurredAt: eventOccurredAt.toISOString(),
+      occurred_at: eventOccurredAt.toISOString(),
+      previousHash,
+      previous_hash: previousHash,
+      eventHash,
+      event_hash: eventHash,
+      createdAt: new Date().toISOString(),
+      created_at: new Date().toISOString(),
+    };
+
+    inMemoryBatchEvents.push(newEvent);
+    return newEvent;
+  });
 }
 
 /**
@@ -230,8 +284,8 @@ function verifyBatchEventChain(events) {
       }
     }
 
-    // 4. Tính toán lại event_hash từ payload và kiểm tra tính toàn vẹn
-    const recomputedHash = calculateEventHash(prevHash, event.payload);
+    // 4. Tính toán lại event_hash từ toàn bộ metadata của sự kiện (chuẩn K-01) và kiểm tra tính toàn vẹn
+    const recomputedHash = calculateEventHash(prevHash, event);
     if (recomputedHash !== currentHash) {
       return {
         valid: false,
