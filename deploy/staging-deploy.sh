@@ -161,6 +161,7 @@ for i in $(seq 1 "$HEALTH_RETRIES"); do
       echo "Service responded but is not yet the expected healthy commit."
       echo "Response: $response"
     fi
+  fi
   sleep "$HEALTH_INTERVAL"
 done
 
