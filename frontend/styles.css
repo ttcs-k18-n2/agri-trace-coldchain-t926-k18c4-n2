@@ -311,6 +311,38 @@ button, input, select, textarea {
   border-radius: var(--radius-xs);
 }
 
+/* App Shell Skeleton Loading */
+.skeleton-shimmer {
+  display: inline-block;
+  border-radius: var(--radius-xs);
+  background: linear-gradient(90deg, rgba(203, 213, 225, 0.4) 25%, rgba(241, 245, 249, 0.8) 50%, rgba(203, 213, 225, 0.4) 75%);
+  background-size: 200% 100%;
+  animation: skeleton-wave 1.5s infinite;
+  vertical-align: middle;
+}
+
+.skeleton-text {
+  height: 12px;
+  width: 110px;
+}
+
+.skeleton-badge {
+  height: 14px;
+  width: 55px;
+}
+
+.skeleton-avatar {
+  width: 100%;
+  height: 100%;
+  border-radius: var(--radius-full);
+}
+
+@keyframes skeleton-wave {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+
 .btn-logout {
   display: inline-flex;
   align-items: center;

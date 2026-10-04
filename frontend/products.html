@@ -127,13 +127,13 @@
       </nav>
 
       <div class="user-controls">
-        <div class="user-pill">
-          <div class="user-avatar" id="userAvatar">U</div>
+        <div class="user-pill" id="userPill">
+          <div class="user-avatar" id="userAvatar"><span class="skeleton-shimmer skeleton-avatar"></span></div>
           <div class="user-meta">
-            <span class="user-email" id="userEmail">Đang tải...</span>
+            <span class="user-email" id="userEmail"><span class="skeleton-shimmer skeleton-text"></span></span>
             <div class="user-badges">
-              <span class="badge-org" id="userOrg">...</span>
-              <span class="badge-role" id="userRole">...</span>
+              <span class="badge-org" id="userOrg"><span class="skeleton-shimmer skeleton-badge"></span></span>
+              <span class="badge-role" id="userRole"><span class="skeleton-shimmer skeleton-badge"></span></span>
             </div>
           </div>
         </div>
@@ -233,6 +233,7 @@
     </div>
   </div>
 
+  <script src="/app-shell.js"></script>
   <script>
     let currentUser = null;
     let productsList = [];
@@ -240,38 +241,17 @@
 
     // Khởi tạo trang
     document.addEventListener("DOMContentLoaded", async () => {
-      const authenticated = await loadCurrentUser();
-      if (!authenticated) return;
+      currentUser = await initAppShell({ activeNav: "products" });
+      if (!currentUser) return;
+
+      if (currentUser.roleId === "admin") {
+        const adminActions = document.getElementById("admin-actions");
+        if (adminActions) adminActions.style.display = "block";
+      }
+
       await loadProducts();
       setupEventListeners();
     });
-
-    async function loadCurrentUser() {
-      try {
-        const res = await fetch("/api/me");
-        if (res.status === 401) {
-          window.location.href = "/login?returnTo=/products.html";
-          return false;
-        }
-        const data = await res.json();
-        currentUser = data.user;
-
-        document.getElementById("userEmail").textContent = currentUser.email;
-        document.getElementById("userRole").textContent = formatRole(currentUser.roleId);
-        document.getElementById("userAvatar").textContent = currentUser.email.charAt(0).toUpperCase();
-        document.getElementById("userOrg").textContent = currentUser.organizationId || "Không có tổ chức";
-
-        // Hiển thị chức năng thêm sản phẩm nếu là Admin
-        if (currentUser.roleId === "admin") {
-          document.getElementById("admin-actions").style.display = "block";
-        }
-        return true;
-      } catch (err) {
-        console.error("Lỗi xác thực người dùng:", err);
-        showBanner("danger", "Không thể xác thực phiên đăng nhập. Vui lòng tải lại trang.");
-        return false;
-      }
-    }
 
     async function loadProducts() {
       try {
