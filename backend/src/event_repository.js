@@ -23,13 +23,15 @@ async function withBatchLock(batchId, fn) {
   const nextLock = new Promise((resolve) => {
     release = resolve;
   });
-  batchLocks.set(batchId, currentLock.then(() => nextLock));
+  const queuedLock = currentLock.then(() => nextLock);
+  batchLocks.set(batchId, queuedLock);
+
   await currentLock;
   try {
     return await fn();
   } finally {
     release();
-    if (batchLocks.get(batchId) === nextLock) {
+    if (batchLocks.get(batchId) === queuedLock) {
       batchLocks.delete(batchId);
     }
   }
@@ -73,10 +75,8 @@ async function appendBatchEvent(client, data) {
 
   // 1. Nếu có PostgreSQL client
   if (client && typeof client.query === "function") {
-    // 1.1 Khóa hàng của lô hàng (nếu có) để ngăn race condition khi chưa có event nào
-    try {
-      await client.query(`SELECT id FROM lots WHERE id = $1 FOR UPDATE`, [batchId]);
-    } catch (_) {}
+    // 1.1 Khóa hàng của lô hàng với FOR UPDATE (K-01) để tuần tự hóa và ngăn race condition
+    await client.query(`SELECT id FROM lots WHERE id = $1 FOR UPDATE`, [batchId]);
 
     // 1.2 Lấy sự kiện cuối cùng của lô hàng với FOR UPDATE (K-01) để xếp hàng tuần tự các giao dịch ghi đồng thời
     const lastEventRes = await client.query(

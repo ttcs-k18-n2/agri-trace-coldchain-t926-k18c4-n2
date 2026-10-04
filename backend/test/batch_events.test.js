@@ -5,7 +5,6 @@ const {
   app,
   seedDemoUser,
   inMemoryLots,
-  inMemoryBatchEvents,
   setAppendHookForTesting,
   GENESIS_HASH,
   canonicalize,

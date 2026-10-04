@@ -1,7 +1,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const request = require("supertest");
-const { app, users, seedDemoUser, inMemoryFarms, inMemoryLots } = require("../src/server");
+const { app, users, seedDemoUser } = require("../src/server");
 const { scopedQuery, scopedQueryById } = require("../src/query");
 
 async function loginAs(email, password = "Password@123") {
