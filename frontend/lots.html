@@ -295,12 +295,12 @@
 
       <div class="user-controls">
         <div class="user-pill" id="userPill">
-          <div class="user-avatar" id="userAvatar">U</div>
+          <div class="user-avatar" id="userAvatar"><span class="skeleton-shimmer skeleton-avatar"></span></div>
           <div class="user-meta">
-            <span class="user-email" id="userEmail">Đang tải...</span>
+            <span class="user-email" id="userEmail"><span class="skeleton-shimmer skeleton-text"></span></span>
             <div class="user-badges">
-              <span class="badge-org" id="userOrg">...</span>
-              <span class="badge-role" id="userRole">...</span>
+              <span class="badge-org" id="userOrg"><span class="skeleton-shimmer skeleton-badge"></span></span>
+              <span class="badge-role" id="userRole"><span class="skeleton-shimmer skeleton-badge"></span></span>
             </div>
           </div>
         </div>
@@ -368,6 +368,7 @@
     </div>
   </main>
 
+  <script src="/app-shell.js"></script>
   <script>
     let allLots = [];
     let searchQuery = "";
@@ -377,35 +378,13 @@
       lotsContainer.innerHTML = "<div style='grid-column: 1/-1; text-align: center; padding: 40px; color: var(--color-text-muted);'>Đang tải dữ liệu lô thu hoạch...</div>";
 
       try {
-        // 1. Kiểm tra xác thực
-        const meResponse = await fetch("/api/me");
-        if (!meResponse.ok) {
-          window.location.href = "/login?returnTo=/lots";
-          return;
-        }
-
-        const meData = await meResponse.json();
-        const user = meData.user;
-
-        // Render user meta into header pill
-        document.getElementById("userEmail").textContent = user.email;
-        document.getElementById("userAvatar").textContent = (user.email || "U").charAt(0).toUpperCase();
-        document.getElementById("userOrg").textContent = user.organizationId;
-        
-        const roleLabels = {
-          producer: "Nông dân",
-          cooperative: "Hợp tác xã",
-          processing: "Sơ chế",
-          transporter: "Vận chuyển",
-          warehouse: "Kho lạnh",
-          retailer: "Bán lẻ",
-          inspector: "Cán bộ kiểm tra"
-        };
-        document.getElementById("userRole").textContent = roleLabels[user.roleId] || user.roleId;
+        // 1. Khởi tạo App Shell (hiển thị tức thì từ sessionStorage + revalidate nền)
+        const user = await initAppShell({ activeNav: "lots" });
+        if (!user) return;
 
         const writableHarvestRoles = ["producer", "cooperative", "org_admin", "admin"];
         const harvestButton = document.getElementById("btnGoHarvest");
-        if (!writableHarvestRoles.includes(user.roleId)) {
+        if (harvestButton && !writableHarvestRoles.includes(user.roleId)) {
           harvestButton.removeAttribute("href");
           harvestButton.setAttribute("aria-disabled", "true");
           harvestButton.setAttribute("title", "Vai trò hiện tại không có quyền ghi nhận thu hoạch");
@@ -414,7 +393,8 @@
         }
 
         // Backward compatibility
-        document.getElementById("userInfo").textContent = `Email: ${user.email} | Tổ chức: ${user.organizationId}`;
+        const userInfoEl = document.getElementById("userInfo");
+        if (userInfoEl) userInfoEl.textContent = `Email: ${user.email} | Tổ chức: ${user.organizationId}`;
 
         // 2. Tải danh sách lô của tổ chức
         const lotsResponse = await fetch("/api/organization/lots");
