@@ -1,4 +1,4 @@
-name: Auto Open PR to Develop
+name: Auto Open PR to Main
 
 on:
   push:
