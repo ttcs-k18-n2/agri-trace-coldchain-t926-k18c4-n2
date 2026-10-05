@@ -428,8 +428,9 @@
         // 3. Tải danh sách lô đầu tiên (20 lô)
         await fetchLots(true);
       } catch (error) {
+        console.error("loadPage error:", error);
         const lotsContainer = document.getElementById("lots");
-        lotsContainer.innerHTML = "<div class='empty-state'><div class='empty-state-title'>Lỗi kết nối máy chủ</div><div class='empty-state-desc'>Không thể đồng bộ dữ liệu với máy chủ backend.</div></div>";
+        lotsContainer.innerHTML = `<div class='empty-state'><div class='empty-state-title'>Không thể tải dữ liệu</div><div class='empty-state-desc'>${escapeHtml(error.message || "Vui lòng thử lại sau.")}</div></div>`;
       }
     }
 
@@ -526,8 +527,9 @@
           loadMoreContainer.style.display = "none";
         }
       } catch (err) {
+        console.error("fetchLots error:", err);
         if (isReset) {
-          lotsContainer.innerHTML = "<div class='empty-state'><div class='empty-state-title'>Lỗi kết nối máy chủ</div></div>";
+          lotsContainer.innerHTML = `<div class='empty-state'><div class='empty-state-title'>Không thể tải danh sách lô</div><div class='empty-state-desc'>${escapeHtml(err.message || "Vui lòng thử lại sau.")}</div></div>`;
         }
       } finally {
         isLoading = false;
@@ -693,6 +695,16 @@
         return `${parts[2]}/${parts[1]}/${parts[0]}`;
       }
       return String(dateVal);
+    }
+
+    function escapeHtml(str) {
+      if (!str) return "";
+      return String(str)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
     }
 
     function resetFilters() {

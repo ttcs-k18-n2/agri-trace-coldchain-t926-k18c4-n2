@@ -265,6 +265,16 @@
     }
   }
 
+  function escapeHtml(str) {
+    if (!str) return "";
+    return String(str)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#039;");
+  }
+
   // Export to global scope & module
   if (typeof window !== "undefined") {
     window.initAppShell = initAppShell;
@@ -277,6 +287,7 @@
     window.NAV_PERMISSIONS = NAV_PERMISSIONS;
     window.hasPermission = hasPermission;
     window.applyRoleNavigation = applyRoleNavigation;
+    window.escapeHtml = escapeHtml;
   }
 
   if (typeof module !== "undefined" && module.exports) {
@@ -291,6 +302,7 @@
       NAV_PERMISSIONS,
       hasPermission,
       applyRoleNavigation,
+      escapeHtml,
     };
   }
 })();
