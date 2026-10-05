@@ -147,3 +147,20 @@ test("Frontend Role Scoping: farms.html has farmFormCard and completely hides fo
   assert.match(html, /id=["']farmFormCard["']/);
   assert.match(html, /formCard\.style\.display\s*=\s*["']none["']/);
 });
+
+test("Frontend Integrity Page: integrity.html correctly parses /api/me { user } structure and uses single atomic integrity API", () => {
+  const html = fs.readFileSync(path.join(frontendDir, "integrity.html"), "utf8");
+
+  // Does not directly assign user = await meRes.json() without accessing .user
+  assert.doesNotMatch(html, /const\s+user\s*=\s*await\s+meRes\.json\(\)\s*;\s*const\s+allowedRoles/);
+
+  // Correctly unpacks user from response or data.user
+  assert.match(html, /data\.user|\{\s*user\s*\}|user\s*=\s*data\.user/);
+
+  // Calls single atomic /integrity API endpoint
+  assert.match(html, /\/api\/lots\/[^`"']*\/integrity/);
+
+  // Does not perform redundant separate fetch to /events in performCheck
+  assert.doesNotMatch(html, /fetch\([^)]*\/events[^)]*\)/);
+});
+

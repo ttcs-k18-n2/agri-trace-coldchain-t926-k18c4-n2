@@ -124,6 +124,11 @@
       border-color: rgba(220, 38, 38, 0.25);
     }
 
+    .status-banner.unverifiable {
+      background: rgba(245, 158, 11, 0.08);
+      border-color: rgba(245, 158, 11, 0.28);
+    }
+
     .status-icon-box {
       width: 44px;
       height: 44px;
@@ -142,6 +147,11 @@
     .invalid .status-icon-box {
       background: rgba(220, 38, 38, 0.16);
       color: #dc2626;
+    }
+
+    .unverifiable .status-icon-box {
+      background: rgba(245, 158, 11, 0.16);
+      color: #d97706;
     }
 
     .status-details h3 {
@@ -470,15 +480,29 @@
 
       // Check current user role
       try {
-        const meRes = await fetch("/api/me", { credentials: "same-origin" });
-        if (meRes.ok) {
-          const user = await meRes.json();
-          const allowedRoles = ["inspector", "admin"];
-          if (!allowedRoles.includes(user.roleId)) {
-            restrictedNotice.style.display = "block";
-            auditSection.style.display = "none";
-            return;
+        let user = null;
+        const cached = sessionStorage.getItem("agriUser");
+        if (cached) {
+          try {
+            user = JSON.parse(cached);
+          } catch {
+            user = null;
           }
+        }
+
+        if (!user || !user.roleId) {
+          const meRes = await fetch("/api/me", { credentials: "same-origin" });
+          if (meRes.ok) {
+            const data = await meRes.json();
+            user = data.user;
+          }
+        }
+
+        const allowedRoles = ["inspector", "admin"];
+        if (!user || !allowedRoles.includes(user.roleId)) {
+          restrictedNotice.style.display = "block";
+          auditSection.style.display = "none";
+          return;
         }
       } catch {
         // Fall through to let backend reject if unauthenticated
@@ -510,7 +534,7 @@
         `;
 
         try {
-          // 1. Fetch integrity result
+          // Gộp lấy kết quả kiểm tra toàn vẹn và danh sách sự kiện thành 1 request nguyên tử (atomic snapshot)
           const integrityRes = await fetch(`/api/lots/${encodeURIComponent(lotId)}/integrity`, {
             credentials: "same-origin",
           });
@@ -520,21 +544,7 @@
             throw new Error(integrityData.message || "Không thể kiểm tra tính toàn vẹn của lô hàng.");
           }
 
-          // 2. Fetch event list for detail timeline
-          let events = [];
-          try {
-            const eventsRes = await fetch(`/api/lots/${encodeURIComponent(lotId)}/events`, {
-              credentials: "same-origin",
-            });
-            if (eventsRes.ok) {
-              const eventsData = await eventsRes.json();
-              events = eventsData.events || [];
-            }
-          } catch {
-            events = [];
-          }
-
-          renderResult(integrityData, events);
+          renderResult(integrityData);
         } catch (err) {
           alertBox.textContent = err.message;
           alertBox.style.display = "block";
@@ -550,16 +560,26 @@
         }
       }
 
-      function renderResult(data, events) {
-        const { lotId, checkedAt, integrity } = data;
+      function renderResult(data) {
+        const { lotId, checkedAt, integrity, events = [] } = data;
         resultPanel.style.display = "block";
 
+        const count = events.length;
         resLotId.textContent = lotId;
-        resEventCount.textContent = `${integrity.eventCount || events.length || 0} sự kiện`;
+        resEventCount.textContent = `${count} sự kiện`;
         resFinalHash.textContent = integrity.finalHash ? `${integrity.finalHash.substring(0, 16)}...${integrity.finalHash.substring(48)}` : "N/A";
         resCheckedAt.textContent = new Date(checkedAt).toLocaleString("vi-VN");
 
-        if (integrity.valid) {
+        // Lô 0 sự kiện: hiển thị thông báo chưa có dữ liệu để xác minh, không dùng màu xanh hợp lệ
+        if (integrity.status === "NO_EVENTS" || count === 0) {
+          statusBanner.className = "status-banner unverifiable";
+          statusIconBox.innerHTML = `
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+          `;
+          statusTitle.textContent = "ℹ Lô chưa có dữ liệu sự kiện để xác minh";
+          statusDesc.textContent = "Lô hàng này chưa được ghi nhận sự kiện nào trong chuỗi hash-chain hoặc là dữ liệu ban đầu chưa kích hoạt giám sát chuỗi lạnh.";
+          suspiciousNotice.style.display = "none";
+        } else if (integrity.valid) {
           statusBanner.className = "status-banner valid";
           statusIconBox.innerHTML = `
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
@@ -588,7 +608,7 @@
 
         // Render event timeline table
         eventsTableBody.innerHTML = "";
-        if (events.length === 0) {
+        if (count === 0) {
           eventsTableBody.innerHTML = `<tr><td colspan="5" style="text-align:center;color:var(--color-text-muted);padding:20px;">Chưa có sự kiện nào được ghi nhận cho lô này.</td></tr>`;
           return;
         }
