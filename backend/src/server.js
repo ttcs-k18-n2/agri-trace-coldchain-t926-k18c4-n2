@@ -1140,7 +1140,8 @@ app.get(
         // Đọc danh sách sự kiện duy nhất 1 lần để đảm bảo tính nguyên tử (atomic snapshot)
         const events = await getBatchEvents(pool, lotId);
         const integrity = verifyBatchEventChain(events);
-        if (!events || events.length === 0) {
+        const isNoEvents = !events || events.length === 0;
+        if (isNoEvents) {
           integrity.status = "NO_EVENTS";
         }
 
@@ -1149,7 +1150,7 @@ app.get(
         const checkedBy = req.auth ? (req.auth.userId || req.auth.id || req.auth.email) : null;
         let auditLogged = false;
 
-        // Lưu vào bảng integrity_checks (T-29)
+        // Lưu vào bảng integrity_checks (T-29): nếu lô 0 events, ghi error_type = 'NO_EVENTS'
         try {
           await pool.query(
             `INSERT INTO integrity_checks (
@@ -1163,7 +1164,7 @@ app.get(
               checkedAt,
               integrity.valid,
               integrity.firstInvalidSequence || null,
-              integrity.type || null,
+              isNoEvents ? "NO_EVENTS" : (integrity.type || null),
               integrity.finalHash || null,
             ]
           );
@@ -1194,7 +1195,8 @@ app.get(
     // Đọc danh sách sự kiện duy nhất 1 lần từ inMemoryBatchEvents
     const events = await getBatchEvents(null, lotId);
     const integrity = verifyBatchEventChain(events);
-    if (!events || events.length === 0) {
+    const isNoEvents = !events || events.length === 0;
+    if (isNoEvents) {
       integrity.status = "NO_EVENTS";
     }
     const checkedAt = new Date().toISOString();
@@ -1207,8 +1209,9 @@ app.get(
       checkedBy,
       checkedAt,
       valid: integrity.valid,
+      status: isNoEvents ? "UNVERIFIABLE" : (integrity.valid ? "VALID" : "INVALID"),
+      errorType: isNoEvents ? "NO_EVENTS" : (integrity.type || null),
       firstInvalidSequence: integrity.firstInvalidSequence || null,
-      errorType: integrity.type || null,
       finalHash: integrity.finalHash || null,
     });
 
