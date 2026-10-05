@@ -347,10 +347,34 @@
           <div class="stat-label">Tổng số lô thu hoạch</div>
         </div>
       </div>
+
+      <div class="stat-card" id="statCardIncoming" style="cursor: pointer;" onclick="switchLotsTab('incoming')" title="Bấm để xem danh sách yêu cầu bàn giao đang chờ xác nhận">
+        <div class="stat-icon" style="background: rgba(245, 158, 11, 0.12); color: #d97706;">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+        </div>
+        <div>
+          <div class="stat-value" id="statIncomingCount">0</div>
+          <div class="stat-label">Bàn giao chờ tiếp nhận (S-15)</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tab Strip (S-14 & S-15) -->
+    <div class="lots-tab-strip" style="display: flex; gap: 8px; margin-bottom: 20px; border-bottom: 1px solid var(--color-border); padding-bottom: 8px;">
+      <button type="button" class="tab-btn active" id="tabMyLots" onclick="switchLotsTab('my-lots')" style="background: none; border: none; font-size: 14px; font-weight: 700; color: var(--color-primary); padding: 8px 16px; border-radius: var(--radius-md); cursor: pointer; display: inline-flex; align-items: center; gap: 8px; border-bottom: 2px solid var(--color-primary); margin-bottom: -9px; transition: var(--transition-fast);">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>
+        <span>Lô hàng đang quản lý</span>
+      </button>
+
+      <button type="button" class="tab-btn" id="tabIncomingTransfers" onclick="switchLotsTab('incoming')" style="background: none; border: none; font-size: 14px; font-weight: 600; color: var(--color-text-muted); padding: 8px 16px; border-radius: var(--radius-md); cursor: pointer; display: inline-flex; align-items: center; gap: 8px; border-bottom: 2px solid transparent; margin-bottom: -9px; transition: var(--transition-fast);">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+        <span>Yêu cầu bàn giao đến (Chờ xác nhận)</span>
+        <span id="incomingBadge" style="display: none; background: #f59e0b; color: #fff; font-size: 11px; font-weight: 700; padding: 2px 7px; border-radius: 10px; line-height: 1;">0</span>
+      </button>
     </div>
 
     <!-- Filter & Search Toolbar (S-14) -->
-    <div class="filter-toolbar">
+    <div class="filter-toolbar" id="filterToolbar">
       <div class="search-box">
         <span class="search-icon">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
@@ -374,6 +398,11 @@
     <!-- Lots Container -->
     <div id="lots" class="lots-grid" aria-live="polite">
       <!-- Dynamic lots inserted here -->
+    </div>
+
+    <!-- Incoming Transfers Container (S-15: Bên nhận xem danh sách chờ xác nhận) -->
+    <div id="incomingSection" style="display: none;" aria-live="polite">
+      <!-- Dynamic incoming transfers inserted here -->
     </div>
 
     <!-- Modal Bàn giao lô hàng (S-15: Chờ xác nhận PENDING) -->
@@ -474,6 +503,13 @@
 
         // 3. Tải danh sách lô đầu tiên (20 lô)
         await fetchLots(true);
+
+        // 4. Cập nhật số lượng bàn giao chờ tiếp nhận (S-15)
+        await updateIncomingBadge();
+
+        if (urlParams.get("tab") === "incoming") {
+          switchLotsTab("incoming");
+        }
       } catch (error) {
         console.error("loadPage error:", error);
         const lotsContainer = document.getElementById("lots");
@@ -864,6 +900,7 @@
         closeTransferModal();
         alert(`✓ Yêu cầu bàn giao lô ${lotId} đã được tạo thành công ở trạng thái Chờ xác nhận (PENDING)!`);
         await fetchLots(true);
+        await updateIncomingBadge();
       } catch (err) {
         showModalError(err.message);
       } finally {
@@ -890,6 +927,190 @@
     const transferForm = document.getElementById("transferForm");
     if (transferForm) transferForm.addEventListener("submit", submitTransferForm);
 
+    let currentLotsTab = "my-lots";
+
+    function switchLotsTab(tabName) {
+      currentLotsTab = tabName;
+      const tabMyLots = document.getElementById("tabMyLots");
+      const tabIncoming = document.getElementById("tabIncomingTransfers");
+      const filterToolbar = document.getElementById("filterToolbar");
+      const lotsContainer = document.getElementById("lots");
+      const loadMoreContainer = document.getElementById("loadMoreContainer");
+      const incomingSection = document.getElementById("incomingSection");
+
+      if (tabName === "my-lots") {
+        if (tabMyLots) {
+          tabMyLots.style.color = "var(--color-primary)";
+          tabMyLots.style.borderBottomColor = "var(--color-primary)";
+          tabMyLots.style.fontWeight = "700";
+        }
+        if (tabIncoming) {
+          tabIncoming.style.color = "var(--color-text-muted)";
+          tabIncoming.style.borderBottomColor = "transparent";
+          tabIncoming.style.fontWeight = "600";
+        }
+        if (filterToolbar) filterToolbar.style.display = "";
+        if (lotsContainer) lotsContainer.style.display = "";
+        if (loadMoreContainer) loadMoreContainer.style.display = hasMore ? "block" : "none";
+        if (incomingSection) incomingSection.style.display = "none";
+      } else {
+        if (tabIncoming) {
+          tabIncoming.style.color = "#b45309";
+          tabIncoming.style.borderBottomColor = "#f59e0b";
+          tabIncoming.style.fontWeight = "700";
+        }
+        if (tabMyLots) {
+          tabMyLots.style.color = "var(--color-text-muted)";
+          tabMyLots.style.borderBottomColor = "transparent";
+          tabMyLots.style.fontWeight = "600";
+        }
+        if (filterToolbar) filterToolbar.style.display = "none";
+        if (lotsContainer) lotsContainer.style.display = "none";
+        if (loadMoreContainer) loadMoreContainer.style.display = "none";
+        if (incomingSection) incomingSection.style.display = "block";
+
+        loadIncomingTransfers();
+      }
+    }
+
+    async function updateIncomingBadge() {
+      try {
+        const res = await fetch("/api/transfers?type=incoming&status=PENDING", { credentials: "same-origin" });
+        if (!res.ok) return;
+        const data = await res.json();
+        const transfers = data.transfers || [];
+        const count = transfers.length;
+
+        const badge = document.getElementById("incomingBadge");
+        const statIncoming = document.getElementById("statIncomingCount");
+        if (statIncoming) statIncoming.textContent = count;
+
+        if (badge) {
+          if (count > 0) {
+            badge.textContent = count;
+            badge.style.display = "inline-block";
+          } else {
+            badge.style.display = "none";
+          }
+        }
+      } catch (err) {
+        console.warn("Could not update incoming transfers badge", err);
+      }
+    }
+
+    async function loadIncomingTransfers() {
+      const container = document.getElementById("incomingSection");
+      if (!container) return;
+
+      container.innerHTML = `
+        <div style="text-align: center; padding: 48px 20px; color: var(--color-text-muted);">
+          <div style="display: inline-block; width: 28px; height: 28px; border: 3px solid rgba(245, 158, 11, 0.2); border-top-color: #f59e0b; border-radius: 50%; animation: spin 0.8s linear infinite; margin-bottom: 12px;"></div>
+          <div style="font-size: 14px; font-weight: 500;">Đang tải danh sách bàn giao chờ tiếp nhận...</div>
+        </div>
+      `;
+
+      try {
+        const res = await fetch("/api/transfers?type=incoming&status=PENDING", { credentials: "same-origin" });
+        if (!res.ok) throw new Error("Không thể tải danh sách bàn giao từ máy chủ.");
+        const data = await res.json();
+        const transfers = data.transfers || [];
+
+        updateIncomingBadge();
+
+        if (transfers.length === 0) {
+          container.innerHTML = `
+            <div class="empty-state" style="padding: 60px 20px; background: #fff; border: 1px dashed var(--color-border); border-radius: var(--radius-lg); text-align: center;">
+              <div class="empty-state-icon" style="background: rgba(245, 158, 11, 0.1); color: #d97706; width: 56px; height: 56px; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 16px;">
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+              </div>
+              <div style="font-size: 16px; font-weight: 700; color: var(--color-text-main); margin-bottom: 6px;">Không có yêu cầu bàn giao nào đang chờ tiếp nhận</div>
+              <p style="font-size: 13.5px; color: var(--color-text-muted); max-width: 480px; margin: 0 auto 16px; line-height: 1.5;">
+                Khi các nông trại hoặc hợp tác xã khác gửi yêu cầu bàn giao lô hàng sang tổ chức của bạn, thông tin sẽ hiển thị tại đây để bạn kiểm tra và tiến hành xác nhận tiếp nhận.
+              </p>
+            </div>
+          `;
+          return;
+        }
+
+        container.innerHTML = `
+          <div style="margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+            <div style="font-size: 14px; color: var(--color-text-muted);">
+              Có <strong style="color: var(--color-text-main);">${transfers.length}</strong> lô hàng đang chờ tổ chức của bạn xác nhận tiếp nhận:
+            </div>
+            <div style="font-size: 12px; color: #b45309; background: rgba(245, 158, 11, 0.1); border: 1px solid rgba(245, 158, 11, 0.2); padding: 4px 12px; border-radius: var(--radius-full); font-weight: 600;">
+              Trạng thái PENDING (Story S-15)
+            </div>
+          </div>
+          <div class="lots-grid">
+            ${transfers.map((tr) => `
+              <div class="lot-card" style="border-top: 3px solid #f59e0b;">
+                <div class="lot-card-top">
+                  <div>
+                    <span class="lot-code-tag font-mono" style="background: rgba(245, 158, 11, 0.12); color: #b45309;">
+                      ${escapeHtml(tr.lotId)}
+                    </span>
+                    <h3 class="lot-title" style="margin-top: 8px;">
+                      ${escapeHtml(tr.lotName || 'Lô hàng nông sản')}
+                    </h3>
+                  </div>
+                  <span class="status-pill warning" title="Đang chờ tổ chức của bạn xác nhận tiếp nhận">
+                    <span class="status-dot"></span>
+                    <span>Chờ tiếp nhận</span>
+                  </span>
+                </div>
+
+                <div class="lot-meta-list">
+                  <div class="lot-meta-item">
+                    <span class="lot-meta-label">Bên gửi bàn giao:</span>
+                    <span class="lot-meta-value" style="font-weight: 600; color: var(--color-primary);">
+                      ${escapeHtml(tr.fromOrganizationName || tr.fromOrganizationId || '--')}
+                    </span>
+                  </div>
+                  <div class="lot-meta-item">
+                    <span class="lot-meta-label">Thời điểm gửi:</span>
+                    <span class="lot-meta-value">
+                      ${formatDateTime(tr.createdAt)}
+                    </span>
+                  </div>
+                  <div class="lot-meta-item">
+                    <span class="lot-meta-label">Mã giao dịch:</span>
+                    <span class="lot-meta-value font-mono" style="font-size: 12px; color: var(--color-text-muted);">
+                      ${escapeHtml(tr.id)}
+                    </span>
+                  </div>
+                  ${tr.notes ? `
+                    <div style="margin-top: 6px; padding: 8px 10px; background: rgba(0,0,0,0.02); border-radius: var(--radius-sm); font-size: 12.5px; border-left: 2px solid #f59e0b;">
+                      <strong style="color: var(--color-text-muted); font-size: 11.5px; text-transform: uppercase;">Ghi chú từ bên gửi:</strong>
+                      <div style="margin-top: 2px; color: var(--color-text-main); font-style: italic;">
+                        ${escapeHtml(tr.notes)}
+                      </div>
+                    </div>
+                  ` : ''}
+                </div>
+
+                <div style="background: rgba(245, 158, 11, 0.08); border-radius: var(--radius-sm); padding: 8px 10px; font-size: 12px; color: #b45309; line-height: 1.4;">
+                  * Quyền sở hữu lô vẫn thuộc bên gửi cho đến khi bạn bấm <strong>Xác nhận tiếp nhận</strong> (Story S-16).
+                </div>
+
+                <div class="lot-card-bottom" style="margin-top: 6px; display: flex; gap: 8px;">
+                  <a href="/lot-detail.html?id=${encodeURIComponent(tr.lotId)}" class="btn-lot-action" style="flex: 1; text-align: center; justify-content: center; text-decoration: none;">
+                    <span>Xem chi tiết lô</span> &rarr;
+                  </a>
+                </div>
+              </div>
+            `).join('')}
+          </div>
+        `;
+      } catch (err) {
+        container.innerHTML = `
+          <div style="text-align: center; padding: 40px; color: #dc2626;">
+            <p>Lỗi tải danh sách yêu cầu bàn giao: ${escapeHtml(err.message)}</p>
+            <button type="button" class="btn btn-secondary" onclick="loadIncomingTransfers()">Thử lại</button>
+          </div>
+        `;
+      }
+    }
+
     function formatDate(dateVal) {
       if (!dateVal) return "N/A";
       if (typeof dateVal === "string" && dateVal.includes("T")) {
@@ -900,6 +1121,23 @@
         return `${parts[2]}/${parts[1]}/${parts[0]}`;
       }
       return String(dateVal);
+    }
+
+    function formatDateTime(dt) {
+      if (!dt) return "N/A";
+      try {
+        const d = new Date(dt);
+        if (isNaN(d.getTime())) return String(dt);
+        return d.toLocaleString("vi-VN", {
+          year: "numeric",
+          month: "2-digit",
+          day: "2-digit",
+          hour: "2-digit",
+          minute: "2-digit"
+        });
+      } catch {
+        return String(dt);
+      }
     }
 
     function escapeHtml(str) {

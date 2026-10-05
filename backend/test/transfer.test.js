@@ -3,12 +3,8 @@ const assert = require("node:assert/strict");
 const http = require("node:http");
 const {
   app,
-  users,
-  inMemoryLots,
   inMemoryTransfers,
-  inMemoryBatchEvents,
   seedDemoUser,
-  hashPassword,
 } = require("../src/server");
 
 function request(server, options, body = null) {

@@ -125,7 +125,9 @@ async function getPendingTransferForLot(lotId) {
           updatedAt: r.updated_at,
         };
       }
-    } catch {}
+    } catch {
+      // Bỏ qua lỗi query DB, fallback sang tra cứu in-memory
+    }
   }
   const t = inMemoryTransfers.find((tr) => tr.lotId === lotId && tr.status === "PENDING");
   if (t) {
@@ -2081,12 +2083,29 @@ app.post(
     const trimmedToOrgId = toOrganizationId.trim();
 
     try {
-      // 1. Tìm thông tin lô hàng
+      // 1. Tìm thông tin lô hàng và kiểm tra cách ly đa tổ chức (T-12)
       let lot = null;
       if (pool) {
-        const lotRes = await pool.query("SELECT * FROM lots WHERE id = $1", [lotId]);
-        if (lotRes.rows[0]) {
-          const r = lotRes.rows[0];
+        const queryRes = await scopedQueryById(pool, req.auth, "lots", lotId);
+        if (queryRes.isCrossTenant) {
+          logSecurityEvent("CROSS_TENANT_ACCESS_DENIED", {
+            userId,
+            userEmail: req.auth.email,
+            userOrgId,
+            userRole: req.auth.roleId,
+            resourceType: "lots/transfers",
+            resourceId: lotId,
+            targetOrgId: queryRes.targetOrgId,
+            action: "TRANSFER",
+            ip: req.ip,
+            userAgent: req.get("User-Agent"),
+          });
+          return res.status(403).json({
+            message: "Truy cập bị từ chối: bạn chỉ có thể bàn giao lô hàng thuộc quyền quản lý của tổ chức mình.",
+          });
+        }
+        if (queryRes.row) {
+          const r = queryRes.row;
           lot = {
             id: r.id,
             name: r.name,
@@ -2167,20 +2186,98 @@ app.post(
         if (fromObj) fromOrgName = fromObj.name;
       }
 
-      // 5. Chặn tạo 2 yêu cầu pending cho cùng một lô (S-15)
+      const transferId = "trf-" + crypto.randomUUID().slice(0, 8);
+      const cleanNotes = typeof notes === "string" ? notes.trim() : null;
+      const now = new Date();
+
+      // 5, 6, 7. Tạo bản ghi bàn giao và ghi sự kiện TRANSFER_INITIATED trong cùng một TRANSACTION nguyên tử (Atomicity)
       if (pool) {
-        const pendingCheck = await pool.query(
-          "SELECT id, created_at FROM lot_transfers WHERE lot_id = $1 AND status = 'PENDING' LIMIT 1",
-          [lotId]
-        );
-        if (pendingCheck.rows[0]) {
-          return res.status(409).json({
-            error: "ALREADY_PENDING_TRANSFER",
-            message: "Lô hàng đang có một yêu cầu bàn giao ở trạng thái Chờ xác nhận (PENDING). Không thể tạo thêm yêu cầu mới.",
-            pendingTransferId: pendingCheck.rows[0].id,
+        const client = await pool.connect();
+        try {
+          await client.query("BEGIN");
+
+          // 5.1 Kiểm tra xem lô đã có yêu cầu PENDING nào chưa (với FOR UPDATE để chống race condition)
+          const pendingCheck = await client.query(
+            "SELECT id, created_at FROM lot_transfers WHERE lot_id = $1 AND status = 'PENDING' FOR UPDATE",
+            [lotId]
+          );
+          if (pendingCheck.rows.length > 0) {
+            await client.query("ROLLBACK");
+            return res.status(409).json({
+              error: "ALREADY_PENDING_TRANSFER",
+              message: "Lô hàng đang có một yêu cầu bàn giao ở trạng thái Chờ xác nhận (PENDING). Không thể tạo thêm yêu cầu mới.",
+              pendingTransferId: pendingCheck.rows[0].id,
+            });
+          }
+
+          // 5.2 Thêm bản ghi bàn giao ở trạng thái PENDING
+          const insertRes = await client.query(
+            `INSERT INTO lot_transfers (
+              id, lot_id, from_organization_id, to_organization_id,
+              status, notes, created_by_user_id, created_at, updated_at
+            ) VALUES ($1, $2, $3, $4, 'PENDING', $5, $6, $7, $7)
+            RETURNING *`,
+            [transferId, lotId, fromOrgId, trimmedToOrgId, cleanNotes, userId, now]
+          );
+
+          // 5.3 Ghi nhận sự kiện bàn giao TRANSFER_INITIATED vào cùng transaction chuỗi băm SHA-256 (K-01 / S-10 / S-15)
+          const transferEvent = await appendBatchEvent(client, {
+            batchId: lotId,
+            eventType: "TRANSFER_INITIATED",
+            payload: {
+              transferId,
+              fromOrganizationId: fromOrgId,
+              fromOrganizationName: fromOrgName,
+              toOrganizationId: trimmedToOrgId,
+              toOrganizationName: toOrgName,
+              notes: cleanNotes,
+              status: "PENDING",
+            },
+            organizationId: fromOrgId,
+            actorUserId: userId,
+            occurredAt: now,
           });
+
+          await client.query("COMMIT");
+
+          const r = insertRes.rows[0];
+          const createdTransfer = {
+            id: r.id,
+            lotId: r.lot_id,
+            fromOrganizationId: r.from_organization_id,
+            fromOrganizationName: fromOrgName,
+            toOrganizationId: r.to_organization_id,
+            toOrganizationName: toOrgName,
+            status: r.status,
+            notes: r.notes,
+            createdByUserId: r.created_by_user_id,
+            createdAt: r.created_at,
+            updatedAt: r.updated_at,
+          };
+
+          return res.status(201).json({
+            message: "Yêu cầu bàn giao lô hàng đã được gửi thành công ở trạng thái Chờ xác nhận (PENDING).",
+            transfer: createdTransfer,
+            event: {
+              id: transferEvent.id,
+              sequenceNo: transferEvent.sequenceNo,
+              eventHash: transferEvent.eventHash,
+            },
+          });
+        } catch (txErr) {
+          await client.query("ROLLBACK");
+          if (txErr.code === "23505" || (txErr.message && txErr.message.includes("idx_unique_pending_transfer_per_lot"))) {
+            return res.status(409).json({
+              error: "ALREADY_PENDING_TRANSFER",
+              message: "Lô hàng đang có một yêu cầu bàn giao ở trạng thái Chờ xác nhận (PENDING). Không thể tạo thêm yêu cầu mới.",
+            });
+          }
+          throw txErr;
+        } finally {
+          client.release();
         }
       } else {
+        // Chế độ in-memory: kiểm tra trùng lặp và hỗ trợ rollback nếu ghi hash event lỗi
         const existingPending = inMemoryTransfers.find(
           (t) => t.lotId === lotId && t.status === "PENDING"
         );
@@ -2191,40 +2288,8 @@ app.post(
             pendingTransferId: existingPending.id,
           });
         }
-      }
 
-      // 6. Tạo bản ghi bàn giao ở trạng thái PENDING (chưa đổi organization_id của lô hàng)
-      const transferId = "trf-" + crypto.randomUUID().slice(0, 8);
-      const cleanNotes = typeof notes === "string" ? notes.trim() : null;
-      const now = new Date();
-
-      let createdTransfer = null;
-
-      if (pool) {
-        const insertRes = await pool.query(
-          `INSERT INTO lot_transfers (
-            id, lot_id, from_organization_id, to_organization_id,
-            status, notes, created_by_user_id, created_at, updated_at
-          ) VALUES ($1, $2, $3, $4, 'PENDING', $5, $6, $7, $7)
-          RETURNING *`,
-          [transferId, lotId, fromOrgId, trimmedToOrgId, cleanNotes, userId, now]
-        );
-        const r = insertRes.rows[0];
-        createdTransfer = {
-          id: r.id,
-          lotId: r.lot_id,
-          fromOrganizationId: r.from_organization_id,
-          fromOrganizationName: fromOrgName,
-          toOrganizationId: r.to_organization_id,
-          toOrganizationName: toOrgName,
-          status: r.status,
-          notes: r.notes,
-          createdByUserId: r.created_by_user_id,
-          createdAt: r.created_at,
-          updatedAt: r.updated_at,
-        };
-      } else {
-        createdTransfer = {
+        const createdTransfer = {
           id: transferId,
           lotId,
           fromOrganizationId: fromOrgId,
@@ -2237,36 +2302,44 @@ app.post(
           createdAt: now.toISOString(),
           updatedAt: now.toISOString(),
         };
+
         inMemoryTransfers.push(createdTransfer);
+
+        let transferEvent;
+        try {
+          transferEvent = await appendBatchEvent(null, {
+            batchId: lotId,
+            eventType: "TRANSFER_INITIATED",
+            payload: {
+              transferId,
+              fromOrganizationId: fromOrgId,
+              fromOrganizationName: fromOrgName,
+              toOrganizationId: trimmedToOrgId,
+              toOrganizationName: toOrgName,
+              notes: cleanNotes,
+              status: "PENDING",
+            },
+            organizationId: fromOrgId,
+            actorUserId: userId,
+            occurredAt: now,
+          });
+        } catch (memErr) {
+          // Rollback in-memory transfer record
+          const idx = inMemoryTransfers.findIndex((t) => t.id === transferId);
+          if (idx >= 0) inMemoryTransfers.splice(idx, 1);
+          throw memErr;
+        }
+
+        return res.status(201).json({
+          message: "Yêu cầu bàn giao lô hàng đã được gửi thành công ở trạng thái Chờ xác nhận (PENDING).",
+          transfer: createdTransfer,
+          event: {
+            id: transferEvent.id,
+            sequenceNo: transferEvent.sequenceNo,
+            eventHash: transferEvent.eventHash,
+          },
+        });
       }
-
-      // 7. Ghi nhận sự kiện bàn giao TRANSFER_INITIATED vào chuỗi băm bảo chứng SHA-256 (K-01 / S-10 / S-15)
-      const transferEvent = await appendBatchEvent(pool, {
-        batchId: lotId,
-        eventType: "TRANSFER_INITIATED",
-        payload: {
-          transferId,
-          fromOrganizationId: fromOrgId,
-          fromOrganizationName: fromOrgName,
-          toOrganizationId: trimmedToOrgId,
-          toOrganizationName: toOrgName,
-          notes: cleanNotes,
-          status: "PENDING",
-        },
-        organizationId: fromOrgId,
-        actorUserId: userId,
-        occurredAt: now,
-      });
-
-      return res.status(201).json({
-        message: "Yêu cầu bàn giao lô hàng đã được gửi thành công ở trạng thái Chờ xác nhận (PENDING).",
-        transfer: createdTransfer,
-        event: {
-          id: transferEvent.id,
-          sequenceNo: transferEvent.sequenceNo,
-          eventHash: transferEvent.eventHash,
-        },
-      });
     } catch (err) {
       if (err.code === "23505" || (err.message && err.message.includes("idx_unique_pending_transfer_per_lot"))) {
         return res.status(409).json({
@@ -2436,8 +2509,8 @@ app.get(
             (r) => r.from_organization_id === userOrgId || r.to_organization_id === userOrgId
           );
           if (!hasAccess) {
-            const lotRes = await pool.query("SELECT organization_id FROM lots WHERE id = $1", [lotId]);
-            if (!lotRes.rows[0] || lotRes.rows[0].organization_id !== userOrgId) {
+            const lotQueryRes = await scopedQueryById(pool, req.auth, "lots", lotId);
+            if (!lotQueryRes.row || lotQueryRes.isCrossTenant) {
               return res.status(403).json({
                 message: "Truy cập bị từ chối: bạn không có quyền xem lịch sử bàn giao của lô này.",
               });

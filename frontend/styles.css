@@ -1037,3 +1037,10 @@ button, input, select, textarea {
   background: var(--color-border);
   margin: 4px 6px;
 }
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+

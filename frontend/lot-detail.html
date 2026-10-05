@@ -467,6 +467,8 @@
 
     function renderLot(lot, events) {
       const isInspectorOrAdmin = currentUser && ["inspector", "admin"].includes(currentUser.roleId);
+      const userOrgId = currentUser ? (currentUser.organizationId || currentUser.organization_id) : null;
+      const isRecipient = Boolean(userOrgId && lot.pendingTransfer && lot.pendingTransfer.toOrganizationId === userOrgId);
       const inspectorActions = document.getElementById("inspectorActions");
       const btnCheckIntegrityLink = document.getElementById("btnCheckIntegrityLink");
 
@@ -501,9 +503,9 @@
             </div>
             <div style="display: flex; align-items: center; gap: 8px;">
               ${lot.pendingTransfer ? `
-                <span class="status-pill warning" title="Đang chờ ${escapeHtml(lot.pendingTransfer.toOrganizationName || 'bên nhận')} xác nhận bàn giao">
+                <span class="status-pill warning" title="${isRecipient ? `Được bàn giao từ ${escapeHtml(lot.pendingTransfer.fromOrganizationName || lot.pendingTransfer.fromOrganizationId)}` : `Đang chờ ${escapeHtml(lot.pendingTransfer.toOrganizationName || 'bên nhận')} xác nhận`}">
                   <span class="status-dot"></span>
-                  <span>Chờ bàn giao</span>
+                  <span>${isRecipient ? "Chờ tiếp nhận" : "Chờ bàn giao"}</span>
                 </span>
               ` : `
                 <span class="status-pill success">
@@ -548,10 +550,23 @@
             <div style="background: rgba(245, 158, 11, 0.08); border: 1px solid rgba(245, 158, 11, 0.25); border-radius: var(--radius-md); padding: 14px 18px; margin-bottom: 20px; display: flex; align-items: flex-start; gap: 12px; color: #b45309;">
               <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink: 0; margin-top: 2px;"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
               <div>
-                <div style="font-weight: 700; font-size: 14px;">Yêu cầu bàn giao đang Chờ xác nhận (PENDING)</div>
+                <div style="font-weight: 700; font-size: 14px;">
+                  ${isRecipient ? "Yêu cầu bàn giao đến đang Chờ tiếp nhận (PENDING)" : "Yêu cầu bàn giao đang Chờ xác nhận (PENDING)"}
+                </div>
                 <div style="font-size: 13px; margin-top: 3px; line-height: 1.5;">
-                  Lô hàng đang được đề nghị chuyển giao sang <strong>${escapeHtml(lot.pendingTransfer.toOrganizationName || lot.pendingTransfer.toOrganizationId)}</strong>.
-                  Quyền sở hữu và trách nhiệm lưu kho vẫn thuộc tổ chức của bạn cho đến khi bên nhận bấm xác nhận tiếp nhận (Story S-16).
+                  ${isRecipient ? `
+                    Lô hàng này đang được tổ chức <strong>${escapeHtml(lot.pendingTransfer.fromOrganizationName || lot.pendingTransfer.fromOrganizationId)}</strong> đề nghị chuyển giao sang tổ chức của bạn.
+                    ${lot.pendingTransfer.notes ? `<div style="margin-top: 4px;"><strong>Ghi chú bên gửi:</strong> <em>"${escapeHtml(lot.pendingTransfer.notes)}"</em></div>` : ""}
+                    <div style="margin-top: 6px; font-size: 12px; color: #92400e;">
+                      * Quyền sở hữu và trách nhiệm lưu kho hiện vẫn thuộc bên gửi cho đến khi bên bạn bấm Xác nhận tiếp nhận (Story S-16).
+                    </div>
+                  ` : `
+                    Lô hàng đang được đề nghị chuyển giao sang <strong>${escapeHtml(lot.pendingTransfer.toOrganizationName || lot.pendingTransfer.toOrganizationId)}</strong>.
+                    ${lot.pendingTransfer.notes ? `<div style="margin-top: 4px;"><strong>Ghi chú bàn giao:</strong> <em>"${escapeHtml(lot.pendingTransfer.notes)}"</em></div>` : ""}
+                    <div style="margin-top: 6px; font-size: 12px; color: #92400e;">
+                      * Quyền sở hữu và trách nhiệm lưu kho vẫn thuộc tổ chức của bạn cho đến khi bên nhận bấm xác nhận tiếp nhận (Story S-16).
+                    </div>
+                  `}
                 </div>
               </div>
             </div>
