@@ -9,64 +9,58 @@ Khi có khác nhau giữa các tài liệu, dùng thứ tự sau:
 1. **Backlog Excel**: Sprint Goal, Story Point, Acceptance Criteria, dependency, NFR, Task, DoD/DoR.
 2. **Team Charter / Lịch 8 Sprint**: vai trò, đầu mối nghiệp vụ, reviewer và Scrum Master.
 3. **Jira**: Sprint hiện tại, assignee, trạng thái và tiến độ thực thi.
-4. **GitHub**: source code, branch, commit, Pull Request, CI và tài liệu kỹ thuật.
+4. **GitHub**: source code, commit, Pull Request, CI và tài liệu kỹ thuật.
 
 ## Sprint hiện tại: Sprint 2
 
 **Sprint Goal:** Lô thu hoạch được ghi nhận, bàn giao được, và lịch sử của nó không ai sửa lén được mà không bị phát hiện.
 
-Jira hiện có **21 công việc** nằm trong **N2 Sprint 2**. Hai công việc `K-01` và `S-04` được kéo từ Sprint 1 sang nên được quản lý như phạm vi Sprint 2 hiện tại.
+Phạm vi Sprint 2 chuẩn được xác định theo label **`sprint-2`** trên Jira, gồm 10 Story: **S-07 → S-16** (không gồm S-23/S-24/S-25 và S-17 → S-22 vì các Story này mang label `sprint-3`).
 
-Chi tiết đầy đủ: [docs/SPRINT-2.md](docs/SPRINT-2.md).
+Snapshot hiện tại:
+- **Done trên Jira:** S-07, S-08, S-09, S-10, S-11, S-12, S-14, S-16.
+- **To Do:** S-13, S-15.
+- S-16 đang Done trên Jira nhưng phụ thuộc S-15, vì vậy cần đối chiếu lại luồng bàn giao sau khi S-15 hoàn tất.
 
-Alo anh em, từ hôm nay team chuẩn hóa lại quy trình Git tí nhé:
+Chi tiết: [docs/SPRINT-2.md](docs/SPRINT-2.md).
 
-Luôn kéo code mới nhất từ main về trước khi làm.
+## Git workflow hiện tại: main-only
 
-Tự tách nhánh riêng để làm task, tuyệt đối không commit thẳng lên main nữa.
+Repo chỉ dùng **`main` làm nhánh lâu dài**. Không dùng `develop`.
 
-Tên nhánh đặt theo task (ví dụ: feature/ten-chuc-nang hoặc fix/ten-bug).
-
-Code xong push nhánh lên rồi tạo Pull Request (PR), tag mình vào review duyệt merge nha.
-
-Làm vậy để hạn chế conflict và kiểm soát code tốt hơn, anh em triển khai nhé!
-
-Một Story có thể chạm nhiều tầng. Khi đó code được tách theo đúng trách nhiệm của từng branch, nhưng commit phải ghi rõ mã Story, ví dụ:
+Mỗi Story/bug/tài liệu được làm trên branch tạm tạo từ `main`:
 
 ```text
-feat(S-15): add transfer API
-feat(S-15): add transfer form UI
-test(S-12): verify broken hash chain detection
-```
+main
+ ├─ feature/s2-s13-timeline
+ ├─ feature/s2-s15-handover
+ ├─ fix/s2-s14-search
+ └─ docs/main-only-workflow
 
-### Trạng thái tích hợp hiện tại
-
-Phần **S-07 + S-08** từ branch cũ `feature/s2-s07-s08-products-harvest` đã được merge vào `develop` qua **PR #43**.
-
-Ba branch Sprint 2 mới phải luôn đồng bộ từ `develop` trước khi tiếp tục phát triển.
-
-## Git workflow
-
-Không code trực tiếp lên `main` hoặc `develop`.
-
-```text
-feature/s2-frontend ---------\
-feature/s2-backend -----------+--> Pull Request --> develop --> release PR --> main
-feature/s2-data-integrity ----/
+branch tạm --> Pull Request --> review + CI --> main
 ```
 
 Quy trình:
 
-1. Cập nhật `develop` mới nhất.
-2. Đồng bộ branch Sprint 2 đang làm với `develop`.
-3. Code đúng phạm vi branch.
-4. Commit có mã Story/Task.
+1. Cập nhật `main` mới nhất.
+2. Tạo branch tạm từ `main`.
+3. Code đúng phạm vi Story/Task.
+4. Commit ghi rõ mã Story/Task.
 5. Push branch lên GitHub.
-6. Mở Pull Request vào `develop`.
-7. Chỉ merge khi CI xanh và review đạt yêu cầu.
-8. Khi bản tích hợp ổn định, mở PR `develop -> main`.
+6. Mở Pull Request với **base: `main`**.
+7. Chỉ merge khi CI xanh, không conflict và có review/approval theo ruleset.
+8. Merge xong thì xóa branch tạm nếu không còn dùng.
 
-Không tạo thêm branch riêng cho từng Story trong Sprint 2 nếu Story đã thuộc một trong ba branch chính ở trên.
+**Không push trực tiếp lên `main`. Không force-push `main`.**
+
+Ví dụ commit:
+
+```text
+feat(S-15): add pending handover API
+feat(S-15): add handover form UI
+test(S-12): verify broken hash chain detection
+fix(S-14): correct lot search behavior
+```
 
 ## Chạy ứng dụng local
 
@@ -80,7 +74,8 @@ Không tạo thêm branch riêng cho từng Story trong Sprint 2 nếu Story đ�
 ```powershell
 git clone https://github.com/ttcs-k18-n2/agri-trace-coldchain-t926-k18c4-n2.git
 cd agri-trace-coldchain-t926-k18c4-n2
-git checkout develop
+git checkout main
+git pull origin main
 Copy-Item .env.example .env
 docker compose up --build
 ```
@@ -90,7 +85,8 @@ docker compose up --build
 ```bash
 git clone https://github.com/ttcs-k18-n2/agri-trace-coldchain-t926-k18c4-n2.git
 cd agri-trace-coldchain-t926-k18c4-n2
-git checkout develop
+git checkout main
+git pull origin main
 cp .env.example .env
 docker compose up --build
 ```
@@ -140,8 +136,10 @@ docker compose up --build
 │   ├── index.html
 │   ├── farms.html
 │   ├── lots.html
+│   ├── lot-detail.html
 │   ├── products.html
 │   ├── harvest.html
+│   ├── integrity.html
 │   ├── styles.css
 │   ├── nginx.conf
 │   └── Dockerfile
@@ -161,10 +159,12 @@ docker compose up --build
 
 ## CI và triển khai
 
-- Pull Request/push được kiểm tra bằng GitHub Actions CI theo cấu hình của repo.
-- `develop` là nhánh tích hợp.
-- `main` là nhánh release/staging của workflow GitHub Actions hiện tại.
-- Repo có `render.yaml` với auto deploy theo commit; Render sẽ triển khai theo branch đang được service/Blueprint cấu hình trên Render.
+- CI chạy trên push vào `main`, `feature/**`, `fix/**`, `docs/**` và Pull Request vào `main`.
+- Các check hiện tại: **build, lint, test**.
+- Không có job tự động merge PR.
+- `main` là nhánh release/staging.
+- `.github/workflows/staging.yml` triển khai khi có push vào `main`.
+- `render.yaml` cũng cấu hình deploy từ branch `main`.
 
 ## Tài liệu
 
