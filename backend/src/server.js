@@ -84,6 +84,8 @@ const inMemoryLots = [
   { id: "LOT-102", name: "Lô dưa chuột Hiệp Hòa", status: "Đã thu hoạch", organizationId: "org-002", farmId: null, productId: null, initialQuantity: 250, remainingQuantity: 250, harvestedAt: "2026-09-28" },
 ];
 
+const inMemoryIntegrityChecks = [];
+
 // Idempotency cache for S-09 AC4: Chống double-click & retry tạo trùng lô thu hoạch
 const harvestIdempotencyCache = new Map();
 const IDEMPOTENCY_TTL_MS = 10 * 60 * 1000; // 10 phút
@@ -186,6 +188,76 @@ async function seedDemoUser() {
     organizationId: "org-dist",
     roleId: "distributor",
   });
+}
+
+function seedDemoEvents() {
+  if (inMemoryBatchEvents.length === 0) {
+    const ev1Data = {
+      batchId: "LOT-001",
+      sequenceNo: 1,
+      eventType: "HARVEST_CREATED",
+      payload: { farmId: "FARM-002", productId: "PROD-TOMATO", quantity: 500 },
+      organizationId: "org-001",
+      actorUserId: "usr-001",
+      occurredAt: new Date("2026-09-25T08:00:00.000Z"),
+    };
+    const ev1Hash = calculateEventHash(GENESIS_HASH, ev1Data);
+    inMemoryBatchEvents.push({
+      id: "EVT-LOT-001-001",
+      batchId: "LOT-001",
+      batch_id: "LOT-001",
+      sequenceNo: 1,
+      sequence_no: 1,
+      eventType: "HARVEST_CREATED",
+      event_type: "HARVEST_CREATED",
+      payload: ev1Data.payload,
+      organizationId: "org-001",
+      organization_id: "org-001",
+      actorUserId: "usr-001",
+      actor_user_id: "usr-001",
+      occurredAt: "2026-09-25T08:00:00.000Z",
+      occurred_at: "2026-09-25T08:00:00.000Z",
+      previousHash: GENESIS_HASH,
+      previous_hash: GENESIS_HASH,
+      eventHash: ev1Hash,
+      event_hash: ev1Hash,
+      createdAt: "2026-09-25T08:00:00.000Z",
+      created_at: "2026-09-25T08:00:00.000Z",
+    });
+
+    const ev2Data = {
+      batchId: "LOT-002",
+      sequenceNo: 1,
+      eventType: "HARVEST_CREATED",
+      payload: { farmId: "FARM-001", productId: "PROD-TEA", quantity: 120 },
+      organizationId: "org-001",
+      actorUserId: "usr-001",
+      occurredAt: new Date("2026-09-26T08:00:00.000Z"),
+    };
+    const ev2Hash = calculateEventHash(GENESIS_HASH, ev2Data);
+    inMemoryBatchEvents.push({
+      id: "EVT-LOT-002-001",
+      batchId: "LOT-002",
+      batch_id: "LOT-002",
+      sequenceNo: 1,
+      sequence_no: 1,
+      eventType: "HARVEST_CREATED",
+      event_type: "HARVEST_CREATED",
+      payload: ev2Data.payload,
+      organizationId: "org-001",
+      organization_id: "org-001",
+      actorUserId: "usr-001",
+      actor_user_id: "usr-001",
+      occurredAt: "2026-09-26T08:00:00.000Z",
+      occurred_at: "2026-09-26T08:00:00.000Z",
+      previousHash: GENESIS_HASH,
+      previous_hash: GENESIS_HASH,
+      eventHash: ev2Hash,
+      event_hash: ev2Hash,
+      createdAt: "2026-09-26T08:00:00.000Z",
+      created_at: "2026-09-26T08:00:00.000Z",
+    });
+  }
 }
 
 function normalizeEmail(email) {
@@ -1065,10 +1137,17 @@ app.get(
           return res.status(404).json({ message: "Không tìm thấy lô hàng." });
         }
 
-        const integrity = await verifyBatchIntegrity(pool, lotId);
+        // Đọc danh sách sự kiện duy nhất 1 lần để đảm bảo tính nguyên tử (atomic snapshot)
+        const events = await getBatchEvents(pool, lotId);
+        const integrity = verifyBatchEventChain(events);
+        if (!events || events.length === 0) {
+          integrity.status = "NO_EVENTS";
+        }
+
         const checkId = `CHK-${crypto.randomUUID()}`;
         const checkedAt = new Date().toISOString();
         const checkedBy = req.auth ? (req.auth.userId || req.auth.id || req.auth.email) : null;
+        let auditLogged = false;
 
         // Lưu vào bảng integrity_checks (T-29)
         try {
@@ -1088,14 +1167,18 @@ app.get(
               integrity.finalHash || null,
             ]
           );
+          auditLogged = true;
         } catch (auditErr) {
           console.error("[Integrity Audit Log Error]:", auditErr.message);
+          auditLogged = false;
         }
 
         return res.status(200).json({
           lotId,
           checkedAt,
           integrity,
+          events,
+          auditLogged,
         });
       } catch (err) {
         return res.status(500).json({ message: err.message });
@@ -1108,13 +1191,33 @@ app.get(
       return res.status(404).json({ message: "Không tìm thấy lô hàng." });
     }
 
-    const integrity = await verifyBatchIntegrity(null, lotId);
+    // Đọc danh sách sự kiện duy nhất 1 lần từ inMemoryBatchEvents
+    const events = await getBatchEvents(null, lotId);
+    const integrity = verifyBatchEventChain(events);
+    if (!events || events.length === 0) {
+      integrity.status = "NO_EVENTS";
+    }
     const checkedAt = new Date().toISOString();
+    const checkId = `CHK-${crypto.randomUUID()}`;
+    const checkedBy = req.auth ? (req.auth.userId || req.auth.id || req.auth.email) : null;
+
+    inMemoryIntegrityChecks.push({
+      id: checkId,
+      batchId: lotId,
+      checkedBy,
+      checkedAt,
+      valid: integrity.valid,
+      firstInvalidSequence: integrity.firstInvalidSequence || null,
+      errorType: integrity.type || null,
+      finalHash: integrity.finalHash || null,
+    });
 
     return res.status(200).json({
       lotId,
       checkedAt,
       integrity,
+      events,
+      auditLogged: true,
     });
   }
 );
@@ -1884,6 +1987,7 @@ if (fs.existsSync(path.join(__dirname, "../../frontend"))) {
 
 async function start() {
   await seedDemoUser();
+  seedDemoEvents();
 
   if (pool) {
     try {
@@ -1939,6 +2043,8 @@ module.exports = {
   verifyBatchEventChain,
   verifyBatchIntegrity,
   inMemoryBatchEvents,
+  inMemoryIntegrityChecks,
+  seedDemoEvents,
   setAppendHookForTesting,
 };
 
