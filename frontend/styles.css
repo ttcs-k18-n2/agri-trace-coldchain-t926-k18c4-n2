@@ -130,9 +130,9 @@ button, input, select, textarea {
   position: sticky;
   top: 14px;
   z-index: 100;
-  max-width: 1060px;
+  max-width: 1200px;
   margin: 14px auto 0;
-  padding: 0 14px;
+  padding: 0 16px;
   height: 54px;
   border-radius: var(--radius-full);
   background: var(--liquid-glass-bg);
@@ -151,7 +151,7 @@ button, input, select, textarea {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
+  gap: 12px;
 }
 
 /* Brand Capsule */
@@ -210,14 +210,15 @@ button, input, select, textarea {
 .nav-links {
   display: flex;
   align-items: center;
-  gap: 3px;
+  gap: 4px;
+  flex-shrink: 0;
 }
 
 .nav-item {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 6px 14px;
+  padding: 6px 12px;
   border-radius: var(--radius-full);
   font-size: 13px;
   font-weight: 500;
@@ -226,6 +227,8 @@ button, input, select, textarea {
   cursor: pointer;
   text-decoration: none;
   min-height: 34px;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .nav-item svg {
@@ -260,6 +263,7 @@ button, input, select, textarea {
   display: flex;
   align-items: center;
   gap: 8px;
+  flex-shrink: 0;
 }
 
 .user-pill {
@@ -270,6 +274,7 @@ button, input, select, textarea {
   background: rgba(0, 0, 0, 0.03);
   border-radius: var(--radius-full);
   border: 1px solid rgba(0, 0, 0, 0.04);
+  max-width: 100%;
 }
 
 .user-avatar {
@@ -284,12 +289,14 @@ button, input, select, textarea {
   align-items: center;
   justify-content: center;
   text-transform: uppercase;
+  flex-shrink: 0;
 }
 
 .user-meta {
   display: flex;
   align-items: center;
   gap: 6px;
+  min-width: 0;
 }
 
 .user-email {
@@ -297,6 +304,10 @@ button, input, select, textarea {
   font-weight: 500;
   color: var(--color-text-main);
   line-height: 1;
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .user-badges {
@@ -377,7 +388,7 @@ button, input, select, textarea {
    Clean, calm, airy cards. Not glass.
    ============================================================================== */
 .main-wrapper {
-  max-width: 1060px;
+  max-width: 1200px;
   margin: 28px auto;
   padding: 0 20px 64px 20px;
 }
@@ -866,6 +877,7 @@ button, input, select, textarea {
     padding: 6px 8px;
     border-radius: var(--radius-full);
     overflow: hidden;
+  }
     text-overflow: ellipsis;
   }
 }
@@ -917,4 +929,111 @@ button, input, select, textarea {
     flex: 1 1 100%;
     width: 100%;
   }
+}
+
+/* ==============================================================================
+   Dropdown Action Menu System (Apple Liquid Glass Kebab / ...)
+   ============================================================================== */
+.dropdown-menu-wrapper {
+  position: relative;
+  display: inline-block;
+}
+
+.btn-icon-kebab {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-sm);
+  background: #ffffff;
+  border: 1px solid var(--color-border);
+  color: var(--color-text-muted);
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: var(--transition-fast);
+  letter-spacing: 1px;
+  line-height: 1;
+}
+
+.btn-icon-kebab:hover,
+.btn-icon-kebab.active {
+  background: var(--color-surface-subtle);
+  color: var(--color-text-main);
+  border-color: rgba(0, 0, 0, 0.2);
+  box-shadow: var(--shadow-xs);
+}
+
+.dropdown-popover {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  min-width: 200px;
+  background: var(--liquid-glass-bg);
+  backdrop-filter: var(--liquid-glass-blur);
+  -webkit-backdrop-filter: var(--liquid-glass-blur);
+  border: var(--liquid-glass-border);
+  border-radius: var(--radius-md);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.12), inset 0 1px 1px rgba(255, 255, 255, 0.9);
+  padding: 6px;
+  z-index: 1050;
+  display: none;
+  flex-direction: column;
+  gap: 2px;
+  animation: dropdownFadeIn 0.16s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.dropdown-popover.active {
+  display: flex;
+}
+
+@keyframes dropdownFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 12px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-text-main);
+  text-decoration: none;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  text-align: left;
+  transition: var(--transition-fast);
+  white-space: nowrap;
+}
+
+.dropdown-item:hover {
+  background: rgba(36, 138, 61, 0.08);
+  color: var(--color-primary);
+}
+
+.dropdown-item svg {
+  flex-shrink: 0;
+  color: var(--color-text-muted);
+}
+
+.dropdown-item:hover svg {
+  color: var(--color-primary);
+}
+
+.dropdown-divider {
+  height: 1px;
+  background: var(--color-border);
+  margin: 4px 6px;
 }

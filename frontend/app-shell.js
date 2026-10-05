@@ -163,6 +163,7 @@
       farms: "navFarms",
       products: "navProducts",
       harvest: "navHarvest",
+      integrity: "navIntegrity",
     };
 
     let targetId = navMap[activeKey];
@@ -171,6 +172,7 @@
       else if (path.includes("farms")) targetId = "navFarms";
       else if (path.includes("products")) targetId = "navProducts";
       else if (path.includes("harvest")) targetId = "navHarvest";
+      else if (path.includes("integrity")) targetId = "navIntegrity";
     }
 
     if (targetId) {
@@ -182,6 +184,16 @@
         activeEl.classList.add("active");
       }
     }
+  }
+
+  // Global dismiss listener for dropdown menus
+  if (typeof document !== "undefined") {
+    document.addEventListener("click", (e) => {
+      if (!e.target.closest(".dropdown-menu-wrapper")) {
+        document.querySelectorAll(".dropdown-popover.active").forEach((p) => p.classList.remove("active"));
+        document.querySelectorAll(".btn-icon-kebab.active").forEach((b) => b.classList.remove("active"));
+      }
+    });
   }
 
   /**
@@ -253,6 +265,16 @@
     }
   }
 
+  function escapeHtml(str) {
+    if (!str) return "";
+    return String(str)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#039;");
+  }
+
   // Export to global scope & module
   if (typeof window !== "undefined") {
     window.initAppShell = initAppShell;
@@ -265,6 +287,7 @@
     window.NAV_PERMISSIONS = NAV_PERMISSIONS;
     window.hasPermission = hasPermission;
     window.applyRoleNavigation = applyRoleNavigation;
+    window.escapeHtml = escapeHtml;
   }
 
   if (typeof module !== "undefined" && module.exports) {
@@ -279,6 +302,7 @@
       NAV_PERMISSIONS,
       hasPermission,
       applyRoleNavigation,
+      escapeHtml,
     };
   }
 })();
