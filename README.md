@@ -19,13 +19,17 @@ Jira hiện có **21 công việc** nằm trong **N2 Sprint 2**. Hai công việ
 
 Chi tiết đầy đủ: [docs/SPRINT-2.md](docs/SPRINT-2.md).
 
-### Ba branch làm việc chính
+Alo anh em, từ hôm nay team chuẩn hóa lại quy trình Git tí nhé:
 
-| Branch | Phạm vi chính |
-|---|---|
-| `feature/s2-frontend` | S-13, S-14, S-25 và phần UI của S-07, S-08, S-15, S-16, S-24 |
-| `feature/s2-backend` | S-04, S-07, S-08, S-09, S-15, S-16, S-17, S-18, S-19, S-21, S-23, S-24, S-25 |
-| `feature/s2-data-integrity` | K-01, S-10, S-11, S-12, S-20, S-22 |
+Luôn kéo code mới nhất từ main về trước khi làm.
+
+Tự tách nhánh riêng để làm task, tuyệt đối không commit thẳng lên main nữa.
+
+Tên nhánh đặt theo task (ví dụ: feature/ten-chuc-nang hoặc fix/ten-bug).
+
+Code xong push nhánh lên rồi tạo Pull Request (PR), tag mình vào review duyệt merge nha.
+
+Làm vậy để hạn chế conflict và kiểm soát code tốt hơn, anh em triển khai nhé!
 
 Một Story có thể chạm nhiều tầng. Khi đó code được tách theo đúng trách nhiệm của từng branch, nhưng commit phải ghi rõ mã Story, ví dụ:
 
