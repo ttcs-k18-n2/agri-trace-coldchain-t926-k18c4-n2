@@ -2610,7 +2610,7 @@ app.post(
              JOIN lots l ON t.lot_id = l.id
              LEFT JOIN organizations o_from ON t.from_organization_id = o_from.id
              LEFT JOIN organizations o_to ON t.to_organization_id = o_to.id
-             WHERE t.id = $1 FOR UPDATE`,
+             WHERE t.id = $1 FOR UPDATE OF t`,
             [transferId]
           );
 
@@ -2844,7 +2844,7 @@ app.post(
              JOIN lots l ON t.lot_id = l.id
              LEFT JOIN organizations o_from ON t.from_organization_id = o_from.id
              LEFT JOIN organizations o_to ON t.to_organization_id = o_to.id
-             WHERE t.id = $1 FOR UPDATE`,
+             WHERE t.id = $1 FOR UPDATE OF t`,
             [transferId]
           );
 
