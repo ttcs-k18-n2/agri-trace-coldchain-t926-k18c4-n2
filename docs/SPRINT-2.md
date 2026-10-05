@@ -6,102 +6,81 @@
 
 - Sprint Jira: **N2 Sprint 2**
 - Thời gian: **30/09/2026 - 07/10/2026**
-- Tổng công việc hiện nằm trong Sprint: **21**
-- `K-01` và `S-04` là công việc được kéo từ Sprint 1 sang Sprint 2 và vẫn tính trong phạm vi Sprint hiện tại.
+- Phạm vi chuẩn của tài liệu này: các Story mang label **`sprint-2`**
+- Tổng: **10 Story / 20 SP**
 
-## Branch Sprint 2
+> Jira Sprint field hiện có một số Story mang label `sprint-3`. Các Story đó không được tính vào phạm vi Sprint 2 trong tài liệu này.
 
-### `feature/s2-frontend`
+## Phạm vi Sprint 2
 
-Phụ trách giao diện và luồng tương tác người dùng:
+| Jira | Story | Nội dung | SP | Assignee | Trạng thái Jira |
+|---|---|---|---:|---|---|
+| N2-81 | S-07 | Khai báo danh mục sản phẩm và đơn vị tính | 1 | HOANG NGOC HUY | Done |
+| N2-82 | S-08 | Ghi nhận lô thu hoạch với mã lô sinh tự động | 3 | TRAN QUANG DU | Done |
+| N2-83 | S-09 | Dữ liệu thu hoạch không hợp lệ bị chặn ở máy chủ | 1 | BUI DUY HUNG | Done |
+| N2-75 | S-10 | Mọi thay đổi của lô được ghi thành sự kiện nối tiếp có hash | 3 | HOANG TRANG HIEN | Done |
+| N2-76 | S-11 | Không đường nào trong ứng dụng sửa hay xoá được sự kiện đã ghi | 1 | NGUYEN THANH HAI | Done |
+| N2-77 | S-12 | Kiểm tra toàn vẹn chuỗi sự kiện của một lô chỉ ra đúng chỗ đứt mạch | 3 | PHAN NGO HUY HOANG | Done |
+| N2-78 | S-13 | Xem dòng thời gian sự kiện của một lô | 2 | DAM VIET HOANG | To Do |
+| N2-84 | S-14 | Danh sách lô tổ chức tôi đang giữ, tìm theo mã lô | 2 | HOANG TRANG HIEN | Done |
+| N2-79 | S-15 | Bàn giao lô sang tổ chức khác ở trạng thái chờ xác nhận | 2 | dtc245200406 | To Do |
+| N2-80 | S-16 | Bên nhận xác nhận hoặc từ chối bàn giao kèm lý do | 2 | Nguyen Van Dung | Done* |
 
-- S-13 - dòng thời gian sự kiện
-- S-14 - danh sách lô và tìm theo mã
-- S-25 - trang chi tiết lô
-- UI của S-07, S-08, S-15, S-16, S-24
+**Tiến độ Jira:** 8/10 Story = **16/20 SP (80%)**.
 
-### `feature/s2-backend`
+`S-16` đang được Jira đánh Done nhưng phụ thuộc vào S-15 đang To Do. Trước khi chốt Sprint cần kiểm tra lại luồng S-15 → S-16 trên code/staging.
 
-Phụ trách API, nghiệp vụ, validation và giao dịch:
+## Story ngoài phạm vi Sprint 2
 
-- S-04, S-07, S-08, S-09
-- S-15, S-16
-- S-17, S-18, S-19
-- S-21, S-23, S-24, S-25
+Các Story **S-17 → S-25** mang label `sprint-3` và không được tính vào Sprint 2, kể cả khi Jira Sprint field tạm thời đang hiển thị chúng trong N2 Sprint 2.
 
-### `feature/s2-data-integrity`
+S-23 đã có code và Jira Done nhưng vẫn thuộc nhóm label `sprint-3`.
 
-Phụ trách migration, hash chain, chống sửa/xóa, kiểm tra toàn vẹn và dữ liệu kiểm thử:
+K-01 và S-04 là công việc Sprint 1/carry-over; không tính vào 20 SP cốt lõi của Sprint 2 ở bảng trên.
 
-- K-01
-- S-10, S-11, S-12
-- S-20
-- S-22
+## Git workflow của Sprint 2
 
-> Một Story có thể có code ở nhiều branch. Cột “Branch chính” bên dưới chỉ thể hiện nơi chịu trách nhiệm chính.
+Repo sử dụng **main-only**:
 
-## Danh sách 21 công việc trên Jira
+```text
+main
+ ├─ feature/s2-s13-timeline
+ ├─ feature/s2-s15-handover
+ └─ fix/s2-...
 
-| Jira | ID | Nội dung | Assignee | Trạng thái | Branch chính |
-|---|---|---|---|---|---|
-| N2-56 | K-01 | Chọn cách chống sửa lén bản ghi sự kiện | TRAN QUANG DU | Done | `feature/s2-data-integrity` |
-| N2-57 | S-04 | Đăng nhập bằng email và mật khẩu, khoá tạm sau 5 lần sai | Nguyen Van Dung | Done | `feature/s2-backend` |
-| N2-75 | S-10 | Mọi thay đổi của lô được ghi thành sự kiện nối tiếp có hash | HOANG TRANG HIEN | To Do | `feature/s2-data-integrity` |
-| N2-76 | S-11 | Không đường nào trong ứng dụng sửa hay xoá được sự kiện đã ghi | NGUYEN THANH HAI | To Do | `feature/s2-data-integrity` |
-| N2-77 | S-12 | Kiểm tra toàn vẹn chuỗi sự kiện của một lô chỉ ra đúng chỗ đứt mạch | PHAN NGO HUY HOANG | To Do | `feature/s2-data-integrity` |
-| N2-78 | S-13 | Xem dòng thời gian sự kiện của một lô | DAM VIET HOANG | To Do | `feature/s2-frontend` |
-| N2-79 | S-15 | Bàn giao lô sang tổ chức khác ở trạng thái chờ xác nhận | dtc245200406 | To Do | `feature/s2-backend` |
-| N2-80 | S-16 | Bên nhận xác nhận hoặc từ chối bàn giao kèm lý do | Nguyen Van Dung | To Do | `feature/s2-backend` |
-| N2-81 | S-07 | Khai báo danh mục sản phẩm và đơn vị tính | HOANG NGOC HUY | To Do | `feature/s2-backend` |
-| N2-82 | S-08 | Ghi nhận lô thu hoạch với mã lô sinh tự động | TRAN QUANG DU | Done | `feature/s2-backend` |
-| N2-83 | S-09 | Dữ liệu thu hoạch không hợp lệ bị chặn ở máy chủ | BUI DUY HUNG | Done | `feature/s2-backend` |
-| N2-84 | S-14 | Danh sách lô tổ chức tôi đang giữ, tìm theo mã lô | HOANG TRANG HIEN | To Do | `feature/s2-frontend` |
-| N2-85 | S-24 | Bàn giao quá hạn chưa xác nhận bị đánh dấu cho cả hai bên | HOANG TRANG HIEN | To Do | `feature/s2-backend` |
-| N2-86 | S-23 | Lô có nguồn gốc từ tổ chức khác thì xem được phần lịch sử trước đó | NGUYEN THANH HAI | To Do | `feature/s2-backend` |
-| N2-87 | S-25 | Trang chi tiết lô: sản phẩm, khối lượng còn lại, nơi giữ, lô mẹ và lô con trực tiếp | DAM VIET HOANG | To Do | `feature/s2-frontend` |
-| N2-88 | S-17 | Tách một lô thành nhiều lô con | PHAN NGO HUY HOANG | To Do | `feature/s2-backend` |
-| N2-89 | S-18 | Tổng khối lượng lô con không vượt lô mẹ, kể cả khi hai người tách cùng lúc | TRAN QUANG DU | To Do | `feature/s2-backend` |
-| N2-90 | S-19 | Gộp nhiều lô cùng sản phẩm thành một lô lớn | BUI DUY HUNG | To Do | `feature/s2-backend` |
-| N2-91 | S-20 | Sự kiện tách và gộp ghi vào chuỗi của mọi lô liên quan | dtc245200406 | To Do | `feature/s2-data-integrity` |
-| N2-92 | S-21 | Truy ngược nguồn gốc: từ lô hiện tại về tới các lô thu hoạch gốc | HOANG TRANG HIEN | To Do | `feature/s2-backend` |
-| N2-93 | S-22 | Bộ dữ liệu mẫu phả hệ ba tầng có đáp án đếm tay | Nguyen Van Dung | To Do | `feature/s2-data-integrity` |
+branch tạm --> PR --> review + CI --> main
+```
 
-## Trạng thái Git hiện tại
+Không sử dụng `develop`.
 
-- S-07 + S-08 đã được tích hợp vào `develop` qua **PR #43**.
-- Branch cũ `feature/s2-s07-s08-products-harvest` không còn commit riêng chưa vào `develop`.
-- Ba branch làm việc chính của Sprint 2:
-  - `feature/s2-frontend`
-  - `feature/s2-backend`
-  - `feature/s2-data-integrity`
+Quy trình:
+
+1. `git checkout main && git pull origin main`
+2. Tạo branch tạm theo Story.
+3. Code + test + commit có mã Story/Task.
+4. Push branch.
+5. Mở PR với base `main`.
+6. CI build/lint/test phải xanh.
+7. Có review/approval theo ruleset.
+8. Merge vào `main`.
+9. Kiểm staging sau merge; xóa branch tạm khi không còn dùng.
+
+## Công việc ưu tiên còn lại
+
+1. **S-13** — hoàn thiện timeline sự kiện của lô.
+2. **S-15** — hoàn thiện bàn giao lô trạng thái chờ.
+3. **S-16** — re-check end-to-end sau khi S-15 hoàn tất.
+4. Chốt Acceptance Criteria, CI và staging trước khi kết thúc Sprint.
 
 ## Quy ước commit
 
-Commit phải ghi rõ Story hoặc Task:
-
 ```text
 feat(S-13): add batch event timeline UI
-feat(S-15): add pending transfer API
+feat(S-15): add pending handover API
 fix(S-09): reject future harvest date
 test(S-12): detect modified event in hash chain
 ```
 
-## Quy trình tích hợp
+## Lưu ý cập nhật
 
-```text
-feature/s2-frontend ---------\
-feature/s2-backend -----------+--> PR --> develop --> PR --> main
-feature/s2-data-integrity ----/
-```
-
-1. Không push thẳng vào `develop` hoặc `main`.
-2. Đồng bộ branch với `develop` trước khi làm việc.
-3. Push code lên branch Sprint 2 tương ứng.
-4. Mở PR vào `develop`.
-5. CI phải xanh.
-6. Review đạt yêu cầu mới merge.
-7. Khi bản tích hợp ổn định, merge `develop` sang `main` để release/staging theo workflow hiện tại.
-
-## Lưu ý cập nhật tài liệu
-
-Jira là nguồn theo dõi trạng thái thực thi. Bảng trên là snapshot khi tài liệu Sprint 2 được tạo; nếu trạng thái/assignee thay đổi thì cập nhật lại tài liệu trong PR phù hợp.
+Jira là nguồn theo dõi trạng thái thực thi. Khi status/assignee/SP thay đổi, cập nhật tài liệu trong PR phù hợp.
