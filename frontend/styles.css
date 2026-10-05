@@ -930,3 +930,110 @@ button, input, select, textarea {
     width: 100%;
   }
 }
+
+/* ==============================================================================
+   Dropdown Action Menu System (Apple Liquid Glass Kebab / ...)
+   ============================================================================== */
+.dropdown-menu-wrapper {
+  position: relative;
+  display: inline-block;
+}
+
+.btn-icon-kebab {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-sm);
+  background: #ffffff;
+  border: 1px solid var(--color-border);
+  color: var(--color-text-muted);
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: var(--transition-fast);
+  letter-spacing: 1px;
+  line-height: 1;
+}
+
+.btn-icon-kebab:hover,
+.btn-icon-kebab.active {
+  background: var(--color-surface-subtle);
+  color: var(--color-text-main);
+  border-color: rgba(0, 0, 0, 0.2);
+  box-shadow: var(--shadow-xs);
+}
+
+.dropdown-popover {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  min-width: 200px;
+  background: var(--liquid-glass-bg);
+  backdrop-filter: var(--liquid-glass-blur);
+  -webkit-backdrop-filter: var(--liquid-glass-blur);
+  border: var(--liquid-glass-border);
+  border-radius: var(--radius-md);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.12), inset 0 1px 1px rgba(255, 255, 255, 0.9);
+  padding: 6px;
+  z-index: 1050;
+  display: none;
+  flex-direction: column;
+  gap: 2px;
+  animation: dropdownFadeIn 0.16s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.dropdown-popover.active {
+  display: flex;
+}
+
+@keyframes dropdownFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 12px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-text-main);
+  text-decoration: none;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  text-align: left;
+  transition: var(--transition-fast);
+  white-space: nowrap;
+}
+
+.dropdown-item:hover {
+  background: rgba(36, 138, 61, 0.08);
+  color: var(--color-primary);
+}
+
+.dropdown-item svg {
+  flex-shrink: 0;
+  color: var(--color-text-muted);
+}
+
+.dropdown-item:hover svg {
+  color: var(--color-primary);
+}
+
+.dropdown-divider {
+  height: 1px;
+  background: var(--color-border);
+  margin: 4px 6px;
+}

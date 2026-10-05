@@ -411,6 +411,20 @@
         // 2. Tải danh mục sản phẩm vào dropdown lọc
         await loadProductsDropdown();
 
+        // Đọc tham số URL nếu có (?productId=... hoặc ?search=...)
+        const urlParams = new URLSearchParams(window.location.search);
+        const paramProductId = urlParams.get("productId");
+        const paramSearch = urlParams.get("search");
+
+        if (paramProductId) {
+          const productSelect = document.getElementById("productFilter");
+          if (productSelect) productSelect.value = paramProductId;
+        }
+        if (paramSearch) {
+          const searchInput = document.getElementById("searchInput");
+          if (searchInput) searchInput.value = paramSearch;
+        }
+
         // 3. Tải danh sách lô đầu tiên (20 lô)
         await fetchLots(true);
       } catch (error) {
@@ -589,10 +603,84 @@
               <span>Toàn vẹn</span>
             </a>
           ` : ""}
+
+          <div class="dropdown-menu-wrapper" style="margin-left: 2px;">
+            <button type="button" class="btn-icon-kebab" data-lot-id="${escapeHtml(lot.id)}" title="Thao tác khác" aria-label="Thao tác khác">•••</button>
+            <div class="dropdown-popover" id="dropdown-lot-${escapeHtml(lot.id)}">
+              <a href="/lot-detail.html?id=${encodeURIComponent(lot.id)}" class="dropdown-item">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                <span>Xem chi tiết lô</span>
+              </a>
+              <button type="button" class="dropdown-item btn-copy-lot" data-lot-id="${escapeHtml(lot.id)}">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                <span>Sao chép mã lô</span>
+              </button>
+              ${isInspectorOrAdmin ? `
+                <a href="/integrity.html?lotId=${encodeURIComponent(lot.id)}" class="dropdown-item">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                  <span>Kiểm tra toàn vẹn</span>
+                </a>
+              ` : ""}
+              <a href="/farms.html" class="dropdown-item">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+                <span>Xem thửa đất</span>
+              </a>
+              <a href="/products.html" class="dropdown-item">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="m10 15 5-3-5-3v6Z"/></svg>
+                <span>Danh mục sản phẩm</span>
+              </a>
+            </div>
+          </div>
+
           <span style="font-size: 11px; color: var(--color-text-light); margin-left: auto;">${lot.organizationId || ""}</span>
         </div>
       `;
+
+      // Event listener cho dropdown và copy mã lô
+      const kebabBtn = card.querySelector(".btn-icon-kebab");
+      if (kebabBtn) {
+        kebabBtn.addEventListener("click", (e) => {
+          e.stopPropagation();
+          toggleLotDropdown(lot.id);
+        });
+      }
+
+      const copyBtn = card.querySelector(".btn-copy-lot");
+      if (copyBtn) {
+        copyBtn.addEventListener("click", (e) => {
+          e.stopPropagation();
+          closeAllLotDropdowns();
+          copyLotCode(lot.id);
+        });
+      }
+
       container.appendChild(card);
+    }
+
+    function toggleLotDropdown(lotId) {
+      const popover = document.getElementById(`dropdown-lot-${lotId}`);
+      const wasActive = popover && popover.classList.contains("active");
+      closeAllLotDropdowns();
+      if (!wasActive && popover) {
+        popover.classList.add("active");
+      }
+    }
+
+    function closeAllLotDropdowns() {
+      document.querySelectorAll(".dropdown-popover.active").forEach((p) => p.classList.remove("active"));
+    }
+
+    function copyLotCode(lotId) {
+      if (!lotId) return;
+      navigator.clipboard.writeText(lotId).then(() => {
+        const copyTextEl = document.getElementById("statTotalLots");
+        // Hiển thị feedback nhanh
+        const origText = copyTextEl ? copyTextEl.textContent : "";
+        if (copyTextEl) {
+          copyTextEl.textContent = "✓ Đã chép!";
+          setTimeout(() => { copyTextEl.textContent = origText; }, 1500);
+        }
+      }).catch(() => {});
     }
 
     function formatDate(dateVal) {

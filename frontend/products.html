@@ -234,6 +234,26 @@
     </div>
   </div>
 
+  <!-- Modal Chi tiết sản phẩm -->
+  <div id="modal-detail-product" class="modal-backdrop" style="display: none;">
+    <div class="modal-card" style="max-width: 480px;">
+      <div class="modal-header">
+        <h2 class="modal-title">Chi tiết quy chuẩn sản phẩm</h2>
+        <button id="btn-close-detail-modal" class="btn-icon" aria-label="Đóng">&times;</button>
+      </div>
+      <div class="modal-body" id="modal-detail-body">
+        <div style="text-align: center; padding: 24px; color: var(--color-text-muted);">Đang tải chi tiết...</div>
+      </div>
+      <div class="modal-footer" style="display: flex; justify-content: space-between; align-items: center;">
+        <a id="btn-view-lots-link" href="#" class="btn btn-primary" style="display: inline-flex; align-items: center; gap: 8px;">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m7.5 4.27 9 5.15"/><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/></svg>
+          <span>Xem các lô hàng</span>
+        </a>
+        <button type="button" id="btn-dismiss-detail-modal" class="btn btn-outline">Đóng</button>
+      </div>
+    </div>
+  </div>
+
   <script src="/app-shell.js"></script>
   <script>
     let currentUser = null;
@@ -324,29 +344,162 @@
               </div>
             </div>
           </div>
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 1rem; padding-top: 0.75rem; border-top: 1px dashed var(--color-border);">
-            <div style="display: flex; align-items: center; gap: 8px;">
-              <span style="font-size: 0.85rem; color: var(--color-text-muted);">Đơn vị tính:</span>
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 1rem; padding-top: 0.75rem; border-top: 1px dashed var(--color-border); gap: 8px;">
+            <div style="display: flex; align-items: center; gap: 6px;">
+              <span style="font-size: 0.8rem; color: var(--color-text-muted);">Đơn vị:</span>
               <span class="unit-tag">${escapeHtml(unitName)}</span>
             </div>
-            ${isAdmin ? `
-              <button type="button" class="btn btn-outline btn-sm btn-edit-product" data-id="${escapeHtml(p.id)}" data-name="${escapeHtml(p.name)}" data-unit="${escapeHtml(p.unit)}" style="padding: 4px 10px; font-size: 0.8rem; cursor: pointer; border-radius: var(--radius-sm);">
-                ✏️ Sửa
+            <div style="display: flex; align-items: center; gap: 6px;">
+              <button type="button" class="btn btn-outline btn-sm btn-view-product" data-id="${escapeHtml(p.id)}" style="padding: 4px 10px; font-size: 0.8rem; cursor: pointer; border-radius: var(--radius-sm); font-weight: 600;" title="Xem chi tiết quy chuẩn sản phẩm ${escapeHtml(p.name)}">
+                Chi tiết
               </button>
-            ` : ""}
+
+              <div class="dropdown-menu-wrapper">
+                <button type="button" class="btn-icon-kebab" data-id="${escapeHtml(p.id)}" title="Thao tác khác" aria-label="Thao tác khác">•••</button>
+                <div class="dropdown-popover" id="dropdown-${escapeHtml(p.id)}">
+                  <a href="/lots.html?productId=${encodeURIComponent(p.id)}" class="dropdown-item">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m7.5 4.27 9 5.15"/><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg>
+                    <span>Xem các lô hàng</span>
+                  </a>
+                  <button type="button" class="dropdown-item btn-menu-detail" data-id="${escapeHtml(p.id)}">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="m10 15 5-3-5-3v6Z"/></svg>
+                    <span>Chi tiết quy chuẩn</span>
+                  </button>
+                  <button type="button" class="dropdown-item btn-menu-copy" data-id="${escapeHtml(p.id)}">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                    <span>Sao chép mã SP</span>
+                  </button>
+                  ${isAdmin ? `
+                    <div class="dropdown-divider"></div>
+                    <button type="button" class="dropdown-item btn-menu-edit" data-id="${escapeHtml(p.id)}" data-name="${escapeHtml(p.name)}" data-unit="${escapeHtml(p.unit)}">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>
+                      <span>Chỉnh sửa</span>
+                    </button>
+                  ` : ""}
+                </div>
+              </div>
+            </div>
           </div>
         `;
         grid.appendChild(card);
       });
 
-      // Gắn sự kiện sửa sản phẩm cho Admin
+      // Gắn sự kiện cho các nút trong grid
+      grid.querySelectorAll(".btn-view-product, .btn-menu-detail").forEach((btn) => {
+        btn.addEventListener("click", (e) => {
+          e.stopPropagation();
+          closeAllDropdowns();
+          showProductDetailModal(btn.dataset.id);
+        });
+      });
+
+      grid.querySelectorAll(".btn-menu-copy").forEach((btn) => {
+        btn.addEventListener("click", (e) => {
+          e.stopPropagation();
+          closeAllDropdowns();
+          copyToClipboard(btn.dataset.id);
+        });
+      });
+
+      grid.querySelectorAll(".btn-icon-kebab").forEach((btn) => {
+        btn.addEventListener("click", (e) => {
+          e.stopPropagation();
+          toggleDropdown(btn.dataset.id);
+        });
+      });
+
       if (isAdmin) {
-        grid.querySelectorAll(".btn-edit-product").forEach((btn) => {
-          btn.addEventListener("click", () => {
+        grid.querySelectorAll(".btn-menu-edit").forEach((btn) => {
+          btn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            closeAllDropdowns();
             openEditModal(btn.dataset.id, btn.dataset.name, btn.dataset.unit);
           });
         });
       }
+    }
+
+    function toggleDropdown(id) {
+      const popover = document.getElementById(`dropdown-${id}`);
+      const wasActive = popover && popover.classList.contains("active");
+      closeAllDropdowns();
+      if (!wasActive && popover) {
+        popover.classList.add("active");
+      }
+    }
+
+    function closeAllDropdowns() {
+      document.querySelectorAll(".dropdown-popover.active").forEach((p) => p.classList.remove("active"));
+    }
+
+    async function showProductDetailModal(productId) {
+      const modal = document.getElementById("modal-detail-product");
+      const body = document.getElementById("modal-detail-body");
+      const viewLotsLink = document.getElementById("btn-view-lots-link");
+
+      modal.style.display = "flex";
+      viewLotsLink.href = `/lots.html?productId=${encodeURIComponent(productId)}`;
+      body.innerHTML = `<div style="text-align: center; padding: 24px; color: var(--color-text-muted);">Đang tải thông tin chi tiết...</div>`;
+
+      try {
+        const res = await fetch(`/api/products/${encodeURIComponent(productId)}`);
+        if (!res.ok) throw new Error("Không thể tải thông tin chi tiết sản phẩm.");
+        const data = await res.json();
+        const p = data.product || {};
+        const lotsCount = data.lotsCount !== undefined ? data.lotsCount : 0;
+        const iconEmoji = getProductEmoji(p.name);
+        const unitName = formatUnit(p.unit);
+        const createdDate = p.created_at ? new Date(p.created_at).toLocaleDateString("vi-VN") : "Quy chuẩn ban đầu";
+
+        body.innerHTML = `
+          <div style="text-align: center; margin-bottom: 20px;">
+            <div style="font-size: 3rem; margin-bottom: 8px;">${iconEmoji}</div>
+            <h3 style="font-size: 20px; font-weight: 700; color: var(--color-text-main); margin-bottom: 4px;">${escapeHtml(p.name)}</h3>
+            <span class="unit-tag" style="font-size: 13px; padding: 4px 12px;">Đơn vị: ${escapeHtml(unitName)}</span>
+          </div>
+
+          <div style="background: var(--color-surface-subtle); border-radius: var(--radius-md); padding: 14px 16px; border: 1px solid var(--color-border); display: flex; flex-direction: column; gap: 10px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; font-size: 13px;">
+              <span style="color: var(--color-text-muted); font-weight: 500;">Mã sản phẩm:</span>
+              <div style="display: flex; align-items: center; gap: 6px;">
+                <code style="background: #ffffff; padding: 2px 6px; border-radius: 4px; border: 1px solid var(--color-border); font-size: 12px;">${escapeHtml(p.id)}</code>
+                <button type="button" class="btn btn-outline btn-sm" onclick="copyToClipboard('${escapeHtml(p.id)}')" style="padding: 2px 6px; font-size: 11px;">Sao chép</button>
+              </div>
+            </div>
+
+            <div style="display: flex; justify-content: space-between; align-items: center; font-size: 13px;">
+              <span style="color: var(--color-text-muted); font-weight: 500;">Quy chuẩn đơn vị:</span>
+              <span style="font-weight: 600; color: var(--color-text-main);">${escapeHtml(unitName)}</span>
+            </div>
+
+            <div style="display: flex; justify-content: space-between; align-items: center; font-size: 13px;">
+              <span style="color: var(--color-text-muted); font-weight: 500;">Ngày đưa vào quy chuẩn:</span>
+              <span style="font-weight: 600; color: var(--color-text-main);">${createdDate}</span>
+            </div>
+
+            <div style="display: flex; justify-content: space-between; align-items: center; font-size: 13px;">
+              <span style="color: var(--color-text-muted); font-weight: 500;">Tổng số lô đã thu hoạch:</span>
+              <span style="font-weight: 700; color: var(--color-primary);">${lotsCount} lô hàng</span>
+            </div>
+          </div>
+        `;
+      } catch (err) {
+        body.innerHTML = `<div class="alert alert-danger" style="margin: 0;">${escapeHtml(err.message)}</div>`;
+      }
+    }
+
+    function closeDetailModal() {
+      const modal = document.getElementById("modal-detail-product");
+      if (modal) modal.style.display = "none";
+    }
+
+    function copyToClipboard(text) {
+      if (!text) return;
+      navigator.clipboard.writeText(text).then(() => {
+        showBanner("success", `✓ Đã sao chép mã "${text}" vào bộ nhớ tạm.`);
+      }).catch(() => {
+        showBanner("error", "Không thể sao chép tự động.");
+      });
     }
 
     function openAddModal() {
@@ -413,6 +566,19 @@
       modal.addEventListener("click", (e) => {
         if (e.target === modal) closeModal();
       });
+
+      // Detail Modal controls
+      const detailModal = document.getElementById("modal-detail-product");
+      const closeDetailBtn = document.getElementById("btn-close-detail-modal");
+      const dismissDetailBtn = document.getElementById("btn-dismiss-detail-modal");
+
+      if (closeDetailBtn) closeDetailBtn.addEventListener("click", closeDetailModal);
+      if (dismissDetailBtn) dismissDetailBtn.addEventListener("click", closeDetailModal);
+      if (detailModal) {
+        detailModal.addEventListener("click", (e) => {
+          if (e.target === detailModal) closeDetailModal();
+        });
+      }
 
       // Radio button active styling
       document.querySelectorAll('input[name="unit"]').forEach((radio) => {

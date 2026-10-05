@@ -490,34 +490,27 @@
       const restrictedNotice = document.getElementById("restrictedNotice");
       const auditSection = document.getElementById("auditSection");
 
-      // Check current user role
+      // Check current user role via initAppShell
+      let user = null;
       try {
-        let user = null;
-        const cached = sessionStorage.getItem("agriUser");
-        if (cached) {
-          try {
-            user = JSON.parse(cached);
-          } catch {
-            user = null;
-          }
-        }
-
-        if (!user || !user.roleId) {
+        if (typeof window.initAppShell === "function") {
+          user = await window.initAppShell({ activeNav: "integrity" });
+        } else {
           const meRes = await fetch("/api/me", { credentials: "same-origin" });
           if (meRes.ok) {
             const data = await meRes.json();
             user = data.user;
           }
         }
+      } catch (err) {
+        console.warn("App shell init error in integrity.html", err);
+      }
 
-        const allowedRoles = ["inspector", "admin"];
-        if (!user || !allowedRoles.includes(user.roleId)) {
-          restrictedNotice.style.display = "block";
-          auditSection.style.display = "none";
-          return;
-        }
-      } catch {
-        // Fall through to let backend reject if unauthenticated
+      const allowedRoles = ["inspector", "admin"];
+      if (!user || !allowedRoles.includes(user.roleId)) {
+        restrictedNotice.style.display = "block";
+        auditSection.style.display = "none";
+        return;
       }
 
       // Pre-fill lotId from query string ?lotId=...
@@ -553,6 +546,16 @@
           const integrityData = await integrityRes.json();
 
           if (!integrityRes.ok) {
+            if (integrityRes.status === 401) {
+              sessionStorage.clear();
+              alertBox.innerHTML = `⚠️ <strong>Phiên đăng nhập đã hết hạn.</strong> Đang chuyển hướng về trang đăng nhập...`;
+              alertBox.style.display = "block";
+              setTimeout(() => {
+                const returnTo = encodeURIComponent(window.location.pathname + window.location.search);
+                window.location.href = `/index.html?returnTo=${returnTo}`;
+              }, 1200);
+              return;
+            }
             throw new Error(integrityData.message || "Không thể kiểm tra tính toàn vẹn của lô hàng.");
           }
 

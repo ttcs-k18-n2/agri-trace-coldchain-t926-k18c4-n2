@@ -617,6 +617,49 @@ app.get(
 );
 
 /**
+ * Chi tiết một sản phẩm theo ID kèm số lượng lô hàng (S-07)
+ */
+app.get(
+  "/api/products/:id",
+  requirePermission(["producer", "cooperative", "transporter", "distributor", "inspector", "org_admin", "admin"]),
+  async (req, res) => {
+    const { id } = req.params;
+    if (pool) {
+      try {
+        const result = await pool.query(
+          "SELECT id, name, unit, created_at FROM products WHERE id = $1",
+          [id]
+        );
+        if (result.rows.length === 0) {
+          return res.status(404).json({ message: "Không tìm thấy sản phẩm." });
+        }
+        const lotsCountRes = await pool.query(
+          "SELECT COUNT(*)::int as count FROM lots WHERE product_id = $1",
+          [id]
+        );
+        const lotsCount = lotsCountRes.rows[0] ? lotsCountRes.rows[0].count : 0;
+        return res.status(200).json({
+          product: result.rows[0],
+          lotsCount,
+        });
+      } catch (err) {
+        return res.status(500).json({ message: err.message });
+      }
+    }
+
+    const prod = inMemoryProducts.find((p) => p.id === id);
+    if (!prod) {
+      return res.status(404).json({ message: "Không tìm thấy sản phẩm." });
+    }
+    const lotsCount = inMemoryLots.filter((l) => (l.productId || l.product_id) === id).length;
+    return res.status(200).json({
+      product: prod,
+      lotsCount,
+    });
+  }
+);
+
+/**
  * Thêm sản phẩm mới (T-16, S-07)
  * Chỉ admin hệ thống mới có quyền thêm sản phẩm
  */
