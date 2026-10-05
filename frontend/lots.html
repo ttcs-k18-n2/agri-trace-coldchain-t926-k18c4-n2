@@ -110,6 +110,20 @@
       gap: 14px;
       transition: var(--transition-normal);
       position: relative;
+      overflow: visible;
+    }
+
+    .lot-card:has(.dropdown-popover.active) {
+      z-index: 60;
+    }
+
+    .lot-card .dropdown-popover {
+      bottom: calc(100% + 6px);
+      top: auto;
+      left: 0;
+      right: auto;
+      min-width: 195px;
+      box-shadow: 0 -6px 22px rgba(0, 0, 0, 0.14), 0 2px 6px rgba(0, 0, 0, 0.08);
     }
 
     .lot-card:hover {
@@ -703,6 +717,12 @@
           <a href="/lot-detail.html?id=${encodeURIComponent(lot.id)}" class="btn-lot-action" title="Xem chi tiết lô ${lot.id}">
             <span>Chi tiết</span> &rarr;
           </a>
+          ${(canTransfer && !isPending) ? `
+            <button type="button" class="btn-lot-action btn-transfer-lot-direct" data-lot-id="${escapeHtml(lot.id)}" data-lot-name="${escapeHtml(displayName)}" data-lot-qty="${escapeHtml(remainingQtyFormatted)}" style="color: var(--color-primary); font-weight: 600; display: inline-flex; align-items: center; gap: 4px;" title="Bàn giao lô sang tổ chức khác">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
+              <span>Bàn giao</span>
+            </button>
+          ` : ""}
           ${isInspectorOrAdmin ? `
             <a href="/integrity.html?lotId=${encodeURIComponent(lot.id)}" class="btn-lot-action" title="Kiểm tra toàn vẹn chuỗi sự kiện" style="background: rgba(36, 138, 61, 0.08); color: var(--color-primary); border-color: rgba(36, 138, 61, 0.25);">
               <span>Toàn vẹn</span>
@@ -772,6 +792,15 @@
         });
       }
 
+      const directTransferBtn = card.querySelector(".btn-transfer-lot-direct");
+      if (directTransferBtn) {
+        directTransferBtn.addEventListener("click", (e) => {
+          e.stopPropagation();
+          closeAllLotDropdowns();
+          openTransferModal(lot.id, displayName, remainingQtyFormatted);
+        });
+      }
+
       const transferBtn = card.querySelector(".btn-transfer-lot");
       if (transferBtn) {
         transferBtn.addEventListener("click", (e) => {
@@ -799,12 +828,24 @@
       closeAllLotDropdowns();
       if (!wasActive && popover) {
         popover.classList.add("active");
+        const card = popover.closest(".lot-card");
+        if (card) card.style.zIndex = "60";
       }
     }
 
     function closeAllLotDropdowns() {
-      document.querySelectorAll(".dropdown-popover.active").forEach((p) => p.classList.remove("active"));
+      document.querySelectorAll(".dropdown-popover.active").forEach((p) => {
+        p.classList.remove("active");
+        const card = p.closest(".lot-card");
+        if (card) card.style.zIndex = "";
+      });
     }
+
+    document.addEventListener("click", (e) => {
+      if (!e.target.closest(".dropdown-menu-wrapper")) {
+        closeAllLotDropdowns();
+      }
+    });
 
     function copyLotCode(lotId) {
       if (!lotId) return;
@@ -1174,17 +1215,23 @@
     }
 
     // Debounce search input (300ms) (S-14 / T-34)
-    document.getElementById("searchInput").addEventListener("input", () => {
-      clearTimeout(debounceTimer);
-      debounceTimer = setTimeout(() => {
-        fetchLots(true);
-      }, 300);
-    });
+    const searchInput = document.getElementById("searchInput");
+    if (searchInput) {
+      searchInput.addEventListener("input", () => {
+        clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(() => {
+          fetchLots(true);
+        }, 300);
+      });
+    }
 
     // Product filter change
-    document.getElementById("productFilter").addEventListener("change", () => {
-      fetchLots(true);
-    });
+    const productFilter = document.getElementById("productFilter");
+    if (productFilter) {
+      productFilter.addEventListener("change", () => {
+        fetchLots(true);
+      });
+    }
 
     // Load More click
     const btnLoadMore = document.getElementById("btnLoadMore");
