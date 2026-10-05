@@ -219,6 +219,139 @@ test("S-12 / T-29: API GET /api/lots/:id/integrity role permissions and response
   assert.equal(notFoundRes.status, 404);
 });
 
+test("S-12 / T-29: GET /api/lots/:id/integrity returns atomic events snapshot, NO_EVENTS on empty lot, detects tampering and broken chain in API", async () => {
+  const inspectorAgent = await loginAs("inspector@example.com");
+
+  // 1. Lô chưa có sự kiện nào -> integrity.status === "NO_EVENTS", events: [], auditLogged: true
+  const emptyLot = {
+    id: "LOT-ZERO-EVENTS",
+    organizationId: "org-001",
+    farmId: "FARM-001",
+    productId: "PROD-TEA",
+  };
+  if (!inMemoryLots.some((l) => l.id === emptyLot.id)) {
+    inMemoryLots.push(emptyLot);
+  }
+
+  const emptyRes = await inspectorAgent.get(`/api/lots/${emptyLot.id}/integrity`);
+  assert.equal(emptyRes.status, 200);
+  assert.equal(emptyRes.body.lotId, emptyLot.id);
+  assert.equal(emptyRes.body.integrity.status, "NO_EVENTS");
+  assert.equal(Array.isArray(emptyRes.body.events), true);
+  assert.equal(emptyRes.body.events.length, 0);
+  assert.equal(emptyRes.body.auditLogged, true);
+
+  // 2. Lô có chuỗi sự kiện hợp lệ -> trả về snapshot nguyên tử cùng events
+  const validLotId = "LOT-ATOMIC-TEST";
+  inMemoryLots.push({
+    id: validLotId,
+    organizationId: "org-001",
+    farmId: "FARM-001",
+    productId: "PROD-TOMATO",
+  });
+
+  const { inMemoryBatchEvents } = require("../src/server");
+  const ev1Data = {
+    batchId: validLotId,
+    sequenceNo: 1,
+    eventType: "HARVEST_CREATED",
+    payload: { quantity: 100 },
+    organizationId: "org-001",
+    actorUserId: "usr-001",
+    occurredAt: new Date("2026-10-01T08:00:00Z"),
+  };
+  const ev1Hash = calculateEventHash(GENESIS_HASH, ev1Data);
+  inMemoryBatchEvents.push({
+    id: "EVT-ATOMIC-1",
+    batchId: validLotId,
+    batch_id: validLotId,
+    sequenceNo: 1,
+    sequence_no: 1,
+    eventType: "HARVEST_CREATED",
+    event_type: "HARVEST_CREATED",
+    payload: ev1Data.payload,
+    organizationId: "org-001",
+    organization_id: "org-001",
+    actorUserId: "usr-001",
+    actor_user_id: "usr-001",
+    occurredAt: ev1Data.occurredAt.toISOString(),
+    occurred_at: ev1Data.occurredAt.toISOString(),
+    previousHash: GENESIS_HASH,
+    previous_hash: GENESIS_HASH,
+    eventHash: ev1Hash,
+    event_hash: ev1Hash,
+    createdAt: new Date().toISOString(),
+    created_at: new Date().toISOString(),
+  });
+
+  const ev2Data = {
+    batchId: validLotId,
+    sequenceNo: 2,
+    eventType: "TRANSPORT_DISPATCHED",
+    payload: { vehicle: "TRUCK-01", targetTemp: 4.0 },
+    organizationId: "org-001",
+    actorUserId: "usr-transporter",
+    occurredAt: new Date("2026-10-01T09:00:00Z"),
+  };
+  const ev2Hash = calculateEventHash(ev1Hash, ev2Data);
+  inMemoryBatchEvents.push({
+    id: "EVT-ATOMIC-2",
+    batchId: validLotId,
+    batch_id: validLotId,
+    sequenceNo: 2,
+    sequence_no: 2,
+    eventType: "TRANSPORT_DISPATCHED",
+    event_type: "TRANSPORT_DISPATCHED",
+    payload: ev2Data.payload,
+    organizationId: "org-001",
+    organization_id: "org-001",
+    actorUserId: "usr-transporter",
+    actor_user_id: "usr-transporter",
+    occurredAt: ev2Data.occurredAt.toISOString(),
+    occurred_at: ev2Data.occurredAt.toISOString(),
+    previousHash: ev1Hash,
+    previous_hash: ev1Hash,
+    eventHash: ev2Hash,
+    event_hash: ev2Hash,
+    createdAt: new Date().toISOString(),
+    created_at: new Date().toISOString(),
+  });
+
+  const validRes = await inspectorAgent.get(`/api/lots/${validLotId}/integrity`);
+  assert.equal(validRes.status, 200);
+  assert.equal(validRes.body.integrity.valid, true);
+  assert.equal(validRes.body.integrity.eventCount, 2);
+  assert.equal(validRes.body.events.length, 2);
+  assert.equal(validRes.body.events[0].sequenceNo, 1);
+  assert.equal(validRes.body.events[1].sequenceNo, 2);
+  assert.equal(validRes.body.auditLogged, true);
+
+  // 3. Sửa lén payload của event #2 -> API phát hiện CONTENT_TAMPERED
+  const ev2Index = inMemoryBatchEvents.findIndex((e) => e.id === "EVT-ATOMIC-2");
+  inMemoryBatchEvents[ev2Index].payload = { vehicle: "TRUCK-01", targetTemp: 25.0 }; // sửa trộm nhiệt độ
+
+  const tamperedRes = await inspectorAgent.get(`/api/lots/${validLotId}/integrity`);
+  assert.equal(tamperedRes.status, 200);
+  assert.equal(tamperedRes.body.integrity.valid, false);
+  assert.equal(tamperedRes.body.integrity.type, "CONTENT_TAMPERED");
+  assert.equal(tamperedRes.body.integrity.firstInvalidSequence, 2);
+  assert.equal(tamperedRes.body.events.length, 2);
+
+  // 4. Xóa lén event #1 -> API phát hiện BROKEN_CHAIN
+  inMemoryBatchEvents.splice(inMemoryBatchEvents.findIndex((e) => e.id === "EVT-ATOMIC-1"), 1);
+  const brokenRes = await inspectorAgent.get(`/api/lots/${validLotId}/integrity`);
+  assert.equal(brokenRes.status, 200);
+  assert.equal(brokenRes.body.integrity.valid, false);
+  assert.equal(brokenRes.body.integrity.type, "BROKEN_CHAIN");
+
+  // Cleanup
+  for (let i = inMemoryBatchEvents.length - 1; i >= 0; i--) {
+    if (inMemoryBatchEvents[i].batchId === validLotId) {
+      inMemoryBatchEvents.splice(i, 1);
+    }
+  }
+});
+
 test("S-12 / T-30 Benchmark: 1,000 chained events verified in < 1,000 ms", () => {
   const thousandEvents = [];
   let prevHash = GENESIS_HASH;

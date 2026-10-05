@@ -1,12 +1,52 @@
 <!DOCTYPE html>
 <html lang="vi">
+
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>AGRI TRACEABILITY - Đăng nhập hệ thống chuỗi lạnh</title>
-  <link rel="stylesheet" href="/styles.css">
 
   <style>
+    :root {
+      --color-text-main: #111814;
+      --color-text-muted: #5e6b63;
+      --color-text-light: #87948c;
+
+      /* Apple Agri Emerald Spectrum */
+      --emerald-core: #1fa44a;
+      --emerald-glow: rgba(31, 164, 74, 0.45);
+      --emerald-subtle: rgba(31, 164, 74, 0.08);
+
+      /* Liquid Glass Tokens */
+      --glass-surface: rgba(255, 255, 255, 0.65);
+      --glass-modal-surface: rgba(255, 255, 255, 0.78);
+      --glass-border: rgba(255, 255, 255, 0.75);
+      --glass-border-edge: rgba(255, 255, 255, 0.95);
+      --glass-specular: inset 0 1.5px 1px 0 rgba(255, 255, 255, 0.9),
+        inset 0 -1.5px 2px 0 rgba(0, 0, 0, 0.03),
+        inset 1px 0 1px 0 rgba(255, 255, 255, 0.6),
+        inset -1px 0 1px 0 rgba(255, 255, 255, 0.6);
+      --glass-shadow: 0 32px 64px -16px rgba(18, 38, 26, 0.12),
+        0 16px 28px -10px rgba(0, 0, 0, 0.05);
+
+      --radius-squircle-sm: 12px;
+      --radius-squircle-md: 18px;
+      --radius-squircle-lg: 26px;
+      --radius-squircle-xl: 34px;
+      --radius-capsule: 9999px;
+
+      --spring-physics: all 0.35s cubic-bezier(0.175, 0.885, 0.32, 1.15);
+      --spring-snap: all 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    *,
+    *::before,
+    *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
     body {
       min-height: 100vh;
       display: flex;
@@ -14,10 +54,74 @@
       align-items: center;
       justify-content: center;
       padding: 32px 16px;
-      background-color: var(--color-bg);
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", sans-serif;
+      color: var(--color-text-main);
+      background-color: #f2f5f3;
+      position: relative;
+      overflow-x: hidden;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* Ambient Caustic Background */
+    .ambient-canvas {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 0;
+      overflow: hidden;
+    }
+
+    .ambient-blob {
+      position: absolute;
+      border-radius: 50%;
+      filter: blur(80px);
+      opacity: 0.65;
+      animation: floatOrganic 18s ease-in-out infinite alternate;
+    }
+
+    .blob-1 {
+      width: 450px;
+      height: 450px;
+      top: -100px;
+      left: 15%;
+      background: radial-gradient(circle, rgba(74, 222, 128, 0.42) 0%, rgba(34, 197, 94, 0.05) 70%);
+    }
+
+    .blob-2 {
+      width: 480px;
+      height: 480px;
+      bottom: -120px;
+      right: 12%;
+      background: radial-gradient(circle, rgba(56, 189, 248, 0.35) 0%, rgba(99, 102, 241, 0.03) 70%);
+      animation-delay: -6s;
+    }
+
+    .blob-3 {
+      width: 320px;
+      height: 320px;
+      top: 40%;
+      right: 25%;
+      background: radial-gradient(circle, rgba(234, 179, 8, 0.18) 0%, transparent 70%);
+      animation-delay: -11s;
+    }
+
+    @keyframes floatOrganic {
+      0% {
+        transform: translate(0, 0) scale(1);
+      }
+
+      50% {
+        transform: translate(30px, -25px) scale(1.06);
+      }
+
+      100% {
+        transform: translate(-20px, 35px) scale(0.95);
+      }
     }
 
     .auth-container {
+      position: relative;
+      z-index: 1;
       width: 100%;
       max-width: 420px;
       margin: 0 auto;
@@ -31,27 +135,38 @@
       display: flex;
       flex-direction: column;
       align-items: center;
-      gap: 10px;
-      margin-bottom: 24px;
+      gap: 12px;
+      margin-bottom: 22px;
       text-align: center;
     }
 
     .auth-brand-icon {
-      width: 44px;
-      height: 44px;
-      border-radius: var(--radius-full);
-      background: var(--color-primary);
-      color: white;
+      width: 52px;
+      height: 52px;
+      border-radius: var(--radius-squircle-md);
+      background: linear-gradient(145deg, rgba(255, 255, 255, 0.95), rgba(255, 255, 255, 0.45));
+      border: 1px solid var(--glass-border-edge);
+      box-shadow: 0 12px 24px -6px var(--emerald-glow),
+        inset 0 1.5px 1px #ffffff,
+        inset 0 -1px 2px rgba(0, 0, 0, 0.05);
+      color: var(--emerald-core);
       display: flex;
       align-items: center;
       justify-content: center;
-      box-shadow: 0 4px 14px rgba(36, 138, 61, 0.28);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      transition: var(--spring-physics);
+    }
+
+    .auth-brand-icon:hover {
+      transform: translateY(-2px) scale(1.04);
+      box-shadow: 0 16px 28px -6px var(--emerald-glow);
     }
 
     .auth-brand-title {
-      font-size: 19px;
+      font-size: 20px;
       font-weight: 700;
-      letter-spacing: -0.02em;
+      letter-spacing: -0.03em;
       color: var(--color-text-main);
       line-height: 1.1;
     }
@@ -59,27 +174,40 @@
     .auth-brand-subtitle {
       font-size: 13px;
       color: var(--color-text-muted);
-      font-weight: 400;
+      font-weight: 500;
+      letter-spacing: -0.01em;
     }
 
-    /* Liquid Glass Card (Layer 3 Floating Window) */
+    /* Liquid Glass Login Card */
     .auth-card {
       width: 100%;
-      background: rgba(255, 255, 255, 0.82);
-      backdrop-filter: blur(28px) saturate(180%);
-      -webkit-backdrop-filter: blur(28px) saturate(180%);
-      border-radius: var(--radius-xl);
-      border: 1px solid rgba(255, 255, 255, 0.8);
-      box-shadow: 0 20px 48px -12px rgba(0, 0, 0, 0.08), inset 0 1px 1px #ffffff;
-      padding: 36px 32px;
+      background: var(--glass-surface, rgba(255, 255, 255, 0.65));
+      backdrop-filter: blur(48px) saturate(210%);
+      -webkit-backdrop-filter: blur(48px) saturate(210%);
+      border-radius: var(--radius-squircle-xl);
+      border: 1px solid var(--glass-border);
+      box-shadow: var(--glass-shadow), var(--glass-specular);
+      padding: 34px 28px;
+      position: relative;
+      transition: var(--spring-physics);
+    }
+
+    .auth-card::before {
+      content: "";
+      position: absolute;
+      top: 0;
+      left: 15%;
+      right: 15%;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.95), transparent);
     }
 
     .auth-heading {
-      font-size: 21px;
+      font-size: 22px;
       font-weight: 700;
-      letter-spacing: -0.02em;
+      letter-spacing: -0.03em;
       color: var(--color-text-main);
-      margin-bottom: 6px;
+      margin-bottom: 4px;
       text-align: center;
     }
 
@@ -88,6 +216,7 @@
       color: var(--color-text-muted);
       margin-bottom: 24px;
       text-align: center;
+      letter-spacing: -0.01em;
     }
 
     .field-group {
@@ -99,7 +228,8 @@
       font-size: 12.5px;
       font-weight: 600;
       color: var(--color-text-main);
-      margin-bottom: 6px;
+      margin-bottom: 7px;
+      letter-spacing: -0.01em;
     }
 
     .input-wrapper {
@@ -108,25 +238,37 @@
 
     .form-control {
       width: 100%;
-      height: 42px;
-      padding: 0 40px 0 14px;
-      border: 1px solid var(--color-border);
-      border-radius: var(--radius-sm);
-      background: #ffffff;
+      height: 44px;
+      padding: 0 42px 0 15px;
+      border: 1px solid rgba(0, 0, 0, 0.08);
+      border-radius: var(--radius-squircle-sm);
+      background: rgba(255, 255, 255, 0.52);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
       color: var(--color-text-main);
       font-size: 14px;
-      transition: var(--transition-fast);
-      box-shadow: inset 0 1px 1px rgba(0, 0, 0, 0.02);
+      font-weight: 500;
+      transition: var(--spring-snap);
+      box-shadow: inset 0 1.5px 3px rgba(0, 0, 0, 0.04),
+        inset 0 0 0 1px rgba(255, 255, 255, 0.7);
+    }
+
+    .form-control::placeholder {
+      color: var(--color-text-light);
+      font-weight: 400;
     }
 
     .form-control:hover {
-      border-color: rgba(0, 0, 0, 0.2);
+      background: rgba(255, 255, 255, 0.78);
+      border-color: rgba(0, 0, 0, 0.14);
     }
 
     .form-control:focus {
       outline: none;
-      border-color: var(--color-primary);
-      box-shadow: 0 0 0 3px rgba(36, 138, 61, 0.18);
+      background: rgba(255, 255, 255, 0.95);
+      border-color: var(--emerald-core);
+      box-shadow: 0 0 0 3.5px var(--emerald-glow),
+        inset 0 1px 2px rgba(0, 0, 0, 0.02);
     }
 
     .toggle-pwd-btn {
@@ -134,171 +276,384 @@
       right: 10px;
       top: 50%;
       transform: translateY(-50%);
-      background: none;
+      background: transparent;
       border: none;
       color: var(--color-text-light);
       cursor: pointer;
       display: flex;
       align-items: center;
-      padding: 4px;
-      border-radius: var(--radius-xs);
-      transition: var(--transition-fast);
+      justify-content: center;
+      padding: 6px;
+      border-radius: var(--radius-squircle-sm);
+      transition: var(--spring-snap);
     }
 
     .toggle-pwd-btn:hover {
       color: var(--color-text-main);
+      background: rgba(0, 0, 0, 0.04);
     }
 
     .btn-submit {
       width: 100%;
-      height: 42px;
-      font-size: 14px;
+      height: 46px;
+      margin-top: 10px;
+      border-radius: var(--radius-squircle-sm);
+      border: 1px solid rgba(255, 255, 255, 0.35);
+      background: linear-gradient(180deg, #26b553 0%, #1c9241 100%);
+      color: #ffffff;
+      font-size: 14.5px;
       font-weight: 600;
-      margin-top: 8px;
+      letter-spacing: -0.01em;
+      cursor: pointer;
+      position: relative;
+      overflow: hidden;
+      box-shadow: 0 10px 22px -4px var(--emerald-glow),
+        inset 0 1px 1.5px rgba(255, 255, 255, 0.55),
+        inset 0 -1.5px 2px rgba(0, 0, 0, 0.15);
+      transition: var(--spring-physics);
+    }
+
+    .btn-submit::after {
+      content: "";
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 45%;
+      background: linear-gradient(180deg, rgba(255, 255, 255, 0.28) 0%, rgba(255, 255, 255, 0) 100%);
+      pointer-events: none;
+    }
+
+    .btn-submit:hover:not(:disabled) {
+      transform: translateY(-1.5px);
+      box-shadow: 0 14px 28px -4px var(--emerald-glow),
+        inset 0 1px 2px rgba(255, 255, 255, 0.75);
+    }
+
+    .btn-submit:active:not(:disabled) {
+      transform: scale(0.98);
+      box-shadow: 0 6px 14px -3px var(--emerald-glow);
+    }
+
+    .btn-submit:disabled {
+      opacity: 0.55;
+      cursor: not-allowed;
+      transform: none;
     }
 
     #message {
       margin-top: 14px;
       min-height: 20px;
-      font-size: 12.5px;
+      font-size: 13px;
       font-weight: 500;
       text-align: center;
-      transition: var(--transition-fast);
+      transition: var(--spring-snap);
     }
 
-    /* Demo Accounts Popover / Disclosure */
-    .demo-disclosure {
+    /* Popup Trigger Capsule Pill */
+    .demo-trigger-wrapper {
       width: 100%;
-      margin-top: 20px;
-      border: 1px solid var(--color-border);
-      border-radius: var(--radius-md);
-      background: rgba(255, 255, 255, 0.65);
-      backdrop-filter: blur(16px);
-      -webkit-backdrop-filter: blur(16px);
-      overflow: hidden;
-      transition: var(--transition-fast);
+      margin-top: 18px;
+      display: flex;
+      justify-content: center;
     }
 
-    .demo-disclosure[open] {
-      background: #ffffff;
-      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.05);
-    }
-
-    .demo-summary {
-      padding: 10px 14px;
-      font-size: 12px;
+    .btn-demo-trigger {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      padding: 7px 14px;
+      border-radius: var(--radius-capsule);
+      background: rgba(255, 255, 255, 0.55);
+      border: 1px solid rgba(255, 255, 255, 0.85);
+      box-shadow: inset 0 1px 1px #ffffff,
+        0 2px 8px rgba(0, 0, 0, 0.04);
+      font-size: 12.5px;
       font-weight: 600;
       color: var(--color-text-muted);
       cursor: pointer;
+      transition: var(--spring-physics);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+    }
+
+    .btn-demo-trigger:hover {
+      background: #ffffff;
+      color: var(--emerald-core);
+      border-color: rgba(31, 164, 74, 0.35);
+      transform: translateY(-1px);
+      box-shadow: inset 0 1px 1px #ffffff,
+        0 6px 16px -2px rgba(31, 164, 74, 0.16);
+    }
+
+    .btn-demo-trigger:active {
+      transform: scale(0.97);
+    }
+
+    .btn-demo-trigger .pill-badge {
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--emerald-core);
+      background: rgba(31, 164, 74, 0.12);
+      padding: 1px 6px;
+      border-radius: var(--radius-capsule);
+    }
+
+    .auth-footer {
+      margin-top: 26px;
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--color-text-light);
+      text-align: center;
+      letter-spacing: -0.01em;
+    }
+
+    /* ==============================================================================
+       APPLE LIQUID GLASS POPUP / MODAL
+       ============================================================================== */
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      z-index: 999;
+      background: rgba(18, 38, 26, 0.22);
+      backdrop-filter: blur(16px) saturate(180%);
+      -webkit-backdrop-filter: blur(16px) saturate(180%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .modal-backdrop.active {
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    .modal-glass-card {
+      width: 100%;
+      max-width: 440px;
+      background: var(--glass-modal-surface);
+      backdrop-filter: blur(48px) saturate(220%);
+      -webkit-backdrop-filter: blur(48px) saturate(220%);
+      border-radius: var(--radius-squircle-lg);
+      border: 1px solid var(--glass-border-edge);
+      box-shadow: 0 32px 72px -16px rgba(0, 0, 0, 0.22),
+        inset 0 1.5px 1px #ffffff,
+        inset 0 -1px 2px rgba(0, 0, 0, 0.04);
+      padding: 22px 20px;
+      position: relative;
+      transform: scale(0.92) translateY(12px);
+      transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.15),
+        opacity 0.25s ease;
+      max-height: 90vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .modal-backdrop.active .modal-glass-card {
+      transform: scale(1) translateY(0);
+    }
+
+    .modal-header {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      user-select: none;
-      list-style: none;
+      margin-bottom: 14px;
+      padding-bottom: 12px;
+      border-bottom: 1px solid rgba(0, 0, 0, 0.06);
     }
 
-    .demo-summary::-webkit-details-marker {
-      display: none;
-    }
-
-    .demo-summary:hover {
+    .modal-title-group h3 {
+      font-size: 16.5px;
+      font-weight: 700;
+      letter-spacing: -0.02em;
       color: var(--color-text-main);
-      background: rgba(0, 0, 0, 0.02);
     }
 
-    .demo-summary-content {
+    .modal-title-group p {
+      font-size: 11.5px;
+      color: var(--color-text-muted);
+      margin-top: 1px;
+    }
+
+    .modal-close-btn {
+      width: 28px;
+      height: 28px;
+      border-radius: var(--radius-capsule);
+      border: 1px solid rgba(0, 0, 0, 0.08);
+      background: rgba(0, 0, 0, 0.04);
+      color: var(--color-text-muted);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: var(--spring-snap);
+    }
+
+    .modal-close-btn:hover {
+      background: rgba(0, 0, 0, 0.09);
+      color: var(--color-text-main);
+    }
+
+    /* Modal Grid Tiles */
+    .modal-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 7px;
+      overflow-y: auto;
+      padding: 2px 2px 6px 2px;
+    }
+
+    .glass-role-tile {
+      background: rgba(255, 255, 255, 0.65);
+      border: 1px solid rgba(255, 255, 255, 0.95);
+      border-radius: 14px;
+      padding: 10px;
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      cursor: pointer;
+      text-align: left;
+      transition: var(--spring-physics);
+      box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.9),
+        0 2px 6px rgba(0, 0, 0, 0.02);
+      min-width: 0;
+    }
+
+    .glass-role-tile.full-width {
+      grid-column: span 2;
+    }
+
+    .glass-role-tile:hover {
+      background: #ffffff;
+      border-color: rgba(31, 164, 74, 0.35);
+      transform: translateY(-1.5px);
+      box-shadow: inset 0 1px 1px #ffffff,
+        0 8px 18px -4px rgba(31, 164, 74, 0.16);
+    }
+
+    .glass-role-tile:active {
+      transform: scale(0.97);
+    }
+
+    .role-icon-box {
+      width: 32px;
+      height: 32px;
+      border-radius: 9px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.6);
+    }
+
+    .role-admin {
+      background: linear-gradient(135deg, #6366f1, #4338ca);
+      color: #fff;
+    }
+
+    .role-org {
+      background: linear-gradient(135deg, #0ea5e9, #0284c7);
+      color: #fff;
+    }
+
+    .role-farmer {
+      background: linear-gradient(135deg, #22c55e, #15803d);
+      color: #fff;
+    }
+
+    .role-coop {
+      background: linear-gradient(135deg, #f59e0b, #d97706);
+      color: #fff;
+    }
+
+    .role-trans {
+      background: linear-gradient(135deg, #f97316, #c2410c);
+      color: #fff;
+    }
+
+    .role-dist {
+      background: linear-gradient(135deg, #14b8a6, #0f766e);
+      color: #fff;
+    }
+
+    .role-inspector {
+      background: linear-gradient(135deg, #8b5cf6, #6d28d9);
+      color: #fff;
+    }
+
+    .role-text-group {
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+    }
+
+    .role-name {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--color-text-main);
+      line-height: 1.25;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .role-desc {
+      font-size: 10px;
+      color: var(--color-text-muted);
+      line-height: 1.2;
+      margin-top: 2px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .role-title-row {
       display: flex;
       align-items: center;
       gap: 6px;
     }
 
-    .demo-chevron {
-      transition: transform 0.2s ease;
-      color: var(--color-text-light);
-    }
-
-    .demo-disclosure[open] .demo-chevron {
-      transform: rotate(180deg);
-    }
-
-    .demo-chips {
-      padding: 6px 10px 10px 10px;
-      display: flex;
-      flex-direction: column;
-      gap: 5px;
-      max-height: 240px;
-      overflow-y: auto;
-      border-top: 1px solid var(--color-border-subtle);
-    }
-
-    .demo-chip-btn {
-      width: 100%;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 8px 10px;
-      background: var(--color-bg);
-      border: 1px solid transparent;
-      border-radius: var(--radius-sm);
-      cursor: pointer;
-      text-align: left;
-      transition: var(--transition-fast);
-    }
-
-    .demo-chip-btn:hover {
-      background: rgba(36, 138, 61, 0.06);
-      border-color: rgba(36, 138, 61, 0.2);
-    }
-
-    .demo-chip-info {
-      display: flex;
-      flex-direction: column;
-    }
-
-    .demo-chip-email {
-      font-size: 12px;
+    .role-tag-badge {
+      font-size: 9.5px;
       font-weight: 600;
-      color: var(--color-text-main);
-    }
-
-    .demo-chip-role {
-      font-size: 11px;
-      color: var(--color-text-muted);
-    }
-
-    .demo-chip-action {
-      font-size: 11px;
-      font-weight: 600;
-      color: var(--color-primary);
-    }
-
-    .auth-footer {
-      margin-top: 24px;
-      font-size: 12px;
-      color: var(--color-text-light);
-      text-align: center;
+      color: #6d28d9;
+      background: rgba(109, 40, 217, 0.1);
+      padding: 0 5px;
+      border-radius: 4px;
     }
   </style>
 </head>
 
 <body>
+  <!-- Ambient Caustic Background -->
+  <div class="ambient-canvas" aria-hidden="true">
+    <div class="ambient-blob blob-1"></div>
+    <div class="ambient-blob blob-2"></div>
+    <div class="ambient-blob blob-3"></div>
+  </div>
+
   <div class="auth-container">
-    <!-- Apple Minimalist Brand Header -->
-    <div class="auth-brand">
+    <!-- Brand Header -->
+    <header class="auth-brand">
       <div class="auth-brand-icon">
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M12 2a10 10 0 0 1 10 10c0 5.523-4.477 10-10 10S2 17.523 2 12c0-2.2.7-4.2 1.9-5.9"/>
-          <path d="M12 6v6l4 2"/>
-          <path d="m4.93 4.93 4.24 4.24"/>
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3"
+          stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 2a10 10 0 0 1 10 10c0 5.523-4.477 10-10 10S2 17.523 2 12c0-2.2.7-4.2 1.9-5.9" />
+          <path d="M12 6v6l4 2" />
+          <path d="m4.93 4.93 4.24 4.24" />
         </svg>
       </div>
       <div>
         <h1 class="auth-brand-title">AGRI TRACE</h1>
         <p class="auth-brand-subtitle">Chuỗi lạnh nông sản chuẩn VietGAP</p>
       </div>
-    </div>
+    </header>
 
-    <!-- Centered Liquid Glass Login Card -->
+    <!-- Liquid Glass Floating Card -->
     <main class="auth-card">
       <h2 class="auth-heading">Đăng nhập</h2>
       <p class="auth-subheading">Nhập thông tin tài khoản để truy cập hệ thống</p>
@@ -307,104 +662,47 @@
         <div class="field-group">
           <label for="email" class="form-label">Email tài khoản</label>
           <div class="input-wrapper">
-            <input
-              type="email"
-              id="email"
-              class="form-control"
-              placeholder="name@example.com"
-              value="user@example.com"
-              required
-              autocomplete="email"
-            >
+            <input type="email" id="email" class="form-control" placeholder="name@example.com" value="user@example.com"
+              required autocomplete="email">
           </div>
         </div>
 
         <div class="field-group">
           <label for="password" class="form-label">Mật khẩu</label>
           <div class="input-wrapper">
-            <input
-              type="password"
-              id="password"
-              class="form-control"
-              placeholder="••••••••••••"
-              value="Password@123"
-              required
-              autocomplete="current-password"
-            >
+            <input type="password" id="password" class="form-control" placeholder="••••••••••••" value="Password@123"
+              required autocomplete="current-password">
             <button type="button" id="togglePasswordBtn" class="toggle-pwd-btn" title="Hiện/ẩn mật khẩu">
-              <svg id="eyeIcon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+              <svg id="eyeIcon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z" />
+                <circle cx="12" cy="12" r="3" />
+              </svg>
             </button>
           </div>
         </div>
 
-        <button type="submit" id="submitBtn" class="btn-primary btn-submit">
+        <button type="submit" id="submitBtn" class="btn-submit">
           Đăng nhập
         </button>
 
         <div id="message" role="alert" aria-live="polite"></div>
-      </form>
 
-      <!-- 1-Click Demo Accounts Disclosure -->
-      <details class="demo-disclosure" id="demoDetails">
-        <summary class="demo-summary">
-          <span class="demo-summary-content">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
-            Tài khoản kiểm thử nhanh (7 vai trò)
-          </span>
-          <svg class="demo-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
-        </summary>
-        <div class="demo-chips">
-          <button type="button" class="demo-chip-btn" onclick="fillCredentials('admin@example.com', 'Password@123')">
-            <div class="demo-chip-info">
-              <span class="demo-chip-email">admin@example.com</span>
-              <span class="demo-chip-role">Quản trị viên (org-system) • Toàn quyền hệ thống</span>
-            </div>
-            <span class="demo-chip-action">Điền &rarr;</span>
-          </button>
-          <button type="button" class="demo-chip-btn" onclick="fillCredentials('orgadmin@example.com', 'Password@123')">
-            <div class="demo-chip-info">
-              <span class="demo-chip-email">orgadmin@example.com</span>
-              <span class="demo-chip-role">Quản trị tổ chức (org-001) • Quản lý tổ chức</span>
-            </div>
-            <span class="demo-chip-action">Điền &rarr;</span>
-          </button>
-          <button type="button" class="demo-chip-btn" onclick="fillCredentials('user@example.com', 'Password@123')">
-            <div class="demo-chip-info">
-              <span class="demo-chip-email">user@example.com</span>
-              <span class="demo-chip-role">Nông dân (org-001) • Khai báo thửa & thu hoạch</span>
-            </div>
-            <span class="demo-chip-action">Điền &rarr;</span>
-          </button>
-          <button type="button" class="demo-chip-btn" onclick="fillCredentials('user2@example.com', 'Password@123')">
-            <div class="demo-chip-info">
-              <span class="demo-chip-email">user2@example.com</span>
-              <span class="demo-chip-role">Hợp tác xã (org-002) • Quản lý lô & thu hoạch</span>
-            </div>
-            <span class="demo-chip-action">Điền &rarr;</span>
-          </button>
-          <button type="button" class="demo-chip-btn" onclick="fillCredentials('transporter@example.com', 'Password@123')">
-            <div class="demo-chip-info">
-              <span class="demo-chip-email">transporter@example.com</span>
-              <span class="demo-chip-role">Vận chuyển (org-trans) • Giám sát chuỗi lạnh</span>
-            </div>
-            <span class="demo-chip-action">Điền &rarr;</span>
-          </button>
-          <button type="button" class="demo-chip-btn" onclick="fillCredentials('distributor@example.com', 'Password@123')">
-            <div class="demo-chip-info">
-              <span class="demo-chip-email">distributor@example.com</span>
-              <span class="demo-chip-role">Phân phối (org-dist) • Theo dõi phân phối</span>
-            </div>
-            <span class="demo-chip-action">Điền &rarr;</span>
-          </button>
-          <button type="button" class="demo-chip-btn" onclick="fillCredentials('inspector@example.com', 'Password@123')">
-            <div class="demo-chip-info">
-              <span class="demo-chip-email">inspector@example.com</span>
-              <span class="demo-chip-role">Thanh tra (org-inspector) • Thanh tra chuỗi (Chỉ đọc)</span>
-            </div>
-            <span class="demo-chip-action">Điền &rarr;</span>
+        <!-- Pill Button to Trigger Popup -->
+        <div class="demo-trigger-wrapper">
+          <button type="button" class="btn-demo-trigger" id="openModalBtn">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3"
+              stroke-linecap="round" stroke-linejoin="round">
+              <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+              <circle cx="9" cy="7" r="4" />
+              <line x1="19" y1="8" x2="19" y2="14" />
+              <line x1="22" y1="11" x2="16" y2="11" />
+            </svg>
+            <span>Tài khoản kiểm thử</span>
+            <span class="pill-badge">7 vai trò</span>
           </button>
         </div>
-      </details>
+      </form>
     </main>
 
     <footer class="auth-footer">
@@ -412,15 +710,199 @@
     </footer>
   </div>
 
+  <!-- Liquid Glass Modal Popup -->
+  <div class="modal-backdrop" id="demoModal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+    <div class="modal-glass-card">
+      <div class="modal-header">
+        <div class="modal-title-group">
+          <h3 id="modalTitle">Chọn tài khoản kiểm thử</h3>
+          <p>Chạm vào vai trò để tự động điền email & mật khẩu</p>
+        </div>
+        <button type="button" class="modal-close-btn" id="closeModalBtn" aria-label="Đóng popup">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+            stroke-linecap="round" stroke-linejoin="round">
+            <line x1="18" y1="6" x2="6" y2="18" />
+            <line x1="6" y1="6" x2="18" y2="18" />
+          </svg>
+        </button>
+      </div>
+
+      <div class="modal-grid">
+        <!-- 1. Quản trị viên -->
+        <button type="button" class="glass-role-tile" onclick="selectAndClose('admin@example.com', 'Password@123')">
+          <div class="role-icon-box role-admin">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+              stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+            </svg>
+          </div>
+          <div class="role-text-group">
+            <span class="role-name">Quản trị viên</span>
+            <span class="role-desc">Toàn quyền hệ thống</span>
+          </div>
+        </button>
+
+        <!-- 2. Quản trị tổ chức -->
+        <button type="button" class="glass-role-tile" onclick="selectAndClose('orgadmin@example.com', 'Password@123')">
+          <div class="role-icon-box role-org">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+              stroke-linecap="round" stroke-linejoin="round">
+              <rect width="16" height="20" x="4" y="2" rx="2" ry="2" />
+              <path d="M9 22v-4h6v4" />
+              <path d="M8 6h.01" />
+              <path d="M16 6h.01" />
+              <path d="M8 10h.01" />
+              <path d="M16 10h.01" />
+              <path d="M8 14h.01" />
+              <path d="M16 14h.01" />
+            </svg>
+          </div>
+          <div class="role-text-group">
+            <span class="role-name">Quản trị tổ chức</span>
+            <span class="role-desc">Nội bộ org-001</span>
+          </div>
+        </button>
+
+        <!-- 3. Nông dân -->
+        <button type="button" class="glass-role-tile" onclick="selectAndClose('user@example.com', 'Password@123')">
+          <div class="role-icon-box role-farmer">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+              stroke-linecap="round" stroke-linejoin="round">
+              <path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10Z" />
+              <path d="M2 21c0-3 1.85-5.36 5.08-6C9.5 14.52 12 13 13 12" />
+            </svg>
+          </div>
+          <div class="role-text-group">
+            <span class="role-name">Nông dân</span>
+            <span class="role-desc">Thửa & thu hoạch</span>
+          </div>
+        </button>
+
+        <!-- 4. Hợp tác xã -->
+        <button type="button" class="glass-role-tile" onclick="selectAndClose('user2@example.com', 'Password@123')">
+          <div class="role-icon-box role-coop">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+              stroke-linecap="round" stroke-linejoin="round">
+              <path d="m7.5 4.27 9 5.15" />
+              <path
+                d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z" />
+              <path d="m3.3 7 8.7 5 8.7-5" />
+              <path d="M12 22V12" />
+            </svg>
+          </div>
+          <div class="role-text-group">
+            <span class="role-name">Hợp tác xã</span>
+            <span class="role-desc">Quản lý gom lô</span>
+          </div>
+        </button>
+
+        <!-- 5. Vận chuyển -->
+        <button type="button" class="glass-role-tile"
+          onclick="selectAndClose('transporter@example.com', 'Password@123')">
+          <div class="role-icon-box role-trans">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+              stroke-linecap="round" stroke-linejoin="round">
+              <path d="M14 18V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v11a1 1 0 0 0 1 1h2" />
+              <path d="M15 18H9" />
+              <path d="M19 18h2a1 1 0 0 0 1-1v-3.65a1 1 0 0 0-.22-.624l-3.48-4.35A1 1 0 0 0 17.52 8H14" />
+              <circle cx="17" cy="18" r="2" />
+              <circle cx="7" cy="18" r="2" />
+            </svg>
+          </div>
+          <div class="role-text-group">
+            <span class="role-name">Vận chuyển</span>
+            <span class="role-desc">Giám sát xe lạnh</span>
+          </div>
+        </button>
+
+        <!-- 6. Phân phối -->
+        <button type="button" class="glass-role-tile"
+          onclick="selectAndClose('distributor@example.com', 'Password@123')">
+          <div class="role-icon-box role-dist">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+              stroke-linecap="round" stroke-linejoin="round">
+              <path d="m2 7 4.41-4.41A2 2 0 0 1 7.83 2h8.34a2 2 0 0 1 1.42.59L22 7" />
+              <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8" />
+              <path d="M15 22v-4a2 2 0 0 0-2-2h-2a2 2 0 0 0-2 2v4" />
+              <path d="M2 7h20" />
+            </svg>
+          </div>
+          <div class="role-text-group">
+            <span class="role-name">Phân phối</span>
+            <span class="role-desc">Kênh siêu thị & bán lẻ</span>
+          </div>
+        </button>
+
+        <!-- 7. Thanh tra (Full Width) -->
+        <button type="button" class="glass-role-tile full-width"
+          onclick="selectAndClose('inspector@example.com', 'Password@123')" data-org="org-inspector">
+          <div class="role-icon-box role-inspector">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+              stroke-linecap="round" stroke-linejoin="round">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+              <polyline points="14 2 14 8 20 8" />
+              <line x1="16" y1="13" x2="8" y2="13" />
+              <line x1="16" y1="17" x2="8" y2="17" />
+              <polyline points="10 9 9 9 8 9" />
+            </svg>
+          </div>
+          <div class="role-text-group">
+            <div class="role-title-row">
+              <span class="role-name">Cơ quan thanh tra</span>
+              <span class="role-tag-badge">org-inspector • Chỉ đọc</span>
+            </div>
+            <span class="role-desc">Kiểm định chuỗi VietGAP & mã QR</span>
+          </div>
+        </button>
+      </div>
+    </div>
+  </div>
+
   <script>
+    /* ================= Modal Popup Control ================= */
+    const modal = document.getElementById("demoModal");
+    const openBtn = document.getElementById("openModalBtn");
+    const closeBtn = document.getElementById("closeModalBtn");
+
+    function openModal() {
+      modal.classList.add("active");
+    }
+
+    function closeModal() {
+      modal.classList.remove("active");
+    }
+
+    openBtn.addEventListener("click", openModal);
+    closeBtn.addEventListener("click", closeModal);
+
+    // Đóng khi click ngoài vùng modal card
+    modal.addEventListener("click", (e) => {
+      if (e.target === modal) closeModal();
+    });
+
+    // Đóng khi nhấn phím Escape
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && modal.classList.contains("active")) {
+        closeModal();
+      }
+    });
+
     function fillCredentials(email, pwd) {
       document.getElementById("email").value = email;
       document.getElementById("password").value = pwd;
-      document.getElementById("message").textContent = "";
-      document.getElementById("message").className = "";
+      const message = document.getElementById("message");
+      message.textContent = "";
+      message.className = "";
       document.getElementById("email").focus();
     }
 
+    // Chọn tài khoản và đóng popup tự động
+    function selectAndClose(email, pwd) {
+      fillCredentials(email, pwd);
+      closeModal();
+    }
+
+    /* ================= Password Toggle & Login ================= */
     const toggleBtn = document.getElementById("togglePasswordBtn");
     const pwdInput = document.getElementById("password");
     toggleBtn.addEventListener("click", () => {
@@ -431,7 +913,7 @@
         : `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>`;
     });
 
-    document.getElementById("loginForm").addEventListener("submit", async function(event) {
+    document.getElementById("loginForm").addEventListener("submit", async function (event) {
       event.preventDefault();
 
       const email = document.getElementById("email").value.trim();
@@ -440,7 +922,7 @@
       const submitBtn = document.getElementById("submitBtn");
 
       if (!email || !password) {
-        message.style.color = "var(--color-danger)";
+        message.style.color = "#FF3B30";
         message.textContent = "Vui lòng nhập đầy đủ email và mật khẩu.";
         return;
       }
@@ -477,26 +959,46 @@
               console.warn("Could not cache user", err);
             }
           }
-          message.style.color = "var(--color-primary)";
+          message.style.color = "var(--emerald-core)";
           message.textContent = "Đăng nhập thành công! Đang chuyển hướng...";
           setTimeout(() => {
             window.location.href = data.redirectTo || "/lots";
           }, 300);
         } else if (response.status === 423) {
-          message.style.color = "var(--color-danger)";
-          message.textContent = data.message + ` Vui lòng thử lại sau ${data.retryAfterSeconds || 900} giây.`;
-          submitBtn.disabled = false;
+          message.style.color = "#FF3B30";
+          let remaining = Number(data.retryAfterSeconds) || 900;
+          submitBtn.disabled = true;
+          clearInterval(window.lockTimer);
+          function updateLockMsg() {
+            const mins = Math.floor(remaining / 60);
+            const secs = remaining % 60;
+            const timeStr = mins > 0 ? `${mins} phút ${secs < 10 ? '0' : ''}${secs} giây` : `${secs} giây`;
+            message.textContent = `🔒 ${data.message || "Tài khoản đang bị khóa tạm thời."} Thử lại sau: ${timeStr}`;
+          }
+          updateLockMsg();
+          window.lockTimer = setInterval(() => {
+            remaining--;
+            if (remaining <= 0) {
+              clearInterval(window.lockTimer);
+              message.textContent = "Khóa tạm thời đã hết hiệu lực. Bạn có thể đăng nhập lại.";
+              message.style.color = "var(--emerald-core)";
+              submitBtn.disabled = false;
+            } else {
+              updateLockMsg();
+            }
+          }, 1000);
         } else {
-          message.style.color = "var(--color-danger)";
+          message.style.color = "#FF3B30";
           message.textContent = data.message || "Email hoặc mật khẩu không chính xác.";
           submitBtn.disabled = false;
         }
       } catch (error) {
-        message.style.color = "var(--color-danger)";
+        message.style.color = "#FF3B30";
         message.textContent = "Không thể kết nối máy chủ backend.";
         submitBtn.disabled = false;
       }
     });
   </script>
 </body>
+
 </html>

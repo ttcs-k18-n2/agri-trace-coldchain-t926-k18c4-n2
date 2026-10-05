@@ -130,9 +130,9 @@ button, input, select, textarea {
   position: sticky;
   top: 14px;
   z-index: 100;
-  max-width: 1060px;
+  max-width: 1200px;
   margin: 14px auto 0;
-  padding: 0 14px;
+  padding: 0 16px;
   height: 54px;
   border-radius: var(--radius-full);
   background: var(--liquid-glass-bg);
@@ -151,7 +151,7 @@ button, input, select, textarea {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
+  gap: 12px;
 }
 
 /* Brand Capsule */
@@ -210,14 +210,15 @@ button, input, select, textarea {
 .nav-links {
   display: flex;
   align-items: center;
-  gap: 3px;
+  gap: 4px;
+  flex-shrink: 0;
 }
 
 .nav-item {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 6px 14px;
+  padding: 6px 12px;
   border-radius: var(--radius-full);
   font-size: 13px;
   font-weight: 500;
@@ -226,6 +227,8 @@ button, input, select, textarea {
   cursor: pointer;
   text-decoration: none;
   min-height: 34px;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .nav-item svg {
@@ -260,6 +263,7 @@ button, input, select, textarea {
   display: flex;
   align-items: center;
   gap: 8px;
+  flex-shrink: 0;
 }
 
 .user-pill {
@@ -270,6 +274,7 @@ button, input, select, textarea {
   background: rgba(0, 0, 0, 0.03);
   border-radius: var(--radius-full);
   border: 1px solid rgba(0, 0, 0, 0.04);
+  max-width: 100%;
 }
 
 .user-avatar {
@@ -284,12 +289,14 @@ button, input, select, textarea {
   align-items: center;
   justify-content: center;
   text-transform: uppercase;
+  flex-shrink: 0;
 }
 
 .user-meta {
   display: flex;
   align-items: center;
   gap: 6px;
+  min-width: 0;
 }
 
 .user-email {
@@ -297,6 +304,10 @@ button, input, select, textarea {
   font-weight: 500;
   color: var(--color-text-main);
   line-height: 1;
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .user-badges {
@@ -377,7 +388,7 @@ button, input, select, textarea {
    Clean, calm, airy cards. Not glass.
    ============================================================================== */
 .main-wrapper {
-  max-width: 1060px;
+  max-width: 1200px;
   margin: 28px auto;
   padding: 0 20px 64px 20px;
 }
@@ -866,6 +877,7 @@ button, input, select, textarea {
     padding: 6px 8px;
     border-radius: var(--radius-full);
     overflow: hidden;
+  }
     text-overflow: ellipsis;
   }
 }
