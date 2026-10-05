@@ -487,6 +487,44 @@
         </form>
       </div>
     </div>
+
+    <!-- Modal Xác nhận tiếp nhận bàn giao lô hàng (S-16, T-38) -->
+    <div id="confirmTransferModal" class="modal-backdrop" style="display: none;">
+      <div class="modal-card">
+        <div class="modal-header">
+          <h3 class="modal-title" style="color: #10b981; display: flex; align-items: center; gap: 8px;">
+            <span style="display: inline-flex; width: 22px; height: 22px; background: rgba(16, 185, 129, 0.15); border-radius: 50%; align-items: center; justify-content: center; font-size: 13px;">✓</span>
+            Xác nhận tiếp nhận lô hàng
+          </h3>
+          <button type="button" class="btn-icon" id="btnCloseConfirmModal" title="Đóng" style="background: none; border: none; font-size: 18px; cursor: pointer; color: var(--color-text-muted);">✕</button>
+        </div>
+        <div class="modal-body">
+          <div id="confirmModalAlert" style="display: none; margin-bottom: 16px;"></div>
+
+          <div style="background: rgba(16, 185, 129, 0.06); border: 1px solid rgba(16, 185, 129, 0.25); border-radius: var(--radius-md); padding: 12px 16px; margin-bottom: 18px;">
+            <div style="font-size: 11px; text-transform: uppercase; font-weight: 700; color: #10b981; letter-spacing: 0.05em; margin-bottom: 4px;">Lô hàng tiếp nhận</div>
+            <div style="font-size: 15px; font-weight: 700; color: var(--color-text-main);" id="confirmLotTitle">--</div>
+            <div style="font-size: 13px; color: var(--color-text-muted); margin-top: 2px;">
+              Mã lô: <code id="confirmLotId" style="font-weight: 700; color: var(--color-primary); background: rgba(36, 138, 61, 0.08); padding: 2px 6px; border-radius: 4px;">--</code>
+            </div>
+          </div>
+
+          <p style="font-size: 13.5px; color: var(--color-text-main); line-height: 1.6; margin: 0 0 12px;">
+            Bạn có chắc chắn muốn xác nhận tiếp nhận lô hàng này vào quyền quản lý của tổ chức?
+          </p>
+
+          <div style="background: rgba(59, 130, 246, 0.08); border: 1px solid rgba(59, 130, 246, 0.2); border-radius: var(--radius-md); padding: 12px; font-size: 12.5px; color: #1d4ed8; line-height: 1.5;">
+            <strong>Hiệu lực chuyển giao (S-16):</strong> Quyền sở hữu lô hàng sẽ được chuyển giao chính thức sang tổ chức của bạn. Hệ thống sẽ lưu vết giao dịch và ghi nhận bảo chứng sự kiện <code>TRANSFER_CONFIRMED</code> vào chuỗi băm mật mã SHA-256 bất biến.
+          </div>
+        </div>
+        <div class="modal-footer" style="display: flex; justify-content: flex-end; gap: 10px; padding: 14px 22px; border-top: 1px solid var(--color-border);">
+          <button type="button" class="btn btn-secondary" id="btnCancelConfirmModal" style="height: 38px; padding: 0 16px;">Hủy bỏ</button>
+          <button type="button" class="btn btn-primary" id="btnDoConfirmTransfer" style="height: 38px; padding: 0 18px; background: #10b981; border: none; border-radius: var(--radius-sm); font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 6px;">
+            <span>Tiếp nhận lô hàng</span>
+          </button>
+        </div>
+      </div>
+    </div>
   </main>
 
   <script src="/app-shell.js"></script>
@@ -836,33 +874,8 @@
       // S-16: Xử lý nút Xác nhận tiếp nhận & Từ chối trên banner
       const btnDetailConfirm = document.getElementById("btnDetailConfirmTransfer");
       if (btnDetailConfirm) {
-        btnDetailConfirm.addEventListener("click", async () => {
-          const confirmed = window.confirm(
-            `Xác nhận tiếp nhận lô hàng "${displayName}" (Mã: ${lot.id})?\n\n` +
-            `Quyền sở hữu lô hàng sẽ được chuyển giao chính thức sang tổ chức của bạn và ghi nhận bảo chứng vào chuỗi sự kiện hash SHA-256 (Story S-16).`
-          );
-          if (!confirmed) return;
-
-          btnDetailConfirm.disabled = true;
-          btnDetailConfirm.innerHTML = "<span>Đang xử lý...</span>";
-
-          try {
-            const trId = btnDetailConfirm.dataset.transferId;
-            const res = await fetch(`/api/transfers/${encodeURIComponent(trId)}/confirm`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              credentials: "same-origin",
-            });
-            const data = await res.json();
-            if (!res.ok) throw new Error(data.message || "Không thể xác nhận tiếp nhận bàn giao.");
-
-            alert(`✓ Xác nhận tiếp nhận lô hàng ${lot.id} thành công! Quyền sở hữu lô đã được chuyển sang tổ chức của bạn.`);
-            await loadLotDetail(lot.id);
-          } catch (err) {
-            alert("Lỗi khi xác nhận tiếp nhận: " + err.message);
-            btnDetailConfirm.disabled = false;
-            btnDetailConfirm.innerHTML = "<span>Xác nhận tiếp nhận</span>";
-          }
+        btnDetailConfirm.addEventListener("click", () => {
+          openDetailConfirmModal(btnDetailConfirm.dataset.transferId, lot.id, displayName);
         });
       }
 
@@ -1146,6 +1159,73 @@
     function closeDetailRejectModal() {
       const modal = document.getElementById("rejectTransferModal");
       if (modal) modal.style.display = "none";
+    }
+
+    let pendingDetailConfirmAction = null;
+
+    function openDetailConfirmModal(transferId, lotId, lotName) {
+      const modal = document.getElementById("confirmTransferModal");
+      const alertBox = document.getElementById("confirmModalAlert");
+      if (!modal) return;
+
+      document.getElementById("confirmLotTitle").textContent = lotName || lotId;
+      document.getElementById("confirmLotId").textContent = lotId;
+      if (alertBox) { alertBox.style.display = "none"; alertBox.textContent = ""; }
+
+      pendingDetailConfirmAction = { transferId, lotId, lotName };
+      modal.style.display = "flex";
+    }
+
+    function closeDetailConfirmModal() {
+      const modal = document.getElementById("confirmTransferModal");
+      if (modal) modal.style.display = "none";
+      pendingDetailConfirmAction = null;
+    }
+
+    const btnCloseConfirmModal = document.getElementById("btnCloseConfirmModal");
+    if (btnCloseConfirmModal) btnCloseConfirmModal.addEventListener("click", closeDetailConfirmModal);
+
+    const btnCancelConfirmModal = document.getElementById("btnCancelConfirmModal");
+    if (btnCancelConfirmModal) btnCancelConfirmModal.addEventListener("click", closeDetailConfirmModal);
+
+    const confirmModalEl = document.getElementById("confirmTransferModal");
+    if (confirmModalEl) {
+      confirmModalEl.addEventListener("click", (e) => {
+        if (e.target === confirmModalEl) closeDetailConfirmModal();
+      });
+    }
+
+    const btnDoConfirmTransfer = document.getElementById("btnDoConfirmTransfer");
+    if (btnDoConfirmTransfer) {
+      btnDoConfirmTransfer.addEventListener("click", async () => {
+        if (!pendingDetailConfirmAction) return;
+        const { transferId, lotId } = pendingDetailConfirmAction;
+        btnDoConfirmTransfer.disabled = true;
+        btnDoConfirmTransfer.innerHTML = "<span>Đang tiếp nhận...</span>";
+
+        try {
+          const res = await fetch(`/api/transfers/${encodeURIComponent(transferId)}/confirm`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            credentials: "same-origin",
+          });
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.message || "Không thể xác nhận tiếp nhận bàn giao.");
+
+          closeDetailConfirmModal();
+          await loadLotDetail(lotId);
+        } catch (err) {
+          const alertBox = document.getElementById("confirmModalAlert");
+          if (alertBox) {
+            alertBox.className = "alert alert-danger";
+            alertBox.style.display = "block";
+            alertBox.textContent = "Lỗi khi xác nhận tiếp nhận: " + err.message;
+          }
+        } finally {
+          btnDoConfirmTransfer.disabled = false;
+          btnDoConfirmTransfer.innerHTML = "<span>Tiếp nhận lô hàng</span>";
+        }
+      });
     }
 
     setupTransferModalListeners();
