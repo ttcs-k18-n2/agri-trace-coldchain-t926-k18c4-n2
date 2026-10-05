@@ -467,6 +467,8 @@
 
     function renderLot(lot, events) {
       const isInspectorOrAdmin = currentUser && ["inspector", "admin"].includes(currentUser.roleId);
+      const userOrgId = currentUser ? (currentUser.organizationId || currentUser.organization_id) : null;
+      const isRecipient = Boolean(userOrgId && lot.pendingTransfer && lot.pendingTransfer.toOrganizationId === userOrgId);
       const inspectorActions = document.getElementById("inspectorActions");
       const btnCheckIntegrityLink = document.getElementById("btnCheckIntegrityLink");
 
@@ -500,10 +502,17 @@
               </button>
             </div>
             <div style="display: flex; align-items: center; gap: 8px;">
-              <span class="status-pill success">
-                <span class="status-dot"></span>
-                <span>${escapeHtml(lot.status || "Đã thu hoạch")}</span>
-              </span>
+              ${lot.pendingTransfer ? `
+                <span class="status-pill warning" title="${isRecipient ? `Được bàn giao từ ${escapeHtml(lot.pendingTransfer.fromOrganizationName || lot.pendingTransfer.fromOrganizationId)}` : `Đang chờ ${escapeHtml(lot.pendingTransfer.toOrganizationName || 'bên nhận')} xác nhận`}">
+                  <span class="status-dot"></span>
+                  <span>${isRecipient ? "Chờ tiếp nhận" : "Chờ bàn giao"}</span>
+                </span>
+              ` : `
+                <span class="status-pill success">
+                  <span class="status-dot"></span>
+                  <span>${escapeHtml(lot.status || "Đã thu hoạch")}</span>
+                </span>
+              `}
               <div class="dropdown-menu-wrapper">
                 <button type="button" class="btn-icon-kebab" id="btn-hero-more" onclick="toggleHeroDropdown(event)" title="Thao tác khác" aria-label="Thao tác khác">•••</button>
                 <div class="dropdown-popover" id="dropdown-hero-lot">
@@ -536,6 +545,32 @@
               </div>
             </div>
           </div>
+
+          ${lot.pendingTransfer ? `
+            <div style="background: rgba(245, 158, 11, 0.08); border: 1px solid rgba(245, 158, 11, 0.25); border-radius: var(--radius-md); padding: 14px 18px; margin-bottom: 20px; display: flex; align-items: flex-start; gap: 12px; color: #b45309;">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink: 0; margin-top: 2px;"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+              <div>
+                <div style="font-weight: 700; font-size: 14px;">
+                  ${isRecipient ? "Yêu cầu bàn giao đến đang Chờ tiếp nhận (PENDING)" : "Yêu cầu bàn giao đang Chờ xác nhận (PENDING)"}
+                </div>
+                <div style="font-size: 13px; margin-top: 3px; line-height: 1.5;">
+                  ${isRecipient ? `
+                    Lô hàng này đang được tổ chức <strong>${escapeHtml(lot.pendingTransfer.fromOrganizationName || lot.pendingTransfer.fromOrganizationId)}</strong> đề nghị chuyển giao sang tổ chức của bạn.
+                    ${lot.pendingTransfer.notes ? `<div style="margin-top: 4px;"><strong>Ghi chú bên gửi:</strong> <em>"${escapeHtml(lot.pendingTransfer.notes)}"</em></div>` : ""}
+                    <div style="margin-top: 6px; font-size: 12px; color: #92400e;">
+                      * Quyền sở hữu và trách nhiệm lưu kho hiện vẫn thuộc bên gửi cho đến khi bên bạn bấm Xác nhận tiếp nhận (Story S-16).
+                    </div>
+                  ` : `
+                    Lô hàng đang được đề nghị chuyển giao sang <strong>${escapeHtml(lot.pendingTransfer.toOrganizationName || lot.pendingTransfer.toOrganizationId)}</strong>.
+                    ${lot.pendingTransfer.notes ? `<div style="margin-top: 4px;"><strong>Ghi chú bàn giao:</strong> <em>"${escapeHtml(lot.pendingTransfer.notes)}"</em></div>` : ""}
+                    <div style="margin-top: 6px; font-size: 12px; color: #92400e;">
+                      * Quyền sở hữu và trách nhiệm lưu kho vẫn thuộc tổ chức của bạn cho đến khi bên nhận bấm xác nhận tiếp nhận (Story S-16).
+                    </div>
+                  `}
+                </div>
+              </div>
+            </div>
+          ` : ""}
 
           <h1 class="hero-title">${escapeHtml(displayName)}</h1>
 
@@ -633,24 +668,47 @@
             </div>
           ` : `
             <div class="timeline-list">
-              ${events.map((evt, idx) => `
+              ${events.map((evt, idx) => {
+                let payloadObj = null;
+                if (evt.payload) {
+                  try {
+                    payloadObj = typeof evt.payload === "string" ? JSON.parse(evt.payload) : evt.payload;
+                  } catch (e) {
+                    payloadObj = null;
+                  }
+                }
+                const isTransfer = evt.eventType === "TRANSFER_INITIATED";
+                return `
                 <div class="timeline-item">
-                  <div class="timeline-node">${evt.sequenceNo || (idx + 1)}</div>
+                  <div class="timeline-node" ${isTransfer ? 'style="border-color: #f59e0b; color: #b45309; box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.2);"' : ""}>${evt.sequenceNo || (idx + 1)}</div>
                   <div class="timeline-content">
                     <div class="timeline-top">
-                      <span class="event-type-badge">${escapeHtml(evt.eventType || "EVENT")}</span>
+                      <span class="event-type-badge" ${isTransfer ? 'style="background: rgba(245, 158, 11, 0.12); color: #b45309; border-color: rgba(245, 158, 11, 0.3);"' : ""}>
+                        ${isTransfer ? "🔄 BÀN GIAO LÔ (TRANSFER_INITIATED)" : escapeHtml(evt.eventType || "EVENT")}
+                      </span>
                       <span class="event-time">${formatDateTime(evt.occurredAt || evt.createdAt)}</span>
                     </div>
                     <div style="font-size: 13px; color: var(--color-text-main); margin-bottom: 6px;">
-                      <strong>Tổ chức:</strong> ${escapeHtml(evt.organizationId || "--")} | <strong>Người ghi:</strong> ${escapeHtml(evt.actorUserId || "--")}
+                      <strong>Tổ chức ghi:</strong> ${escapeHtml(evt.organizationId || "--")} | <strong>Người thực hiện:</strong> ${escapeHtml(evt.actorUserId || "--")}
                     </div>
+                    ${isTransfer && payloadObj ? `
+                      <div style="background: rgba(245, 158, 11, 0.06); border: 1px solid rgba(245, 158, 11, 0.2); border-radius: var(--radius-sm); padding: 10px 14px; margin-bottom: 8px; font-size: 13px; color: #78350f;">
+                        <div><strong>Bên nhận đề xuất:</strong> ${escapeHtml(payloadObj.toOrganizationName || payloadObj.toOrganizationId || "--")}</div>
+                        <div style="margin-top: 3px;"><strong>Trạng thái bàn giao:</strong> <span class="status-pill warning" style="display: inline-flex; padding: 2px 8px; font-size: 11.5px; vertical-align: middle;"><span class="status-dot"></span>Chờ xác nhận (PENDING)</span></div>
+                        ${payloadObj.notes ? `<div style="margin-top: 3px;"><strong>Ghi chú:</strong> ${escapeHtml(payloadObj.notes)}</div>` : ""}
+                        <div style="margin-top: 5px; font-size: 12px; color: #92400e; font-style: italic;">
+                          * Quyền sở hữu lô vẫn thuộc bên gửi cho đến khi bên nhận Accept (S-16).
+                        </div>
+                      </div>
+                    ` : ""}
                     <div class="hash-row">
                       <div><span style="font-weight: 700;">Event Hash:</span> <span class="hash-val">${escapeHtml(evt.eventHash || "--")}</span></div>
                       <div style="margin-top: 4px;"><span style="font-weight: 700;">Prev Hash:</span> <span class="hash-val">${escapeHtml(evt.previousHash || "--")}</span></div>
                     </div>
                   </div>
                 </div>
-              `).join("")}
+              `;
+              }).join("")}
             </div>
           `}
         </div>

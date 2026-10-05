@@ -1,0 +1,11 @@
+{
+  "name": "agri-trace-coldchain",
+  "version": "1.0.0",
+  "private": true,
+  "description": "AgriTrace ColdChain Local Runner",
+  "scripts": {
+    "start": "node --env-file=.env backend/src/server.js",
+    "dev": "node --env-file=.env backend/src/server.js",
+    "test": "npm --prefix backend test"
+  }
+}

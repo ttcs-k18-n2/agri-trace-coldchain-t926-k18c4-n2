@@ -86,6 +86,62 @@ const inMemoryLots = [
 
 const inMemoryIntegrityChecks = [];
 
+const inMemoryOrganizations = [
+  { id: "org-001", name: "Nông trại Thái Nguyên", type: "producer" },
+  { id: "org-002", name: "Hợp tác xã Rau Sạch Bắc Giang", type: "cooperative" },
+  { id: "org-trans", name: "Công ty Cổ phần Vận chuyển Chuỗi Lạnh Á Châu", type: "transporter" },
+  { id: "org-dist", name: "Tổng Công ty Phân phối Nông sản & Bán lẻ", type: "distributor" },
+  { id: "org-inspector", name: "Cục Kiểm tra An toàn Nông sản", type: "inspector" },
+  { id: "org-system", name: "Cơ quan Quản lý Chuỗi Lạnh Toàn quốc", type: "admin" },
+];
+
+const inMemoryTransfers = [];
+
+async function getPendingTransferForLot(lotId) {
+  if (pool) {
+    try {
+      const res = await pool.query(
+        `SELECT t.*, o_to.name AS to_organization_name, o_from.name AS from_organization_name
+         FROM lot_transfers t
+         LEFT JOIN organizations o_to ON t.to_organization_id = o_to.id
+         LEFT JOIN organizations o_from ON t.from_organization_id = o_from.id
+         WHERE t.lot_id = $1 AND t.status = 'PENDING'
+         ORDER BY t.created_at DESC
+         LIMIT 1`,
+        [lotId]
+      );
+      if (res.rows[0]) {
+        const r = res.rows[0];
+        return {
+          id: r.id,
+          lotId: r.lot_id,
+          fromOrganizationId: r.from_organization_id,
+          fromOrganizationName: r.from_organization_name,
+          toOrganizationId: r.to_organization_id,
+          toOrganizationName: r.to_organization_name,
+          status: r.status,
+          notes: r.notes,
+          createdAt: r.created_at,
+          updatedAt: r.updated_at,
+        };
+      }
+    } catch {
+      // Bỏ qua lỗi query DB, fallback sang tra cứu in-memory
+    }
+  }
+  const t = inMemoryTransfers.find((tr) => tr.lotId === lotId && tr.status === "PENDING");
+  if (t) {
+    const toOrg = inMemoryOrganizations.find((o) => o.id === t.toOrganizationId);
+    const fromOrg = inMemoryOrganizations.find((o) => o.id === t.fromOrganizationId);
+    return {
+      ...t,
+      toOrganizationName: toOrg ? toOrg.name : t.toOrganizationId,
+      fromOrganizationName: fromOrg ? fromOrg.name : t.fromOrganizationId,
+    };
+  }
+  return null;
+}
+
 // Idempotency cache for S-09 AC4: Chống double-click & retry tạo trùng lô thu hoạch
 const harvestIdempotencyCache = new Map();
 const IDEMPOTENCY_TTL_MS = 10 * 60 * 1000; // 10 phút
@@ -832,10 +888,14 @@ app.get(
             l.id, l.name, l.status, l.organization_id, l.created_at,
             l.farm_id, f.name AS farm_name,
             l.product_id, p.name AS product_name, p.unit AS product_unit,
-            l.initial_quantity, l.remaining_quantity, l.harvested_at
+            l.initial_quantity, l.remaining_quantity, l.harvested_at,
+            lt.id AS pending_transfer_id, lt.to_organization_id AS pending_to_org_id,
+            o_to.name AS pending_to_org_name, lt.created_at AS pending_created_at
           FROM lots l
           LEFT JOIN farms f ON l.farm_id = f.id
           LEFT JOIN products p ON l.product_id = p.id
+          LEFT JOIN lot_transfers lt ON l.id = lt.lot_id AND lt.status = 'PENDING'
+          LEFT JOIN organizations o_to ON lt.to_organization_id = o_to.id
         `;
         const conditions = [];
         const params = [];
@@ -917,6 +977,13 @@ app.get(
             remainingQuantity: r.remaining_quantity !== null && r.remaining_quantity !== undefined ? Number(r.remaining_quantity) : null,
             harvestedAt: r.harvested_at,
             createdAt: r.created_at,
+            pendingTransfer: r.pending_transfer_id ? {
+              id: r.pending_transfer_id,
+              toOrganizationId: r.pending_to_org_id,
+              toOrganizationName: r.pending_to_org_name || r.pending_to_org_id,
+              status: "PENDING",
+              createdAt: r.pending_created_at,
+            } : null,
           })),
           nextCursor,
           hasMore,
@@ -989,6 +1056,8 @@ app.get(
       lots: sliced.map((l) => {
         const farm = inMemoryFarms.find((f) => f.id === l.farmId);
         const product = inMemoryProducts.find((p) => p.id === l.productId);
+        const pending = inMemoryTransfers.find((t) => t.lotId === l.id && t.status === "PENDING");
+        const toOrg = pending ? inMemoryOrganizations.find((o) => o.id === pending.toOrganizationId) : null;
         return {
           id: l.id,
           name: l.name,
@@ -1003,6 +1072,13 @@ app.get(
           remainingQuantity: l.remainingQuantity !== undefined ? l.remainingQuantity : 100,
           harvestedAt: l.harvestedAt || "2026-09-30",
           createdAt: l.createdAt || "2026-09-30T00:00:00.000Z",
+          pendingTransfer: pending ? {
+            id: pending.id,
+            toOrganizationId: pending.toOrganizationId,
+            toOrganizationName: toOrg ? toOrg.name : pending.toOrganizationId,
+            status: "PENDING",
+            createdAt: pending.createdAt,
+          } : null,
         };
       }),
       nextCursor,
@@ -1079,6 +1155,8 @@ app.get(
       const initQty = rawLot.initialQuantity !== undefined ? rawLot.initialQuantity : rawLot.initial_quantity;
       const remQty = rawLot.remainingQuantity !== undefined ? rawLot.remainingQuantity : rawLot.remaining_quantity;
 
+      const pendingTransfer = await getPendingTransferForLot(rawLot.id);
+
       const lot = {
         id: rawLot.id,
         name: rawLot.name,
@@ -1095,6 +1173,7 @@ app.get(
         harvestedAt: rawLot.harvestedAt || rawLot.harvested_at || null,
         accessType: access.accessType,
         ancestors: access.ancestors,
+        pendingTransfer,
       };
 
       return res.status(200).json({ lot });
@@ -1952,6 +2031,546 @@ app.put(
   }
 );
 
+/**
+ * Danh sách tổ chức trong hệ thống (S-15: phục vụ chọn bên nhận khi bàn giao)
+ */
+app.get(
+  "/api/organizations",
+  requirePermission(["producer", "cooperative", "transporter", "distributor", "inspector", "org_admin", "admin"]),
+  async (req, res) => {
+    try {
+      if (pool) {
+        const result = await pool.query(
+          "SELECT id, name, type FROM organizations ORDER BY name ASC"
+        );
+        return res.status(200).json({ organizations: result.rows });
+      }
+      return res.status(200).json({ organizations: inMemoryOrganizations });
+    } catch (err) {
+      return res.status(500).json({ message: err.message });
+    }
+  }
+);
+
+/**
+ * S-15: Gửi yêu cầu bàn giao lô sang tổ chức khác ở trạng thái chờ xác nhận (PENDING).
+ * - Người đang giữ lô chọn một tổ chức khác để bàn giao.
+ * - Khi gửi yêu cầu thì CHƯA chuyển quyền sở hữu ngay, mà tạo trạng thái PENDING.
+ * - Trong thời gian chờ, lô vẫn thuộc tổ chức gửi.
+ * - Hệ thống lưu yêu cầu bàn giao, CHẶN tạo 2 yêu cầu pending cho cùng một lô (409 Conflict).
+ * - Chặn tự bàn giao cho chính mình (400 Bad Request).
+ * - Chặn người không sở hữu lô bàn giao (403 Forbidden).
+ * - Ghi sự kiện TRANSFER_INITIATED vào lịch sử chuỗi sự kiện có hash SHA-256 (batch_events).
+ */
+app.post(
+  ["/api/lots/:id/transfers", "/api/transfers"],
+  requirePermission(["producer", "cooperative", "transporter", "distributor", "org_admin", "admin"]),
+  async (req, res) => {
+    const lotId = req.params.id || req.body.lotId;
+    const { toOrganizationId, notes } = req.body;
+    const userId = req.auth.userId || req.auth.id;
+    const userOrgId = req.auth.organizationId;
+    const isAdmin = req.auth.roleId === "admin";
+
+    if (!lotId) {
+      return res.status(400).json({ message: "Mã lô hàng (lotId) là bắt buộc." });
+    }
+
+    if (!toOrganizationId || typeof toOrganizationId !== "string" || !toOrganizationId.trim()) {
+      return res.status(400).json({ message: "Tổ chức nhận (toOrganizationId) là bắt buộc." });
+    }
+
+    const trimmedToOrgId = toOrganizationId.trim();
+
+    try {
+      // 1. Tìm thông tin lô hàng và kiểm tra cách ly đa tổ chức (T-12)
+      let lot = null;
+      if (pool) {
+        const queryRes = await scopedQueryById(pool, req.auth, "lots", lotId);
+        if (queryRes.isCrossTenant) {
+          logSecurityEvent("CROSS_TENANT_ACCESS_DENIED", {
+            userId,
+            userEmail: req.auth.email,
+            userOrgId,
+            userRole: req.auth.roleId,
+            resourceType: "lots/transfers",
+            resourceId: lotId,
+            targetOrgId: queryRes.targetOrgId,
+            action: "TRANSFER",
+            ip: req.ip,
+            userAgent: req.get("User-Agent"),
+          });
+          return res.status(403).json({
+            message: "Truy cập bị từ chối: bạn chỉ có thể bàn giao lô hàng thuộc quyền quản lý của tổ chức mình.",
+          });
+        }
+        if (queryRes.row) {
+          const r = queryRes.row;
+          lot = {
+            id: r.id,
+            name: r.name,
+            status: r.status,
+            organizationId: r.organization_id,
+          };
+        }
+      } else {
+        const found = inMemoryLots.find((l) => l.id === lotId);
+        if (found) {
+          lot = { ...found };
+        }
+      }
+
+      if (!lot) {
+        return res.status(404).json({ message: "Không tìm thấy lô hàng." });
+      }
+
+      const fromOrgId = lot.organizationId;
+
+      // 2. Kiểm tra quyền sở hữu lô: Phải thuộc tổ chức hiện tại của user (trừ admin)
+      if (!isAdmin && fromOrgId !== userOrgId) {
+        logSecurityEvent("CROSS_TENANT_ACCESS_DENIED", {
+          userId,
+          userEmail: req.auth.email,
+          userOrgId,
+          userRole: req.auth.roleId,
+          resourceType: "lots/transfers",
+          resourceId: lotId,
+          targetOrgId: fromOrgId,
+          action: "TRANSFER",
+          ip: req.ip,
+          userAgent: req.get("User-Agent"),
+        });
+        return res.status(403).json({
+          message: "Truy cập bị từ chối: bạn chỉ có thể bàn giao lô hàng thuộc quyền quản lý của tổ chức mình.",
+        });
+      }
+
+      // 3. Chặn tự bàn giao cho chính tổ chức mình
+      if (trimmedToOrgId === fromOrgId) {
+        return res.status(400).json({
+          error: "SAME_ORGANIZATION_TRANSFER",
+          message: "Không thể bàn giao lô hàng cho chính tổ chức của bạn.",
+        });
+      }
+
+      // 4. Kiểm tra tổ chức nhận có tồn tại trong hệ thống không
+      let toOrgExists = false;
+      let toOrgName = trimmedToOrgId;
+      if (pool) {
+        const orgCheck = await pool.query("SELECT id, name FROM organizations WHERE id = $1", [trimmedToOrgId]);
+        if (orgCheck.rows[0]) {
+          toOrgExists = true;
+          toOrgName = orgCheck.rows[0].name;
+        }
+      } else {
+        const orgObj = inMemoryOrganizations.find((o) => o.id === trimmedToOrgId);
+        if (orgObj) {
+          toOrgExists = true;
+          toOrgName = orgObj.name;
+        }
+      }
+
+      if (!toOrgExists) {
+        return res.status(400).json({
+          message: "Tổ chức nhận không tồn tại trong hệ thống.",
+        });
+      }
+
+      // Lấy tên tổ chức gửi
+      let fromOrgName = fromOrgId;
+      if (pool) {
+        const fromCheck = await pool.query("SELECT name FROM organizations WHERE id = $1", [fromOrgId]);
+        if (fromCheck.rows[0]) fromOrgName = fromCheck.rows[0].name;
+      } else {
+        const fromObj = inMemoryOrganizations.find((o) => o.id === fromOrgId);
+        if (fromObj) fromOrgName = fromObj.name;
+      }
+
+      const transferId = "trf-" + crypto.randomUUID().slice(0, 8);
+      const cleanNotes = typeof notes === "string" ? notes.trim() : null;
+      const now = new Date();
+
+      // 5, 6, 7. Tạo bản ghi bàn giao và ghi sự kiện TRANSFER_INITIATED trong cùng một TRANSACTION nguyên tử (Atomicity)
+      if (pool) {
+        const client = await pool.connect();
+        try {
+          await client.query("BEGIN");
+
+          // 5.1 Kiểm tra xem lô đã có yêu cầu PENDING nào chưa (với FOR UPDATE để chống race condition)
+          const pendingCheck = await client.query(
+            "SELECT id, created_at FROM lot_transfers WHERE lot_id = $1 AND status = 'PENDING' FOR UPDATE",
+            [lotId]
+          );
+          if (pendingCheck.rows.length > 0) {
+            await client.query("ROLLBACK");
+            return res.status(409).json({
+              error: "ALREADY_PENDING_TRANSFER",
+              message: "Lô hàng đang có một yêu cầu bàn giao ở trạng thái Chờ xác nhận (PENDING). Không thể tạo thêm yêu cầu mới.",
+              pendingTransferId: pendingCheck.rows[0].id,
+            });
+          }
+
+          // 5.2 Thêm bản ghi bàn giao ở trạng thái PENDING
+          const insertRes = await client.query(
+            `INSERT INTO lot_transfers (
+              id, lot_id, from_organization_id, to_organization_id,
+              status, notes, created_by_user_id, created_at, updated_at
+            ) VALUES ($1, $2, $3, $4, 'PENDING', $5, $6, $7, $7)
+            RETURNING *`,
+            [transferId, lotId, fromOrgId, trimmedToOrgId, cleanNotes, userId, now]
+          );
+
+          // 5.3 Ghi nhận sự kiện bàn giao TRANSFER_INITIATED vào cùng transaction chuỗi băm SHA-256 (K-01 / S-10 / S-15)
+          const transferEvent = await appendBatchEvent(client, {
+            batchId: lotId,
+            eventType: "TRANSFER_INITIATED",
+            payload: {
+              transferId,
+              fromOrganizationId: fromOrgId,
+              fromOrganizationName: fromOrgName,
+              toOrganizationId: trimmedToOrgId,
+              toOrganizationName: toOrgName,
+              notes: cleanNotes,
+              status: "PENDING",
+            },
+            organizationId: fromOrgId,
+            actorUserId: userId,
+            occurredAt: now,
+          });
+
+          await client.query("COMMIT");
+
+          const r = insertRes.rows[0];
+          const createdTransfer = {
+            id: r.id,
+            lotId: r.lot_id,
+            fromOrganizationId: r.from_organization_id,
+            fromOrganizationName: fromOrgName,
+            toOrganizationId: r.to_organization_id,
+            toOrganizationName: toOrgName,
+            status: r.status,
+            notes: r.notes,
+            createdByUserId: r.created_by_user_id,
+            createdAt: r.created_at,
+            updatedAt: r.updated_at,
+          };
+
+          return res.status(201).json({
+            message: "Yêu cầu bàn giao lô hàng đã được gửi thành công ở trạng thái Chờ xác nhận (PENDING).",
+            transfer: createdTransfer,
+            event: {
+              id: transferEvent.id,
+              sequenceNo: transferEvent.sequenceNo,
+              eventHash: transferEvent.eventHash,
+            },
+          });
+        } catch (txErr) {
+          await client.query("ROLLBACK");
+          if (txErr.code === "23505" || (txErr.message && txErr.message.includes("idx_unique_pending_transfer_per_lot"))) {
+            return res.status(409).json({
+              error: "ALREADY_PENDING_TRANSFER",
+              message: "Lô hàng đang có một yêu cầu bàn giao ở trạng thái Chờ xác nhận (PENDING). Không thể tạo thêm yêu cầu mới.",
+            });
+          }
+          throw txErr;
+        } finally {
+          client.release();
+        }
+      } else {
+        // Chế độ in-memory: kiểm tra trùng lặp và hỗ trợ rollback nếu ghi hash event lỗi
+        const existingPending = inMemoryTransfers.find(
+          (t) => t.lotId === lotId && t.status === "PENDING"
+        );
+        if (existingPending) {
+          return res.status(409).json({
+            error: "ALREADY_PENDING_TRANSFER",
+            message: "Lô hàng đang có một yêu cầu bàn giao ở trạng thái Chờ xác nhận (PENDING). Không thể tạo thêm yêu cầu mới.",
+            pendingTransferId: existingPending.id,
+          });
+        }
+
+        const createdTransfer = {
+          id: transferId,
+          lotId,
+          fromOrganizationId: fromOrgId,
+          fromOrganizationName: fromOrgName,
+          toOrganizationId: trimmedToOrgId,
+          toOrganizationName: toOrgName,
+          status: "PENDING",
+          notes: cleanNotes,
+          createdByUserId: userId,
+          createdAt: now.toISOString(),
+          updatedAt: now.toISOString(),
+        };
+
+        inMemoryTransfers.push(createdTransfer);
+
+        let transferEvent;
+        try {
+          transferEvent = await appendBatchEvent(null, {
+            batchId: lotId,
+            eventType: "TRANSFER_INITIATED",
+            payload: {
+              transferId,
+              fromOrganizationId: fromOrgId,
+              fromOrganizationName: fromOrgName,
+              toOrganizationId: trimmedToOrgId,
+              toOrganizationName: toOrgName,
+              notes: cleanNotes,
+              status: "PENDING",
+            },
+            organizationId: fromOrgId,
+            actorUserId: userId,
+            occurredAt: now,
+          });
+        } catch (memErr) {
+          // Rollback in-memory transfer record
+          const idx = inMemoryTransfers.findIndex((t) => t.id === transferId);
+          if (idx >= 0) inMemoryTransfers.splice(idx, 1);
+          throw memErr;
+        }
+
+        return res.status(201).json({
+          message: "Yêu cầu bàn giao lô hàng đã được gửi thành công ở trạng thái Chờ xác nhận (PENDING).",
+          transfer: createdTransfer,
+          event: {
+            id: transferEvent.id,
+            sequenceNo: transferEvent.sequenceNo,
+            eventHash: transferEvent.eventHash,
+          },
+        });
+      }
+    } catch (err) {
+      if (err.code === "23505" || (err.message && err.message.includes("idx_unique_pending_transfer_per_lot"))) {
+        return res.status(409).json({
+          error: "ALREADY_PENDING_TRANSFER",
+          message: "Lô hàng đang có một yêu cầu bàn giao ở trạng thái Chờ xác nhận (PENDING).",
+        });
+      }
+      return res.status(500).json({ message: err.message });
+    }
+  }
+);
+
+/**
+ * Lấy danh sách yêu cầu bàn giao lô hàng (S-15, S-16)
+ * - Lọc theo status (PENDING, CONFIRMED, REJECTED)
+ * - Lọc theo type (outgoing: gửi đi, incoming: nhận về)
+ * - Lọc theo lotId
+ */
+app.get(
+  "/api/transfers",
+  requirePermission(["producer", "cooperative", "transporter", "distributor", "inspector", "org_admin", "admin"]),
+  async (req, res) => {
+    const isGlobal = req.auth.isInspector || req.auth.roleId === "admin";
+    const userOrgId = req.auth.organizationId;
+    const { status, type, lotId } = req.query;
+
+    try {
+      if (pool) {
+        let query = `
+          SELECT 
+            t.id, t.lot_id, t.from_organization_id, t.to_organization_id,
+            t.status, t.notes, t.created_by_user_id, t.resolved_by_user_id,
+            t.rejection_reason, t.created_at, t.updated_at,
+            l.name AS lot_name, l.status AS lot_status,
+            o_from.name AS from_organization_name,
+            o_to.name AS to_organization_name
+          FROM lot_transfers t
+          JOIN lots l ON t.lot_id = l.id
+          LEFT JOIN organizations o_from ON t.from_organization_id = o_from.id
+          LEFT JOIN organizations o_to ON t.to_organization_id = o_to.id
+          WHERE 1=1
+        `;
+        const params = [];
+
+        if (!isGlobal) {
+          if (type === "outgoing") {
+            params.push(userOrgId);
+            query += ` AND t.from_organization_id = $${params.length}`;
+          } else if (type === "incoming") {
+            params.push(userOrgId);
+            query += ` AND t.to_organization_id = $${params.length}`;
+          } else {
+            params.push(userOrgId);
+            query += ` AND (t.from_organization_id = $${params.length} OR t.to_organization_id = $${params.length})`;
+          }
+        }
+
+        if (status) {
+          params.push(status.toUpperCase());
+          query += ` AND t.status = $${params.length}`;
+        }
+
+        if (lotId) {
+          params.push(lotId);
+          query += ` AND t.lot_id = $${params.length}`;
+        }
+
+        query += " ORDER BY t.created_at DESC";
+
+        const result = await pool.query(query, params);
+        return res.status(200).json({
+          transfers: result.rows.map((r) => ({
+            id: r.id,
+            lotId: r.lot_id,
+            lotName: r.lot_name,
+            lotStatus: r.lot_status,
+            fromOrganizationId: r.from_organization_id,
+            fromOrganizationName: r.from_organization_name,
+            toOrganizationId: r.to_organization_id,
+            toOrganizationName: r.to_organization_name,
+            status: r.status,
+            notes: r.notes,
+            createdByUserId: r.created_by_user_id,
+            resolvedByUserId: r.resolved_by_user_id,
+            rejectionReason: r.rejection_reason,
+            createdAt: r.created_at,
+            updatedAt: r.updated_at,
+          })),
+        });
+      }
+
+      // In-memory fallback
+      let filtered = [...inMemoryTransfers];
+      if (!isGlobal) {
+        if (type === "outgoing") {
+          filtered = filtered.filter((t) => t.fromOrganizationId === userOrgId);
+        } else if (type === "incoming") {
+          filtered = filtered.filter((t) => t.toOrganizationId === userOrgId);
+        } else {
+          filtered = filtered.filter(
+            (t) => t.fromOrganizationId === userOrgId || t.toOrganizationId === userOrgId
+          );
+        }
+      }
+
+      if (status) {
+        const st = status.toUpperCase();
+        filtered = filtered.filter((t) => t.status === st);
+      }
+
+      if (lotId) {
+        filtered = filtered.filter((t) => t.lotId === lotId);
+      }
+
+      filtered.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+      return res.status(200).json({
+        transfers: filtered.map((t) => {
+          const lot = inMemoryLots.find((l) => l.id === t.lotId);
+          const fromOrg = inMemoryOrganizations.find((o) => o.id === t.fromOrganizationId);
+          const toOrg = inMemoryOrganizations.find((o) => o.id === t.toOrganizationId);
+          return {
+            ...t,
+            lotName: lot ? lot.name : t.lotId,
+            lotStatus: lot ? lot.status : "Đã thu hoạch",
+            fromOrganizationName: fromOrg ? fromOrg.name : t.fromOrganizationId,
+            toOrganizationName: toOrg ? toOrg.name : t.toOrganizationId,
+          };
+        }),
+      });
+    } catch (err) {
+      return res.status(500).json({ message: err.message });
+    }
+  }
+);
+
+/**
+ * Lấy lịch sử yêu cầu bàn giao của một lô hàng cụ thể
+ */
+app.get(
+  "/api/lots/:id/transfers",
+  requirePermission(["producer", "cooperative", "transporter", "distributor", "inspector", "org_admin", "admin"]),
+  async (req, res) => {
+    const lotId = req.params.id;
+    const isGlobal = req.auth.isInspector || req.auth.roleId === "admin";
+    const userOrgId = req.auth.organizationId;
+
+    try {
+      if (pool) {
+        const result = await pool.query(
+          `SELECT 
+            t.id, t.lot_id, t.from_organization_id, t.to_organization_id,
+            t.status, t.notes, t.created_by_user_id, t.resolved_by_user_id,
+            t.rejection_reason, t.created_at, t.updated_at,
+            o_from.name AS from_organization_name,
+            o_to.name AS to_organization_name
+          FROM lot_transfers t
+          LEFT JOIN organizations o_from ON t.from_organization_id = o_from.id
+          LEFT JOIN organizations o_to ON t.to_organization_id = o_to.id
+          WHERE t.lot_id = $1
+          ORDER BY t.created_at DESC`,
+          [lotId]
+        );
+
+        if (!isGlobal) {
+          const hasAccess = result.rows.some(
+            (r) => r.from_organization_id === userOrgId || r.to_organization_id === userOrgId
+          );
+          if (!hasAccess) {
+            const lotQueryRes = await scopedQueryById(pool, req.auth, "lots", lotId);
+            if (!lotQueryRes.row || lotQueryRes.isCrossTenant) {
+              return res.status(403).json({
+                message: "Truy cập bị từ chối: bạn không có quyền xem lịch sử bàn giao của lô này.",
+              });
+            }
+          }
+        }
+
+        return res.status(200).json({
+          transfers: result.rows.map((r) => ({
+            id: r.id,
+            lotId: r.lot_id,
+            fromOrganizationId: r.from_organization_id,
+            fromOrganizationName: r.from_organization_name,
+            toOrganizationId: r.to_organization_id,
+            toOrganizationName: r.to_organization_name,
+            status: r.status,
+            notes: r.notes,
+            createdByUserId: r.created_by_user_id,
+            resolvedByUserId: r.resolved_by_user_id,
+            rejectionReason: r.rejection_reason,
+            createdAt: r.created_at,
+            updatedAt: r.updated_at,
+          })),
+        });
+      }
+
+      // In-memory fallback
+      const transfers = inMemoryTransfers.filter((t) => t.lotId === lotId);
+      if (!isGlobal) {
+        const lot = inMemoryLots.find((l) => l.id === lotId);
+        const hasAccess =
+          (lot && lot.organizationId === userOrgId) ||
+          transfers.some((t) => t.fromOrganizationId === userOrgId || t.toOrganizationId === userOrgId);
+
+        if (!hasAccess) {
+          return res.status(403).json({
+            message: "Truy cập bị từ chối: bạn không có quyền xem lịch sử bàn giao của lô này.",
+          });
+        }
+      }
+
+      transfers.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+      return res.status(200).json({
+        transfers: transfers.map((t) => {
+          const fromOrg = inMemoryOrganizations.find((o) => o.id === t.fromOrganizationId);
+          const toOrg = inMemoryOrganizations.find((o) => o.id === t.toOrganizationId);
+          return {
+            ...t,
+            fromOrganizationName: fromOrg ? fromOrg.name : t.fromOrganizationId,
+            toOrganizationName: toOrg ? toOrg.name : t.toOrganizationId,
+          };
+        }),
+      });
+    } catch (err) {
+      return res.status(500).json({ message: err.message });
+    }
+  }
+);
+
 function sendFrontendFile(res, filePath) {
   res.set({
     "Cache-Control": "no-cache, no-store, must-revalidate, max-age=0",
@@ -2090,6 +2709,8 @@ module.exports = {
   verifyBatchIntegrity,
   inMemoryBatchEvents,
   inMemoryIntegrityChecks,
+  inMemoryOrganizations,
+  inMemoryTransfers,
   seedDemoEvents,
   setAppendHookForTesting,
 };
