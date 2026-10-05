@@ -237,4 +237,27 @@ test("T-16 & S-07: Products API lifecycle, permissions, and validation", async (
   assert.equal(putSuccess.status, 200);
   assert.equal(putSuccess.body.product.name, "Khoai tây Đà Lạt");
   assert.equal(putSuccess.body.product.unit, "thung");
+
+  // 13. GET /api/products/:id returns product details and lots count (200)
+  const getProdRes = await request(server, {
+    hostname: "127.0.0.1",
+    port,
+    path: `/api/products/${createdId}`,
+    method: "GET",
+    headers: { Cookie: producerCookie },
+  });
+  assert.equal(getProdRes.status, 200);
+  assert.equal(getProdRes.body.product.id, createdId);
+  assert.equal(getProdRes.body.product.name, "Khoai tây Đà Lạt");
+  assert.equal(typeof getProdRes.body.lotsCount, "number");
+
+  // 14. GET /api/products/:id non-existent returns 404
+  const getProd404 = await request(server, {
+    hostname: "127.0.0.1",
+    port,
+    path: "/api/products/PROD-NON-EXISTENT",
+    method: "GET",
+    headers: { Cookie: producerCookie },
+  });
+  assert.equal(getProd404.status, 404);
 });

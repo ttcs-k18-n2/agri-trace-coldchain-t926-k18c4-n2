@@ -338,42 +338,32 @@
 </head>
 <body class="bg-gradient">
   <!-- Dynamic Header / App Shell -->
+  <!-- Dynamic Header / App Shell -->
   <header class="app-header">
-    <div class="header-inner">
-      <div class="header-left">
-        <a href="/lots.html" class="logo-link">
-          <div class="logo-icon">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
-          </div>
-          <span class="logo-text">AgriTrace</span>
-          <span class="logo-badge">ColdChain</span>
-        </a>
+    <div class="header-container">
+      <a href="/lots.html" class="brand-link">
+        <div class="brand-icon">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 2a10 10 0 0 1 10 10c0 5.523-4.477 10-10 10S2 17.523 2 12c0-2.2.7-4.2 1.9-5.9"/>
+            <path d="M12 6v6l4 2"/>
+            <path d="m4.93 4.93 4.24 4.24"/>
+          </svg>
+        </div>
+        <div class="brand-info">
+          <span class="brand-title">AGRI TRACE</span>
+          <span class="brand-tag">Chuỗi lạnh nông sản</span>
+        </div>
+      </a>
 
-        <nav class="main-nav" aria-label="Điều hướng chính">
-          <a href="/lots.html" class="nav-item active" id="navLots">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/></svg>
-            <span>Lô hàng</span>
-          </a>
-          <a href="/harvest.html" class="nav-item" id="navHarvest">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 14 14"/></svg>
-            <span>Thu hoạch</span>
-          </a>
-          <a href="/farms.html" class="nav-item" id="navFarms">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
-            <span>Thửa đất</span>
-          </a>
-          <a href="/products.html" class="nav-item" id="navProducts">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
-            <span>Sản phẩm</span>
-          </a>
-          <a href="/integrity.html" class="nav-item" id="navIntegrity" style="display: none;">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-            <span>Kiểm tra toàn vẹn</span>
-          </a>
-        </nav>
-      </div>
+      <nav class="nav-links" aria-label="Điều hướng chính">
+        <a href="/lots.html" class="nav-item active" id="navLots"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m7.5 4.27 9 5.15"/><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg><span>Lô hàng</span></a>
+        <a href="/farms.html" class="nav-item" id="navFarms"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 11v8a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-7a1 1 0 0 1 1-1h3"/><path d="M4 11V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v7"/><path d="M14 15v5a1 1 0 0 1-1 1h-2a1 1 0 0 1-1-1v-5"/><path d="M17 11V7a1 1 0 0 1 1-1h3a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1h-3a1 1 0 0 1-1-1v-3"/><path d="M3 21h18"/></svg><span>Thửa đất</span></a>
+        <a href="/products.html" class="nav-item" id="navProducts"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="m10 15 5-3-5-3v6Z"/></svg><span>Sản phẩm</span></a>
+        <a href="/harvest.html" class="nav-item" id="navHarvest"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg><span>Ghi nhận thu hoạch</span></a>
+        <a href="/integrity.html" class="nav-item" id="navIntegrity"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg><span>Kiểm tra toàn vẹn</span></a>
+      </nav>
 
-      <div class="header-right">
+      <div class="user-controls">
         <div class="user-pill" id="userPill">
           <div class="user-avatar" id="userAvatar"><span class="skeleton-shimmer skeleton-avatar"></span></div>
           <div class="user-meta">
@@ -384,9 +374,8 @@
             </div>
           </div>
         </div>
-
-        <button id="logout" class="btn-logout" onclick="window.handleLogout ? window.handleLogout(event) : (sessionStorage.clear(), window.location.href='/index.html')" title="Đăng xuất">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+        <button id="logout" class="btn-logout" onclick="window.handleLogout ? window.handleLogout(event) : (sessionStorage.clear(), window.location.href='/index.html')" title="Đăng xuất khỏi hệ thống">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
           <span>Đăng xuất</span>
         </button>
       </div>
@@ -510,10 +499,42 @@
                 <span id="copyText">Sao chép</span>
               </button>
             </div>
-            <span class="status-pill success">
-              <span class="status-dot"></span>
-              <span>${escapeHtml(lot.status || "Đã thu hoạch")}</span>
-            </span>
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span class="status-pill success">
+                <span class="status-dot"></span>
+                <span>${escapeHtml(lot.status || "Đã thu hoạch")}</span>
+              </span>
+              <div class="dropdown-menu-wrapper">
+                <button type="button" class="btn-icon-kebab" id="btn-hero-more" onclick="toggleHeroDropdown(event)" title="Thao tác khác" aria-label="Thao tác khác">•••</button>
+                <div class="dropdown-popover" id="dropdown-hero-lot">
+                  ${isInspectorOrAdmin ? `
+                    <a href="/integrity.html?lotId=${encodeURIComponent(lot.id)}" class="dropdown-item">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                      <span>Kiểm tra toàn vẹn</span>
+                    </a>
+                  ` : ""}
+                  <button type="button" class="dropdown-item" onclick="copyLotCode('${escapeHtml(lot.id)}')">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                    <span>Sao chép mã định danh</span>
+                  </button>
+                  ${lot.productId ? `
+                    <a href="/lots.html?productId=${encodeURIComponent(lot.productId)}" class="dropdown-item">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="m10 15 5-3-5-3v6Z"/></svg>
+                      <span>Xem lô cùng sản phẩm</span>
+                    </a>
+                  ` : ""}
+                  <a href="/farms.html" class="dropdown-item">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+                    <span>Xem thửa đất</span>
+                  </a>
+                  <div class="dropdown-divider"></div>
+                  <a href="/lots.html" class="dropdown-item">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+                    <span>Về danh sách lô</span>
+                  </a>
+                </div>
+              </div>
+            </div>
           </div>
 
           <h1 class="hero-title">${escapeHtml(displayName)}</h1>
@@ -700,6 +721,14 @@
         .replace(/>/g, "&gt;")
         .replace(/"/g, "&quot;")
         .replace(/'/g, "&#039;");
+    }
+
+    function toggleHeroDropdown(e) {
+      if (e) e.stopPropagation();
+      const popover = document.getElementById("dropdown-hero-lot");
+      if (popover) {
+        popover.classList.toggle("active");
+      }
     }
 
     initPage();
