@@ -859,6 +859,21 @@
   </div>
 
   <script>
+    // Kiểm tra nếu đã có phiên đăng nhập hợp lệ thì tự động chuyển sang trang lô hàng
+    (async function checkExistingAuth() {
+      const urlParams = new URLSearchParams(window.location.search);
+      if (urlParams.has("forceLogin") || urlParams.has("returnTo")) return;
+      try {
+        const res = await fetch("/api/me", { credentials: "same-origin" });
+        if (res.ok) {
+          const data = await res.json();
+          if (data && data.user) {
+            window.location.replace("/lots.html");
+          }
+        }
+      } catch (_) {}
+    })();
+
     /* ================= Modal Popup Control ================= */
     const modal = document.getElementById("demoModal");
     const openBtn = document.getElementById("openModalBtn");
