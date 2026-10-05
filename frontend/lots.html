@@ -400,6 +400,13 @@
       <!-- Dynamic lots inserted here -->
     </div>
 
+    <!-- Load More Container -->
+    <div id="loadMoreContainer" style="display: none; text-align: center; margin: 28px 0;">
+      <button type="button" id="btnLoadMore" class="btn btn-secondary" style="padding: 10px 28px; border-radius: var(--radius-md); font-weight: 600; cursor: pointer;">
+        <span>Tải thêm lô hàng</span>
+      </button>
+    </div>
+
     <!-- Incoming Transfers Container (S-15: Bên nhận xem danh sách chờ xác nhận) -->
     <div id="incomingSection" style="display: none;" aria-live="polite">
       <!-- Dynamic incoming transfers inserted here -->
@@ -1011,6 +1018,16 @@
 
       try {
         const res = await fetch("/api/transfers?type=incoming&status=PENDING", { credentials: "same-origin" });
+        if (res.status === 401) {
+          container.innerHTML = `
+            <div style="text-align: center; padding: 40px; color: #dc2626;">
+              <p style="font-weight: 600; margin-bottom: 8px;">Phiên đăng nhập đã hết hạn.</p>
+              <p style="font-size: 13.5px; color: var(--color-text-muted); margin-bottom: 16px;">Vui lòng đăng nhập lại để xem danh sách yêu cầu bàn giao.</p>
+              <a href="/index.html" class="btn btn-primary" style="text-decoration: none; display: inline-block;">Đăng nhập lại</a>
+            </div>
+          `;
+          return;
+        }
         if (!res.ok) throw new Error("Không thể tải danh sách bàn giao từ máy chủ.");
         const data = await res.json();
         const transfers = data.transfers || [];
@@ -1170,8 +1187,18 @@
     });
 
     // Load More click
-    document.getElementById("btnLoadMore").addEventListener("click", () => {
-      fetchLots(false);
+    const btnLoadMore = document.getElementById("btnLoadMore");
+    if (btnLoadMore) {
+      btnLoadMore.addEventListener("click", () => {
+        fetchLots(false);
+      });
+    }
+
+    // Lắng nghe khôi phục trang từ bộ nhớ đệm trình duyệt (bfcache) khi vuốt quay lại
+    window.addEventListener("pageshow", (event) => {
+      if (event.persisted) {
+        loadPage();
+      }
     });
 
     loadPage();
