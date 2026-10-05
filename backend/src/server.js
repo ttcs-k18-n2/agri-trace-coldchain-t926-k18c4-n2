@@ -2571,6 +2571,454 @@ app.get(
   }
 );
 
+/**
+ * Xác nhận tiếp nhận bàn giao lô hàng (S-16, T-37)
+ * - Chỉ tổ chức tiếp nhận (to_organization_id) mới có quyền gọi.
+ * - Kiểm tra transfer đang ở trạng thái PENDING; nếu đã xử lý -> 409 Conflict.
+ * - Trong cùng transaction nguyên tử:
+ *   + Cập nhật lots.organization_id = to_organization_id (chuyển quyền sở hữu lô).
+ *   + Cập nhật lot_transfers.status = 'CONFIRMED', resolved_by_user_id = user.id.
+ *   + Ghi sự kiện TRANSFER_CONFIRMED vào chuỗi băm SHA-256 (batch_events).
+ *   + Nếu ghi event lỗi -> rollback toàn bộ (kể cả việc đổi chủ lô).
+ */
+app.post(
+  "/api/transfers/:id/confirm",
+  requirePermission(["producer", "cooperative", "transporter", "distributor", "org_admin", "admin"]),
+  async (req, res) => {
+    if (req.auth.isInspector || req.auth.roleId === "inspector") {
+      return res.status(403).json({
+        error: "INSPECTOR_FORBIDDEN",
+        message: "Cán bộ kiểm tra (Inspector) chỉ có quyền đọc, không được phép xác nhận bàn giao.",
+      });
+    }
+
+    const transferId = req.params.id;
+    const userId = req.auth.id;
+    const userOrgId = req.auth.organizationId;
+    const now = new Date();
+
+    try {
+      if (pool) {
+        const client = await pool.connect();
+        try {
+          await client.query("BEGIN");
+
+          const trRes = await client.query(
+            `SELECT t.*, l.name AS lot_name, l.organization_id AS current_lot_org_id,
+                    o_from.name AS from_org_name, o_to.name AS to_org_name
+             FROM lot_transfers t
+             JOIN lots l ON t.lot_id = l.id
+             LEFT JOIN organizations o_from ON t.from_organization_id = o_from.id
+             LEFT JOIN organizations o_to ON t.to_organization_id = o_to.id
+             WHERE t.id = $1 FOR UPDATE`,
+            [transferId]
+          );
+
+          if (trRes.rows.length === 0) {
+            await client.query("ROLLBACK");
+            return res.status(404).json({
+              error: "TRANSFER_NOT_FOUND",
+              message: "Yêu cầu bàn giao không tồn tại.",
+            });
+          }
+
+          const tr = trRes.rows[0];
+
+          // S-16 AC4: Chỉ tổ chức tiếp nhận mới được xác nhận
+          if (userOrgId !== tr.to_organization_id) {
+            await client.query("ROLLBACK");
+            return res.status(403).json({
+              error: "FORBIDDEN",
+              message: "Chỉ tổ chức tiếp nhận mới có quyền xác nhận bàn giao lô hàng.",
+            });
+          }
+
+          // Kiểm tra trạng thái: chỉ PENDING mới được xử lý
+          if (tr.status !== "PENDING") {
+            await client.query("ROLLBACK");
+            return res.status(409).json({
+              error: "TRANSFER_ALREADY_RESOLVED",
+              message: `Yêu cầu bàn giao đã được xử lý trước đó với trạng thái: ${tr.status}. Không thể xử lý lần hai.`,
+            });
+          }
+
+          // 1. Chuyển quyền sở hữu lô sang tổ chức nhận (S-16 AC1)
+          await client.query(
+            "UPDATE lots SET organization_id = $1, updated_at = $2 WHERE id = $3",
+            [tr.to_organization_id, now, tr.lot_id]
+          );
+
+          // 2. Cập nhật trạng thái transfer thành CONFIRMED và lưu resolved_by_user_id (S-16 AC1)
+          const updateRes = await client.query(
+            `UPDATE lot_transfers 
+             SET status = 'CONFIRMED', resolved_by_user_id = $1, updated_at = $2 
+             WHERE id = $3 
+             RETURNING *`,
+            [userId, now, tr.id]
+          );
+
+          // 3. Ghi event mới TRANSFER_CONFIRMED vào chuỗi băm SHA-256 bảo chứng (K-01 / S-10 / S-16)
+          const confirmEvent = await appendBatchEvent(client, {
+            batchId: tr.lot_id,
+            eventType: "TRANSFER_CONFIRMED",
+            payload: {
+              transferId: tr.id,
+              fromOrganizationId: tr.from_organization_id,
+              fromOrganizationName: tr.from_org_name || tr.from_organization_id,
+              toOrganizationId: tr.to_organization_id,
+              toOrganizationName: tr.to_org_name || tr.to_organization_id,
+              resolvedByUserId: userId,
+              notes: tr.notes,
+              status: "CONFIRMED",
+            },
+            organizationId: tr.to_organization_id,
+            actorUserId: userId,
+            occurredAt: now,
+          });
+
+          await client.query("COMMIT");
+
+          const updated = updateRes.rows[0];
+          return res.status(200).json({
+            message: "Xác nhận tiếp nhận bàn giao thành công. Quyền sở hữu lô hàng đã được chuyển giao sang tổ chức của bạn.",
+            transfer: {
+              id: updated.id,
+              lotId: updated.lot_id,
+              fromOrganizationId: updated.from_organization_id,
+              fromOrganizationName: tr.from_org_name,
+              toOrganizationId: updated.to_organization_id,
+              toOrganizationName: tr.to_org_name,
+              status: updated.status,
+              notes: updated.notes,
+              createdByUserId: updated.created_by_user_id,
+              resolvedByUserId: updated.resolved_by_user_id,
+              rejectionReason: updated.rejection_reason,
+              createdAt: updated.created_at,
+              updatedAt: updated.updated_at,
+            },
+            event: {
+              id: confirmEvent.id,
+              sequenceNo: confirmEvent.sequenceNo,
+              eventHash: confirmEvent.eventHash,
+            },
+          });
+        } catch (txErr) {
+          await client.query("ROLLBACK");
+          throw txErr;
+        } finally {
+          client.release();
+        }
+      } else {
+        // Fallback in-memory
+        const tr = inMemoryTransfers.find((t) => t.id === transferId);
+        if (!tr) {
+          return res.status(404).json({
+            error: "TRANSFER_NOT_FOUND",
+            message: "Yêu cầu bàn giao không tồn tại.",
+          });
+        }
+
+        // S-16 AC4: Chỉ tổ chức tiếp nhận mới được xác nhận
+        if (userOrgId !== tr.toOrganizationId) {
+          return res.status(403).json({
+            error: "FORBIDDEN",
+            message: "Chỉ tổ chức tiếp nhận mới có quyền xác nhận bàn giao lô hàng.",
+          });
+        }
+
+        if (tr.status !== "PENDING") {
+          return res.status(409).json({
+            error: "TRANSFER_ALREADY_RESOLVED",
+            message: `Yêu cầu bàn giao đã được xử lý trước đó với trạng thái: ${tr.status}. Không thể xử lý lần hai.`,
+          });
+        }
+
+        const lot = inMemoryLots.find((l) => l.id === tr.lotId);
+        if (!lot) {
+          return res.status(404).json({ error: "LOT_NOT_FOUND", message: "Lô hàng không tồn tại." });
+        }
+
+        const oldLotOrgId = lot.organizationId;
+        const oldTrStatus = tr.status;
+        const oldTrResolvedBy = tr.resolvedByUserId;
+        const oldTrUpdatedAt = tr.updatedAt;
+
+        // 1. Đổi lots.organization_id sang tổ chức nhận (S-16 AC1)
+        lot.organizationId = tr.toOrganizationId;
+        tr.status = "CONFIRMED";
+        tr.resolvedByUserId = userId;
+        tr.updatedAt = now.toISOString();
+
+        let confirmEvent;
+        try {
+          const fromOrg = inMemoryOrganizations.find((o) => o.id === tr.fromOrganizationId);
+          const toOrg = inMemoryOrganizations.find((o) => o.id === tr.toOrganizationId);
+
+          confirmEvent = await appendBatchEvent(null, {
+            batchId: tr.lotId,
+            eventType: "TRANSFER_CONFIRMED",
+            payload: {
+              transferId: tr.id,
+              fromOrganizationId: tr.fromOrganizationId,
+              fromOrganizationName: fromOrg ? fromOrg.name : tr.fromOrganizationId,
+              toOrganizationId: tr.toOrganizationId,
+              toOrganizationName: toOrg ? toOrg.name : tr.toOrganizationId,
+              resolvedByUserId: userId,
+              notes: tr.notes,
+              status: "CONFIRMED",
+            },
+            organizationId: tr.toOrganizationId,
+            actorUserId: userId,
+            occurredAt: now,
+          });
+        } catch (memErr) {
+          // Rollback nguyên tử cả đổi chủ và transfer nếu ghi event lỗi
+          lot.organizationId = oldLotOrgId;
+          tr.status = oldTrStatus;
+          tr.resolvedByUserId = oldTrResolvedBy;
+          tr.updatedAt = oldTrUpdatedAt;
+          throw memErr;
+        }
+
+        return res.status(200).json({
+          message: "Xác nhận tiếp nhận bàn giao thành công. Quyền sở hữu lô hàng đã được chuyển giao sang tổ chức của bạn.",
+          transfer: { ...tr },
+          event: {
+            id: confirmEvent.id,
+            sequenceNo: confirmEvent.sequenceNo,
+            eventHash: confirmEvent.eventHash,
+          },
+        });
+      }
+    } catch (err) {
+      return res.status(500).json({ message: err.message });
+    }
+  }
+);
+
+/**
+ * Từ chối tiếp nhận bàn giao lô hàng (S-16, T-37)
+ * - Chỉ tổ chức tiếp nhận (to_organization_id) mới có quyền gọi.
+ * - Yêu cầu body có "reason" bắt buộc và có ít nhất 10 ký tự (Jira T-38, S-16 AC3).
+ * - Lô hàng VẪN THUỘC TỔ CHỨC GỬI (lots.organization_id KHÔNG ĐỔI) (S-16 AC2).
+ * - Cập nhật lot_transfers.status = 'REJECTED', resolved_by_user_id, rejection_reason.
+ * - Ghi sự kiện TRANSFER_REJECTED kèm lý do vào chuỗi băm SHA-256 (batch_events).
+ */
+app.post(
+  "/api/transfers/:id/reject",
+  requirePermission(["producer", "cooperative", "transporter", "distributor", "org_admin", "admin"]),
+  async (req, res) => {
+    if (req.auth.isInspector || req.auth.roleId === "inspector") {
+      return res.status(403).json({
+        error: "INSPECTOR_FORBIDDEN",
+        message: "Cán bộ kiểm tra (Inspector) chỉ có quyền đọc, không được phép từ chối bàn giao.",
+      });
+    }
+
+    const { reason } = req.body || {};
+    const cleanReason = typeof reason === "string" ? reason.trim() : "";
+
+    // S-16 AC3: Lý do bắt buộc, Jira T-38 yêu cầu ít nhất 10 ký tự
+    if (!cleanReason || cleanReason.length < 10) {
+      return res.status(400).json({
+        error: "INVALID_REASON",
+        message: "Lý do từ chối là bắt buộc và phải có ít nhất 10 ký tự.",
+      });
+    }
+
+    const transferId = req.params.id;
+    const userId = req.auth.id;
+    const userOrgId = req.auth.organizationId;
+    const now = new Date();
+
+    try {
+      if (pool) {
+        const client = await pool.connect();
+        try {
+          await client.query("BEGIN");
+
+          const trRes = await client.query(
+            `SELECT t.*, l.name AS lot_name, l.organization_id AS current_lot_org_id,
+                    o_from.name AS from_org_name, o_to.name AS to_org_name
+             FROM lot_transfers t
+             JOIN lots l ON t.lot_id = l.id
+             LEFT JOIN organizations o_from ON t.from_organization_id = o_from.id
+             LEFT JOIN organizations o_to ON t.to_organization_id = o_to.id
+             WHERE t.id = $1 FOR UPDATE`,
+            [transferId]
+          );
+
+          if (trRes.rows.length === 0) {
+            await client.query("ROLLBACK");
+            return res.status(404).json({
+              error: "TRANSFER_NOT_FOUND",
+              message: "Yêu cầu bàn giao không tồn tại.",
+            });
+          }
+
+          const tr = trRes.rows[0];
+
+          // S-16 AC4: Chỉ tổ chức tiếp nhận mới được từ chối
+          if (userOrgId !== tr.to_organization_id) {
+            await client.query("ROLLBACK");
+            return res.status(403).json({
+              error: "FORBIDDEN",
+              message: "Chỉ tổ chức tiếp nhận mới có quyền từ chối bàn giao lô hàng.",
+            });
+          }
+
+          // Kiểm tra trạng thái: chỉ PENDING mới được xử lý
+          if (tr.status !== "PENDING") {
+            await client.query("ROLLBACK");
+            return res.status(409).json({
+              error: "TRANSFER_ALREADY_RESOLVED",
+              message: `Yêu cầu bàn giao đã được xử lý trước đó với trạng thái: ${tr.status}. Không thể xử lý lần hai.`,
+            });
+          }
+
+          // S-16 AC2: Lô hàng vẫn thuộc bên gửi (lots.organization_id KHÔNG ĐỔI)
+          // Cập nhật trạng thái transfer thành REJECTED, lưu lý do và resolved_by_user_id
+          const updateRes = await client.query(
+            `UPDATE lot_transfers 
+             SET status = 'REJECTED', resolved_by_user_id = $1, rejection_reason = $2, updated_at = $3 
+             WHERE id = $4 
+             RETURNING *`,
+            [userId, cleanReason, now, tr.id]
+          );
+
+          // Ghi event mới TRANSFER_REJECTED vào chuỗi băm SHA-256 bảo chứng (K-01 / S-10 / S-16)
+          const rejectEvent = await appendBatchEvent(client, {
+            batchId: tr.lot_id,
+            eventType: "TRANSFER_REJECTED",
+            payload: {
+              transferId: tr.id,
+              fromOrganizationId: tr.from_organization_id,
+              fromOrganizationName: tr.from_org_name || tr.from_organization_id,
+              toOrganizationId: tr.to_organization_id,
+              toOrganizationName: tr.to_org_name || tr.to_organization_id,
+              resolvedByUserId: userId,
+              reason: cleanReason,
+              status: "REJECTED",
+            },
+            organizationId: tr.to_organization_id,
+            actorUserId: userId,
+            occurredAt: now,
+          });
+
+          await client.query("COMMIT");
+
+          const updated = updateRes.rows[0];
+          return res.status(200).json({
+            message: "Từ chối tiếp nhận bàn giao thành công. Lô hàng vẫn thuộc quyền sở hữu của bên gửi.",
+            transfer: {
+              id: updated.id,
+              lotId: updated.lot_id,
+              fromOrganizationId: updated.from_organization_id,
+              fromOrganizationName: tr.from_org_name,
+              toOrganizationId: updated.to_organization_id,
+              toOrganizationName: tr.to_org_name,
+              status: updated.status,
+              notes: updated.notes,
+              createdByUserId: updated.created_by_user_id,
+              resolvedByUserId: updated.resolved_by_user_id,
+              rejectionReason: updated.rejection_reason,
+              createdAt: updated.created_at,
+              updatedAt: updated.updated_at,
+            },
+            event: {
+              id: rejectEvent.id,
+              sequenceNo: rejectEvent.sequenceNo,
+              eventHash: rejectEvent.eventHash,
+            },
+          });
+        } catch (txErr) {
+          await client.query("ROLLBACK");
+          throw txErr;
+        } finally {
+          client.release();
+        }
+      } else {
+        // Fallback in-memory
+        const tr = inMemoryTransfers.find((t) => t.id === transferId);
+        if (!tr) {
+          return res.status(404).json({
+            error: "TRANSFER_NOT_FOUND",
+            message: "Yêu cầu bàn giao không tồn tại.",
+          });
+        }
+
+        // S-16 AC4: Chỉ tổ chức tiếp nhận mới được từ chối
+        if (userOrgId !== tr.toOrganizationId) {
+          return res.status(403).json({
+            error: "FORBIDDEN",
+            message: "Chỉ tổ chức tiếp nhận mới có quyền từ chối bàn giao lô hàng.",
+          });
+        }
+
+        if (tr.status !== "PENDING") {
+          return res.status(409).json({
+            error: "TRANSFER_ALREADY_RESOLVED",
+            message: `Yêu cầu bàn giao đã được xử lý trước đó với trạng thái: ${tr.status}. Không thể xử lý lần hai.`,
+          });
+        }
+
+        const oldTrStatus = tr.status;
+        const oldTrResolvedBy = tr.resolvedByUserId;
+        const oldTrReason = tr.rejectionReason;
+        const oldTrUpdatedAt = tr.updatedAt;
+
+        // Lô hàng vẫn thuộc bên gửi (lots.organization_id KHÔNG ĐỔI)
+        tr.status = "REJECTED";
+        tr.resolvedByUserId = userId;
+        tr.rejectionReason = cleanReason;
+        tr.updatedAt = now.toISOString();
+
+        let rejectEvent;
+        try {
+          const fromOrg = inMemoryOrganizations.find((o) => o.id === tr.fromOrganizationId);
+          const toOrg = inMemoryOrganizations.find((o) => o.id === tr.toOrganizationId);
+
+          rejectEvent = await appendBatchEvent(null, {
+            batchId: tr.lotId,
+            eventType: "TRANSFER_REJECTED",
+            payload: {
+              transferId: tr.id,
+              fromOrganizationId: tr.fromOrganizationId,
+              fromOrganizationName: fromOrg ? fromOrg.name : tr.fromOrganizationId,
+              toOrganizationId: tr.toOrganizationId,
+              toOrganizationName: toOrg ? toOrg.name : tr.toOrganizationId,
+              resolvedByUserId: userId,
+              reason: cleanReason,
+              status: "REJECTED",
+            },
+            organizationId: tr.toOrganizationId,
+            actorUserId: userId,
+            occurredAt: now,
+          });
+        } catch (memErr) {
+          tr.status = oldTrStatus;
+          tr.resolvedByUserId = oldTrResolvedBy;
+          tr.rejectionReason = oldTrReason;
+          tr.updatedAt = oldTrUpdatedAt;
+          throw memErr;
+        }
+
+        return res.status(200).json({
+          message: "Từ chối tiếp nhận bàn giao thành công. Lô hàng vẫn thuộc quyền sở hữu của bên gửi.",
+          transfer: { ...tr },
+          event: {
+            id: rejectEvent.id,
+            sequenceNo: rejectEvent.sequenceNo,
+            eventHash: rejectEvent.eventHash,
+          },
+        });
+      }
+    } catch (err) {
+      return res.status(500).json({ message: err.message });
+    }
+  }
+);
+
 function sendFrontendFile(res, filePath) {
   res.set({
     "Cache-Control": "no-cache, no-store, must-revalidate, max-age=0",
