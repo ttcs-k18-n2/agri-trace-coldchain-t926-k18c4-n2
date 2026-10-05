@@ -1,5 +1,8 @@
 # Sprint 1 — Hạ tầng + đăng nhập + thửa đất
 
+> **Lưu ý workflow hiện tại (05/10/2026):** tài liệu này lưu lại cách thực thi lịch sử của Sprint 1. Repo hiện đã chuyển sang **main-only**: branch công việc tạm → Pull Request → review + CI → `main`. Không còn sử dụng `develop`. Quy trình hiện hành xem tại [WORKFLOW.md](WORKFLOW.md).
+
+
 ## 1. Sprint Goal
 
 **Vùng trồng khai báo được thửa đất của mình trên môi trường staging chạy thật, và mọi thay đổi mã đều đi qua CI.**
