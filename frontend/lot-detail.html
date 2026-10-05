@@ -404,6 +404,44 @@
         Đang tải thông tin chi tiết lô hàng...
       </div>
     </div>
+
+    <!-- Modal Bàn giao lô (lot-detail) -->
+    <div id="transferModal" class="modal-backdrop" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.45); z-index: 2000; align-items: center; justify-content: center;">
+      <div class="modal-card" style="background: #fff; border-radius: 16px; padding: 0; width: 100%; max-width: 520px; box-shadow: 0 24px 60px rgba(0,0,0,0.18); margin: 20px;">
+        <div class="modal-header" style="display: flex; align-items: center; justify-content: space-between; padding: 18px 22px; border-bottom: 1px solid var(--color-border);">
+          <h3 style="margin: 0; font-size: 16px; font-weight: 700;">Bàn giao lô sang tổ chức khác</h3>
+          <button type="button" id="btnCloseTransferModal" style="background: none; border: none; font-size: 20px; cursor: pointer; color: var(--color-text-muted); line-height: 1;">✕</button>
+        </div>
+        <form id="transferForm">
+          <div style="padding: 20px 22px;">
+            <div id="transferModalAlert" style="display: none; margin-bottom: 14px;"></div>
+            <div style="background: rgba(36,138,61,0.06); border: 1px solid rgba(36,138,61,0.18); border-radius: 10px; padding: 12px 14px; margin-bottom: 16px;">
+              <div style="font-size: 11px; text-transform: uppercase; font-weight: 700; color: var(--color-primary); letter-spacing: 0.05em; margin-bottom: 4px;">Lô hàng</div>
+              <div style="font-size: 15px; font-weight: 700; color: var(--color-text-main);" id="transferLotTitle">--</div>
+              <div style="font-size: 13px; color: var(--color-text-muted); margin-top: 2px;">Mã lô: <code id="transferLotId" style="font-weight:700; color:var(--color-primary);">--</code></div>
+            </div>
+            <input type="hidden" id="transferLotIdInput" name="lotId">
+            <div style="margin-bottom: 14px;">
+              <label style="display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px;">Tổ chức tiếp nhận <span style="color:#dc2626">*</span></label>
+              <select id="transferToOrg" required style="width:100%; height:40px; padding:0 12px; border-radius:8px; border:1px solid var(--color-border); font-size:13.5px; background:#fff;">
+                <option value="">-- Chọn tổ chức tiếp nhận --</option>
+              </select>
+            </div>
+            <div style="margin-bottom: 14px;">
+              <label style="display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px;">Ghi chú bàn giao</label>
+              <textarea id="transferNotes" rows="3" placeholder="Nhập thông tin người giao, phương tiện, lưu ý bảo quản..." style="width:100%; padding:10px 12px; border-radius:8px; border:1px solid var(--color-border); font-size:13px; font-family:inherit; resize:vertical; box-sizing:border-box;"></textarea>
+            </div>
+            <div style="background:rgba(245,158,11,0.08); border:1px solid rgba(245,158,11,0.25); border-radius:8px; padding:10px; font-size:12.5px; color:#b45309; line-height:1.5;">
+              <strong>Lưu ý (S-15):</strong> Lô sẽ ở trạng thái <strong>Chờ xác nhận (PENDING)</strong>. Quyền sở hữu vẫn thuộc tổ chức của bạn cho đến khi bên nhận bấm xác nhận.
+            </div>
+          </div>
+          <div style="display:flex; justify-content:flex-end; gap:10px; padding:14px 22px; border-top:1px solid var(--color-border);">
+            <button type="button" id="btnCancelTransfer" class="btn btn-secondary" style="height:38px; padding:0 16px;">Hủy bỏ</button>
+            <button type="submit" id="btnSubmitTransfer" class="btn btn-primary" style="height:38px; padding:0 18px;">Gửi yêu cầu bàn giao</button>
+          </div>
+        </form>
+      </div>
+    </div>
   </main>
 
   <script src="/app-shell.js"></script>
@@ -466,8 +504,12 @@
     }
 
     function renderLot(lot, events) {
-      const isInspectorOrAdmin = currentUser && ["inspector", "admin"].includes(currentUser.roleId);
+      const isInspector = currentUser && currentUser.roleId === "inspector";
+      const isAdmin = currentUser && currentUser.roleId === "admin";
+      const isInspectorOrAdmin = isInspector || isAdmin;
       const userOrgId = currentUser ? (currentUser.organizationId || currentUser.organization_id) : null;
+      const lotOrgId = lot.organizationId || lot.organization_id;
+      const canTransfer = currentUser && !isInspector && (isAdmin || userOrgId === lotOrgId);
       const isRecipient = Boolean(userOrgId && lot.pendingTransfer && lot.pendingTransfer.toOrganizationId === userOrgId);
       const inspectorActions = document.getElementById("inspectorActions");
       const btnCheckIntegrityLink = document.getElementById("btnCheckIntegrityLink");
@@ -513,6 +555,14 @@
                   <span>${escapeHtml(lot.status || "Đã thu hoạch")}</span>
                 </span>
               `}
+
+              ${(canTransfer && !lot.pendingTransfer) ? `
+                <button type="button" class="btn btn-primary" id="btnTransferDirectHero" style="height: 32px; padding: 0 14px; font-size: 13px; display: inline-flex; align-items: center; gap: 6px; cursor: pointer; border-radius: var(--radius-sm);" title="Bàn giao lô sang tổ chức khác">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
+                  <span>Bàn giao lô</span>
+                </button>
+              ` : ""}
+
               <div class="dropdown-menu-wrapper">
                 <button type="button" class="btn-icon-kebab" id="btn-hero-more" onclick="toggleHeroDropdown(event)" title="Thao tác khác" aria-label="Thao tác khác">•••</button>
                 <div class="dropdown-popover" id="dropdown-hero-lot">
@@ -521,6 +571,13 @@
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
                       <span>Kiểm tra toàn vẹn</span>
                     </a>
+                  ` : ""}
+                  ${(canTransfer && !lot.pendingTransfer) ? `
+                    <button type="button" class="dropdown-item" id="btnOpenTransferFromDetail" data-lot-id="${escapeHtml(lot.id)}" data-lot-name="${escapeHtml(displayName)}">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
+                      <span>Bàn giao lô</span>
+                    </button>
+                    <div class="dropdown-divider"></div>
                   ` : ""}
                   <button type="button" class="dropdown-item" onclick="copyLotCode('${escapeHtml(lot.id)}')">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
@@ -713,6 +770,13 @@
           `}
         </div>
       `;
+
+      const btnDirectTransfer = document.getElementById("btnTransferDirectHero");
+      if (btnDirectTransfer) {
+        btnDirectTransfer.addEventListener("click", () => {
+          openDetailTransferModal(lot.id, displayName);
+        });
+      }
     }
 
     function renderError(title, desc) {
@@ -786,9 +850,128 @@
       const popover = document.getElementById("dropdown-hero-lot");
       if (popover) {
         popover.classList.toggle("active");
+        // Bind transfer button after dropdown renders (content set via innerHTML)
+        const btnTransfer = document.getElementById("btnOpenTransferFromDetail");
+        if (btnTransfer && !btnTransfer._bound) {
+          btnTransfer._bound = true;
+          btnTransfer.addEventListener("click", () => {
+            popover.classList.remove("active");
+            openDetailTransferModal(btnTransfer.dataset.lotId, btnTransfer.dataset.lotName);
+          });
+        }
       }
     }
 
+    document.addEventListener("click", (e) => {
+      if (!e.target.closest(".dropdown-menu-wrapper")) {
+        const popover = document.getElementById("dropdown-hero-lot");
+        if (popover) popover.classList.remove("active");
+      }
+    });
+
+    // ===== Transfer Modal Logic (lot-detail.html) =====
+    let _orgsCache = [];
+
+    async function loadOrgsForDetail() {
+      if (_orgsCache.length > 0) return _orgsCache;
+      try {
+        const res = await fetch("/api/organizations", { credentials: "same-origin" });
+        if (res.ok) { const d = await res.json(); _orgsCache = d.organizations || []; }
+      } catch (_) {}
+      return _orgsCache;
+    }
+
+    async function openDetailTransferModal(lotId, lotName) {
+      const modal = document.getElementById("transferModal");
+      const alertBox = document.getElementById("transferModalAlert");
+      const select = document.getElementById("transferToOrg");
+      const notes = document.getElementById("transferNotes");
+      if (!modal) return;
+
+      document.getElementById("transferLotTitle").textContent = lotName || lotId;
+      document.getElementById("transferLotId").textContent = lotId;
+      document.getElementById("transferLotIdInput").value = lotId;
+      if (alertBox) { alertBox.style.display = "none"; alertBox.textContent = ""; }
+      if (notes) notes.value = "";
+
+      select.innerHTML = '<option value="">-- Chọn tổ chức tiếp nhận --</option>';
+      const orgs = await loadOrgsForDetail();
+      const myOrgId = currentUser ? (currentUser.organizationId || currentUser.organization_id) : "";
+      orgs.forEach((o) => {
+        if (o.id !== myOrgId && o.id !== "org-inspector" && o.id !== "org-system") {
+          const opt = document.createElement("option");
+          opt.value = o.id;
+          opt.textContent = `${o.name} (${o.id})`;
+          select.appendChild(opt);
+        }
+      });
+
+      modal.style.display = "flex";
+    }
+
+    function closeDetailTransferModal() {
+      const modal = document.getElementById("transferModal");
+      if (modal) modal.style.display = "none";
+    }
+
+    function setupTransferModalListeners() {
+      const btnClose = document.getElementById("btnCloseTransferModal");
+      if (btnClose) btnClose.addEventListener("click", closeDetailTransferModal);
+
+      const btnCancel = document.getElementById("btnCancelTransfer");
+      if (btnCancel) btnCancel.addEventListener("click", closeDetailTransferModal);
+
+      const transferForm = document.getElementById("transferForm");
+      if (transferForm) {
+        transferForm.addEventListener("submit", async (e) => {
+          e.preventDefault();
+          const alertBox = document.getElementById("transferModalAlert");
+          const submitBtn = document.getElementById("btnSubmitTransfer");
+          const lotId = document.getElementById("transferLotIdInput").value;
+          const toOrganizationId = document.getElementById("transferToOrg").value;
+          const notes = document.getElementById("transferNotes").value;
+
+          if (!toOrganizationId) {
+            alertBox.className = "alert alert-danger";
+            alertBox.style.display = "block";
+            alertBox.textContent = "Vui lòng chọn tổ chức tiếp nhận.";
+            return;
+          }
+
+          submitBtn.disabled = true;
+          submitBtn.textContent = "Đang gửi...";
+
+          try {
+            const res = await fetch(`/api/lots/${encodeURIComponent(lotId)}/transfers`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              credentials: "same-origin",
+              body: JSON.stringify({ toOrganizationId, notes }),
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.message || "Không thể gửi yêu cầu bàn giao.");
+            closeDetailTransferModal();
+            alert(`✓ Yêu cầu bàn giao lô ${lotId} đã được tạo thành công ở trạng thái Chờ xác nhận (PENDING)!`);
+            // Reload trang để cập nhật badge PENDING
+            await loadLotDetail(lotId);
+          } catch (err) {
+            alertBox.className = "alert alert-danger";
+            alertBox.style.display = "block";
+            alertBox.textContent = err.message;
+          } finally {
+            submitBtn.disabled = false;
+            submitBtn.textContent = "Gửi yêu cầu bàn giao";
+          }
+        });
+      }
+
+      const modal = document.getElementById("transferModal");
+      if (modal) {
+        modal.addEventListener("click", (e) => { if (e.target === modal) closeDetailTransferModal(); });
+      }
+    }
+
+    setupTransferModalListeners();
     initPage();
   </script>
 </body>
