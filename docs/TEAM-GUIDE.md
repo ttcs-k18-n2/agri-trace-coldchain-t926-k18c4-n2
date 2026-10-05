@@ -1,340 +1,186 @@
-# Hướng dẫn GitHub cho thành viên
+# Hướng dẫn GitHub cho thành viên — Main-only
 
-Tài liệu này dành cho thành viên nhóm **TTCS_T926_K18C4_N2** để biết cách lấy dự án về máy, làm đúng Story branch, đẩy code lên GitHub và tạo Pull Request.
+Tài liệu này hướng dẫn thành viên nhóm **TTCS_T926_K18C4_N2** làm việc theo mô hình chỉ có một nhánh lâu dài là `main`.
 
-## 1. Luồng làm việc của nhóm
+## 1. Luồng làm việc
 
 ```text
-Máy cá nhân
-   ↓ git push
-Story branch
-   ↓ Pull Request + reviewer
-develop
-   ↓ cuối Sprint, kiểm tra tổng thể
-Pull Request
+main mới nhất
+   ↓ tạo branch tạm
+feature/fix/docs branch
+   ↓ push
+Pull Request vào main
+   ↓ reviewer + CI
+merge main
    ↓
-main
+xóa branch tạm
 ```
 
-Hiểu ngắn gọn:
+- `main` = nhánh tích hợp, demo, release và staging.
+- Không có `develop`.
+- Thành viên không code/push trực tiếp lên `main`.
+- Mỗi công việc làm trên branch riêng rồi mở PR vào `main`.
 
-- `git push` = đưa code từ máy lên **Story branch** của mình trên GitHub.
-- Pull Request Story = xin ghép Story branch vào `develop`.
-- `develop` = nơi tích hợp code của cả Sprint và triển khai staging.
-- `main` = bản ổn định/demo/release; chỉ nhận từ `develop` vào cuối Sprint.
-- Không code trực tiếp trên `develop` hoặc `main`.
-
-## 2. Branch Sprint 1 và người phụ trách
-
-| Story | Branch | Đầu mối | Hỗ trợ | Reviewer |
-|---|---|---|---|---|
-| S-01 | `feature/s1-s01-app-setup` | Nguyễn Viết Cường | Nguyễn Đức Dũng, Bùi Duy Hưng | Nguyễn Thanh Hải |
-| S-02 | `feature/s1-s02-ci` | Nguyễn Viết Cường | Trần Quang Dự, Nguyễn Văn Dũng | Phan Ngô Huy Hoàng |
-| S-03 | `feature/s1-s03-staging` | Nguyễn Viết Cường | Nguyễn Thanh Hải, Trần Quang Dự | Nguyễn Văn Dũng |
-| K-01 | `docs/s1-k01-integrity` | Trần Quang Dự | Nguyễn Viết Cường, Phan Ngô Huy Hoàng | Nguyễn Thanh Hải |
-| S-04 | `feature/s1-s04-login` | Nguyễn Văn Dũng | Bùi Duy Hưng, Nguyễn Viết Cường | Trần Quang Dự |
-| S-05 | `feature/s1-s05-org-access` | Nguyễn Văn Dũng | Trần Quang Dự, Nguyễn Đức Dũng | Nguyễn Thanh Hải |
-| S-06 | `feature/s1-s06-farm` | Nguyễn Đức Dũng | Bùi Duy Hưng, Nguyễn Văn Dũng | Phan Ngô Huy Hoàng |
-
-Một Story dùng **một branch**. Không tạo branch riêng cho từng Task và không đặt branch theo tên thành viên.
-
-## 3. Lần đầu lấy dự án về máy
-
-Cài Git trước, sau đó mở Terminal/PowerShell:
+## 2. Lần đầu lấy dự án
 
 ```bash
 git clone https://github.com/ttcs-k18-n2/agri-trace-coldchain-t926-k18c4-n2.git
 cd agri-trace-coldchain-t926-k18c4-n2
-git fetch origin
+git checkout main
+git pull origin main
 ```
 
-Clone repo nghĩa là lấy **toàn bộ cấu trúc dự án** về máy. Sau đó chỉ checkout đúng Story branch được giao.
+## 3. Tạo branch để làm việc
 
-Ví dụ làm S-04:
+Ví dụ làm S-13:
 
 ```bash
-git checkout -b feature/s1-s04-login origin/feature/s1-s04-login
+git checkout main
+git pull origin main
+git checkout -b feature/s2-s13-timeline
+git push -u origin feature/s2-s13-timeline
 ```
 
-Kiểm tra:
+Ví dụ làm S-15:
+
+```bash
+git checkout main
+git pull origin main
+git checkout -b feature/s2-s15-handover
+git push -u origin feature/s2-s15-handover
+```
+
+Tên branch khuyến nghị:
+
+```text
+feature/s<sprint>-s<story>-<short-name>
+fix/s<sprint>-s<story>-<short-name>
+docs/<short-name>
+```
+
+Không đặt branch theo tên cá nhân.
+
+## 4. Trước và trong khi code
+
+Kiểm tra branch:
 
 ```bash
 git branch
+git status
 ```
 
-Phải thấy:
-
-```text
-* feature/s1-s04-login
-```
-
-Nếu branch đã có ở local thì chỉ cần:
-
-```bash
-git checkout feature/s1-s04-login
-```
-
-## 4. Trước khi bắt đầu code
-
-Luôn lấy code mới nhất từ GitHub và đồng bộ phần đã được merge vào `develop`:
+Nếu `main` có code mới:
 
 ```bash
 git fetch origin
-git checkout <story-branch>
-git pull origin <story-branch>
-git merge origin/develop
+git checkout <branch-cua-ban>
+git merge origin/main
 ```
 
-Ví dụ S-04:
+Nếu conflict, xử lý conflict rồi mới tiếp tục. Không tự xóa code người khác để hết conflict.
 
-```bash
-git fetch origin
-git checkout feature/s1-s04-login
-git pull origin feature/s1-s04-login
-git merge origin/develop
-```
-
-Nếu có conflict thì dừng lại xử lý conflict trước khi code tiếp. Không tự xóa code người khác chỉ để hết conflict.
-
-## 5. Code phần được giao
-
-Mọi người đều nhìn thấy toàn bộ project:
-
-```text
-.github/
-backend/
-frontend/
-docs/
-README.md
-...
-```
-
-Nhưng chỉ sửa file cần thiết cho Story/Task của mình.
-
-Trước khi commit phải kiểm tra:
+## 5. Commit và push
 
 ```bash
 git status
 git diff
-```
-
-Nếu thấy file không liên quan bị sửa thì kiểm tra lại trước khi commit.
-
-## 6. Commit và push
-
-Sau khi hoàn thành một phần công việc:
-
-```bash
 git add .
-git commit -m "feat: T-xx mô tả ngắn"
-git push origin <story-branch>
-```
-
-Ví dụ:
-
-```bash
-git add .
-git commit -m "feat: T-09 add login session"
-git push origin feature/s1-s04-login
-```
-
-Lần sau nếu upstream đã được thiết lập thì có thể dùng:
-
-```bash
+git commit -m "feat(S-13): T-31 add timeline query"
 git push
 ```
 
-Quy ước commit:
+Có thể push nhiều commit lên cùng branch cho tới khi Story xong.
+
+## 6. Tạo Pull Request
+
+Trên GitHub:
 
 ```text
-feat:     thêm/chỉnh chức năng
-fix:      sửa lỗi
-docs:     tài liệu
-refactor: đổi cấu trúc code, không đổi hành vi
-test:     thêm/sửa test
-chore:    CI, cấu hình, việc kỹ thuật
+base: main
+compare: <branch-cua-ban>
 ```
 
-Ưu tiên ghi mã Task trong commit, ví dụ:
+PR cần ghi:
 
-```text
-feat: T-01 add docker compose
-test: T-13 reject cross-organization access
-docs: K-01 document integrity decision
-```
-
-## 7. Khi Story chưa xong
-
-Có thể push nhiều lần lên cùng Story branch:
-
-```text
-máy cá nhân
-→ commit 1
-→ push
-→ code tiếp
-→ commit 2
-→ push
-→ ...
-```
-
-Push **không làm code tự vào `develop` hoặc `main`**. Nó chỉ cập nhật Story branch trên GitHub.
-
-## 8. Khi Story đã xong: tạo Pull Request
-
-Trên GitHub chọn:
-
-```text
-base: develop
-compare: <story-branch>
-```
-
-Ví dụ:
-
-```text
-base: develop
-compare: feature/s1-s04-login
-```
-
-Không chọn `main` làm base cho Story PR.
-
-PR phải ghi:
-
-- Story/Task/Jira liên quan.
+- Sprint / Story / Task / Jira.
 - Thay đổi đã làm.
-- Acceptance Criteria đã đáp ứng.
+- Acceptance Criteria.
 - Cách kiểm tra.
 - Kết quả test/CI.
 - Ảnh nếu thay đổi UI.
 - Blocker/dependency nếu còn.
 
-## 9. Reviewer làm gì?
+## 7. Reviewer
 
-Reviewer mở PR và kiểm:
+Reviewer kiểm:
 
 1. `Files changed`.
-2. Story/Task có đúng phạm vi không.
-3. Acceptance Criteria.
-4. Test và CI.
+2. Đúng Story/Task và AC.
+3. Test.
+4. CI.
 5. Secret/file nhạy cảm.
 6. Conflict.
-7. Staging nếu Story yêu cầu.
+7. Rủi ro dữ liệu/bảo mật.
 
 Nếu chưa đạt: **Request changes**.
 
 Nếu đạt: **Approve**.
 
-Sau khi đủ điều kiện mới merge Story branch vào `develop`.
+Approve không tự động gộp code. Sau khi đủ điều kiện, người có quyền merge mới bấm Merge.
 
-## 10. Sau khi merge vào develop
+## 8. Sau khi merge
 
-Khi PR được merge:
-
-```text
-Story branch
-   ↓
-develop
-```
-
-Code của Story trở thành một phần của bản tích hợp Sprint.
-
-Story branch khác muốn lấy phần mới này thì chạy:
+Cập nhật máy:
 
 ```bash
-git fetch origin
-git checkout <story-branch>
-git merge origin/develop
+git checkout main
+git pull origin main
 ```
 
-## 11. Cuối Sprint mới vào main
-
-Sau khi các Story hoàn thành và `develop` đã được test/CI/staging:
-
-```text
-develop
-   ↓ Pull Request cuối Sprint
-main
-```
-
-Không merge từng Story trực tiếp vào `main`.
-
-`main` là bản ổn định dùng cho demo/release.
-
-## 12. Những điều không được làm
-
-- Không code trực tiếp trên `main`.
-- Không code trực tiếp trên `develop`.
-- Không tạo branch theo tên cá nhân.
-- Không tạo branch riêng cho mỗi Task nếu Story branch đã có.
-- Không mở Story PR vào `main`.
-- Không commit `.env`, password, token, key hoặc secret.
-- Không sửa/xóa code của Story khác nếu không có lý do rõ ràng.
-- Không merge khi CI đỏ, còn conflict hoặc chưa có review.
-
-## 13. Lệnh nhanh để thành viên copy
-
-Lần đầu:
+Branch đã merge có thể xóa:
 
 ```bash
-git clone https://github.com/ttcs-k18-n2/agri-trace-coldchain-t926-k18c4-n2.git
-cd agri-trace-coldchain-t926-k18c4-n2
-git fetch origin
-git checkout -b <story-branch> origin/<story-branch>
+git branch -d <branch>
+git push origin --delete <branch>
 ```
 
-Mỗi lần bắt đầu làm:
+Chỉ xóa khi chắc chắn code cần thiết đã merge hoặc không còn dùng.
+
+## 9. Những điều không được làm
+
+- Không push trực tiếp lên `main`.
+- Không force-push `main`.
+- Không tự merge khi CI đỏ, conflict hoặc chưa đủ review.
+- Không commit `.env`, password, token, key, credential.
+- Không sửa/xóa code ngoài phạm vi Story nếu không có lý do.
+- Không xóa branch của người khác khi chưa chắc code đã được merge/backup.
+
+## 10. Lệnh nhanh
 
 ```bash
-git fetch origin
-git checkout <story-branch>
-git pull origin <story-branch>
-git merge origin/develop
-```
-
-Sau khi code:
-
-```bash
-git status
-git diff
+git checkout main
+git pull origin main
+git checkout -b feature/s2-sXX-ten-ngan
+# code...
 git add .
-git commit -m "feat: T-xx mô tả ngắn"
-git push origin <story-branch>
+git commit -m "feat(S-XX): T-XX mo ta"
+git push -u origin feature/s2-sXX-ten-ngan
 ```
 
-Khi Story xong:
+Sau đó:
 
 ```text
-GitHub → Pull Request
-base: develop
-compare: <story-branch>
+GitHub → New Pull Request
+base: main
+compare: feature/s2-sXX-ten-ngan
 → request reviewer
-→ approve
-→ merge vào develop
+→ Approve
+→ CI xanh
+→ Merge
 ```
 
-Cuối Sprint:
+## 11. Staging
 
-```text
-develop → Pull Request → main
-```
+Branch tạm không deploy staging.
 
-## 14. Khi gặp lỗi
-
-Nếu chưa chắc mình đang ở branch nào:
-
-```bash
-git branch
-```
-
-Nếu muốn xem file nào đã thay đổi:
-
-```bash
-git status
-```
-
-Nếu muốn xem nội dung thay đổi:
-
-```bash
-git diff
-```
-
-Nếu Git báo conflict, push bị từ chối hoặc không checkout được branch: chụp nguyên màn hình/lỗi Terminal và gửi vào nhóm trước khi tự xử lý mạnh tay.
+Khi PR merge vào `main`, workflow staging và Render theo branch `main` sẽ triển khai bản mới.
