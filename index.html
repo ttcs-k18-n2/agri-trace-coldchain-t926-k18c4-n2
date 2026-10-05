@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>S-16 - Báo cáo</title>
+<style>
+body{font-family:Arial,sans-serif;max-width:1000px;margin:40px auto;padding:0 20px;line-height:1.6;color:#1f2937}
+h1{color:#2563eb} h2{color:#0f766e;border-bottom:1px solid #ddd;padding-bottom:6px}
+.card{background:#f8fafc;padding:18px;border-radius:12px;margin:15px 0}
+table{width:100%;border-collapse:collapse}th,td{border:1px solid #ddd;padding:9px;text-align:left}th{background:#eff6ff}
+code,pre{background:#f1f5f9;padding:10px;border-radius:8px} pre{overflow:auto}
+</style>
+</head>
+<body>
+<h1>S-16 — Bên nhận xác nhận hoặc từ chối bàn giao kèm lý do</h1>
+<div class="card"><b>Backlog:</b> S-16 &nbsp; <b>Priority:</b> Must &nbsp; <b>Sprint:</b> 2 &nbsp; <b>Dependency:</b> S-15</div>
+<h2>User Story</h2>
+<p>Là hợp tác xã sở chế, tôi muốn việc nhận lô phải có xác nhận của tôi để không ai đẩy trách nhiệm một lô hàng sang tôi mà tôi chưa thực sự nhận.</p>
+<h2>Acceptance Criteria</h2>
+<ol>
+<li>Xác nhận: chuyển quyền giữ lô sang bên nhận và ghi sự kiện xác nhận.</li>
+<li>Từ chối có lý do: lô vẫn ở bên giao và lý do được ghi vào chuỗi sự kiện.</li>
+<li>Từ chối không lý do: hệ thống chặn thao tác.</li>
+<li>Người khác tổ chức gọi API xác nhận: trả <b>403 Forbidden</b>.</li>
+</ol>
+<h2>Test Cases</h2>
+<table><tr><th>ID</th><th>Nội dung</th><th>Kết quả mong đợi</th></tr>
+<tr><td>TC-01</td><td>Xác nhận</td><td>Chuyển quyền + ghi event</td></tr>
+<tr><td>TC-02</td><td>Từ chối có lý do</td><td>Giữ bên giao + ghi lý do</td></tr>
+<tr><td>TC-03</td><td>Từ chối không lý do</td><td>Chặn thao tác</td></tr>
+<tr><td>TC-04</td><td>Sai tổ chức gọi API</td><td>HTTP 403</td></tr>
+</table>
+<h2>Kết luận</h2>
+<p>S-16 bảo đảm trách nhiệm lô hàng chỉ được chuyển sang bên nhận sau khi bên nhận thực sự xác nhận.</p>
+</body></html>
