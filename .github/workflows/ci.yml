@@ -4,13 +4,12 @@ on:
   push:
     branches:
       - main
-      - develop
       - "feature/**"
       - "fix/**"
+      - "docs/**"
   pull_request:
     branches:
       - main
-      - develop
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
@@ -110,4 +109,3 @@ jobs:
           MIGRATION_DATABASE_URL: postgresql://agri_migration:migration_password@localhost:5432/agri_trace
           SESSION_SECRET: test-ci-session-secret-key-32-chars-long
         run: npm test --prefix backend
-
