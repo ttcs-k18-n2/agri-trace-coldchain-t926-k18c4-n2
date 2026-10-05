@@ -1,9 +1,10 @@
 ## Story / Task
 
-- Sprint: S1
+- Sprint: Sprint __
 - Story: S-__
 - Task: T-__
 - Jira: N2-__ (nếu có)
+- Base branch: `main`
 
 ## Thay đổi
 
@@ -23,19 +24,25 @@
 ## Kết quả
 
 - [ ] Test local pass
-- [ ] CI xanh
-- [ ] Đã kiểm tra trên staging (nếu Story yêu cầu)
+- [ ] CI build xanh
+- [ ] CI lint xanh
+- [ ] CI test xanh
 - [ ] Không commit secret / .env / credential
 - [ ] Không log dữ liệu định danh nông hộ
-- [ ] README/tài liệu đã cập nhật nếu thay đổi cách chạy, API công khai hoặc biến môi trường
+- [ ] README/tài liệu đã cập nhật nếu thay đổi workflow/API/biến môi trường
 - [ ] Có ảnh chụp nếu thay đổi UI
 
 ## Review
 
 - Reviewer: @
-- [ ] Có ít nhất 1 approval từ thành viên khác
+- [ ] Có approval theo ruleset
 - [ ] Không còn conflict
 - [ ] Không còn blocker chưa xử lý
+
+## Sau khi merge
+
+- [ ] Kiểm tra staging nếu thay đổi ảnh hưởng runtime/UI/API
+- [ ] Xóa branch tạm nếu không còn dùng
 
 ## Ghi chú / Dependency
 
