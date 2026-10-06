@@ -275,6 +275,38 @@
       .replace(/'/g, "&#039;");
   }
 
+  async function copyTextToClipboard(text) {
+    if (!text) return false;
+    let copied = false;
+    try {
+      if (typeof window !== "undefined" && window.isSecureContext && navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(text);
+        copied = true;
+      }
+    } catch {
+      // Fallback khi Clipboard API bị chặn trên HTTP
+    }
+
+    if (!copied && typeof document !== "undefined") {
+      try {
+        const textarea = document.createElement("textarea");
+        textarea.value = text;
+        textarea.style.position = "fixed";
+        textarea.style.left = "-9999px";
+        textarea.style.top = "-9999px";
+        textarea.style.opacity = "0";
+        document.body.appendChild(textarea);
+        textarea.focus();
+        textarea.select();
+        copied = document.execCommand("copy");
+        textarea.remove();
+      } catch (err) {
+        console.error("Không thể sao chép bằng fallback:", err);
+      }
+    }
+    return copied;
+  }
+
   // Export to global scope & module
   if (typeof window !== "undefined") {
     window.initAppShell = initAppShell;
@@ -288,6 +320,7 @@
     window.hasPermission = hasPermission;
     window.applyRoleNavigation = applyRoleNavigation;
     window.escapeHtml = escapeHtml;
+    window.copyTextToClipboard = copyTextToClipboard;
   }
 
   if (typeof module !== "undefined" && module.exports) {
@@ -303,6 +336,7 @@
       hasPermission,
       applyRoleNavigation,
       escapeHtml,
+      copyTextToClipboard,
     };
   }
 })();

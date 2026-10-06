@@ -493,13 +493,49 @@
       if (modal) modal.style.display = "none";
     }
 
-    function copyToClipboard(text) {
+    async function copyToClipboard(text) {
       if (!text) return;
-      navigator.clipboard.writeText(text).then(() => {
+      let copied = false;
+      try {
+        if (window.isSecureContext && navigator.clipboard && navigator.clipboard.writeText) {
+          await navigator.clipboard.writeText(text);
+          copied = true;
+        } else {
+          const textarea = document.createElement("textarea");
+          textarea.value = text;
+          textarea.style.position = "fixed";
+          textarea.style.opacity = "0";
+          document.body.appendChild(textarea);
+          textarea.focus();
+          textarea.select();
+          copied = document.execCommand("copy");
+          textarea.remove();
+        }
+      } catch (err) {
+        console.error("Không thể sao chép mã sản phẩm:", err);
+      }
+
+      if (!copied) {
+        try {
+          const textarea = document.createElement("textarea");
+          textarea.value = text;
+          textarea.style.position = "fixed";
+          textarea.style.opacity = "0";
+          document.body.appendChild(textarea);
+          textarea.focus();
+          textarea.select();
+          copied = document.execCommand("copy");
+          textarea.remove();
+        } catch (fallbackErr) {
+          console.error("Fallback copy thất bại:", fallbackErr);
+        }
+      }
+
+      if (copied) {
         showBanner("success", `✓ Đã sao chép mã "${text}" vào bộ nhớ tạm.`);
-      }).catch(() => {
+      } else {
         showBanner("error", "Không thể sao chép tự động.");
-      });
+      }
     }
 
     function openAddModal() {

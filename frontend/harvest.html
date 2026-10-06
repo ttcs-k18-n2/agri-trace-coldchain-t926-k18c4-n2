@@ -397,23 +397,49 @@
       // Nút sao chép mã lô (T-20)
       document.getElementById("btn-copy-lot-code").addEventListener("click", async () => {
         const code = document.getElementById("res-lot-code").textContent.trim();
+        let copied = false;
         try {
-          if (navigator.clipboard && navigator.clipboard.writeText) {
+          if (window.isSecureContext && navigator.clipboard && navigator.clipboard.writeText) {
             await navigator.clipboard.writeText(code);
+            copied = true;
           } else {
             const temp = document.createElement("textarea");
             temp.value = code;
+            temp.style.position = "fixed";
+            temp.style.opacity = "0";
             document.body.appendChild(temp);
             temp.select();
-            document.execCommand("copy");
+            copied = document.execCommand("copy");
             document.body.removeChild(temp);
           }
-          const feedback = document.getElementById("copy-feedback");
-          feedback.style.display = "inline";
-          setTimeout(() => {
-            feedback.style.display = "none";
-          }, 2500);
         } catch (err) {
+          console.error("Không thể sao chép qua clipboard:", err);
+        }
+
+        if (!copied) {
+          try {
+            const temp = document.createElement("textarea");
+            temp.value = code;
+            temp.style.position = "fixed";
+            temp.style.opacity = "0";
+            document.body.appendChild(temp);
+            temp.select();
+            copied = document.execCommand("copy");
+            document.body.removeChild(temp);
+          } catch (e) {
+            console.error("Fallback copy thất bại:", e);
+          }
+        }
+
+        if (copied) {
+          const feedback = document.getElementById("copy-feedback");
+          if (feedback) {
+            feedback.style.display = "inline";
+            setTimeout(() => {
+              feedback.style.display = "none";
+            }, 2500);
+          }
+        } else {
           alert("Mã lô của bạn là: " + code);
         }
       });

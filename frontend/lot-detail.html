@@ -1002,15 +1002,69 @@
       `;
     }
 
-    function copyLotCode(code) {
-      if (navigator.clipboard && navigator.clipboard.writeText) {
-        navigator.clipboard.writeText(code).then(() => {
-          const btn = document.getElementById("copyText");
-          if (btn) {
-            btn.textContent = "✓ Đã chép";
-            setTimeout(() => { btn.textContent = "Sao chép"; }, 2000);
-          }
-        });
+    async function copyLotCode(code) {
+      if (!code) return;
+
+      let copied = false;
+
+      try {
+        if (
+          window.isSecureContext &&
+          navigator.clipboard &&
+          navigator.clipboard.writeText
+        ) {
+          await navigator.clipboard.writeText(code);
+          copied = true;
+        } else {
+          const textarea = document.createElement("textarea");
+          textarea.value = code;
+          textarea.style.position = "fixed";
+          textarea.style.opacity = "0";
+
+          document.body.appendChild(textarea);
+          textarea.focus();
+          textarea.select();
+
+          copied = document.execCommand("copy");
+          textarea.remove();
+        }
+      } catch (err) {
+        console.error("Không thể sao chép mã lô:", err);
+      }
+
+      // Fallback lần 2 nếu Clipboard API ném ngoại lệ trên môi trường không an toàn
+      if (!copied) {
+        try {
+          const textarea = document.createElement("textarea");
+          textarea.value = code;
+          textarea.style.position = "fixed";
+          textarea.style.opacity = "0";
+
+          document.body.appendChild(textarea);
+          textarea.focus();
+          textarea.select();
+
+          copied = document.execCommand("copy");
+          textarea.remove();
+        } catch (fallbackErr) {
+          console.error("Fallback execCommand thất bại:", fallbackErr);
+        }
+      }
+
+      const text = document.getElementById("copyText");
+
+      if (copied) {
+        if (text) text.textContent = "✓ Đã chép";
+
+        setTimeout(() => {
+          if (text) text.textContent = "Sao chép";
+        }, 2000);
+      } else {
+        if (text) text.textContent = "Không thể sao chép";
+
+        setTimeout(() => {
+          if (text) text.textContent = "Sao chép";
+        }, 2000);
       }
     }
 
