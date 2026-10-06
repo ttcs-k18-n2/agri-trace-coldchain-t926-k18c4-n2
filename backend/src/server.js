@@ -1356,6 +1356,386 @@ app.get(
 );
 
 /**
+ * API Tách Lô hàng [S-17 / S-18]
+ * - Kiểm tra quyền bên nắm giữ (producer, cooperative, org_admin, admin)
+ * - Kiểm tra khối lượng: Tổng khối lượng các lô con <= Khối lượng còn lại của lô mẹ
+ * - Transaction & FOR UPDATE chống xung đột tách đồng thời
+ * - Tự động sinh mã lô con (generateLotCode), trừ khối lượng lô mẹ, gán parent_lot_id
+ * - Ghi sự kiện cryptographic hash ledger: LOT_SPLIT cho lô mẹ và CREATED_FROM_SPLIT cho từng lô con
+ */
+app.post(
+  "/api/lots/:id/split",
+  requirePermission(["producer", "cooperative", "org_admin", "admin"]),
+  async (req, res) => {
+    const parentLotId = req.params.id;
+    const { splits, subLots } = req.body || {};
+    const splitItems = Array.isArray(splits) ? splits : (Array.isArray(subLots) ? subLots : []);
+
+    if (splitItems.length === 0) {
+      return res.status(400).json({
+        error: "INVALID_SPLITS",
+        message: "Danh sách lô con cần tách (splits) không được để trống.",
+      });
+    }
+
+    // Kiểm tra từng lô con hợp lệ
+    for (let i = 0; i < splitItems.length; i++) {
+      const s = splitItems[i];
+      const q = Number(s.quantity);
+      if (isNaN(q) || q <= 0) {
+        return res.status(400).json({
+          error: "INVALID_QUANTITY",
+          message: `Khối lượng của lô con thứ ${i + 1} phải là số dương lớn hơn 0.`,
+        });
+      }
+    }
+
+    const totalSplitQuantity = splitItems.reduce((acc, s) => acc + Number(s.quantity), 0);
+    const userOrgId = req.auth ? (req.auth.organizationId || req.auth.organization_id) : null;
+    const userId = req.auth ? (req.auth.userId || req.auth.id) : null;
+    const isAdmin = req.auth && (req.auth.roleId === "admin" || req.auth.isAdmin);
+
+    if (pool) {
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN");
+
+        // Khóa FOR UPDATE để chống xung đột tách đồng thời (S-17 / S-18)
+        const parentRes = await client.query(
+          "SELECT * FROM lots WHERE id = $1 FOR UPDATE",
+          [parentLotId]
+        );
+
+        if (parentRes.rows.length === 0) {
+          await client.query("ROLLBACK");
+          return res.status(404).json({
+            error: "LOT_NOT_FOUND",
+            message: "Không tìm thấy lô hàng mẹ cần tách.",
+          });
+        }
+
+        const parentLot = parentRes.rows[0];
+
+        // Kiểm tra quyền nắm giữ: chỉ tổ chức đang nắm giữ (hoặc admin) mới có quyền tách
+        if (!isAdmin && parentLot.organization_id !== userOrgId) {
+          await client.query("ROLLBACK");
+          logSecurityEvent("CROSS_TENANT_ACCESS_DENIED", {
+            userId,
+            userEmail: req.auth.email,
+            userOrgId,
+            userRole: req.auth.roleId,
+            resourceType: "lots",
+            resourceId: parentLotId,
+            targetOrgId: parentLot.organization_id,
+            action: "SPLIT",
+            ip: req.ip,
+            userAgent: req.get("User-Agent"),
+          });
+          return res.status(403).json({
+            error: "FORBIDDEN",
+            message: "Truy cập bị từ chối: bạn không có quyền tách lô hàng của tổ chức khác.",
+          });
+        }
+
+        // Kiểm tra nếu lô đang chờ xác nhận bàn giao
+        const pendingCheck = await client.query(
+          "SELECT id FROM lot_transfers WHERE lot_id = $1 AND status = 'PENDING'",
+          [parentLotId]
+        );
+        if (pendingCheck.rows.length > 0) {
+          await client.query("ROLLBACK");
+          return res.status(400).json({
+            error: "PENDING_TRANSFER_EXISTS",
+            message: "Không thể tách lô hàng đang trong trạng thái chờ xác nhận bàn giao.",
+          });
+        }
+
+        const parentRemaining = Number(parentLot.remaining_quantity);
+        if (totalSplitQuantity > parentRemaining) {
+          await client.query("ROLLBACK");
+          return res.status(400).json({
+            error: "EXCEEDS_REMAINING_QUANTITY",
+            message: `Tổng khối lượng tách (${totalSplitQuantity.toFixed(3)}) vượt quá khối lượng còn lại của lô mẹ (${parentRemaining.toFixed(3)}).`,
+          });
+        }
+
+        // 1. Trừ khối lượng còn lại của lô mẹ
+        const newRemaining = parentRemaining - totalSplitQuantity;
+        const updateParentRes = await client.query(
+          "UPDATE lots SET remaining_quantity = $1 WHERE id = $2 RETURNING *",
+          [newRemaining, parentLotId]
+        );
+        const updatedParent = updateParentRes.rows[0];
+
+        // 2. Tạo các lô con với mã sinh ngẫu nhiên
+        const createdChildLots = [];
+        for (let i = 0; i < splitItems.length; i++) {
+          const item = splitItems[i];
+          const splitQty = Number(item.quantity);
+          const childName = (item.name && item.name.trim())
+            ? item.name.trim()
+            : `${parentLot.name} (Tách ${i + 1})`;
+          const childStatus = item.status || parentLot.status || "Đã thu hoạch";
+
+          let childLotId = null;
+          for (let attempt = 0; attempt < 5; attempt++) {
+            const candidateId = generateLotCode();
+            try {
+              const insertRes = await client.query(
+                `INSERT INTO lots (
+                  id, name, status, organization_id, farm_id, product_id,
+                  initial_quantity, remaining_quantity, harvested_at, parent_lot_id
+                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+                RETURNING *`,
+                [
+                  candidateId,
+                  childName,
+                  childStatus,
+                  parentLot.organization_id,
+                  parentLot.farm_id,
+                  parentLot.product_id,
+                  splitQty,
+                  splitQty,
+                  parentLot.harvested_at,
+                  parentLotId,
+                ]
+              );
+              childLotId = candidateId;
+              createdChildLots.push(insertRes.rows[0]);
+              break;
+            } catch (insErr) {
+              if (insErr.code === "23505" && attempt < 4) continue;
+              throw insErr;
+            }
+          }
+
+          if (!childLotId) {
+            throw new Error("Không thể sinh mã duy nhất cho lô con.");
+          }
+
+          // Ghi sự kiện CREATED_FROM_SPLIT vào chuỗi sự kiện của lô con
+          await appendBatchEvent(client, {
+            batchId: childLotId,
+            eventType: "CREATED_FROM_SPLIT",
+            payload: {
+              parentLotId,
+              childLotId,
+              quantity: splitQty,
+              notes: item.notes || null,
+              step: `Tạo từ phân tách lô mẹ ${parentLotId}`,
+            },
+            organizationId: parentLot.organization_id,
+            actorUserId: userId,
+            occurredAt: new Date(),
+          });
+        }
+
+        // 3. Ghi sự kiện LOT_SPLIT vào chuỗi sự kiện của lô mẹ
+        const parentEvent = await appendBatchEvent(client, {
+          batchId: parentLotId,
+          eventType: "LOT_SPLIT",
+          payload: {
+            parentLotId,
+            childLotIds: createdChildLots.map((c) => c.id),
+            totalSplitQuantity,
+            remainingQuantity: newRemaining,
+            splits: createdChildLots.map((c) => ({
+              childLotId: c.id,
+              name: c.name,
+              quantity: Number(c.initial_quantity),
+            })),
+            step: `Phân tách thành ${createdChildLots.length} lô con (${createdChildLots.map((c) => c.id).join(", ")})`,
+          },
+          organizationId: parentLot.organization_id,
+          actorUserId: userId,
+          occurredAt: new Date(),
+        });
+
+        await client.query("COMMIT");
+
+        return res.status(201).json({
+          message: "Tách lô hàng thành công.",
+          parentLot: {
+            id: updatedParent.id,
+            remainingQuantity: Number(updatedParent.remaining_quantity),
+          },
+          childLots: createdChildLots.map((c) => ({
+            id: c.id,
+            name: c.name,
+            status: c.status,
+            initialQuantity: Number(c.initial_quantity),
+            remainingQuantity: Number(c.remaining_quantity),
+            parentLotId: c.parent_lot_id,
+            organizationId: c.organization_id,
+            createdAt: c.created_at,
+          })),
+          event: parentEvent,
+        });
+      } catch (err) {
+        await client.query("ROLLBACK");
+        return res.status(500).json({ message: err.message });
+      } finally {
+        client.release();
+      }
+    } else {
+      // In-Memory Mode
+      const parentLot = inMemoryLots.find((l) => l.id === parentLotId);
+      if (!parentLot) {
+        return res.status(404).json({
+          error: "LOT_NOT_FOUND",
+          message: "Không tìm thấy lô hàng mẹ cần tách.",
+        });
+      }
+
+      const pOrg = parentLot.organizationId || parentLot.organization_id;
+      if (!isAdmin && pOrg !== userOrgId) {
+        logSecurityEvent("CROSS_TENANT_ACCESS_DENIED", {
+          userId,
+          userEmail: req.auth.email,
+          userOrgId,
+          userRole: req.auth.roleId,
+          resourceType: "lots",
+          resourceId: parentLotId,
+          targetOrgId: pOrg,
+          action: "SPLIT",
+          ip: req.ip,
+          userAgent: req.get("User-Agent"),
+        });
+        return res.status(403).json({
+          error: "FORBIDDEN",
+          message: "Truy cập bị từ chối: bạn không có quyền tách lô hàng của tổ chức khác.",
+        });
+      }
+
+      // Kiểm tra nếu lô đang chờ xác nhận bàn giao
+      const pendingTransfer = inMemoryTransfers.find((t) => t.lotId === parentLotId && t.status === "PENDING");
+      if (pendingTransfer) {
+        return res.status(400).json({
+          error: "PENDING_TRANSFER_EXISTS",
+          message: "Không thể tách lô hàng đang trong trạng thái chờ xác nhận bàn giao.",
+        });
+      }
+
+      const parentRemaining = Number(
+        parentLot.remainingQuantity !== undefined ? parentLot.remainingQuantity : parentLot.remaining_quantity
+      );
+      if (totalSplitQuantity > parentRemaining) {
+        return res.status(400).json({
+          error: "EXCEEDS_REMAINING_QUANTITY",
+          message: `Tổng khối lượng tách (${totalSplitQuantity.toFixed(3)}) vượt quá khối lượng còn lại của lô mẹ (${parentRemaining.toFixed(3)}).`,
+        });
+      }
+
+      // Trừ khối lượng còn lại của lô mẹ
+      const oldRemaining = parentRemaining;
+      const newRemaining = parentRemaining - totalSplitQuantity;
+      parentLot.remainingQuantity = newRemaining;
+      if (parentLot.remaining_quantity !== undefined) parentLot.remaining_quantity = newRemaining;
+
+      const createdChildLots = [];
+      const rollbackChildLots = [];
+
+      try {
+        const nowIso = new Date().toISOString();
+        for (let i = 0; i < splitItems.length; i++) {
+          const item = splitItems[i];
+          const splitQty = Number(item.quantity);
+          const childName = (item.name && item.name.trim())
+            ? item.name.trim()
+            : `${parentLot.name} (Tách ${i + 1})`;
+          const childStatus = item.status || parentLot.status || "Đã thu hoạch";
+
+          let childLotId = generateLotCode();
+          while (inMemoryLots.some((l) => l.id === childLotId)) {
+            childLotId = generateLotCode();
+          }
+
+          const newLot = {
+            id: childLotId,
+            name: childName,
+            status: childStatus,
+            organizationId: pOrg,
+            farmId: parentLot.farmId || parentLot.farm_id || null,
+            productId: parentLot.productId || parentLot.product_id || null,
+            initialQuantity: splitQty,
+            remainingQuantity: splitQty,
+            harvestedAt: parentLot.harvestedAt || parentLot.harvested_at || null,
+            parentLotId: parentLotId,
+            createdAt: nowIso,
+          };
+
+          inMemoryLots.push(newLot);
+          rollbackChildLots.push(newLot.id);
+          createdChildLots.push(newLot);
+
+          await appendBatchEvent(null, {
+            batchId: childLotId,
+            eventType: "CREATED_FROM_SPLIT",
+            payload: {
+              parentLotId,
+              childLotId,
+              quantity: splitQty,
+              notes: item.notes || null,
+              step: `Tạo từ phân tách lô mẹ ${parentLotId}`,
+            },
+            organizationId: pOrg,
+            actorUserId: userId,
+            occurredAt: new Date(),
+          });
+        }
+
+        const parentEvent = await appendBatchEvent(null, {
+          batchId: parentLotId,
+          eventType: "LOT_SPLIT",
+          payload: {
+            parentLotId,
+            childLotIds: createdChildLots.map((c) => c.id),
+            totalSplitQuantity,
+            remainingQuantity: newRemaining,
+            splits: createdChildLots.map((c) => ({
+              childLotId: c.id,
+              name: c.name,
+              quantity: c.initialQuantity,
+            })),
+            step: `Phân tách thành ${createdChildLots.length} lô con (${createdChildLots.map((c) => c.id).join(", ")})`,
+          },
+          organizationId: pOrg,
+          actorUserId: userId,
+          occurredAt: new Date(),
+        });
+
+        return res.status(201).json({
+          message: "Tách lô hàng thành công.",
+          parentLot: {
+            id: parentLot.id,
+            remainingQuantity: newRemaining,
+          },
+          childLots: createdChildLots.map((c) => ({
+            id: c.id,
+            name: c.name,
+            status: c.status,
+            initialQuantity: c.initialQuantity,
+            remainingQuantity: c.remainingQuantity,
+            parentLotId: c.parentLotId,
+            organizationId: c.organizationId,
+            createdAt: c.createdAt,
+          })),
+          event: parentEvent,
+        });
+      } catch (memErr) {
+        parentLot.remainingQuantity = oldRemaining;
+        if (parentLot.remaining_quantity !== undefined) parentLot.remaining_quantity = oldRemaining;
+        for (const cid of rollbackChildLots) {
+          const idx = inMemoryLots.findIndex((l) => l.id === cid);
+          if (idx !== -1) inMemoryLots.splice(idx, 1);
+        }
+        return res.status(500).json({ message: memErr.message });
+      }
+    }
+  }
+);
+
+/**
  * Lấy chuỗi sự kiện hash-chain và lịch sử nguồn gốc của lô hàng (S-10, S-11, S-21, S-23)
  */
 app.get(

@@ -1,0 +1,254 @@
+const test = require("node:test");
+const assert = require("node:assert/strict");
+const request = require("supertest");
+const {
+  app,
+  users,
+  hashPassword,
+  inMemoryLots,
+  inMemoryBatchEvents,
+  inMemoryTransfers,
+  inMemoryProducts,
+  inMemoryFarms,
+} = require("../src/server");
+
+async function loginAs(email, password = "Password123!") {
+  const agent = request.agent(app);
+  const res = await agent.post("/api/login").send({ email, password });
+  assert.equal(res.status, 200, `Login failed for ${email}`);
+  return agent;
+}
+
+test("Lot Split API [S-17 / S-18] & Direct Lineage Integration Test", async (t) => {
+  const passwordHash = await hashPassword("Password123!");
+
+  // Setup test users for different roles & orgs
+  users.set("coop_split@org2.vn", {
+    id: "usr-coop-split",
+    email: "coop_split@org2.vn",
+    passwordHash,
+    failedCount: 0,
+    lockedUntil: null,
+    organizationId: "org-split-002",
+    roleId: "cooperative",
+  });
+
+  users.set("producer_split@org1.vn", {
+    id: "usr-prod-split",
+    email: "producer_split@org1.vn",
+    passwordHash,
+    failedCount: 0,
+    lockedUntil: null,
+    organizationId: "org-split-001",
+    roleId: "producer",
+  });
+
+  users.set("other_org@org3.vn", {
+    id: "usr-other-split",
+    email: "other_org@org3.vn",
+    passwordHash,
+    failedCount: 0,
+    lockedUntil: null,
+    organizationId: "org-split-003",
+    roleId: "cooperative",
+  });
+
+  users.set("inspector_split@gov.vn", {
+    id: "usr-insp-split",
+    email: "inspector_split@gov.vn",
+    passwordHash,
+    failedCount: 0,
+    lockedUntil: null,
+    organizationId: "org-inspector",
+    roleId: "inspector",
+  });
+
+  // Clean and prepare test lots
+  const testParentId = "LOT-SPLIT-PARENT-01";
+  const testPendingId = "LOT-SPLIT-PENDING-01";
+
+  for (let i = inMemoryLots.length - 1; i >= 0; i--) {
+    if (inMemoryLots[i].id.startsWith("LOT-SPLIT-")) {
+      inMemoryLots.splice(i, 1);
+    }
+  }
+
+  inMemoryLots.push({
+    id: testParentId,
+    name: "Lô Dưa lưới Chuẩn VietGAP",
+    status: "Đã thu hoạch",
+    organizationId: "org-split-002",
+    farmId: "FARM-001",
+    productId: "PROD-MELON",
+    initialQuantity: 500,
+    remainingQuantity: 500,
+    harvestedAt: "2026-10-05T07:00:00.000Z",
+    parentLotId: null,
+    createdAt: "2026-10-05T07:00:00.000Z",
+  });
+
+  inMemoryLots.push({
+    id: testPendingId,
+    name: "Lô Dưa lưới Đang Bàn Giao",
+    status: "Đã thu hoạch",
+    organizationId: "org-split-002",
+    farmId: "FARM-001",
+    productId: "PROD-MELON",
+    initialQuantity: 200,
+    remainingQuantity: 200,
+    harvestedAt: "2026-10-05T07:00:00.000Z",
+    parentLotId: null,
+    createdAt: "2026-10-05T07:00:00.000Z",
+  });
+
+  // Gán 1 transfer PENDING cho testPendingId
+  inMemoryTransfers.push({
+    id: "TRF-SPLIT-TEST-01",
+    lotId: testPendingId,
+    fromOrganizationId: "org-split-002",
+    toOrganizationId: "org-split-003",
+    status: "PENDING",
+    createdAt: new Date().toISOString(),
+  });
+
+  await t.test("1. Unauthorized role (inspector) cannot split lot (403)", async () => {
+    const inspAgent = await loginAs("inspector_split@gov.vn");
+    const res = await inspAgent
+      .post(`/api/lots/${testParentId}/split`)
+      .send({
+        splits: [{ name: "Lô con A", quantity: 50 }],
+      });
+    assert.equal(res.status, 403);
+  });
+
+  await t.test("2. Cross-tenant user cannot split a lot belonging to another organization (403)", async () => {
+    const otherAgent = await loginAs("other_org@org3.vn");
+    const res = await otherAgent
+      .post(`/api/lots/${testParentId}/split`)
+      .send({
+        splits: [{ name: "Lô con A", quantity: 50 }],
+      });
+    assert.equal(res.status, 403);
+    assert.equal(res.body.error, "FORBIDDEN");
+  });
+
+  await t.test("3. Reject empty or invalid sub-lots list (400)", async () => {
+    const coopAgent = await loginAs("coop_split@org2.vn");
+    const res = await coopAgent
+      .post(`/api/lots/${testParentId}/split`)
+      .send({ splits: [] });
+    assert.equal(res.status, 400);
+    assert.equal(res.body.error, "INVALID_SPLITS");
+  });
+
+  await t.test("4. Reject non-positive quantity for sub-lot (400)", async () => {
+    const coopAgent = await loginAs("coop_split@org2.vn");
+    const res = await coopAgent
+      .post(`/api/lots/${testParentId}/split`)
+      .send({
+        splits: [
+          { name: "Phần 1", quantity: 50 },
+          { name: "Phần 2", quantity: -10 },
+        ],
+      });
+    assert.equal(res.status, 400);
+    assert.equal(res.body.error, "INVALID_QUANTITY");
+  });
+
+  await t.test("5. Reject split quantity exceeding parent remaining quantity (400)", async () => {
+    const coopAgent = await loginAs("coop_split@org2.vn");
+    const res = await coopAgent
+      .post(`/api/lots/${testParentId}/split`)
+      .send({
+        splits: [
+          { name: "Phần 1", quantity: 300 },
+          { name: "Phần 2", quantity: 250 }, // Total = 550 > 500
+        ],
+      });
+    assert.equal(res.status, 400);
+    assert.equal(res.body.error, "EXCEEDS_REMAINING_QUANTITY");
+  });
+
+  await t.test("6. Reject splitting a lot that has a PENDING transfer (400)", async () => {
+    const coopAgent = await loginAs("coop_split@org2.vn");
+    const res = await coopAgent
+      .post(`/api/lots/${testPendingId}/split`)
+      .send({
+        splits: [{ name: "Phần 1", quantity: 50 }],
+      });
+    assert.equal(res.status, 400);
+    assert.equal(res.body.error, "PENDING_TRANSFER_EXISTS");
+  });
+
+  let createdChildLotIds = [];
+
+  await t.test("7. Authorized split succeeds: deducts parent remaining, creates sub-lots, appends cryptographic events (201)", async () => {
+    const coopAgent = await loginAs("coop_split@org2.vn");
+    const res = await coopAgent
+      .post(`/api/lots/${testParentId}/split`)
+      .send({
+        splits: [
+          { name: "Dưa lưới Loại 1 (Đóng thùng 100kg)", quantity: 100, notes: "Hàng xuất khẩu" },
+          { name: "Dưa lưới Loại 2 (Đóng bao 150kg)", quantity: 150, notes: "Tiêu thụ nội địa" },
+        ],
+      });
+
+    assert.equal(res.status, 201);
+    assert.ok(res.body.childLots);
+    assert.equal(res.body.childLots.length, 2);
+    assert.equal(res.body.parentLot.remainingQuantity, 250); // 500 - 100 - 150 = 250
+
+    createdChildLotIds = res.body.childLots.map((c) => c.id);
+
+    // Verify sub-lots properties
+    for (const child of res.body.childLots) {
+      assert.ok(child.id);
+      assert.equal(child.parentLotId, testParentId);
+      assert.equal(child.organizationId, "org-split-002");
+    }
+
+    // Verify cryptographic batch events in ledger
+    const parentEvents = inMemoryBatchEvents.filter((e) => e.batchId === testParentId);
+    const splitEvent = parentEvents.find((e) => e.eventType === "LOT_SPLIT");
+    assert.ok(splitEvent, "Parent lot must have a LOT_SPLIT event in ledger");
+    assert.ok(splitEvent.eventHash, "Event hash must be calculated");
+    assert.equal(splitEvent.payload.totalSplitQuantity, 250);
+    assert.equal(splitEvent.payload.remainingQuantity, 250);
+
+    for (const childId of createdChildLotIds) {
+      const childEvents = inMemoryBatchEvents.filter((e) => e.batchId === childId);
+      const createdEvent = childEvents.find((e) => e.eventType === "CREATED_FROM_SPLIT");
+      assert.ok(createdEvent, `Child lot ${childId} must have a CREATED_FROM_SPLIT event in ledger`);
+      assert.ok(createdEvent.eventHash, "Child event hash must be calculated");
+      assert.equal(createdEvent.payload.parentLotId, testParentId);
+    }
+  });
+
+  await t.test("8. GET /api/lots/:id returns direct lineage with updated childLots", async () => {
+    const coopAgent = await loginAs("coop_split@org2.vn");
+    const res = await coopAgent.get(`/api/lots/${testParentId}`);
+    assert.equal(res.status, 200);
+
+    const lot = res.body.lot;
+    assert.equal(lot.remainingQuantity, 250);
+    assert.ok(Array.isArray(lot.childLots));
+    assert.equal(lot.childLots.length, 2);
+
+    const childIdsInResponse = lot.childLots.map((c) => c.id);
+    for (const id of createdChildLotIds) {
+      assert.ok(childIdsInResponse.includes(id), `Expected child lot ${id} in parent childLots`);
+    }
+  });
+
+  await t.test("9. GET /api/lots/:childId returns direct parentLot information", async () => {
+    const coopAgent = await loginAs("coop_split@org2.vn");
+    const childId = createdChildLotIds[0];
+    const res = await coopAgent.get(`/api/lots/${childId}`);
+    assert.equal(res.status, 200);
+
+    const lot = res.body.lot;
+    assert.ok(lot.parentLot);
+    assert.equal(lot.parentLot.id, testParentId);
+    assert.equal(lot.parentLot.name, "Lô Dưa lưới Chuẩn VietGAP");
+  });
+});
