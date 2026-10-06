@@ -937,16 +937,50 @@
       }
     });
 
-    function copyLotCode(lotId) {
+    async function copyLotCode(lotId) {
       if (!lotId) return;
-      navigator.clipboard.writeText(lotId).then(() => {
-        const copyTextEl = document.getElementById("statTotalLots");
-        const origText = copyTextEl ? copyTextEl.textContent : "";
-        if (copyTextEl) {
-          copyTextEl.textContent = "✓ Đã chép!";
-          setTimeout(() => { copyTextEl.textContent = origText; }, 1500);
+      let copied = false;
+      try {
+        if (window.isSecureContext && navigator.clipboard && navigator.clipboard.writeText) {
+          await navigator.clipboard.writeText(lotId);
+          copied = true;
+        } else {
+          const textarea = document.createElement("textarea");
+          textarea.value = lotId;
+          textarea.style.position = "fixed";
+          textarea.style.opacity = "0";
+          document.body.appendChild(textarea);
+          textarea.focus();
+          textarea.select();
+          copied = document.execCommand("copy");
+          textarea.remove();
         }
-      }).catch(() => {});
+      } catch (err) {
+        console.error("Không thể sao chép mã lô:", err);
+      }
+
+      if (!copied) {
+        try {
+          const textarea = document.createElement("textarea");
+          textarea.value = lotId;
+          textarea.style.position = "fixed";
+          textarea.style.opacity = "0";
+          document.body.appendChild(textarea);
+          textarea.focus();
+          textarea.select();
+          copied = document.execCommand("copy");
+          textarea.remove();
+        } catch (fallbackErr) {
+          console.error("Fallback copy thất bại:", fallbackErr);
+        }
+      }
+
+      const copyTextEl = document.getElementById("statTotalLots");
+      const origText = copyTextEl ? copyTextEl.textContent : "";
+      if (copyTextEl) {
+        copyTextEl.textContent = copied ? "✓ Đã chép!" : "Không thể chép";
+        setTimeout(() => { copyTextEl.textContent = origText; }, 1500);
+      }
     }
 
     // Modal Bàn giao lô hàng (S-15)

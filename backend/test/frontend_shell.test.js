@@ -29,3 +29,16 @@ test("shared design system has laptop and tablet navigation breakpoints", () => 
   assert.match(css, /@media\s*\(max-width:\s*760px\)/);
   assert.match(css, /grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\)/);
 });
+
+test("all frontend pages with copy functionality implement fallback for non-secure HTTP contexts", () => {
+  for (const file of ["lot-detail.html", "lots.html", "products.html", "harvest.html"]) {
+    const html = fs.readFileSync(path.join(frontendDir, file), "utf8");
+    assert.match(html, /execCommand\(["']copy["']\)/, `${file} is missing execCommand fallback`);
+    assert.match(html, /createElement\(["']textarea["']\)/, `${file} is missing textarea fallback element`);
+  }
+});
+
+test("app-shell.js exports copyTextToClipboard with fallback support", () => {
+  const { copyTextToClipboard } = require("../../frontend/app-shell");
+  assert.equal(typeof copyTextToClipboard, "function");
+});
