@@ -124,6 +124,7 @@
             <select id="select-farm" class="form-input" required>
               <option value="">-- Đang tải danh sách thửa đất... --</option>
             </select>
+            <span id="error-farm" class="error-msg" style="display: none;"></span>
             <span class="form-hint">Chỉ hiển thị các thửa đất thuộc quyền sở hữu của tổ chức bạn.</span>
           </div>
 
@@ -134,6 +135,7 @@
             <select id="select-product" class="form-input" required>
               <option value="">-- Chọn sản phẩm từ danh mục --</option>
             </select>
+            <span id="error-product" class="error-msg" style="display: none;"></span>
             <span class="form-hint">Sản phẩm thuộc danh mục quy chuẩn của hệ thống.</span>
           </div>
 
@@ -145,6 +147,7 @@
               <input type="number" id="input-quantity" class="form-input" required step="0.001" min="0.001" placeholder="Ví dụ: 100.5" style="flex: 1;">
               <span id="unit-badge" class="unit-tag" style="padding: 0.65rem 1rem; font-size: 0.95rem;">kg</span>
             </div>
+            <span id="error-quantity" class="error-msg" style="display: none;"></span>
             <span class="form-hint">Khối lượng ban đầu của lô hàng (phải là số dương lớn hơn 0).</span>
           </div>
 
@@ -153,6 +156,7 @@
               Ngày thu hoạch <span style="color: var(--color-danger)">*</span>
             </label>
             <input type="date" id="input-date" class="form-input" required>
+            <span id="error-date" class="error-msg" style="display: none;"></span>
             <span class="form-hint">Thời điểm thực hiện thu hoạch thực tế tại nông trại.</span>
           </div>
 
@@ -161,6 +165,7 @@
               Tên gợi nhớ / Ghi chú lô (Không bắt buộc)
             </label>
             <input type="text" id="input-custom-name" class="form-input" placeholder="Tự động ghép Tên sản phẩm - Thửa đất nếu để trống">
+            <span id="error-custom-name" class="error-msg" style="display: none;"></span>
           </div>
 
           <button type="submit" id="btn-submit-harvest" class="btn btn-primary" style="width: 100%; padding: 0.85rem; font-size: 1.05rem; font-weight: 700;">
@@ -224,6 +229,7 @@
     let currentUser = null;
     let farmsList = [];
     let productsList = [];
+    let harvestErrorHandler = null;
 
     document.addEventListener("DOMContentLoaded", async () => {
       // Set default harvest date to today
@@ -236,6 +242,26 @@
 
       currentUser = await initAppShell({ activeNav: "harvest" });
       if (!currentUser) return;
+
+      harvestErrorHandler = (typeof window.createFormErrorHandler === "function")
+        ? window.createFormErrorHandler({
+            scope: document.getElementById("form-harvest"),
+            globalAlert: document.getElementById("alert-banner"),
+            fields: {
+              farmId: { input: "#select-farm", error: "#error-farm" },
+              productId: { input: "#select-product", error: "#error-product" },
+              quantity: { input: "#input-quantity", error: "#error-quantity" },
+              harvestedAt: { input: "#input-date", error: "#error-date" },
+              name: { input: "#input-custom-name", error: "#error-custom-name" },
+            },
+          })
+        : {
+            clear: () => {},
+            showErrors: (errs) => showBanner("danger", typeof errs === "string" ? errs : (errs.quantity || errs.message || JSON.stringify(errs))),
+          };
+      if (harvestErrorHandler.bindAutoClear) {
+        harvestErrorHandler.bindAutoClear();
+      }
 
       const canHarvest = (typeof window.hasPermission === "function")
         ? window.hasPermission(currentUser.roleId, "harvest.create")
@@ -313,7 +339,7 @@
         document.getElementById("unit-badge").textContent = formatUnit(unit || "kg");
       });
 
-      // Submit form ghi nhận thu hoạch
+      // Submit form ghi nhận thu hoạch (T-22: inline field errors & double-submit prevention)
       document.getElementById("form-harvest").addEventListener("submit", async (e) => {
         e.preventDefault();
         const farmId = document.getElementById("select-farm").value;
@@ -323,25 +349,35 @@
         const customName = document.getElementById("input-custom-name").value.trim();
         const submitBtn = document.getElementById("btn-submit-harvest");
 
+        // Clear previous errors via helper
+        if (harvestErrorHandler) harvestErrorHandler.clear();
+
+        // Client-side validation: hiển thị lỗi ngay dưới từng ô input (T-22)
+        const clientErrors = {};
         if (!farmId) {
-          showBanner("danger", "Vui lòng chọn thửa đất thu hoạch.");
-          return;
+          clientErrors.farmId = "Vui lòng chọn thửa đất thu hoạch.";
         }
         if (!productId) {
-          showBanner("danger", "Vui lòng chọn loại sản phẩm thu hoạch.");
-          return;
+          clientErrors.productId = "Vui lòng chọn loại sản phẩm thu hoạch.";
         }
         if (isNaN(quantity) || quantity <= 0) {
-          showBanner("danger", "Khối lượng thu hoạch phải là số dương lớn hơn 0.");
-          return;
+          clientErrors.quantity = "Khối lượng thu hoạch phải là số dương lớn hơn 0.";
         }
         if (!harvestedAt) {
-          showBanner("danger", "Vui lòng chọn ngày thu hoạch.");
-          return;
+          clientErrors.harvestedAt = "Vui lòng chọn ngày thu hoạch.";
+        } else {
+          const today = new Date().toISOString().slice(0, 10);
+          if (harvestedAt > today) {
+            clientErrors.harvestedAt = "Ngày thu hoạch không được nằm trong tương lai.";
+          }
         }
-        const today = new Date().toISOString().slice(0, 10);
-        if (harvestedAt > today) {
-          showBanner("danger", "Ngày thu hoạch không được nằm trong tương lai.");
+
+        if (Object.keys(clientErrors).length > 0) {
+          if (harvestErrorHandler) {
+            harvestErrorHandler.showErrors(clientErrors);
+          } else {
+            showBanner("danger", Object.values(clientErrors)[0]);
+          }
           return;
         }
 
@@ -349,6 +385,7 @@
           ? crypto.randomUUID()
           : "idemp_" + Date.now() + "_" + Math.random().toString(36).substring(2, 9);
 
+        // Khóa nút để chống double-click tạo trùng lô (giữ nguyên cơ chế disable nút)
         submitBtn.disabled = true;
         submitBtn.textContent = "⏳ Đang xử lý...";
 
@@ -371,7 +408,6 @@
             body: JSON.stringify(payload),
           });
 
-
           if (res.status === 401) {
             window.location.href = "/login?returnTo=/harvest.html";
             return;
@@ -380,7 +416,12 @@
           const data = await res.json();
 
           if (!res.ok) {
-            showBanner("danger", data.message || "Lỗi ghi nhận thu hoạch.");
+            // Hiển thị lỗi trường tương ứng ngay dưới ô input nếu có (T-22)
+            if (data.errors && Object.keys(data.errors).length > 0 && harvestErrorHandler) {
+              harvestErrorHandler.showErrors(data.errors);
+            } else {
+              showBanner("danger", data.message || "Lỗi ghi nhận thu hoạch.");
+            }
             return;
           }
 
@@ -446,6 +487,7 @@
 
       // Nút ghi nhận tiếp
       document.getElementById("btn-continue-harvest").addEventListener("click", () => {
+        if (harvestErrorHandler) harvestErrorHandler.clear();
         document.getElementById("form-harvest").reset();
         document.getElementById("input-date").value = new Date().toISOString().slice(0, 10);
         document.getElementById("unit-badge").textContent = "kg";

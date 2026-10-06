@@ -519,28 +519,52 @@
       }
     }
 
+    // Helper quản lý hiển thị lỗi biểu mẫu dùng chung (T-22)
+    const farmErrorHandler = (typeof window.createFormErrorHandler === "function")
+      ? window.createFormErrorHandler({
+          scope: "#farmForm",
+          globalAlert: "#globalAlert",
+          fields: {
+            name: { input: "#farmName", error: "#nameError" },
+            area: { input: "#farmArea", error: "#areaError" },
+            coordinates: { input: "#farmCoordinates", error: "#coordError" },
+          },
+        })
+      : null;
+    if (farmErrorHandler && farmErrorHandler.bindAutoClear) {
+      farmErrorHandler.bindAutoClear();
+    }
+
     function clearErrors() {
-      document.getElementById("nameError").textContent = "";
-      document.getElementById("areaError").textContent = "";
-      document.getElementById("coordError").textContent = "";
-      document.getElementById("farmName").classList.remove("input-error");
-      document.getElementById("farmArea").classList.remove("input-error");
-      const alert = document.getElementById("globalAlert");
-      alert.style.display = "none";
-      alert.className = "alert-box";
+      if (farmErrorHandler) {
+        farmErrorHandler.clear();
+      } else {
+        document.getElementById("nameError").textContent = "";
+        document.getElementById("areaError").textContent = "";
+        document.getElementById("coordError").textContent = "";
+        document.getElementById("farmName").classList.remove("input-error");
+        document.getElementById("farmArea").classList.remove("input-error");
+        const alert = document.getElementById("globalAlert");
+        alert.style.display = "none";
+        alert.className = "alert-box";
+      }
     }
 
     function showFieldErrors(errors) {
-      if (errors.name) {
-        document.getElementById("nameError").textContent = errors.name;
-        document.getElementById("farmName").classList.add("input-error");
-      }
-      if (errors.area) {
-        document.getElementById("areaError").textContent = errors.area;
-        document.getElementById("farmArea").classList.add("input-error");
-      }
-      if (errors.coordinates) {
-        document.getElementById("coordError").textContent = errors.coordinates;
+      if (farmErrorHandler) {
+        farmErrorHandler.showErrors(errors);
+      } else {
+        if (errors.name) {
+          document.getElementById("nameError").textContent = errors.name;
+          document.getElementById("farmName").classList.add("input-error");
+        }
+        if (errors.area) {
+          document.getElementById("areaError").textContent = errors.area;
+          document.getElementById("farmArea").classList.add("input-error");
+        }
+        if (errors.coordinates) {
+          document.getElementById("coordError").textContent = errors.coordinates;
+        }
       }
     }
 
@@ -599,22 +623,21 @@
       const areaVal = document.getElementById("farmArea").value;
       const coordinates = document.getElementById("farmCoordinates").value.trim();
 
-      // Kiểm tra sơ bộ client-side
-      let hasError = false;
+      // Kiểm tra sơ bộ client-side (T-22)
+      const clientErrors = {};
       if (!name) {
-        document.getElementById("nameError").textContent = "Tên thửa đất không được để trống.";
-        document.getElementById("farmName").classList.add("input-error");
-        hasError = true;
+        clientErrors.name = "Tên thửa đất không được để trống.";
       }
 
       const numArea = parseFloat(areaVal);
       if (isNaN(numArea) || numArea <= 0) {
-        document.getElementById("areaError").textContent = "Diện tích phải là số lớn hơn 0 ha.";
-        document.getElementById("farmArea").classList.add("input-error");
-        hasError = true;
+        clientErrors.area = "Diện tích phải là số lớn hơn 0 ha.";
       }
 
-      if (hasError) return;
+      if (Object.keys(clientErrors).length > 0) {
+        showFieldErrors(clientErrors);
+        return;
+      }
 
       // Khóa nút để chặn bấm 2 lần
       isSubmitting = true;

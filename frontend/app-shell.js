@@ -307,6 +307,214 @@
     return copied;
   }
 
+  /**
+   * Helper quản lý hiển thị lỗi biểu mẫu dùng chung (T-22)
+   * Đồng bộ trải nghiệm hiển thị lỗi validation ngay dưới ô nhập liệu và xóa lỗi khi sửa.
+   *
+   * @param {Object} options
+   * @param {HTMLElement|string} [options.scope] Biểu mẫu hoặc container bao ngoài
+   * @param {HTMLElement|string|Function} [options.globalAlert] Element hoặc selector hiển thị banner lỗi chung
+   * @param {Object} [options.fields] Ánh xạ từng trường: { [fieldName]: { input: ..., error: ... } }
+   */
+  function createFormErrorHandler(options = {}) {
+    function getScope() {
+      if (typeof document === "undefined") return null;
+      if (typeof options.scope === "string") {
+        return document.querySelector(options.scope);
+      }
+      return options.scope || document;
+    }
+
+    function getGlobalAlert() {
+      if (typeof options.globalAlert === "function") return options.globalAlert;
+      if (typeof options.globalAlert === "object" && options.globalAlert !== null) return options.globalAlert;
+      if (typeof document === "undefined") return null;
+      if (typeof options.globalAlert === "string") {
+        return document.querySelector(options.globalAlert);
+      }
+      return null;
+    }
+
+    const fieldsConfig = options.fields || {};
+
+    function resolveFieldElements(fieldName) {
+      const scopeEl = getScope() || (typeof document !== "undefined" ? document : null);
+      const cfg = fieldsConfig[fieldName] || {};
+      let inputEl = null;
+      let errorEl = null;
+
+      if (cfg.input) {
+        inputEl = typeof cfg.input === "string"
+          ? ((scopeEl && scopeEl.querySelector ? scopeEl.querySelector(cfg.input) : null) || (typeof document !== "undefined" ? document.querySelector(cfg.input) : null))
+          : cfg.input;
+      }
+      if (cfg.error) {
+        errorEl = typeof cfg.error === "string"
+          ? ((scopeEl && scopeEl.querySelector ? scopeEl.querySelector(cfg.error) : null) || (typeof document !== "undefined" ? document.querySelector(cfg.error) : null))
+          : cfg.error;
+      }
+
+      // Fallback tự động tìm theo ID hoặc name
+      if (!inputEl && scopeEl && scopeEl.querySelector) {
+        inputEl = scopeEl.querySelector(`#input-${fieldName}`) ||
+                  scopeEl.querySelector(`#select-${fieldName}`) ||
+                  scopeEl.querySelector(`#${fieldName}`) ||
+                  scopeEl.querySelector(`[name="${fieldName}"]`);
+      }
+      if (!errorEl && scopeEl && scopeEl.querySelector) {
+        errorEl = scopeEl.querySelector(`#error-${fieldName}`) ||
+                  scopeEl.querySelector(`#${fieldName}Error`) ||
+                  scopeEl.querySelector(`[data-error-for="${fieldName}"]`);
+      }
+
+      return { inputEl, errorEl };
+    }
+
+    function clearFieldError(fieldName) {
+      const { inputEl, errorEl } = resolveFieldElements(fieldName);
+      if (inputEl) {
+        if (inputEl.classList && inputEl.classList.remove) {
+          inputEl.classList.remove("input-error");
+        }
+        if (inputEl.removeAttribute) {
+          inputEl.removeAttribute("aria-invalid");
+        }
+      }
+      if (errorEl) {
+        errorEl.textContent = "";
+        errorEl.style.display = "none";
+      }
+    }
+
+    function setFieldError(fieldName, message) {
+      const { inputEl, errorEl } = resolveFieldElements(fieldName);
+      if (inputEl) {
+        if (inputEl.classList && inputEl.classList.add) {
+          inputEl.classList.add("input-error");
+        }
+        if (inputEl.setAttribute) {
+          inputEl.setAttribute("aria-invalid", "true");
+        }
+      }
+      if (errorEl) {
+        errorEl.textContent = message || "";
+        errorEl.style.display = message ? "block" : "none";
+        return true;
+      }
+      return false;
+    }
+
+    function clear() {
+      // 1. Xóa các trường đã cấu hình
+      Object.keys(fieldsConfig).forEach(clearFieldError);
+
+      // 2. Xóa các phần tử lỗi còn sót lại trong phạm vi
+      const scopeEl = getScope();
+      if (scopeEl && scopeEl.querySelectorAll) {
+        scopeEl.querySelectorAll(".input-error").forEach((el) => {
+          if (el.classList && el.classList.remove) {
+            el.classList.remove("input-error");
+          }
+          if (el.removeAttribute) {
+            el.removeAttribute("aria-invalid");
+          }
+        });
+        scopeEl.querySelectorAll(".error-msg").forEach((el) => {
+          el.textContent = "";
+          el.style.display = "none";
+        });
+      }
+
+      // 3. Xóa alert banner chung
+      const alertTarget = getGlobalAlert();
+      if (alertTarget) {
+        if (typeof alertTarget === "function") {
+          alertTarget(null);
+        } else {
+          alertTarget.textContent = "";
+          alertTarget.style.display = "none";
+          if (alertTarget.classList && alertTarget.classList.contains("alert-box")) {
+            alertTarget.className = "alert-box";
+          }
+        }
+      }
+    }
+
+    function showErrors(errors) {
+      if (!errors) return;
+
+      const unhandled = [];
+
+      if (typeof errors === "string") {
+        unhandled.push(errors);
+      } else if (typeof errors === "object") {
+        const errorEntries = errors.errors && typeof errors.errors === "object"
+          ? errors.errors
+          : errors;
+
+        Object.entries(errorEntries).forEach(([field, msg]) => {
+          if (!msg) return;
+          if (field === "_global" || field === "general" || field === "message") {
+            unhandled.push(msg);
+            return;
+          }
+          const handled = setFieldError(field, msg);
+          if (!handled) {
+            unhandled.push(msg);
+          }
+        });
+      }
+
+      if (unhandled.length > 0) {
+        const alertTarget = getGlobalAlert();
+        if (alertTarget) {
+          const combinedMsg = unhandled.join(" ");
+          if (typeof alertTarget === "function") {
+            alertTarget(combinedMsg);
+          } else {
+            alertTarget.textContent = combinedMsg;
+            alertTarget.style.display = "block";
+            if (alertTarget.classList && alertTarget.classList.contains("alert-box")) {
+              alertTarget.className = "alert-box alert-error";
+            }
+          }
+        }
+      }
+    }
+
+    function bindAutoClear() {
+      Object.keys(fieldsConfig).forEach((field) => {
+        const { inputEl } = resolveFieldElements(field);
+        if (inputEl && typeof inputEl.addEventListener === "function") {
+          const onInput = () => clearFieldError(field);
+          inputEl.addEventListener("input", onInput);
+          inputEl.addEventListener("change", onInput);
+        }
+      });
+    }
+
+    return {
+      clear,
+      showErrors,
+      setFieldError,
+      clearFieldError,
+      resolveFieldElements,
+      bindAutoClear,
+    };
+  }
+
+  function showFieldErrors(errors, options) {
+    const handler = createFormErrorHandler(options);
+    handler.showErrors(errors);
+    return handler;
+  }
+
+  function clearFieldErrors(options) {
+    const handler = createFormErrorHandler(options);
+    handler.clear();
+    return handler;
+  }
+
   // Export to global scope & module
   if (typeof window !== "undefined") {
     window.initAppShell = initAppShell;
@@ -321,6 +529,9 @@
     window.applyRoleNavigation = applyRoleNavigation;
     window.escapeHtml = escapeHtml;
     window.copyTextToClipboard = copyTextToClipboard;
+    window.createFormErrorHandler = createFormErrorHandler;
+    window.showFieldErrors = showFieldErrors;
+    window.clearFieldErrors = clearFieldErrors;
   }
 
   if (typeof module !== "undefined" && module.exports) {
@@ -337,6 +548,9 @@
       applyRoleNavigation,
       escapeHtml,
       copyTextToClipboard,
+      createFormErrorHandler,
+      showFieldErrors,
+      clearFieldErrors,
     };
   }
 })();
