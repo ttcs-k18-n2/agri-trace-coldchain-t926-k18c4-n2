@@ -17,6 +17,7 @@ const {
 } = require("./event_repository");
 const { verifyBatchIntegrity } = require("./integrity_verifier");
 const { evaluateLotAccess } = require("./lot_access");
+const { markOverdueTransfers, startTransferOverdueJob } = require("./transfer_overdue_job");
 const app = express();
 const PORT = Number(process.env.PORT || 3000);
 
@@ -121,6 +122,8 @@ async function getPendingTransferForLot(lotId) {
           toOrganizationName: r.to_organization_name,
           status: r.status,
           notes: r.notes,
+          isOverdue: Boolean(r.is_overdue),
+          overdueAt: r.overdue_at || null,
           createdAt: r.created_at,
           updatedAt: r.updated_at,
         };
@@ -135,6 +138,8 @@ async function getPendingTransferForLot(lotId) {
     const fromOrg = inMemoryOrganizations.find((o) => o.id === t.fromOrganizationId);
     return {
       ...t,
+      isOverdue: Boolean(t.isOverdue || t.is_overdue),
+      overdueAt: t.overdueAt || t.overdue_at || null,
       toOrganizationName: toOrg ? toOrg.name : t.toOrganizationId,
       fromOrganizationName: fromOrg ? fromOrg.name : t.fromOrganizationId,
     };
@@ -890,7 +895,8 @@ app.get(
             l.product_id, p.name AS product_name, p.unit AS product_unit,
             l.initial_quantity, l.remaining_quantity, l.harvested_at,
             lt.id AS pending_transfer_id, lt.to_organization_id AS pending_to_org_id,
-            o_to.name AS pending_to_org_name, lt.created_at AS pending_created_at
+            o_to.name AS pending_to_org_name, lt.created_at AS pending_created_at,
+            lt.is_overdue AS pending_is_overdue, lt.overdue_at AS pending_overdue_at
           FROM lots l
           LEFT JOIN farms f ON l.farm_id = f.id
           LEFT JOIN products p ON l.product_id = p.id
@@ -982,6 +988,8 @@ app.get(
               toOrganizationId: r.pending_to_org_id,
               toOrganizationName: r.pending_to_org_name || r.pending_to_org_id,
               status: "PENDING",
+              isOverdue: Boolean(r.pending_is_overdue),
+              overdueAt: r.pending_overdue_at || null,
               createdAt: r.pending_created_at,
             } : null,
           })),
@@ -1077,6 +1085,8 @@ app.get(
             toOrganizationId: pending.toOrganizationId,
             toOrganizationName: toOrg ? toOrg.name : pending.toOrganizationId,
             status: "PENDING",
+            isOverdue: Boolean(pending.isOverdue || pending.is_overdue),
+            overdueAt: pending.overdueAt || pending.overdue_at || null,
             createdAt: pending.createdAt,
           } : null,
         };
@@ -2250,6 +2260,8 @@ app.post(
             toOrganizationId: r.to_organization_id,
             toOrganizationName: toOrgName,
             status: r.status,
+            isOverdue: Boolean(r.is_overdue),
+            overdueAt: r.overdue_at || null,
             notes: r.notes,
             createdByUserId: r.created_by_user_id,
             createdAt: r.created_at,
@@ -2298,6 +2310,8 @@ app.post(
           toOrganizationId: trimmedToOrgId,
           toOrganizationName: toOrgName,
           status: "PENDING",
+          isOverdue: false,
+          overdueAt: null,
           notes: cleanNotes,
           createdByUserId: userId,
           createdAt: now.toISOString(),
@@ -2373,7 +2387,7 @@ app.get(
           SELECT 
             t.id, t.lot_id, t.from_organization_id, t.to_organization_id,
             t.status, t.notes, t.created_by_user_id, t.resolved_by_user_id,
-            t.rejection_reason, t.created_at, t.updated_at,
+            t.rejection_reason, t.is_overdue, t.overdue_at, t.created_at, t.updated_at,
             l.name AS lot_name, l.status AS lot_status,
             o_from.name AS from_organization_name,
             o_to.name AS to_organization_name
@@ -2422,6 +2436,8 @@ app.get(
             toOrganizationId: r.to_organization_id,
             toOrganizationName: r.to_organization_name,
             status: r.status,
+            isOverdue: Boolean(r.is_overdue),
+            overdueAt: r.overdue_at || null,
             notes: r.notes,
             createdByUserId: r.created_by_user_id,
             resolvedByUserId: r.resolved_by_user_id,
@@ -2464,6 +2480,8 @@ app.get(
           const toOrg = inMemoryOrganizations.find((o) => o.id === t.toOrganizationId);
           return {
             ...t,
+            isOverdue: Boolean(t.isOverdue || t.is_overdue),
+            overdueAt: t.overdueAt || t.overdue_at || null,
             lotName: lot ? lot.name : t.lotId,
             lotStatus: lot ? lot.status : "Đã thu hoạch",
             fromOrganizationName: fromOrg ? fromOrg.name : t.fromOrganizationId,
@@ -2494,7 +2512,7 @@ app.get(
           `SELECT 
             t.id, t.lot_id, t.from_organization_id, t.to_organization_id,
             t.status, t.notes, t.created_by_user_id, t.resolved_by_user_id,
-            t.rejection_reason, t.created_at, t.updated_at,
+            t.rejection_reason, t.is_overdue, t.overdue_at, t.created_at, t.updated_at,
             o_from.name AS from_organization_name,
             o_to.name AS to_organization_name
           FROM lot_transfers t
@@ -2528,6 +2546,8 @@ app.get(
             toOrganizationId: r.to_organization_id,
             toOrganizationName: r.to_organization_name,
             status: r.status,
+            isOverdue: Boolean(r.is_overdue),
+            overdueAt: r.overdue_at || null,
             notes: r.notes,
             createdByUserId: r.created_by_user_id,
             resolvedByUserId: r.resolved_by_user_id,
@@ -2561,6 +2581,8 @@ app.get(
           const toOrg = inMemoryOrganizations.find((o) => o.id === t.toOrganizationId);
           return {
             ...t,
+            isOverdue: Boolean(t.isOverdue || t.is_overdue),
+            overdueAt: t.overdueAt || t.overdue_at || null,
             fromOrganizationName: fromOrg ? fromOrg.name : t.fromOrganizationId,
             toOrganizationName: toOrg ? toOrg.name : t.toOrganizationId,
           };
@@ -2658,7 +2680,8 @@ app.post(
             [userId, now, tr.id]
           );
 
-          // 3. Ghi event mới TRANSFER_CONFIRMED vào chuỗi băm SHA-256 bảo chứng (K-01 / S-10 / S-16)
+          // 3. Ghi event mới TRANSFER_CONFIRMED vào chuỗi băm SHA-256 bảo chứng (K-01 / S-10 / S-16 / S-24)
+          const isLate = Boolean(tr.is_overdue);
           const confirmEvent = await appendBatchEvent(client, {
             batchId: tr.lot_id,
             eventType: "TRANSFER_CONFIRMED",
@@ -2671,6 +2694,7 @@ app.post(
               resolvedByUserId: userId,
               notes: tr.notes,
               status: "CONFIRMED",
+              lateConfirmation: isLate,
             },
             organizationId: tr.to_organization_id,
             actorUserId: userId,
@@ -2690,6 +2714,9 @@ app.post(
               toOrganizationId: updated.to_organization_id,
               toOrganizationName: tr.to_org_name,
               status: updated.status,
+              isOverdue: Boolean(updated.is_overdue),
+              overdueAt: updated.overdue_at || null,
+              lateConfirmation: isLate,
               notes: updated.notes,
               createdByUserId: updated.created_by_user_id,
               resolvedByUserId: updated.resolved_by_user_id,
@@ -2754,6 +2781,7 @@ app.post(
         try {
           const fromOrg = inMemoryOrganizations.find((o) => o.id === tr.fromOrganizationId);
           const toOrg = inMemoryOrganizations.find((o) => o.id === tr.toOrganizationId);
+          const isLate = Boolean(tr.isOverdue || tr.is_overdue);
 
           confirmEvent = await appendBatchEvent(null, {
             batchId: tr.lotId,
@@ -2767,6 +2795,7 @@ app.post(
               resolvedByUserId: userId,
               notes: tr.notes,
               status: "CONFIRMED",
+              lateConfirmation: isLate,
             },
             organizationId: tr.toOrganizationId,
             actorUserId: userId,
@@ -2781,9 +2810,15 @@ app.post(
           throw memErr;
         }
 
+        const isLate = Boolean(tr.isOverdue || tr.is_overdue);
         return res.status(200).json({
           message: "Xác nhận tiếp nhận bàn giao thành công. Quyền sở hữu lô hàng đã được chuyển giao sang tổ chức của bạn.",
-          transfer: { ...tr },
+          transfer: {
+            ...tr,
+            isOverdue: Boolean(tr.isOverdue || tr.is_overdue),
+            overdueAt: tr.overdueAt || tr.overdue_at || null,
+            lateConfirmation: isLate,
+          },
           event: {
             id: confirmEvent.id,
             sequenceNo: confirmEvent.sequenceNo,
@@ -2919,6 +2954,8 @@ app.post(
               toOrganizationId: updated.to_organization_id,
               toOrganizationName: tr.to_org_name,
               status: updated.status,
+              isOverdue: Boolean(updated.is_overdue),
+              overdueAt: updated.overdue_at || null,
               notes: updated.notes,
               createdByUserId: updated.created_by_user_id,
               resolvedByUserId: updated.resolved_by_user_id,
@@ -3006,7 +3043,11 @@ app.post(
 
         return res.status(200).json({
           message: "Từ chối tiếp nhận bàn giao thành công. Lô hàng vẫn thuộc quyền sở hữu của bên gửi.",
-          transfer: { ...tr },
+          transfer: {
+            ...tr,
+            isOverdue: Boolean(tr.isOverdue || tr.is_overdue),
+            overdueAt: tr.overdueAt || tr.overdue_at || null,
+          },
           event: {
             id: rejectEvent.id,
             sequenceNo: rejectEvent.sequenceNo,
@@ -3113,6 +3154,9 @@ async function start() {
     }
   }
 
+  // Khởi động job rà soát bàn giao quá hạn định kỳ (S-24 / T-56)
+  startTransferOverdueJob({ pool, inMemoryTransfers });
+
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`Backend server running at http://0.0.0.0:${PORT}`);
   });
@@ -3162,5 +3206,7 @@ module.exports = {
   inMemoryTransfers,
   seedDemoEvents,
   setAppendHookForTesting,
+  markOverdueTransfers,
+  startTransferOverdueJob,
 };
 

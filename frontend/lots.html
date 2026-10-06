@@ -751,10 +751,17 @@
           <div class="lot-card-top">
             <span class="lot-code-tag">${lot.id}</span>
             ${isPending ? `
-              <span class="status-pill warning" title="Đang chờ ${escapeHtml(pendingOrgName)} xác nhận bàn giao">
-                <span class="status-dot"></span>
-                <span>Chờ bàn giao</span>
-              </span>
+              <div style="display: flex; gap: 4px; align-items: center; flex-wrap: wrap;">
+                <span class="status-pill warning" title="Đang chờ ${escapeHtml(pendingOrgName)} xác nhận bàn giao">
+                  <span class="status-dot"></span>
+                  <span>Chờ bàn giao</span>
+                </span>
+                ${(lot.pendingTransfer && (lot.pendingTransfer.isOverdue || lot.pendingTransfer.is_overdue)) ? `
+                  <span class="status-pill danger overdue-badge" style="background: #fee2e2; color: #b91c1c; border: 1px solid #f87171; font-weight: 700; text-transform: uppercase;" title="Yêu cầu bàn giao đã quá hạn 48 giờ">
+                    <span>QUÁ HẠN</span>
+                  </span>
+                ` : ""}
+              </div>
             ` : `
               <span class="status-pill success">
                 <span class="status-dot"></span>
@@ -1350,10 +1357,17 @@
                       ${escapeHtml(tr.lotName || 'Lô hàng nông sản')}
                     </h3>
                   </div>
-                  <span class="status-pill warning" title="Đang chờ tổ chức của bạn xác nhận tiếp nhận">
-                    <span class="status-dot"></span>
-                    <span>Chờ tiếp nhận</span>
-                  </span>
+                  <div style="display: flex; gap: 4px; align-items: center; flex-wrap: wrap;">
+                    <span class="status-pill warning" title="Đang chờ tổ chức của bạn xác nhận tiếp nhận">
+                      <span class="status-dot"></span>
+                      <span>Chờ tiếp nhận</span>
+                    </span>
+                    ${(tr.isOverdue || tr.is_overdue) ? `
+                      <span class="status-pill danger overdue-badge" style="background: #fee2e2; color: #b91c1c; border: 1px solid #f87171; font-weight: 700; text-transform: uppercase;" title="Yêu cầu bàn giao đã quá hạn 48 giờ">
+                        <span>QUÁ HẠN</span>
+                      </span>
+                    ` : ""}
+                  </div>
                 </div>
 
                 <div class="lot-meta-list">

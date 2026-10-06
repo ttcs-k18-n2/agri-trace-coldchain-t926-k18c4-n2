@@ -633,10 +633,17 @@
             </div>
             <div style="display: flex; align-items: center; gap: 8px;">
               ${lot.pendingTransfer ? `
-                <span class="status-pill warning" title="${isRecipient ? `Được bàn giao từ ${escapeHtml(lot.pendingTransfer.fromOrganizationName || lot.pendingTransfer.fromOrganizationId)}` : `Đang chờ ${escapeHtml(lot.pendingTransfer.toOrganizationName || 'bên nhận')} xác nhận`}">
-                  <span class="status-dot"></span>
-                  <span>${isRecipient ? "Chờ tiếp nhận" : "Chờ bàn giao"}</span>
-                </span>
+                <div style="display: flex; gap: 6px; align-items: center; flex-wrap: wrap;">
+                  <span class="status-pill warning" title="${isRecipient ? `Được bàn giao từ ${escapeHtml(lot.pendingTransfer.fromOrganizationName || lot.pendingTransfer.fromOrganizationId)}` : `Đang chờ ${escapeHtml(lot.pendingTransfer.toOrganizationName || 'bên nhận')} xác nhận`}">
+                    <span class="status-dot"></span>
+                    <span>${isRecipient ? "Chờ tiếp nhận" : "Chờ bàn giao"}</span>
+                  </span>
+                  ${(lot.pendingTransfer.isOverdue || lot.pendingTransfer.is_overdue) ? `
+                    <span class="status-pill danger overdue-badge" style="background: #fee2e2; color: #b91c1c; border: 1px solid #f87171; font-weight: 700; text-transform: uppercase;" title="Yêu cầu bàn giao đã quá hạn 48 giờ">
+                      <span>QUÁ HẠN</span>
+                    </span>
+                  ` : ""}
+                </div>
               ` : `
                 <span class="status-pill success">
                   <span class="status-dot"></span>
@@ -692,23 +699,31 @@
           </div>
 
           ${lot.pendingTransfer ? `
-            <div style="background: rgba(245, 158, 11, 0.08); border: 1px solid rgba(245, 158, 11, 0.25); border-radius: var(--radius-md); padding: 14px 18px; margin-bottom: 20px; display: flex; align-items: flex-start; gap: 12px; color: #b45309;">
+            <div style="background: ${(lot.pendingTransfer.isOverdue || lot.pendingTransfer.is_overdue) ? 'rgba(239, 68, 68, 0.08)' : 'rgba(245, 158, 11, 0.08)'}; border: 1px solid ${(lot.pendingTransfer.isOverdue || lot.pendingTransfer.is_overdue) ? 'rgba(239, 68, 68, 0.35)' : 'rgba(245, 158, 11, 0.25)'}; border-radius: var(--radius-md); padding: 14px 18px; margin-bottom: 20px; display: flex; align-items: flex-start; gap: 12px; color: ${(lot.pendingTransfer.isOverdue || lot.pendingTransfer.is_overdue) ? '#991b1b' : '#b45309'};">
               <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink: 0; margin-top: 2px;"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-              <div>
-                <div style="font-weight: 700; font-size: 14px;">
-                  ${isRecipient ? "Yêu cầu bàn giao đến đang Chờ tiếp nhận (PENDING)" : "Yêu cầu bàn giao đang Chờ xác nhận (PENDING)"}
+              <div style="flex-grow: 1;">
+                <div style="font-weight: 700; font-size: 14px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                  <span>${isRecipient ? "Yêu cầu bàn giao đến đang Chờ tiếp nhận (PENDING)" : "Yêu cầu bàn giao đang Chờ xác nhận (PENDING)"}</span>
+                  ${(lot.pendingTransfer.isOverdue || lot.pendingTransfer.is_overdue) ? `
+                    <span class="status-pill danger overdue-badge" style="background: #fee2e2; color: #b91c1c; border: 1px solid #f87171; font-weight: 700; font-size: 11px; padding: 1px 6px;">QUÁ HẠN</span>
+                  ` : ""}
                 </div>
+                ${(lot.pendingTransfer.isOverdue || lot.pendingTransfer.is_overdue) ? `
+                  <div style="margin-top: 4px; font-size: 12.5px; font-weight: 600; color: #b91c1c;">
+                    ⚠️ Yêu cầu bàn giao này đã quá hạn 48 giờ chưa xác nhận. Bên nhận vẫn có thể bấm "Xác nhận tiếp nhận" bên dưới và hệ thống sẽ tự động ghi nhận là Xác nhận muộn.
+                  </div>
+                ` : ""}
                 <div style="font-size: 13px; margin-top: 3px; line-height: 1.5;">
                   ${isRecipient ? `
                     Lô hàng này đang được tổ chức <strong>${escapeHtml(lot.pendingTransfer.fromOrganizationName || lot.pendingTransfer.fromOrganizationId)}</strong> đề nghị chuyển giao sang tổ chức của bạn.
                     ${lot.pendingTransfer.notes ? `<div style="margin-top: 4px;"><strong>Ghi chú bên gửi:</strong> <em>"${escapeHtml(lot.pendingTransfer.notes)}"</em></div>` : ""}
-                    <div style="margin-top: 6px; font-size: 12px; color: #92400e;">
-                      * Quyền sở hữu và trách nhiệm lưu kho hiện vẫn thuộc bên gửi cho đến khi bên bạn bấm Xác nhận tiếp nhận (Story S-16).
+                    <div style="margin-top: 6px; font-size: 12px; color: ${(lot.pendingTransfer.isOverdue || lot.pendingTransfer.is_overdue) ? '#991b1b' : '#92400e'};">
+                      * Quyền sở hữu và trách nhiệm lưu kho hiện vẫn thuộc bên gửi cho đến khi bên bạn bấm Xác nhận tiếp nhận (Story S-16 / S-24).
                     </div>
                     <div style="margin-top: 12px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
                       <button type="button" class="btn btn-primary" id="btnDetailConfirmTransfer" data-transfer-id="${escapeHtml(lot.pendingTransfer.id)}" style="height: 36px; padding: 0 16px; font-size: 13px; font-weight: 600; display: inline-flex; align-items: center; gap: 6px; cursor: pointer;">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
-                        <span>Xác nhận tiếp nhận</span>
+                        <span>Xác nhận tiếp nhận ${(lot.pendingTransfer.isOverdue || lot.pendingTransfer.is_overdue) ? '(Muộn)' : ''}</span>
                       </button>
                       <button type="button" class="btn btn-secondary" id="btnDetailRejectTransfer" data-transfer-id="${escapeHtml(lot.pendingTransfer.id)}" style="height: 36px; padding: 0 14px; font-size: 13px; font-weight: 600; color: #dc2626; border-color: rgba(220, 38, 38, 0.3); display: inline-flex; align-items: center; gap: 4px; cursor: pointer;">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
@@ -718,8 +733,8 @@
                   ` : `
                     Lô hàng đang được đề nghị chuyển giao sang <strong>${escapeHtml(lot.pendingTransfer.toOrganizationName || lot.pendingTransfer.toOrganizationId)}</strong>.
                     ${lot.pendingTransfer.notes ? `<div style="margin-top: 4px;"><strong>Ghi chú bàn giao:</strong> <em>"${escapeHtml(lot.pendingTransfer.notes)}"</em></div>` : ""}
-                    <div style="margin-top: 6px; font-size: 12px; color: #92400e;">
-                      * Quyền sở hữu và trách nhiệm lưu kho vẫn thuộc tổ chức của bạn cho đến khi bên nhận bấm xác nhận tiếp nhận (Story S-16).
+                    <div style="margin-top: 6px; font-size: 12px; color: ${(lot.pendingTransfer.isOverdue || lot.pendingTransfer.is_overdue) ? '#991b1b' : '#92400e'};">
+                      * Quyền sở hữu và trách nhiệm lưu kho vẫn thuộc tổ chức của bạn cho đến khi bên nhận bấm xác nhận tiếp nhận (Story S-16 / S-24).
                     </div>
                   `}
                 </div>
@@ -916,6 +931,20 @@
                         <div style="margin-top: 5px; font-size: 12px; color: #92400e; font-style: italic;">
                           * Quyền sở hữu lô vẫn thuộc bên gửi cho đến khi bên nhận bấm Xác nhận (S-16).
                         </div>
+                      </div>
+                    ` : ""}
+                    ${isConfirmed && payloadObj ? `
+                      <div style="background: rgba(5, 150, 105, 0.06); border: 1px solid rgba(5, 150, 105, 0.2); border-radius: var(--radius-sm); padding: 10px 14px; margin-bottom: 8px; font-size: 13px; color: #065f46;">
+                        <div><strong>Bên giao:</strong> ${escapeHtml(payloadObj.fromOrganizationName || payloadObj.fromOrganizationId || "--")} &rarr; <strong>Bên nhận:</strong> ${escapeHtml(payloadObj.toOrganizationName || payloadObj.toOrganizationId || "--")}</div>
+                        ${payloadObj.lateConfirmation ? `
+                          <div style="margin-top: 5px; display: inline-flex; align-items: center; gap: 6px;">
+                            <span class="status-pill danger" style="background: #fee2e2; color: #b91c1c; border: 1px solid #f87171; font-weight: 700; font-size: 11px; padding: 1px 6px;">QUÁ HẠN</span>
+                            <span style="font-weight: 600; color: #b91c1c;">Xác nhận muộn: Có</span>
+                          </div>
+                        ` : `
+                          <div style="margin-top: 5px; font-size: 12px; color: var(--color-text-muted);">Xác nhận muộn: Không</div>
+                        `}
+                        ${payloadObj.notes ? `<div style="margin-top: 4px; font-size: 12.5px;"><strong>Ghi chú:</strong> ${escapeHtml(payloadObj.notes)}</div>` : ""}
                       </div>
                     ` : ""}
                     ${isRejected && payloadObj && payloadObj.reason ? `
