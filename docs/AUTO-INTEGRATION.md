@@ -1,29 +1,68 @@
-# Auto integration vào develop
+# Tích hợp code hiện tại: Pull Request vào main
 
-Sau khi workflow này được merge vào `develop`, các branch feature/fix cần đồng bộ `develop` một lần để nhận workflow.
+Tài liệu cũ của dự án từng mô tả cơ chế tự động tích hợp vào `develop`. Cơ chế đó **không còn là quy trình hiện tại**.
 
-Khi thành viên push lên branch dạng:
+## Quy trình hiện tại
+
+Khi thành viên push lên branch:
 
 - `feature/**`
 - `fix/**`
+- `docs/**`
 
-GitHub Actions sẽ:
+GitHub Actions chỉ chạy CI để kiểm tra code.
 
-1. kiểm tra backend nếu có `backend/package.json`;
-2. kiểm tra `docker-compose.yml` nếu có;
-3. chỉ khi các bước kiểm tra thành công mới merge commit vừa push vào `develop`;
-4. nếu có conflict hoặc kiểm tra lỗi, workflow dừng và `develop` không bị thay đổi.
+**Push branch không tự merge vào `main`.**
 
-Workflow dùng concurrency để các lần tích hợp vào `develop` chạy tuần tự, tránh hai branch đẩy vào `develop` cùng lúc.
+Luồng hiện tại:
 
-## Cách dùng cho thành viên
+```text
+feature/fix/docs branch
+        ↓ push
+       CI
+        ↓
+Pull Request vào main
+        ↓
+review + CI xanh
+        ↓
+merge main
+        ↓
+deploy staging
+```
 
-Sau khi branch đã được cập nhật từ `develop`, chỉ cần:
+## Cách dùng
+
+Trước khi làm:
+
+```bash
+git switch main
+git pull origin main
+git switch -c feature/s3-sXX-ten-chuc-nang
+```
+
+Sau khi code/test:
 
 ```bash
 git add .
-git commit -m "feat: mô tả thay đổi"
-git push origin <branch-của-mình>
+git commit -m "feat(S-XX): mô tả thay đổi"
+git push -u origin feature/s3-sXX-ten-chuc-nang
 ```
 
-Không cần push trực tiếp vào `develop`.
+Sau đó mở Pull Request:
+
+```text
+base: main
+compare: feature/s3-sXX-ten-chuc-nang
+```
+
+Không push trực tiếp vào `main`.
+
+## CI/CD
+
+Theo workflow hiện tại:
+
+- push branch feature/fix/docs → CI;
+- Pull Request vào `main` → CI;
+- merge/push vào `main` → CI + deploy staging.
+
+Nếu gặp tài liệu lịch sử còn nhắc `develop`, dùng [WORKFLOW.md](WORKFLOW.md) và [TEAM-GUIDE.md](TEAM-GUIDE.md) làm hướng dẫn hiện tại.

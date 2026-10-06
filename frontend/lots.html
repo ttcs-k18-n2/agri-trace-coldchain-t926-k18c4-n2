@@ -110,6 +110,20 @@
       gap: 14px;
       transition: var(--transition-normal);
       position: relative;
+      overflow: visible;
+    }
+
+    .lot-card:has(.dropdown-popover.active) {
+      z-index: 60;
+    }
+
+    .lot-card .dropdown-popover {
+      bottom: calc(100% + 6px);
+      top: auto;
+      left: 0;
+      right: auto;
+      min-width: 195px;
+      box-shadow: 0 -6px 22px rgba(0, 0, 0, 0.14), 0 2px 6px rgba(0, 0, 0, 0.08);
     }
 
     .lot-card:hover {
@@ -347,10 +361,34 @@
           <div class="stat-label">Tổng số lô thu hoạch</div>
         </div>
       </div>
+
+      <div class="stat-card" id="statCardIncoming" style="cursor: pointer;" onclick="switchLotsTab('incoming')" title="Bấm để xem danh sách yêu cầu bàn giao đang chờ xác nhận">
+        <div class="stat-icon" style="background: rgba(245, 158, 11, 0.12); color: #d97706;">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+        </div>
+        <div>
+          <div class="stat-value" id="statIncomingCount">0</div>
+          <div class="stat-label">Bàn giao chờ tiếp nhận (S-15)</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tab Strip (S-14 & S-15) -->
+    <div class="lots-tab-strip" style="display: flex; gap: 8px; margin-bottom: 20px; border-bottom: 1px solid var(--color-border); padding-bottom: 8px;">
+      <button type="button" class="tab-btn active" id="tabMyLots" onclick="switchLotsTab('my-lots')" style="background: none; border: none; font-size: 14px; font-weight: 700; color: var(--color-primary); padding: 8px 16px; border-radius: var(--radius-md); cursor: pointer; display: inline-flex; align-items: center; gap: 8px; border-bottom: 2px solid var(--color-primary); margin-bottom: -9px; transition: var(--transition-fast);">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>
+        <span>Lô hàng đang quản lý</span>
+      </button>
+
+      <button type="button" class="tab-btn" id="tabIncomingTransfers" onclick="switchLotsTab('incoming')" style="background: none; border: none; font-size: 14px; font-weight: 600; color: var(--color-text-muted); padding: 8px 16px; border-radius: var(--radius-md); cursor: pointer; display: inline-flex; align-items: center; gap: 8px; border-bottom: 2px solid transparent; margin-bottom: -9px; transition: var(--transition-fast);">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+        <span>Yêu cầu bàn giao đến (Chờ xác nhận)</span>
+        <span id="incomingBadge" style="display: none; background: #f59e0b; color: #fff; font-size: 11px; font-weight: 700; padding: 2px 7px; border-radius: 10px; line-height: 1;">0</span>
+      </button>
     </div>
 
     <!-- Filter & Search Toolbar (S-14) -->
-    <div class="filter-toolbar">
+    <div class="filter-toolbar" id="filterToolbar">
       <div class="search-box">
         <span class="search-icon">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
@@ -376,11 +414,153 @@
       <!-- Dynamic lots inserted here -->
     </div>
 
-    <!-- Load More Action (S-14 / T-33) -->
-    <div id="loadMoreContainer" style="text-align: center; margin: 32px 0 48px 0; display: none;">
-      <button id="btnLoadMore" class="btn btn-secondary" style="min-width: 180px; height: 42px; border-radius: var(--radius-full); font-weight: 600; box-shadow: var(--shadow-sm);">
-        <span>Tải thêm</span>
+    <!-- Load More Container -->
+    <div id="loadMoreContainer" style="display: none; text-align: center; margin: 28px 0;">
+      <button type="button" id="btnLoadMore" class="btn btn-secondary" style="padding: 10px 28px; border-radius: var(--radius-md); font-weight: 600; cursor: pointer;">
+        <span>Tải thêm lô hàng</span>
       </button>
+    </div>
+
+    <!-- Incoming Transfers Container (S-15: Bên nhận xem danh sách chờ xác nhận) -->
+    <div id="incomingSection" style="display: none;" aria-live="polite">
+      <!-- Dynamic incoming transfers inserted here -->
+    </div>
+
+    <!-- Modal Bàn giao lô hàng (S-15: Chờ xác nhận PENDING) -->
+    <div id="transferModal" class="modal-backdrop" style="display: none;">
+      <div class="modal-card">
+        <div class="modal-header">
+          <h3 class="modal-title">Bàn giao lô sang tổ chức khác</h3>
+          <button type="button" class="btn-icon" id="btnCloseTransferModal" title="Đóng" style="background: none; border: none; font-size: 18px; cursor: pointer; color: var(--color-text-muted);">✕</button>
+        </div>
+        <form id="transferForm">
+          <div class="modal-body">
+            <div id="transferModalAlert" style="display: none; margin-bottom: 16px;"></div>
+
+            <div style="background: rgba(36, 138, 61, 0.05); border: 1px solid rgba(36, 138, 61, 0.2); border-radius: var(--radius-md); padding: 12px 16px; margin-bottom: 18px;">
+              <div style="font-size: 11px; text-transform: uppercase; font-weight: 700; color: var(--color-primary); letter-spacing: 0.05em; margin-bottom: 4px;">Thông tin lô hàng</div>
+              <div style="font-size: 15px; font-weight: 700; color: var(--color-text-main);" id="transferLotTitle">--</div>
+              <div style="font-size: 13px; color: var(--color-text-muted); margin-top: 2px;">
+                Mã lô: <code id="transferLotId" style="font-weight: 700; color: var(--color-primary); background: rgba(36, 138, 61, 0.08); padding: 2px 6px; border-radius: 4px;">--</code> | Còn lại: <strong id="transferLotQty">--</strong>
+              </div>
+            </div>
+
+            <input type="hidden" id="transferLotIdInput" name="lotId">
+
+            <div class="form-group" style="margin-bottom: 16px;">
+              <label class="form-label" for="transferToOrg" style="display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px;">
+                Tổ chức tiếp nhận <span style="color: #dc2626;">*</span>
+              </label>
+              <select id="transferToOrg" class="form-control" required style="width: 100%; height: 40px; padding: 0 12px; border-radius: var(--radius-md); border: 1px solid var(--color-border); font-size: 13.5px; background: #fff;">
+                <option value="">-- Chọn tổ chức tiếp nhận --</option>
+              </select>
+              <small style="color: var(--color-text-light); font-size: 12px; display: block; margin-top: 4px;">
+                Chọn HTX, đơn vị vận chuyển hoặc nhà phân phối tiếp nhận lô hàng này.
+              </small>
+            </div>
+
+            <div class="form-group" style="margin-bottom: 16px;">
+              <label class="form-label" for="transferNotes" style="display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px;">
+                Ghi chú bàn giao
+              </label>
+              <textarea id="transferNotes" class="form-control" rows="3" placeholder="Nhập thông tin người giao, phương tiện vận chuyển hoặc lưu ý bảo quản..." style="width: 100%; padding: 10px 12px; border-radius: var(--radius-md); border: 1px solid var(--color-border); font-size: 13px; font-family: inherit; resize: vertical; box-sizing: border-box;"></textarea>
+            </div>
+
+            <div style="background: rgba(245, 158, 11, 0.08); border: 1px solid rgba(245, 158, 11, 0.25); border-radius: var(--radius-md); padding: 12px; font-size: 12.5px; color: #b45309; line-height: 1.5;">
+              <strong>Lưu ý quy trình (S-15):</strong> Khi gửi yêu cầu, lô hàng sẽ ở trạng thái <strong>Chờ xác nhận (PENDING)</strong>. Quyền sở hữu lô vẫn thuộc tổ chức của bạn cho đến khi bên nhận bấm xác nhận tiếp nhận. Mọi thao tác đều được ghi vào chuỗi hash chống sửa lén.
+            </div>
+          </div>
+          <div class="modal-footer" style="display: flex; justify-content: flex-end; gap: 10px; padding: 14px 22px; border-top: 1px solid var(--color-border);">
+            <button type="button" class="btn btn-secondary" id="btnCancelTransfer" style="height: 38px; padding: 0 16px;">Hủy bỏ</button>
+            <button type="submit" class="btn btn-primary" id="btnSubmitTransfer" style="height: 38px; padding: 0 18px; display: inline-flex; align-items: center; gap: 6px;">
+              <span>Gửi yêu cầu bàn giao</span>
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- Modal Từ chối tiếp nhận bàn giao lô hàng (S-16, T-38) -->
+    <div id="rejectTransferModal" class="modal-backdrop" style="display: none;">
+      <div class="modal-card">
+        <div class="modal-header">
+          <h3 class="modal-title" style="color: #dc2626;">Từ chối tiếp nhận bàn giao</h3>
+          <button type="button" class="btn-icon" id="btnCloseRejectModal" title="Đóng" style="background: none; border: none; font-size: 18px; cursor: pointer; color: var(--color-text-muted);">✕</button>
+        </div>
+        <form id="rejectTransferForm">
+          <div class="modal-body">
+            <div id="rejectModalAlert" style="display: none; margin-bottom: 16px;"></div>
+
+            <div style="background: rgba(220, 38, 38, 0.05); border: 1px solid rgba(220, 38, 38, 0.2); border-radius: var(--radius-md); padding: 12px 16px; margin-bottom: 18px;">
+              <div style="font-size: 11px; text-transform: uppercase; font-weight: 700; color: #dc2626; letter-spacing: 0.05em; margin-bottom: 4px;">Thông tin yêu cầu bàn giao</div>
+              <div style="font-size: 15px; font-weight: 700; color: var(--color-text-main);" id="rejectLotTitle">--</div>
+              <div style="font-size: 13px; color: var(--color-text-muted); margin-top: 2px;">
+                Mã lô: <code id="rejectLotId" style="font-weight: 700; color: var(--color-primary); background: rgba(36, 138, 61, 0.08); padding: 2px 6px; border-radius: 4px;">--</code>
+              </div>
+            </div>
+
+            <input type="hidden" id="rejectTransferIdInput" name="transferId">
+
+            <div class="form-group" style="margin-bottom: 16px;">
+              <label class="form-label" for="rejectReason" style="display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px;">
+                Lý do từ chối <span style="color: #dc2626;">*</span>
+              </label>
+              <textarea id="rejectReason" class="form-control" rows="3" required placeholder="Nhập lý do từ chối tiếp nhận (tối thiểu 10 ký tự, ví dụ: Hàng không đúng số lượng thực tế, không đạt chất lượng...)" style="width: 100%; padding: 10px 12px; border-radius: var(--radius-md); border: 1px solid var(--color-border); font-size: 13px; font-family: inherit; resize: vertical; box-sizing: border-box;"></textarea>
+              <small style="color: var(--color-text-light); font-size: 12px; display: block; margin-top: 4px;">
+                Yêu cầu ít nhất 10 ký tự (Jira T-38). Lý do này sẽ được ghi vào chuỗi sự kiện bảo chứng.
+              </small>
+            </div>
+
+            <div style="background: rgba(245, 158, 11, 0.08); border: 1px solid rgba(245, 158, 11, 0.25); border-radius: var(--radius-md); padding: 12px; font-size: 12.5px; color: #b45309; line-height: 1.5;">
+              <strong>Lưu ý (S-16):</strong> Sau khi từ chối, quyền sở hữu lô hàng vẫn thuộc về bên gửi. Bên gửi sẽ có thể tạo yêu cầu bàn giao mới nếu cần.
+            </div>
+          </div>
+          <div class="modal-footer" style="display: flex; justify-content: flex-end; gap: 10px; padding: 14px 22px; border-top: 1px solid var(--color-border);">
+            <button type="button" class="btn btn-secondary" id="btnCancelRejectModal" style="height: 38px; padding: 0 16px;">Hủy bỏ</button>
+            <button type="submit" class="btn btn-danger" id="btnSubmitReject" style="height: 38px; padding: 0 18px; background: #dc2626; color: #fff; border: none; border-radius: var(--radius-sm); font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 6px;">
+              <span>Xác nhận từ chối</span>
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- Modal Xác nhận tiếp nhận bàn giao lô hàng (S-16, T-38) -->
+    <div id="confirmTransferModal" class="modal-backdrop" style="display: none;">
+      <div class="modal-card">
+        <div class="modal-header">
+          <h3 class="modal-title" style="color: #10b981; display: flex; align-items: center; gap: 8px;">
+            <span style="display: inline-flex; width: 22px; height: 22px; background: rgba(16, 185, 129, 0.15); border-radius: 50%; align-items: center; justify-content: center; font-size: 13px;">✓</span>
+            Xác nhận tiếp nhận lô hàng
+          </h3>
+          <button type="button" class="btn-icon" id="btnCloseConfirmModal" title="Đóng" style="background: none; border: none; font-size: 18px; cursor: pointer; color: var(--color-text-muted);">✕</button>
+        </div>
+        <div class="modal-body">
+          <div id="confirmModalAlert" style="display: none; margin-bottom: 16px;"></div>
+
+          <div style="background: rgba(16, 185, 129, 0.06); border: 1px solid rgba(16, 185, 129, 0.25); border-radius: var(--radius-md); padding: 12px 16px; margin-bottom: 18px;">
+            <div style="font-size: 11px; text-transform: uppercase; font-weight: 700; color: #10b981; letter-spacing: 0.05em; margin-bottom: 4px;">Lô hàng tiếp nhận</div>
+            <div style="font-size: 15px; font-weight: 700; color: var(--color-text-main);" id="confirmLotTitle">--</div>
+            <div style="font-size: 13px; color: var(--color-text-muted); margin-top: 2px;">
+              Mã lô: <code id="confirmLotId" style="font-weight: 700; color: var(--color-primary); background: rgba(36, 138, 61, 0.08); padding: 2px 6px; border-radius: 4px;">--</code>
+            </div>
+          </div>
+
+          <p style="font-size: 13.5px; color: var(--color-text-main); line-height: 1.6; margin: 0 0 12px;">
+            Bạn có chắc chắn muốn xác nhận tiếp nhận lô hàng này vào quyền quản lý của tổ chức?
+          </p>
+
+          <div style="background: rgba(59, 130, 246, 0.08); border: 1px solid rgba(59, 130, 246, 0.2); border-radius: var(--radius-md); padding: 12px; font-size: 12.5px; color: #1d4ed8; line-height: 1.5;">
+            <strong>Hiệu lực chuyển giao (S-16):</strong> Quyền sở hữu lô hàng sẽ được chuyển giao chính thức sang tổ chức của bạn. Hệ thống sẽ lưu vết giao dịch và ghi nhận bảo chứng sự kiện <code>TRANSFER_CONFIRMED</code> vào chuỗi băm mật mã SHA-256 bất biến.
+          </div>
+        </div>
+        <div class="modal-footer" style="display: flex; justify-content: flex-end; gap: 10px; padding: 14px 22px; border-top: 1px solid var(--color-border);">
+          <button type="button" class="btn btn-secondary" id="btnCancelConfirmModal" style="height: 38px; padding: 0 16px;">Hủy bỏ</button>
+          <button type="button" class="btn btn-primary" id="btnDoConfirmTransfer" style="height: 38px; padding: 0 18px; background: #10b981; border: none; border-radius: var(--radius-sm); font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 6px;">
+            <span>Tiếp nhận lô hàng</span>
+          </button>
+        </div>
+      </div>
     </div>
   </main>
 
@@ -427,9 +607,17 @@
 
         // 3. Tải danh sách lô đầu tiên (20 lô)
         await fetchLots(true);
+
+        // 4. Cập nhật số lượng bàn giao chờ tiếp nhận (S-15)
+        await updateIncomingBadge();
+
+        if (urlParams.get("tab") === "incoming") {
+          switchLotsTab("incoming");
+        }
       } catch (error) {
+        console.error("loadPage error:", error);
         const lotsContainer = document.getElementById("lots");
-        lotsContainer.innerHTML = "<div class='empty-state'><div class='empty-state-title'>Lỗi kết nối máy chủ</div><div class='empty-state-desc'>Không thể đồng bộ dữ liệu với máy chủ backend.</div></div>";
+        lotsContainer.innerHTML = `<div class='empty-state'><div class='empty-state-title'>Không thể tải dữ liệu</div><div class='empty-state-desc'>${escapeHtml(error.message || "Vui lòng thử lại sau.")}</div></div>`;
       }
     }
 
@@ -526,8 +714,9 @@
           loadMoreContainer.style.display = "none";
         }
       } catch (err) {
+        console.error("fetchLots error:", err);
         if (isReset) {
-          lotsContainer.innerHTML = "<div class='empty-state'><div class='empty-state-title'>Lỗi kết nối máy chủ</div></div>";
+          lotsContainer.innerHTML = `<div class='empty-state'><div class='empty-state-title'>Không thể tải danh sách lô</div><div class='empty-state-desc'>${escapeHtml(err.message || "Vui lòng thử lại sau.")}</div></div>`;
         }
       } finally {
         isLoading = false;
@@ -550,15 +739,35 @@
       const farmDisplay = lot.farmName || lot.farmId || "Thửa chưa gán";
 
       const isInspectorOrAdmin = currentUser && ["inspector", "admin"].includes(currentUser.roleId);
+      const canTransfer = currentUser && (
+        currentUser.roleId === "admin" ||
+        (currentUser.organizationId === (lot.organizationId || lot.organization_id) && !["inspector"].includes(currentUser.roleId))
+      );
+      const isPending = Boolean(lot.pendingTransfer);
+      const pendingOrgName = isPending ? (lot.pendingTransfer.toOrganizationName || lot.pendingTransfer.toOrganizationId) : "";
 
       card.innerHTML = `
         <div>
           <div class="lot-card-top">
             <span class="lot-code-tag">${lot.id}</span>
-            <span class="status-pill success">
-              <span class="status-dot"></span>
-              <span>${lot.status || "Đã thu hoạch"}</span>
-            </span>
+            ${isPending ? `
+              <div style="display: flex; gap: 4px; align-items: center; flex-wrap: wrap;">
+                <span class="status-pill warning" title="Đang chờ ${escapeHtml(pendingOrgName)} xác nhận bàn giao">
+                  <span class="status-dot"></span>
+                  <span>Chờ bàn giao</span>
+                </span>
+                ${(lot.pendingTransfer && (lot.pendingTransfer.isOverdue || lot.pendingTransfer.is_overdue)) ? `
+                  <span class="status-pill danger overdue-badge" style="background: #fee2e2; color: #b91c1c; border: 1px solid #f87171; font-weight: 700; text-transform: uppercase;" title="Yêu cầu bàn giao đã quá hạn 48 giờ">
+                    <span>QUÁ HẠN</span>
+                  </span>
+                ` : ""}
+              </div>
+            ` : `
+              <span class="status-pill success">
+                <span class="status-dot"></span>
+                <span>${lot.status || "Đã thu hoạch"}</span>
+              </span>
+            `}
           </div>
           <h3 class="lot-title">
             <a href="/lot-detail.html?id=${encodeURIComponent(lot.id)}" style="color: inherit; text-decoration: none;">
@@ -598,6 +807,12 @@
           <a href="/lot-detail.html?id=${encodeURIComponent(lot.id)}" class="btn-lot-action" title="Xem chi tiết lô ${lot.id}">
             <span>Chi tiết</span> &rarr;
           </a>
+          ${(canTransfer && !isPending) ? `
+            <button type="button" class="btn-lot-action btn-transfer-lot-direct" data-lot-id="${escapeHtml(lot.id)}" data-lot-name="${escapeHtml(displayName)}" data-lot-qty="${escapeHtml(remainingQtyFormatted)}" style="color: var(--color-primary); font-weight: 600; display: inline-flex; align-items: center; gap: 4px;" title="Bàn giao lô sang tổ chức khác">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
+              <span>Bàn giao</span>
+            </button>
+          ` : ""}
           ${isInspectorOrAdmin ? `
             <a href="/integrity.html?lotId=${encodeURIComponent(lot.id)}" class="btn-lot-action" title="Kiểm tra toàn vẹn chuỗi sự kiện" style="background: rgba(36, 138, 61, 0.08); color: var(--color-primary); border-color: rgba(36, 138, 61, 0.25);">
               <span>Toàn vẹn</span>
@@ -611,6 +826,19 @@
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
                 <span>Xem chi tiết lô</span>
               </a>
+              ${canTransfer ? (
+                isPending ? `
+                  <button type="button" class="dropdown-item btn-show-pending-info" data-lot-id="${escapeHtml(lot.id)}" data-to-org="${escapeHtml(pendingOrgName)}" style="color: #b45309;">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                    <span>Đang chờ ${escapeHtml(pendingOrgName)} nhận</span>
+                  </button>
+                ` : `
+                  <button type="button" class="dropdown-item btn-transfer-lot" data-lot-id="${escapeHtml(lot.id)}" data-lot-name="${escapeHtml(displayName)}" data-lot-qty="${escapeHtml(remainingQtyFormatted)}">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
+                    <span>Bàn giao lô</span>
+                  </button>
+                `
+              ) : ""}
               <button type="button" class="dropdown-item btn-copy-lot" data-lot-id="${escapeHtml(lot.id)}">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
                 <span>Sao chép mã lô</span>
@@ -654,6 +882,33 @@
         });
       }
 
+      const directTransferBtn = card.querySelector(".btn-transfer-lot-direct");
+      if (directTransferBtn) {
+        directTransferBtn.addEventListener("click", (e) => {
+          e.stopPropagation();
+          closeAllLotDropdowns();
+          openTransferModal(lot.id, displayName, remainingQtyFormatted);
+        });
+      }
+
+      const transferBtn = card.querySelector(".btn-transfer-lot");
+      if (transferBtn) {
+        transferBtn.addEventListener("click", (e) => {
+          e.stopPropagation();
+          closeAllLotDropdowns();
+          openTransferModal(lot.id, displayName, remainingQtyFormatted);
+        });
+      }
+
+      const pendingInfoBtn = card.querySelector(".btn-show-pending-info");
+      if (pendingInfoBtn) {
+        pendingInfoBtn.addEventListener("click", (e) => {
+          e.stopPropagation();
+          closeAllLotDropdowns();
+          alert(`Lô ${lot.id} đang có yêu cầu bàn giao chờ xác nhận tới: ${pendingOrgName}.\nQuyền sở hữu chỉ chuyển giao sau khi bên nhận xác nhận (S-16).`);
+        });
+      }
+
       container.appendChild(card);
     }
 
@@ -663,24 +918,565 @@
       closeAllLotDropdowns();
       if (!wasActive && popover) {
         popover.classList.add("active");
+        const card = popover.closest(".lot-card");
+        if (card) card.style.zIndex = "60";
       }
     }
 
     function closeAllLotDropdowns() {
-      document.querySelectorAll(".dropdown-popover.active").forEach((p) => p.classList.remove("active"));
+      document.querySelectorAll(".dropdown-popover.active").forEach((p) => {
+        p.classList.remove("active");
+        const card = p.closest(".lot-card");
+        if (card) card.style.zIndex = "";
+      });
     }
 
-    function copyLotCode(lotId) {
+    document.addEventListener("click", (e) => {
+      if (!e.target.closest(".dropdown-menu-wrapper")) {
+        closeAllLotDropdowns();
+      }
+    });
+
+    async function copyLotCode(lotId) {
       if (!lotId) return;
-      navigator.clipboard.writeText(lotId).then(() => {
-        const copyTextEl = document.getElementById("statTotalLots");
-        // Hiển thị feedback nhanh
-        const origText = copyTextEl ? copyTextEl.textContent : "";
-        if (copyTextEl) {
-          copyTextEl.textContent = "✓ Đã chép!";
-          setTimeout(() => { copyTextEl.textContent = origText; }, 1500);
+      let copied = false;
+      try {
+        if (window.isSecureContext && navigator.clipboard && navigator.clipboard.writeText) {
+          await navigator.clipboard.writeText(lotId);
+          copied = true;
+        } else {
+          const textarea = document.createElement("textarea");
+          textarea.value = lotId;
+          textarea.style.position = "fixed";
+          textarea.style.opacity = "0";
+          document.body.appendChild(textarea);
+          textarea.focus();
+          textarea.select();
+          copied = document.execCommand("copy");
+          textarea.remove();
         }
-      }).catch(() => {});
+      } catch (err) {
+        console.error("Không thể sao chép mã lô:", err);
+      }
+
+      if (!copied) {
+        try {
+          const textarea = document.createElement("textarea");
+          textarea.value = lotId;
+          textarea.style.position = "fixed";
+          textarea.style.opacity = "0";
+          document.body.appendChild(textarea);
+          textarea.focus();
+          textarea.select();
+          copied = document.execCommand("copy");
+          textarea.remove();
+        } catch (fallbackErr) {
+          console.error("Fallback copy thất bại:", fallbackErr);
+        }
+      }
+
+      const copyTextEl = document.getElementById("statTotalLots");
+      const origText = copyTextEl ? copyTextEl.textContent : "";
+      if (copyTextEl) {
+        copyTextEl.textContent = copied ? "✓ Đã chép!" : "Không thể chép";
+        setTimeout(() => { copyTextEl.textContent = origText; }, 1500);
+      }
+    }
+
+    // Modal Bàn giao lô hàng (S-15)
+    let organizationsList = [];
+
+    async function loadOrganizationsList() {
+      if (organizationsList.length > 0) return organizationsList;
+      try {
+        const res = await fetch("/api/organizations");
+        if (res.ok) {
+          const data = await res.json();
+          organizationsList = data.organizations || [];
+        }
+      } catch (err) {
+        console.error("Lỗi khi tải danh sách tổ chức:", err);
+      }
+      return organizationsList;
+    }
+
+    async function openTransferModal(lotId, lotName, lotQty) {
+      const modal = document.getElementById("transferModal");
+      const alertBox = document.getElementById("transferModalAlert");
+      const select = document.getElementById("transferToOrg");
+      const notes = document.getElementById("transferNotes");
+
+      if (!modal) return;
+
+      document.getElementById("transferLotTitle").textContent = lotName || lotId;
+      document.getElementById("transferLotId").textContent = lotId;
+      document.getElementById("transferLotQty").textContent = lotQty || "--";
+      document.getElementById("transferLotIdInput").value = lotId;
+
+      if (alertBox) {
+        alertBox.style.display = "none";
+        alertBox.textContent = "";
+      }
+      if (notes) notes.value = "";
+
+      // Nạp danh sách tổ chức vào dropdown, loại bỏ tổ chức hiện tại
+      select.innerHTML = '<option value="">-- Chọn tổ chức tiếp nhận --</option>';
+      const orgs = await loadOrganizationsList();
+      const currentOrgId = currentUser ? (currentUser.organizationId || currentUser.organization_id) : "";
+
+      orgs.forEach((o) => {
+        if (o.id !== currentOrgId && o.id !== "org-inspector" && o.id !== "org-system") {
+          const opt = document.createElement("option");
+          opt.value = o.id;
+          opt.textContent = `${o.name} (${o.id})`;
+          select.appendChild(opt);
+        }
+      });
+
+      modal.style.display = "flex";
+    }
+
+    function closeTransferModal() {
+      const modal = document.getElementById("transferModal");
+      if (modal) modal.style.display = "none";
+    }
+
+    async function submitTransferForm(e) {
+      e.preventDefault();
+      const alertBox = document.getElementById("transferModalAlert");
+      const submitBtn = document.getElementById("btnSubmitTransfer");
+      const lotId = document.getElementById("transferLotIdInput").value;
+      const toOrganizationId = document.getElementById("transferToOrg").value;
+      const notes = document.getElementById("transferNotes").value;
+
+      if (!toOrganizationId) {
+        showModalError("Vui lòng chọn tổ chức tiếp nhận.");
+        return;
+      }
+
+      submitBtn.disabled = true;
+      submitBtn.innerHTML = "<span>Đang gửi yêu cầu...</span>";
+
+      try {
+        const res = await fetch(`/api/lots/${encodeURIComponent(lotId)}/transfers`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ toOrganizationId, notes }),
+        });
+
+        const data = await res.json();
+        if (!res.ok) {
+          throw new Error(data.message || "Không thể gửi yêu cầu bàn giao.");
+        }
+
+        closeTransferModal();
+        alert(`✓ Yêu cầu bàn giao lô ${lotId} đã được tạo thành công ở trạng thái Chờ xác nhận (PENDING)!`);
+        await fetchLots(true);
+        await updateIncomingBadge();
+      } catch (err) {
+        showModalError(err.message);
+      } finally {
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = "<span>Gửi yêu cầu bàn giao</span>";
+      }
+    }
+
+    function showModalError(msg) {
+      const alertBox = document.getElementById("transferModalAlert");
+      if (alertBox) {
+        alertBox.className = "alert alert-danger";
+        alertBox.style.display = "block";
+        alertBox.textContent = msg;
+      }
+    }
+
+    const btnCloseModal = document.getElementById("btnCloseTransferModal");
+    if (btnCloseModal) btnCloseModal.addEventListener("click", closeTransferModal);
+
+    const btnCancelModal = document.getElementById("btnCancelTransfer");
+    if (btnCancelModal) btnCancelModal.addEventListener("click", closeTransferModal);
+
+    const transferForm = document.getElementById("transferForm");
+    if (transferForm) transferForm.addEventListener("submit", submitTransferForm);
+
+    // ===== S-16: Xác nhận & Từ chối bàn giao lô hàng =====
+    function openRejectTransferModal(transferId, lotId, lotName) {
+      const modal = document.getElementById("rejectTransferModal");
+      const alertBox = document.getElementById("rejectModalAlert");
+      const reasonInput = document.getElementById("rejectReason");
+      if (!modal) return;
+
+      document.getElementById("rejectLotTitle").textContent = lotName || lotId;
+      document.getElementById("rejectLotId").textContent = lotId;
+      document.getElementById("rejectTransferIdInput").value = transferId;
+      if (alertBox) { alertBox.style.display = "none"; alertBox.textContent = ""; }
+      if (reasonInput) reasonInput.value = "";
+
+      modal.style.display = "flex";
+      if (reasonInput) reasonInput.focus();
+    }
+
+    function closeRejectTransferModal() {
+      const modal = document.getElementById("rejectTransferModal");
+      if (modal) modal.style.display = "none";
+    }
+
+    let pendingConfirmAction = null;
+
+    function openConfirmTransferModal(transferId, lotId, lotName) {
+      const modal = document.getElementById("confirmTransferModal");
+      const alertBox = document.getElementById("confirmModalAlert");
+      if (!modal) return;
+
+      document.getElementById("confirmLotTitle").textContent = lotName || lotId;
+      document.getElementById("confirmLotId").textContent = lotId;
+      if (alertBox) { alertBox.style.display = "none"; alertBox.textContent = ""; }
+
+      pendingConfirmAction = { transferId, lotId, lotName };
+      modal.style.display = "flex";
+    }
+
+    function closeConfirmTransferModal() {
+      const modal = document.getElementById("confirmTransferModal");
+      if (modal) modal.style.display = "none";
+      pendingConfirmAction = null;
+    }
+
+    function handleConfirmTransfer(transferId, lotId, lotName) {
+      openConfirmTransferModal(transferId, lotId, lotName);
+    }
+
+    const btnCloseConfirmModal = document.getElementById("btnCloseConfirmModal");
+    if (btnCloseConfirmModal) btnCloseConfirmModal.addEventListener("click", closeConfirmTransferModal);
+
+    const btnCancelConfirmModal = document.getElementById("btnCancelConfirmModal");
+    if (btnCancelConfirmModal) btnCancelConfirmModal.addEventListener("click", closeConfirmTransferModal);
+
+    const confirmModalEl = document.getElementById("confirmTransferModal");
+    if (confirmModalEl) {
+      confirmModalEl.addEventListener("click", (e) => {
+        if (e.target === confirmModalEl) closeConfirmTransferModal();
+      });
+    }
+
+    const btnDoConfirmTransfer = document.getElementById("btnDoConfirmTransfer");
+    if (btnDoConfirmTransfer) {
+      btnDoConfirmTransfer.addEventListener("click", async () => {
+        if (!pendingConfirmAction) return;
+        const { transferId, lotId } = pendingConfirmAction;
+        btnDoConfirmTransfer.disabled = true;
+        btnDoConfirmTransfer.innerHTML = "<span>Đang tiếp nhận...</span>";
+
+        try {
+          const res = await fetch(`/api/transfers/${encodeURIComponent(transferId)}/confirm`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            credentials: "same-origin",
+          });
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.message || "Không thể xác nhận tiếp nhận bàn giao.");
+
+          closeConfirmTransferModal();
+          await loadIncomingTransfers();
+          await updateIncomingBadge();
+          await fetchLots(true); // Cập nhật danh sách lô để lô mới hiển thị ngay lập tức
+        } catch (err) {
+          const alertBox = document.getElementById("confirmModalAlert");
+          if (alertBox) {
+            alertBox.className = "alert alert-danger";
+            alertBox.style.display = "block";
+            alertBox.textContent = "Lỗi khi xác nhận tiếp nhận: " + err.message;
+          }
+        } finally {
+          btnDoConfirmTransfer.disabled = false;
+          btnDoConfirmTransfer.innerHTML = "<span>Tiếp nhận lô hàng</span>";
+        }
+      });
+    }
+
+    const btnCloseReject = document.getElementById("btnCloseRejectModal");
+    if (btnCloseReject) btnCloseReject.addEventListener("click", closeRejectTransferModal);
+
+    const btnCancelReject = document.getElementById("btnCancelRejectModal");
+    if (btnCancelReject) btnCancelReject.addEventListener("click", closeRejectTransferModal);
+
+    const rejectModal = document.getElementById("rejectTransferModal");
+    if (rejectModal) {
+      rejectModal.addEventListener("click", (e) => {
+        if (e.target === rejectModal) closeRejectTransferModal();
+      });
+    }
+
+    const rejectTransferForm = document.getElementById("rejectTransferForm");
+    if (rejectTransferForm) {
+      rejectTransferForm.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const alertBox = document.getElementById("rejectModalAlert");
+        const submitBtn = document.getElementById("btnSubmitReject");
+        const transferId = document.getElementById("rejectTransferIdInput").value;
+        const reason = document.getElementById("rejectReason").value.trim();
+
+        if (!reason || reason.length < 10) {
+          if (alertBox) {
+            alertBox.className = "alert alert-danger";
+            alertBox.style.display = "block";
+            alertBox.textContent = "Lý do từ chối là bắt buộc và phải có ít nhất 10 ký tự (Jira T-38).";
+          }
+          return;
+        }
+
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = "<span>Đang gửi...</span>";
+
+        try {
+          const res = await fetch(`/api/transfers/${encodeURIComponent(transferId)}/reject`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            credentials: "same-origin",
+            body: JSON.stringify({ reason }),
+          });
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.message || "Không thể từ chối tiếp nhận bàn giao.");
+
+          closeRejectTransferModal();
+          alert("✓ Đã từ chối tiếp nhận bàn giao lô hàng thành công. Lô hàng vẫn thuộc quyền sở hữu của bên gửi.");
+          await loadIncomingTransfers();
+          await updateIncomingBadge();
+        } catch (err) {
+          if (alertBox) {
+            alertBox.className = "alert alert-danger";
+            alertBox.style.display = "block";
+            alertBox.textContent = err.message;
+          }
+        } finally {
+          submitBtn.disabled = false;
+          submitBtn.innerHTML = "<span>Xác nhận từ chối</span>";
+        }
+      });
+    }
+
+    let currentLotsTab = "my-lots";
+
+    function switchLotsTab(tabName) {
+      currentLotsTab = tabName;
+      const tabMyLots = document.getElementById("tabMyLots");
+      const tabIncoming = document.getElementById("tabIncomingTransfers");
+      const filterToolbar = document.getElementById("filterToolbar");
+      const lotsContainer = document.getElementById("lots");
+      const loadMoreContainer = document.getElementById("loadMoreContainer");
+      const incomingSection = document.getElementById("incomingSection");
+
+      if (tabName === "my-lots") {
+        if (tabMyLots) {
+          tabMyLots.style.color = "var(--color-primary)";
+          tabMyLots.style.borderBottomColor = "var(--color-primary)";
+          tabMyLots.style.fontWeight = "700";
+        }
+        if (tabIncoming) {
+          tabIncoming.style.color = "var(--color-text-muted)";
+          tabIncoming.style.borderBottomColor = "transparent";
+          tabIncoming.style.fontWeight = "600";
+        }
+        if (filterToolbar) filterToolbar.style.display = "";
+        if (lotsContainer) lotsContainer.style.display = "";
+        if (loadMoreContainer) loadMoreContainer.style.display = hasMore ? "block" : "none";
+        if (incomingSection) incomingSection.style.display = "none";
+      } else {
+        if (tabIncoming) {
+          tabIncoming.style.color = "#b45309";
+          tabIncoming.style.borderBottomColor = "#f59e0b";
+          tabIncoming.style.fontWeight = "700";
+        }
+        if (tabMyLots) {
+          tabMyLots.style.color = "var(--color-text-muted)";
+          tabMyLots.style.borderBottomColor = "transparent";
+          tabMyLots.style.fontWeight = "600";
+        }
+        if (filterToolbar) filterToolbar.style.display = "none";
+        if (lotsContainer) lotsContainer.style.display = "none";
+        if (loadMoreContainer) loadMoreContainer.style.display = "none";
+        if (incomingSection) incomingSection.style.display = "block";
+
+        loadIncomingTransfers();
+      }
+    }
+
+    async function updateIncomingBadge() {
+      try {
+        const res = await fetch("/api/transfers?type=incoming&status=PENDING", { credentials: "same-origin" });
+        if (!res.ok) return;
+        const data = await res.json();
+        const transfers = data.transfers || [];
+        const count = transfers.length;
+
+        const badge = document.getElementById("incomingBadge");
+        const statIncoming = document.getElementById("statIncomingCount");
+        if (statIncoming) statIncoming.textContent = count;
+
+        if (badge) {
+          if (count > 0) {
+            badge.textContent = count;
+            badge.style.display = "inline-block";
+          } else {
+            badge.style.display = "none";
+          }
+        }
+      } catch (err) {
+        console.warn("Could not update incoming transfers badge", err);
+      }
+    }
+
+    async function loadIncomingTransfers() {
+      const container = document.getElementById("incomingSection");
+      if (!container) return;
+
+      container.innerHTML = `
+        <div style="text-align: center; padding: 48px 20px; color: var(--color-text-muted);">
+          <div style="display: inline-block; width: 28px; height: 28px; border: 3px solid rgba(245, 158, 11, 0.2); border-top-color: #f59e0b; border-radius: 50%; animation: spin 0.8s linear infinite; margin-bottom: 12px;"></div>
+          <div style="font-size: 14px; font-weight: 500;">Đang tải danh sách bàn giao chờ tiếp nhận...</div>
+        </div>
+      `;
+
+      try {
+        const res = await fetch("/api/transfers?type=incoming&status=PENDING", { credentials: "same-origin" });
+        if (res.status === 401) {
+          container.innerHTML = `
+            <div style="text-align: center; padding: 40px; color: #dc2626;">
+              <p style="font-weight: 600; margin-bottom: 8px;">Phiên đăng nhập đã hết hạn.</p>
+              <p style="font-size: 13.5px; color: var(--color-text-muted); margin-bottom: 16px;">Vui lòng đăng nhập lại để xem danh sách yêu cầu bàn giao.</p>
+              <a href="/index.html" class="btn btn-primary" style="text-decoration: none; display: inline-block;">Đăng nhập lại</a>
+            </div>
+          `;
+          return;
+        }
+        if (!res.ok) throw new Error("Không thể tải danh sách bàn giao từ máy chủ.");
+        const data = await res.json();
+        const transfers = data.transfers || [];
+
+        updateIncomingBadge();
+
+        if (transfers.length === 0) {
+          container.innerHTML = `
+            <div class="empty-state" style="padding: 60px 20px; background: #fff; border: 1px dashed var(--color-border); border-radius: var(--radius-lg); text-align: center;">
+              <div class="empty-state-icon" style="background: rgba(245, 158, 11, 0.1); color: #d97706; width: 56px; height: 56px; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 16px;">
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+              </div>
+              <div style="font-size: 16px; font-weight: 700; color: var(--color-text-main); margin-bottom: 6px;">Không có yêu cầu bàn giao nào đang chờ tiếp nhận</div>
+              <p style="font-size: 13.5px; color: var(--color-text-muted); max-width: 480px; margin: 0 auto 16px; line-height: 1.5;">
+                Khi các nông trại hoặc hợp tác xã khác gửi yêu cầu bàn giao lô hàng sang tổ chức của bạn, thông tin sẽ hiển thị tại đây để bạn kiểm tra và tiến hành xác nhận tiếp nhận.
+              </p>
+            </div>
+          `;
+          return;
+        }
+
+        container.innerHTML = `
+          <div style="margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+            <div style="font-size: 14px; color: var(--color-text-muted);">
+              Có <strong style="color: var(--color-text-main);">${transfers.length}</strong> lô hàng đang chờ tổ chức của bạn xác nhận tiếp nhận:
+            </div>
+            <div style="font-size: 12px; color: #b45309; background: rgba(245, 158, 11, 0.1); border: 1px solid rgba(245, 158, 11, 0.2); padding: 4px 12px; border-radius: var(--radius-full); font-weight: 600;">
+              Trạng thái PENDING (Story S-15)
+            </div>
+          </div>
+          <div class="lots-grid">
+            ${transfers.map((tr) => `
+              <div class="lot-card" style="border-top: 3px solid #f59e0b;">
+                <div class="lot-card-top">
+                  <div>
+                    <span class="lot-code-tag font-mono" style="background: rgba(245, 158, 11, 0.12); color: #b45309;">
+                      ${escapeHtml(tr.lotId)}
+                    </span>
+                    <h3 class="lot-title" style="margin-top: 8px;">
+                      ${escapeHtml(tr.lotName || 'Lô hàng nông sản')}
+                    </h3>
+                  </div>
+                  <div style="display: flex; gap: 4px; align-items: center; flex-wrap: wrap;">
+                    <span class="status-pill warning" title="Đang chờ tổ chức của bạn xác nhận tiếp nhận">
+                      <span class="status-dot"></span>
+                      <span>Chờ tiếp nhận</span>
+                    </span>
+                    ${(tr.isOverdue || tr.is_overdue) ? `
+                      <span class="status-pill danger overdue-badge" style="background: #fee2e2; color: #b91c1c; border: 1px solid #f87171; font-weight: 700; text-transform: uppercase;" title="Yêu cầu bàn giao đã quá hạn 48 giờ">
+                        <span>QUÁ HẠN</span>
+                      </span>
+                    ` : ""}
+                  </div>
+                </div>
+
+                <div class="lot-meta-list">
+                  <div class="lot-meta-item">
+                    <span class="lot-meta-label">Bên gửi bàn giao:</span>
+                    <span class="lot-meta-value" style="font-weight: 600; color: var(--color-primary);">
+                      ${escapeHtml(tr.fromOrganizationName || tr.fromOrganizationId || '--')}
+                    </span>
+                  </div>
+                  <div class="lot-meta-item">
+                    <span class="lot-meta-label">Thời điểm gửi:</span>
+                    <span class="lot-meta-value">
+                      ${formatDateTime(tr.createdAt)}
+                    </span>
+                  </div>
+                  <div class="lot-meta-item">
+                    <span class="lot-meta-label">Mã giao dịch:</span>
+                    <span class="lot-meta-value font-mono" style="font-size: 12px; color: var(--color-text-muted);">
+                      ${escapeHtml(tr.id)}
+                    </span>
+                  </div>
+                  ${tr.notes ? `
+                    <div style="margin-top: 6px; padding: 8px 10px; background: rgba(0,0,0,0.02); border-radius: var(--radius-sm); font-size: 12.5px; border-left: 2px solid #f59e0b;">
+                      <strong style="color: var(--color-text-muted); font-size: 11.5px; text-transform: uppercase;">Ghi chú từ bên gửi:</strong>
+                      <div style="margin-top: 2px; color: var(--color-text-main); font-style: italic;">
+                        ${escapeHtml(tr.notes)}
+                      </div>
+                    </div>
+                  ` : ''}
+                </div>
+
+                <div style="background: rgba(245, 158, 11, 0.08); border-radius: var(--radius-sm); padding: 8px 10px; font-size: 12px; color: #b45309; line-height: 1.4;">
+                  * Quyền sở hữu lô vẫn thuộc bên gửi cho đến khi bạn bấm <strong>Xác nhận tiếp nhận</strong> (Story S-16).
+                </div>
+
+                <div class="lot-card-actions" style="margin-top: 10px; display: flex; flex-direction: column; gap: 8px;">
+                  <div style="display: flex; gap: 8px; width: 100%;">
+                    <button type="button" class="btn btn-primary btn-confirm-transfer" data-transfer-id="${escapeHtml(tr.id)}" data-lot-id="${escapeHtml(tr.lotId)}" data-lot-name="${escapeHtml(tr.lotName || tr.lotId)}" style="flex: 1; height: 36px; padding: 0 10px; font-size: 13px; font-weight: 600; display: inline-flex; align-items: center; justify-content: center; gap: 5px; cursor: pointer;">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                      <span>Xác nhận tiếp nhận</span>
+                    </button>
+                    <button type="button" class="btn btn-secondary btn-reject-transfer" data-transfer-id="${escapeHtml(tr.id)}" data-lot-id="${escapeHtml(tr.lotId)}" data-lot-name="${escapeHtml(tr.lotName || tr.lotId)}" style="height: 36px; padding: 0 12px; font-size: 13px; font-weight: 600; color: #dc2626; border-color: rgba(220, 38, 38, 0.3); display: inline-flex; align-items: center; justify-content: center; gap: 4px; cursor: pointer;">
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                      <span>Từ chối</span>
+                    </button>
+                  </div>
+                  <a href="/lot-detail.html?id=${encodeURIComponent(tr.lotId)}" class="btn-lot-action" style="text-align: center; justify-content: center; text-decoration: none; padding: 4px 0; font-size: 12.5px;">
+                    <span>Xem chi tiết lô</span> &rarr;
+                  </a>
+                </div>
+              </div>
+            `).join('')}
+          </div>
+        `;
+
+        // Gắn sự kiện cho các nút Xác nhận và Từ chối (S-16)
+        container.querySelectorAll(".btn-confirm-transfer").forEach((btn) => {
+          btn.addEventListener("click", () => {
+            handleConfirmTransfer(btn.dataset.transferId, btn.dataset.lotId, btn.dataset.lotName);
+          });
+        });
+
+        container.querySelectorAll(".btn-reject-transfer").forEach((btn) => {
+          btn.addEventListener("click", () => {
+            openRejectTransferModal(btn.dataset.transferId, btn.dataset.lotId, btn.dataset.lotName);
+          });
+        });
+      } catch (err) {
+        container.innerHTML = `
+          <div style="text-align: center; padding: 40px; color: #dc2626;">
+            <p>Lỗi tải danh sách yêu cầu bàn giao: ${escapeHtml(err.message)}</p>
+            <button type="button" class="btn btn-secondary" onclick="loadIncomingTransfers()">Thử lại</button>
+          </div>
+        `;
+      }
     }
 
     function formatDate(dateVal) {
@@ -695,6 +1491,33 @@
       return String(dateVal);
     }
 
+    function formatDateTime(dt) {
+      if (!dt) return "N/A";
+      try {
+        const d = new Date(dt);
+        if (isNaN(d.getTime())) return String(dt);
+        return d.toLocaleString("vi-VN", {
+          year: "numeric",
+          month: "2-digit",
+          day: "2-digit",
+          hour: "2-digit",
+          minute: "2-digit"
+        });
+      } catch {
+        return String(dt);
+      }
+    }
+
+    function escapeHtml(str) {
+      if (!str) return "";
+      return String(str)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+    }
+
     function resetFilters() {
       document.getElementById("searchInput").value = "";
       document.getElementById("productFilter").value = "";
@@ -702,21 +1525,37 @@
     }
 
     // Debounce search input (300ms) (S-14 / T-34)
-    document.getElementById("searchInput").addEventListener("input", () => {
-      clearTimeout(debounceTimer);
-      debounceTimer = setTimeout(() => {
-        fetchLots(true);
-      }, 300);
-    });
+    const searchInput = document.getElementById("searchInput");
+    if (searchInput) {
+      searchInput.addEventListener("input", () => {
+        clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(() => {
+          fetchLots(true);
+        }, 300);
+      });
+    }
 
     // Product filter change
-    document.getElementById("productFilter").addEventListener("change", () => {
-      fetchLots(true);
-    });
+    const productFilter = document.getElementById("productFilter");
+    if (productFilter) {
+      productFilter.addEventListener("change", () => {
+        fetchLots(true);
+      });
+    }
 
     // Load More click
-    document.getElementById("btnLoadMore").addEventListener("click", () => {
-      fetchLots(false);
+    const btnLoadMore = document.getElementById("btnLoadMore");
+    if (btnLoadMore) {
+      btnLoadMore.addEventListener("click", () => {
+        fetchLots(false);
+      });
+    }
+
+    // Lắng nghe khôi phục trang từ bộ nhớ đệm trình duyệt (bfcache) khi vuốt quay lại
+    window.addEventListener("pageshow", (event) => {
+      if (event.persisted) {
+        loadPage();
+      }
     });
 
     loadPage();
