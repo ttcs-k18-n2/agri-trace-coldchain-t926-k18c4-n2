@@ -100,6 +100,7 @@ async function runMigrations(direction = "up") {
       const lastVersion = applied[applied.length - 1];
       const downCandidates = [
         path.join(DOWN_DIR, `${lastVersion}.down.sql`),
+        path.join(DOWN_DIR, `${lastVersion}.sql`),
         path.join(MIGRATIONS_DIR, `${lastVersion}.down.sql`),
       ];
 
