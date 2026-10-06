@@ -1376,37 +1376,49 @@ app.post(
     const orgId = req.auth.organizationId;
     const userId = req.auth.userId || req.auth.id || req.auth.email || "user";
 
-    // 1. Kiểm tra thửa đất và sản phẩm bắt buộc
+    const errors = {};
+
+    // 1. Kiểm tra thửa đất và sản phẩm bắt buộc (T-21, T-22)
     if (!farmId) {
-      return res.status(400).json({ message: "Vui lòng chọn thửa đất." });
+      errors.farmId = "Vui lòng chọn thửa đất.";
     }
     if (!productId) {
-      return res.status(400).json({ message: "Vui lòng chọn sản phẩm." });
+      errors.productId = "Vui lòng chọn sản phẩm.";
     }
 
-    // 2. AC2: Khối lượng phải là số dương lớn hơn 0
+    // 2. AC2: Khối lượng phải là số dương lớn hơn 0 (T-21, T-22)
     const qty = Number(quantity);
     if (!Number.isFinite(qty) || qty <= 0) {
-      return res.status(400).json({ message: "Khối lượng phải là số dương lớn hơn 0." });
+      errors.quantity = "Khối lượng phải là số dương lớn hơn 0.";
     }
 
-    // 3. AC1: Ngày thu hoạch không được nằm trong tương lai
+    // 3. AC1: Ngày thu hoạch không được nằm trong tương lai (T-21, T-22)
     let harvestDate;
     if (harvestedAt) {
       const parsedDate = new Date(harvestedAt);
       if (isNaN(parsedDate.getTime())) {
-        return res.status(400).json({ message: "Ngày thu hoạch không hợp lệ." });
+        errors.harvestedAt = "Ngày thu hoạch không hợp lệ.";
+      } else {
+        const inputDateStr = typeof harvestedAt === "string" && /^\d{4}-\d{2}-\d{2}$/.test(harvestedAt.trim())
+          ? harvestedAt.trim()
+          : parsedDate.toISOString().slice(0, 10);
+        const todayStr = new Date().toISOString().slice(0, 10);
+        if (inputDateStr > todayStr) {
+          errors.harvestedAt = "Ngày thu hoạch không được nằm trong tương lai.";
+        } else {
+          harvestDate = inputDateStr;
+        }
       }
-      const inputDateStr = typeof harvestedAt === "string" && /^\d{4}-\d{2}-\d{2}$/.test(harvestedAt.trim())
-        ? harvestedAt.trim()
-        : parsedDate.toISOString().slice(0, 10);
-      const todayStr = new Date().toISOString().slice(0, 10);
-      if (inputDateStr > todayStr) {
-        return res.status(400).json({ message: "Ngày thu hoạch không được nằm trong tương lai." });
-      }
-      harvestDate = inputDateStr;
     } else {
       harvestDate = new Date().toISOString().slice(0, 10);
+    }
+
+    if (Object.keys(errors).length > 0) {
+      const firstMessage = errors.farmId || errors.productId || errors.quantity || errors.harvestedAt;
+      return res.status(400).json({
+        message: firstMessage,
+        errors,
+      });
     }
 
     // 4. AC4: Idempotency & chống bấm lưu 2 lần
@@ -1455,7 +1467,10 @@ app.post(
         // 6. Kiểm tra sản phẩm tồn tại
         const prodRes = await scopedQueryById(client, req.auth, "products", productId);
         if (!prodRes.row) {
-          return res.status(400).json({ message: "Sản phẩm không tồn tại trong danh mục." });
+          return res.status(400).json({
+            message: "Sản phẩm không tồn tại trong danh mục.",
+            errors: { productId: "Sản phẩm không tồn tại trong danh mục." },
+          });
         }
         const product = prodRes.row;
         const lotName = req.body.name || `${product.name} - ${farm.name}`;
@@ -1575,7 +1590,10 @@ app.post(
 
     const product = inMemoryProducts.find((p) => p.id === productId);
     if (!product) {
-      return res.status(400).json({ message: "Sản phẩm không tồn tại trong danh mục." });
+      return res.status(400).json({
+        message: "Sản phẩm không tồn tại trong danh mục.",
+        errors: { productId: "Sản phẩm không tồn tại trong danh mục." },
+      });
     }
 
     const lotName = req.body.name || `${product.name} - ${farm.name}`;

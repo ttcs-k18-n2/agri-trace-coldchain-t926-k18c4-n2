@@ -699,6 +699,24 @@ button, input, select, textarea {
   cursor: not-allowed;
 }
 
+.form-input.input-error {
+  border-color: var(--color-danger) !important;
+  background: #FFF8F8;
+}
+
+.form-input.input-error:focus {
+  border-color: var(--color-danger) !important;
+  box-shadow: 0 0 0 3px rgba(255, 59, 48, 0.18) !important;
+}
+
+.error-msg {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--color-danger);
+  margin-top: 4px;
+  display: block;
+}
+
 .form-hint {
   display: block;
   font-size: 12px;
