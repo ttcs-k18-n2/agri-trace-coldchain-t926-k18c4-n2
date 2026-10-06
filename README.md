@@ -11,62 +11,80 @@ Khi có khác nhau giữa các tài liệu, dùng thứ tự sau:
 3. **Jira**: Sprint hiện tại, assignee, trạng thái và tiến độ thực thi.
 4. **GitHub**: source code, branch, commit, Pull Request, CI và tài liệu kỹ thuật.
 
-## Sprint hiện tại: Sprint 2
+## Quy trình Git hiện tại
 
-**Sprint Goal:** Lô thu hoạch được ghi nhận, bàn giao được, và lịch sử của nó không ai sửa lén được mà không bị phát hiện.
+Repo hiện dùng **main làm nhánh tích hợp + staging/release**.
 
-Jira hiện có **21 công việc** nằm trong **N2 Sprint 2**. Hai công việc `K-01` và `S-04` được kéo từ Sprint 1 sang nên được quản lý như phạm vi Sprint 2 hiện tại.
-
-Chi tiết đầy đủ: [docs/SPRINT-2.md](docs/SPRINT-2.md).
-
-Alo anh em, từ hôm nay team chuẩn hóa lại quy trình Git tí nhé:
-
-Luôn kéo code mới nhất từ main về trước khi làm.
-
-Tự tách nhánh riêng để làm task, tuyệt đối không commit thẳng lên main nữa.
-
-Tên nhánh đặt theo task (ví dụ: feature/ten-chuc-nang hoặc fix/ten-bug).
-
-Code xong push nhánh lên rồi tạo Pull Request (PR), tag mình vào review duyệt merge nha.
-
-Làm vậy để hạn chế conflict và kiểm soát code tốt hơn, anh em triển khai nhé!
-
-Một Story có thể chạm nhiều tầng. Khi đó code được tách theo đúng trách nhiệm của từng branch, nhưng commit phải ghi rõ mã Story, ví dụ:
+Luồng chuẩn:
 
 ```text
-feat(S-15): add transfer API
-feat(S-15): add transfer form UI
-test(S-12): verify broken hash chain detection
+main mới nhất
+   ↓
+feature/* hoặc fix/*
+   ↓ code + test local
+git push
+   ↓
+CI chạy trên branch
+   ↓
+Pull Request
+   ↓ review + CI xanh
+main
+   ↓
+Deploy staging tự động
 ```
 
-### Trạng thái tích hợp hiện tại
+Quy tắc:
 
-Phần **S-07 + S-08** từ branch cũ `feature/s2-s07-s08-products-harvest` đã được merge vào `develop` qua **PR #43**.
-
-Ba branch Sprint 2 mới phải luôn đồng bộ từ `develop` trước khi tiếp tục phát triển.
-
-## Git workflow
-
-Không code trực tiếp lên `main` hoặc `develop`.
+- Thành viên **không code/push trực tiếp vào `main`**.
+- Mỗi Story dùng một branch riêng, ví dụ `feature/s3-s19-merge-lots`.
+- Branch mới luôn tạo từ `main` mới nhất.
+- Story PR mở **trực tiếp vào `main`**.
+- Không dùng `develop` trong quy trình hiện tại.
+- Các tài liệu cũ có nhắc `develop` chỉ là lịch sử của quy trình trước đây.
+- Commit nên ghi rõ Story/Task, ví dụ:
 
 ```text
-feature/s2-frontend ---------\
-feature/s2-backend -----------+--> Pull Request --> develop --> release PR --> main
-feature/s2-data-integrity ----/
+feat(S-19): implement lot merge transaction
+fix(S-24): fix overdue badge
+test(S-19): add merge rollback tests
 ```
 
-Quy trình:
+Chi tiết: [docs/WORKFLOW.md](docs/WORKFLOW.md) và [docs/TEAM-GUIDE.md](docs/TEAM-GUIDE.md).
 
-1. Cập nhật `develop` mới nhất.
-2. Đồng bộ branch Sprint 2 đang làm với `develop`.
-3. Code đúng phạm vi branch.
-4. Commit có mã Story/Task.
-5. Push branch lên GitHub.
-6. Mở Pull Request vào `develop`.
-7. Chỉ merge khi CI xanh và review đạt yêu cầu.
-8. Khi bản tích hợp ổn định, mở PR `develop -> main`.
+## Bắt đầu một nhiệm vụ mới
 
-Không tạo thêm branch riêng cho từng Story trong Sprint 2 nếu Story đã thuộc một trong ba branch chính ở trên.
+```bash
+git fetch origin
+git switch main
+git pull origin main
+git switch -c feature/s<sprint>-s<story>-<short-name>
+```
+
+Ví dụ:
+
+```bash
+git switch main
+git pull origin main
+git switch -c feature/s3-s19-merge-lots
+```
+
+Sau khi code và test:
+
+```bash
+git status
+git add .
+git commit -m "feat(S-19): implement lot merge"
+git push -u origin feature/s3-s19-merge-lots
+```
+
+Sau đó tạo Pull Request:
+
+```text
+base: main
+compare: feature/s3-s19-merge-lots
+```
+
+Chỉ merge khi CI xanh, không conflict và review/Acceptance Criteria đạt.
 
 ## Chạy ứng dụng local
 
@@ -80,9 +98,22 @@ Không tạo thêm branch riêng cho từng Story trong Sprint 2 nếu Story đ�
 ```powershell
 git clone https://github.com/ttcs-k18-n2/agri-trace-coldchain-t926-k18c4-n2.git
 cd agri-trace-coldchain-t926-k18c4-n2
-git checkout develop
+git switch main
+git pull origin main
 Copy-Item .env.example .env
-docker compose up --build
+```
+
+Khi chạy local bằng HTTP, sửa trong `.env`:
+
+```env
+COOKIE_SECURE=false
+```
+
+Sau đó:
+
+```powershell
+docker compose up -d --build
+docker compose ps
 ```
 
 ### Linux/macOS
@@ -90,21 +121,54 @@ docker compose up --build
 ```bash
 git clone https://github.com/ttcs-k18-n2/agri-trace-coldchain-t926-k18c4-n2.git
 cd agri-trace-coldchain-t926-k18c4-n2
-git checkout develop
+git switch main
+git pull origin main
 cp .env.example .env
-docker compose up --build
 ```
 
-Sau khi hệ thống sẵn sàng:
+Trong `.env` đặt:
+
+```env
+COOKIE_SECURE=false
+```
+
+Sau đó:
+
+```bash
+docker compose up -d --build
+docker compose ps
+```
+
+Địa chỉ local:
 
 - Frontend: `http://localhost:8080`
 - Backend: `http://localhost:3000`
 - Health check: `http://localhost:3000/health`
 - PostgreSQL: `localhost:5432`
 
+## Cập nhật code main để test
+
+Nếu repo đã clone sẵn:
+
+```bash
+git switch main
+git pull origin main
+docker compose down
+docker compose up -d --build
+```
+
+Nếu muốn reset sạch database local:
+
+```bash
+docker compose down -v
+docker compose up -d --build
+```
+
+Lưu ý: `down -v` xóa database **local của máy đó**, không ảnh hưởng server staging.
+
 ## Migration
 
-Migration được đặt tại:
+Migration nằm tại:
 
 ```text
 db/migrations/
@@ -116,13 +180,6 @@ Chạy migration thủ công:
 ```bash
 docker compose exec backend npm run migrate:up
 docker compose exec backend npm run migrate:down
-```
-
-Reset môi trường local:
-
-```bash
-docker compose down -v
-docker compose up --build
 ```
 
 ## Cấu trúc repository
@@ -137,52 +194,35 @@ docker compose up --build
 │   ├── Dockerfile
 │   └── package.json
 ├── frontend/
-│   ├── index.html
-│   ├── farms.html
-│   ├── lots.html
-│   ├── products.html
-│   ├── harvest.html
-│   ├── styles.css
-│   ├── nginx.conf
-│   └── Dockerfile
 ├── db/
 │   └── migrations/
 ├── deploy/
 ├── docs/
-│   ├── SPRINT-1.md
-│   ├── SPRINT-2.md
-│   ├── TEAM-GUIDE.md
-│   └── WORKFLOW.md
 ├── .github/workflows/
 ├── docker-compose.yml
 ├── render.yaml
 └── README.md
 ```
 
-## CI và triển khai
+## CI/CD hiện tại
 
-- Pull Request/push được kiểm tra bằng GitHub Actions CI theo cấu hình của repo.
-- `develop` là nhánh tích hợp.
-- `main` là nhánh release/staging của workflow GitHub Actions hiện tại.
-- Repo có `render.yaml` với auto deploy theo commit; Render sẽ triển khai theo branch đang được service/Blueprint cấu hình trên Render.
-
-## Tài liệu
-
-- [Sprint 2 hiện tại](docs/SPRINT-2.md)
-- [Sprint 1 - lịch sử](docs/SPRINT-1.md)
-- [Hướng dẫn thành viên](docs/TEAM-GUIDE.md)
-- [Git workflow](docs/WORKFLOW.md)
-- [K-01 - quyết định toàn vẹn dữ liệu](docs/K-01-INTEGRITY.md)
+- Push lên `feature/**`, `fix/**`, `docs/**`: CI chạy.
+- Pull Request vào `main`: CI chạy.
+- Push/merge vào `main`: CI chạy và workflow staging được kích hoạt.
+- Staging lấy đúng commit từ `main`, build Docker image, chạy migration/deploy và health check.
+- Secret triển khai chỉ nằm trong GitHub Secrets/server environment, không commit vào repo.
 
 ## Bảng sự kiện chỉ-thêm
 
 `batch_events` là bảng append-only.
 
 Tài khoản ứng dụng (`agri_app`) chỉ được:
+
 - `SELECT`
 - `INSERT`
 
 Không được:
+
 - `UPDATE`
 - `DELETE`
 - `TRUNCATE`
@@ -197,7 +237,8 @@ Một Story/Task chỉ được coi là Done khi các mục áp dụng đều đ
 - CI xanh.
 - Có test cho logic mới.
 - Acceptance Criteria đạt.
+- Test local/staging đạt khi áp dụng.
 - Không đưa secret vào source code.
 - Story chạm chuỗi sự kiện phải giữ toàn vẹn hash chain.
-- Story chạm khối lượng phải có test trường hợp đồng thời khi cần.
+- Story chạm khối lượng phải có test concurrency khi Backlog yêu cầu.
 - README/tài liệu được cập nhật nếu thay đổi hành vi công khai hoặc workflow.
