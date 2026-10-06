@@ -3061,6 +3061,110 @@ app.post(
   }
 );
 
+/**
+ * Giả lập yêu cầu bàn giao quá hạn phục vụ kiểm thử trực tiếp (S-24 / T-56 / T-57)
+ * - Cho phép sửa created_at của yêu cầu bàn giao PENDING thành N giờ trước (mặc định 49h).
+ * - Tự động kích hoạt job quét markOverdueTransfers để chuyển trạng thái isOverdue = true ngay lập tức.
+ */
+app.post("/api/transfers/simulate-overdue", async (req, res) => {
+  const { transferId, lotId, hours = 49 } = req.body || {};
+  const targetHours = Number(hours) || 49;
+  const simulatedTime = new Date(Date.now() - targetHours * 3600 * 1000).toISOString();
+
+  try {
+    if (pool) {
+      let query = `
+        UPDATE lot_transfers 
+        SET created_at = NOW() - ($1 || ' hours')::INTERVAL, 
+            is_overdue = FALSE, 
+            overdue_at = NULL 
+        WHERE status = 'PENDING'
+      `;
+      const params = [targetHours];
+
+      if (transferId) {
+        params.push(transferId);
+        query += ` AND id = $${params.length}`;
+      } else if (lotId) {
+        params.push(lotId);
+        query += ` AND lot_id = $${params.length}`;
+      }
+      query += " RETURNING *";
+
+      const result = await pool.query(query, params);
+      if (result.rows.length === 0) {
+        return res.status(404).json({
+          error: "NO_PENDING_TRANSFER_FOUND",
+          message: "Không tìm thấy yêu cầu bàn giao PENDING nào để giả lập quá hạn. Hãy tạo một yêu cầu bàn giao trước.",
+        });
+      }
+
+      // Kích hoạt ngay job quét rà soát bàn giao quá hạn
+      const jobResult = await markOverdueTransfers({ pool, hours: 48 });
+
+      return res.status(200).json({
+        message: `Đã giả lập thành công ${result.rows.length} yêu cầu bàn giao thành ${targetHours} giờ trước và kích hoạt job quét đánh dấu QUÁ HẠN.`,
+        transfers: result.rows.map((r) => ({
+          id: r.id,
+          lotId: r.lot_id,
+          status: r.status,
+          isOverdue: true,
+          overdueAt: new Date().toISOString(),
+          createdAt: r.created_at,
+        })),
+        jobResult,
+      });
+    }
+
+    // In-memory mode
+    let candidates = inMemoryTransfers.filter((t) => t.status === "PENDING");
+    if (transferId) candidates = candidates.filter((t) => t.id === transferId);
+    if (lotId) candidates = candidates.filter((t) => t.lotId === lotId);
+
+    if (candidates.length === 0) {
+      // Nếu chưa có transfer PENDING nào, tạo 1 transfer giả lập cho LOT-002 hoặc LOT-001
+      const lot = inMemoryLots.find((l) => l.organizationId === "org-001") || inMemoryLots[0];
+      const newTransferId = `TR-OVERDUE-${Date.now().toString().slice(-4)}`;
+      const newTr = {
+        id: newTransferId,
+        lotId: lot ? lot.id : "LOT-001",
+        fromOrganizationId: "org-001",
+        fromOrganizationName: "Nông trại Thái Nguyên",
+        toOrganizationId: "org-002",
+        toOrganizationName: "Hợp tác xã Rau Sạch Bắc Giang",
+        status: "PENDING",
+        isOverdue: false,
+        overdueAt: null,
+        notes: `Yêu cầu bàn giao giả lập ${targetHours} giờ trước để test S-24`,
+        createdByUserId: "usr-001",
+        createdAt: simulatedTime,
+        updatedAt: simulatedTime,
+      };
+      inMemoryTransfers.push(newTr);
+      candidates = [newTr];
+    } else {
+      candidates.forEach((t) => {
+        t.createdAt = simulatedTime;
+        t.isOverdue = false;
+        t.is_overdue = false;
+        t.overdueAt = null;
+        t.overdue_at = null;
+      });
+    }
+
+    // Kích hoạt ngay job quét rà soát bàn giao quá hạn
+    const jobResult = await markOverdueTransfers({ inMemoryTransfers, hours: 48 });
+
+    return res.status(200).json({
+      message: `Đã giả lập thành công ${candidates.length} yêu cầu bàn giao thành ${targetHours} giờ trước và kích hoạt job quét đánh dấu QUÁ HẠN.`,
+      transfers: candidates,
+      jobResult,
+    });
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
 function sendFrontendFile(res, filePath) {
   res.set({
     "Cache-Control": "no-cache, no-store, must-revalidate, max-age=0",
@@ -3140,6 +3244,51 @@ if (fs.existsSync(path.join(__dirname, "../../frontend"))) {
   );
 }
 
+async function seedDemoOverdueTransfer() {
+  const time49hAgo = new Date(Date.now() - 49 * 3600 * 1000).toISOString();
+  if (pool) {
+    try {
+      const checkRes = await pool.query(
+        "SELECT id FROM lot_transfers WHERE lot_id = 'LOT-002' AND status = 'PENDING'"
+      );
+      if (checkRes.rows.length === 0) {
+        await pool.query(
+          `INSERT INTO lot_transfers (
+            id, lot_id, from_organization_id, to_organization_id,
+            status, is_overdue, notes, created_by_user_id, created_at, updated_at
+          ) VALUES (
+            'TR-OVERDUE-001', 'LOT-002', 'org-001', 'org-002',
+            'PENDING', FALSE, 'Bàn giao mẫu chè Tân Cương sang HTX Bắc Giang (giả lập 49 giờ trước để test S-24)',
+            'usr-orgadmin', NOW() - INTERVAL '49 hours', NOW() - INTERVAL '49 hours'
+          ) ON CONFLICT (id) DO NOTHING`
+        );
+      }
+    } catch {
+      // Bỏ qua nếu DB chưa sẵn sàng
+    }
+  } else {
+    if (!inMemoryTransfers.some((t) => t.lotId === "LOT-002" && t.status === "PENDING")) {
+      const lot2 = inMemoryLots.find((l) => l.id === "LOT-002");
+      if (lot2) lot2.organizationId = "org-001";
+      inMemoryTransfers.push({
+        id: "TR-OVERDUE-001",
+        lotId: "LOT-002",
+        fromOrganizationId: "org-001",
+        fromOrganizationName: "Nông trại Thái Nguyên",
+        toOrganizationId: "org-002",
+        toOrganizationName: "Hợp tác xã Rau Sạch Bắc Giang",
+        status: "PENDING",
+        isOverdue: false,
+        overdueAt: null,
+        notes: "Bàn giao mẫu chè Tân Cương sang HTX Bắc Giang (giả lập 49 giờ trước để test S-24)",
+        createdByUserId: "usr-001",
+        createdAt: time49hAgo,
+        updatedAt: time49hAgo,
+      });
+    }
+  }
+}
+
 async function start() {
   await seedDemoUser();
   seedDemoEvents();
@@ -3153,6 +3302,8 @@ async function start() {
       process.exit(1);
     }
   }
+
+  await seedDemoOverdueTransfer();
 
   // Khởi động job rà soát bàn giao quá hạn định kỳ (S-24 / T-56)
   startTransferOverdueJob({ pool, inMemoryTransfers });
