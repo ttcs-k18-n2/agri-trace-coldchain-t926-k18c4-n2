@@ -3478,8 +3478,14 @@ async function start() {
       const { runMigrations } = require("./migrate");
       await runMigrations("up");
     } catch (err) {
-      console.error("[Migration Fatal Error] Startup aborted due to migration failure:", err.message);
-      process.exit(1);
+      if (process.env.NODE_ENV === "production") {
+        console.error("[Migration Fatal Error] Startup aborted due to migration failure:", err.message);
+        process.exit(1);
+      } else {
+        console.warn("[Migration Warning] Could not connect to PostgreSQL:", err.message);
+        console.warn("[Fallback] Switching to standalone in-memory mode for local development.");
+        pool = null;
+      }
     }
   }
 
