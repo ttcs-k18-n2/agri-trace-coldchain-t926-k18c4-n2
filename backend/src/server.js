@@ -2644,8 +2644,8 @@ app.post(
 
           // 1. Chuyển quyền sở hữu lô sang tổ chức nhận (S-16 AC1)
           await client.query(
-            "UPDATE lots SET organization_id = $1, updated_at = $2 WHERE id = $3",
-            [tr.to_organization_id, now, tr.lot_id]
+            "UPDATE lots SET organization_id = $1 WHERE id = $2",
+            [tr.to_organization_id, tr.lot_id]
           );
 
           // 2. Cập nhật trạng thái transfer thành CONFIRMED và lưu resolved_by_user_id (S-16 AC1)
