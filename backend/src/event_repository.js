@@ -164,6 +164,12 @@ async function appendBatchEvent(client, data) {
     const eventHash = calculateEventHash(previousHash, eventDataToHash);
     const eventId = "EVT-" + crypto.randomUUID();
 
+    const orgName =
+      data.organizationName ||
+      (payload && payload.organizationName) ||
+      ORG_NAME_FALLBACKS[organizationId] ||
+      organizationId;
+
     const newEvent = {
       id: eventId,
       batchId,
@@ -175,6 +181,7 @@ async function appendBatchEvent(client, data) {
       payload,
       organizationId,
       organization_id: organizationId,
+      organizationName: orgName,
       actorUserId: actorUserId || null,
       actor_user_id: actorUserId || null,
       occurredAt: eventOccurredAt.toISOString(),
@@ -192,47 +199,87 @@ async function appendBatchEvent(client, data) {
   });
 }
 
+const ORG_NAME_FALLBACKS = {
+  "org-001": "Nông trại Xanh (Org 1)",
+  "org-002": "HTX Chế biến Nông sản (Org 2)",
+  "org-003": "Nhà phân phối Chuỗi Lạnh (Org 3)",
+};
+
 /**
  * Lấy toàn bộ danh sách sự kiện theo thứ tự sequence_no của một lô hàng.
+ * Tối ưu hóa cho S-13 (T-31): LEFT JOIN organizations để trả về trực tiếp tên tổ chức,
+ * loại bỏ hoàn toàn các truy vấn con (N+1 query) và đảm bảo thời gian truy vấn < 200ms.
  *
  * @param {object|null} client - pg.Client hoặc pg.Pool hoặc null
  * @param {string} batchId - Mã lô hàng
+ * @param {object} [options] - Tuỳ chọn { limit, offset }
  * @returns {Promise<Array<object>>}
  */
-async function getBatchEvents(client, batchId) {
+async function getBatchEvents(client, batchId, options = {}) {
+  const { limit, offset } = options || {};
   if (client && typeof client.query === "function") {
-    const res = await client.query(
-      `SELECT id, batch_id AS "batchId", sequence_no AS "sequenceNo", event_type AS "eventType",
-              payload, organization_id AS "organizationId", actor_user_id AS "actorUserId",
-              occurred_at AS "occurredAt", previous_hash AS "previousHash", event_hash AS "eventHash",
-              created_at AS "createdAt"
-       FROM batch_events
-       WHERE batch_id = $1
-       ORDER BY sequence_no ASC`,
-      [batchId]
-    );
+    let sql = `
+      SELECT b.id, b.batch_id AS "batchId", b.sequence_no AS "sequenceNo", b.event_type AS "eventType",
+             b.payload, b.organization_id AS "organizationId",
+             COALESCE(o.name, b.organization_id) AS "organizationName",
+             b.actor_user_id AS "actorUserId",
+             b.occurred_at AS "occurredAt", b.previous_hash AS "previousHash", b.event_hash AS "eventHash",
+             b.created_at AS "createdAt"
+      FROM batch_events b
+      LEFT JOIN organizations o ON b.organization_id = o.id
+      WHERE b.batch_id = $1
+      ORDER BY b.sequence_no ASC
+    `;
+    const params = [batchId];
+    if (limit && Number.isInteger(Number(limit))) {
+      params.push(Number(limit));
+      sql += ` LIMIT $${params.length}`;
+      if (offset && Number.isInteger(Number(offset))) {
+        params.push(Number(offset));
+        sql += ` OFFSET $${params.length}`;
+      }
+    }
+
+    const res = await client.query(sql, params);
     return res.rows.map((r) => ({
       ...r,
       sequenceNo: Number(r.sequenceNo),
     }));
   }
 
-  return inMemoryBatchEvents
+  let list = inMemoryBatchEvents
     .filter((e) => e.batch_id === batchId || e.batchId === batchId)
     .sort((a, b) => (a.sequence_no || a.sequenceNo) - (b.sequence_no || b.sequenceNo))
-    .map((e) => ({
-      id: e.id,
-      batchId: e.batchId || e.batch_id,
-      sequenceNo: Number(e.sequenceNo || e.sequence_no),
-      eventType: e.eventType || e.event_type,
-      payload: e.payload,
-      organizationId: e.organizationId || e.organization_id,
-      actorUserId: e.actorUserId || e.actor_user_id,
-      occurredAt: e.occurredAt || e.occurred_at,
-      previousHash: e.previousHash || e.previous_hash,
-      eventHash: e.eventHash || e.event_hash,
-      createdAt: e.createdAt || e.created_at,
-    }));
+    .map((e) => {
+      const orgId = e.organizationId || e.organization_id;
+      const orgName =
+        e.organizationName ||
+        (e.payload && e.payload.organizationName) ||
+        ORG_NAME_FALLBACKS[orgId] ||
+        orgId;
+      return {
+        id: e.id,
+        batchId: e.batchId || e.batch_id,
+        sequenceNo: Number(e.sequenceNo || e.sequence_no),
+        eventType: e.eventType || e.event_type,
+        payload: e.payload,
+        organizationId: orgId,
+        organizationName: orgName,
+        actorUserId: e.actorUserId || e.actor_user_id,
+        occurredAt: e.occurredAt || e.occurred_at,
+        previousHash: e.previousHash || e.previous_hash,
+        eventHash: e.eventHash || e.event_hash,
+        createdAt: e.createdAt || e.created_at,
+      };
+    });
+
+  if (offset && Number.isInteger(Number(offset))) {
+    list = list.slice(Number(offset));
+  }
+  if (limit && Number.isInteger(Number(limit))) {
+    list = list.slice(0, Number(limit));
+  }
+  return list;
 }
 
 const { verifyBatchEventChain } = require("./integrity_verifier");

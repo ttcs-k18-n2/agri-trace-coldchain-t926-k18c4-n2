@@ -1187,7 +1187,7 @@ app.get(
  * Lấy chuỗi sự kiện hash-chain và lịch sử nguồn gốc của lô hàng (S-10, S-11, S-21, S-23)
  */
 app.get(
-  ["/api/lots/:id/events", "/api/lots/:id/lineage", "/api/lots/:id/origins"],
+  ["/api/lots/:id/events", "/api/lots/:id/timeline", "/api/lots/:id/lineage", "/api/lots/:id/origins"],
   requirePermission(["producer", "cooperative", "transporter", "distributor", "org_admin", "admin", "inspector"]),
   async (req, res) => {
     const lotId = req.params.id;
@@ -1233,6 +1233,7 @@ app.get(
         count: access.events.length,
         isIntegrityValid: integrityCheck.valid,
         integrityError: integrityCheck.error || null,
+        integrityDetails: integrityCheck,
       });
     } catch (err) {
       return res.status(500).json({ message: err.message });

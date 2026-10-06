@@ -575,18 +575,23 @@
         const lotJson = await lotRes.json();
         lotData = lotJson.lot || lotJson;
 
+        let isIntegrityValid = true;
+        let integrityError = null;
+
         if (eventsRes.ok) {
           const eventsJson = await eventsRes.json();
           lotEvents = eventsJson.events || [];
+          isIntegrityValid = eventsJson.isIntegrityValid !== undefined ? eventsJson.isIntegrityValid : true;
+          integrityError = eventsJson.integrityError || (eventsJson.integrityDetails && eventsJson.integrityDetails.error) || null;
         }
 
-        renderLot(lotData, lotEvents);
+        renderLot(lotData, lotEvents, { isIntegrityValid, integrityError });
       } catch (err) {
         renderError("Lỗi hệ thống", err.message || "Không thể đồng bộ dữ liệu.");
       }
     }
 
-    function renderLot(lot, events) {
+    function renderLot(lot, events, integrity = { isIntegrityValid: true, integrityError: null }) {
       const isInspector = currentUser && currentUser.roleId === "inspector";
       const isAdmin = currentUser && currentUser.roleId === "admin";
       const isInspectorOrAdmin = isInspector || isAdmin;
@@ -793,15 +798,28 @@
           </div>
         </div>
 
-        <!-- Ledger Events Timeline -->
-        <div class="ledger-card">
+        <!-- Ledger Events Timeline (S-13 / S-12) -->
+        <div class="ledger-card" id="ledgerEventsSection">
           <div class="ledger-header">
             <div>
-              <h3 class="card-heading" style="margin-bottom: 4px;">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
-                <span>Sổ cái sự kiện bất biến (${events.length} sự kiện)</span>
-              </h3>
-              <p style="font-size: 13px; color: var(--color-text-muted); margin: 0;">Mỗi sự kiện được băm chuỗi bảo vệ cryptographic SHA-256 chống sửa đổi hoặc xóa lén.</p>
+              <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 6px; flex-wrap: wrap;">
+                <h3 class="card-heading" style="margin: 0;">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+                  <span>Dòng thời gian sự kiện (${events.length} sự kiện)</span>
+                </h3>
+                ${events.length > 0 ? (
+                  integrity.isIntegrityValid ? `
+                    <span class="status-pill success" style="display: inline-flex; align-items: center; gap: 5px; padding: 3px 10px; font-size: 12px; font-weight: 600;">
+                      <span class="status-dot"></span> Chuỗi toàn vẹn (SHA-256)
+                    </span>
+                  ` : `
+                    <span class="status-pill danger" style="display: inline-flex; align-items: center; gap: 5px; padding: 3px 10px; font-size: 12px; font-weight: 600; background: #fee2e2; color: #dc2626; border-color: #fca5a5;">
+                      <span class="status-dot" style="background: #dc2626;"></span> Lỗi toàn vẹn dữ liệu
+                    </span>
+                  `
+                ) : ""}
+              </div>
+              <p style="font-size: 13px; color: var(--color-text-muted); margin: 0;">Chuỗi sự kiện bất biến được liên kết bằng hàm băm mật mã cryptographic SHA-256 (K-01 / S-10 / S-13).</p>
             </div>
 
             ${isInspectorOrAdmin ? `
@@ -811,6 +829,28 @@
               </a>
             ` : ""}
           </div>
+
+          <!-- Banner cảnh báo lỗi toàn vẹn ở đầu timeline (S-13 / T-32) -->
+          ${!integrity.isIntegrityValid ? `
+            <div class="integrity-alert-banner" id="integrityAlertBanner" style="background: #fef2f2; border: 1.5px solid #ef4444; border-radius: var(--radius-md); padding: 16px 20px; margin-bottom: 24px; display: flex; align-items: flex-start; gap: 14px; color: #991b1b; box-shadow: 0 4px 12px rgba(239, 68, 68, 0.08);">
+              <div style="flex-shrink: 0; color: #dc2626; margin-top: 2px;">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+              </div>
+              <div style="flex-grow: 1;">
+                <div style="font-size: 15px; font-weight: 700; color: #b91c1c; margin-bottom: 4px;">
+                  ⚠️ CẢNH BÁO: CHUỖI SỰ KIỆN BỊ VI PHẠM TÍNH TOÀN VẸN
+                </div>
+                <div style="font-size: 13.5px; line-height: 1.5; color: #7f1d1d;">
+                  Phát hiện dữ liệu trong chuỗi băm bảo chứng SHA-256 của lô hàng này đã bị can thiệp, sửa đổi trái phép hoặc xóa lén sự kiện! Lô hàng không còn đảm bảo độ tin cậy.
+                </div>
+                ${integrity.integrityError ? `
+                  <div style="font-size: 13px; margin-top: 8px; font-family: monospace; background: rgba(220, 38, 38, 0.08); padding: 8px 12px; border-radius: 6px; color: #b91c1c; border-left: 3px solid #dc2626;">
+                    ${escapeHtml(integrity.integrityError)}
+                  </div>
+                ` : ""}
+              </div>
+            </div>
+          ` : ""}
 
           ${events.length === 0 ? `
             <div style="text-align: center; padding: 32px; color: var(--color-text-muted);">
@@ -828,18 +868,45 @@
                   }
                 }
                 const isTransfer = evt.eventType === "TRANSFER_INITIATED";
+                const isConfirmed = evt.eventType === "TRANSFER_CONFIRMED";
+                const isRejected = evt.eventType === "TRANSFER_REJECTED";
+                const isHarvest = evt.eventType === "HARVEST_CREATED";
+
+                let badgeLabel = escapeHtml(evt.eventType || "EVENT");
+                let badgeStyle = "background: rgba(36, 138, 61, 0.1); color: var(--color-primary); border-color: rgba(36, 138, 61, 0.2);";
+                let nodeStyle = "";
+
+                if (isHarvest) {
+                  badgeLabel = "🌾 Thu hoạch lô hàng (HARVEST_CREATED)";
+                  badgeStyle = "background: rgba(22, 163, 74, 0.12); color: #15803d; border-color: rgba(22, 163, 74, 0.3);";
+                } else if (isTransfer) {
+                  badgeLabel = "🔄 Bàn giao lô (TRANSFER_INITIATED)";
+                  badgeStyle = "background: rgba(245, 158, 11, 0.12); color: #b45309; border-color: rgba(245, 158, 11, 0.3);";
+                  nodeStyle = 'style="border-color: #f59e0b; color: #b45309; box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.2);"';
+                } else if (isConfirmed) {
+                  badgeLabel = "✅ Xác nhận nhận lô (TRANSFER_CONFIRMED)";
+                  badgeStyle = "background: rgba(5, 150, 105, 0.12); color: #047857; border-color: rgba(5, 150, 105, 0.3);";
+                  nodeStyle = 'style="border-color: #059669; color: #047857; box-shadow: 0 0 0 2px rgba(5, 150, 105, 0.2);"';
+                } else if (isRejected) {
+                  badgeLabel = "❌ Từ chối nhận lô (TRANSFER_REJECTED)";
+                  badgeStyle = "background: rgba(220, 38, 38, 0.12); color: #b91c1c; border-color: rgba(220, 38, 38, 0.3);";
+                  nodeStyle = 'style="border-color: #dc2626; color: #b91c1c; box-shadow: 0 0 0 2px rgba(220, 38, 38, 0.2);"';
+                }
+
                 return `
                 <div class="timeline-item">
-                  <div class="timeline-node" ${isTransfer ? 'style="border-color: #f59e0b; color: #b45309; box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.2);"' : ""}>${evt.sequenceNo || (idx + 1)}</div>
+                  <div class="timeline-node" ${nodeStyle}>${evt.sequenceNo || (idx + 1)}</div>
                   <div class="timeline-content">
                     <div class="timeline-top">
-                      <span class="event-type-badge" ${isTransfer ? 'style="background: rgba(245, 158, 11, 0.12); color: #b45309; border-color: rgba(245, 158, 11, 0.3);"' : ""}>
-                        ${isTransfer ? "🔄 BÀN GIAO LÔ (TRANSFER_INITIATED)" : escapeHtml(evt.eventType || "EVENT")}
+                      <span class="event-type-badge" style="${badgeStyle}">
+                        ${badgeLabel}
                       </span>
                       <span class="event-time">${formatDateTime(evt.occurredAt || evt.createdAt)}</span>
                     </div>
                     <div style="font-size: 13px; color: var(--color-text-main); margin-bottom: 6px;">
-                      <strong>Tổ chức ghi:</strong> ${escapeHtml(evt.organizationId || "--")} | <strong>Người thực hiện:</strong> ${escapeHtml(evt.actorUserId || "--")}
+                      <strong>Thực hiện:</strong> <span style="font-weight: 600; color: var(--color-primary);">${escapeHtml(evt.organizationName || evt.organizationId || "--")}</span>
+                      ${evt.organizationName && evt.organizationId && evt.organizationName !== evt.organizationId ? `<span style="font-size: 12px; color: var(--color-text-muted);">(${escapeHtml(evt.organizationId)})</span>` : ""}
+                      | <strong>Người thực hiện:</strong> ${escapeHtml(evt.actorUserId || "--")}
                     </div>
                     ${isTransfer && payloadObj ? `
                       <div style="background: rgba(245, 158, 11, 0.06); border: 1px solid rgba(245, 158, 11, 0.2); border-radius: var(--radius-sm); padding: 10px 14px; margin-bottom: 8px; font-size: 13px; color: #78350f;">
@@ -847,8 +914,13 @@
                         <div style="margin-top: 3px;"><strong>Trạng thái bàn giao:</strong> <span class="status-pill warning" style="display: inline-flex; padding: 2px 8px; font-size: 11.5px; vertical-align: middle;"><span class="status-dot"></span>Chờ xác nhận (PENDING)</span></div>
                         ${payloadObj.notes ? `<div style="margin-top: 3px;"><strong>Ghi chú:</strong> ${escapeHtml(payloadObj.notes)}</div>` : ""}
                         <div style="margin-top: 5px; font-size: 12px; color: #92400e; font-style: italic;">
-                          * Quyền sở hữu lô vẫn thuộc bên gửi cho đến khi bên nhận Accept (S-16).
+                          * Quyền sở hữu lô vẫn thuộc bên gửi cho đến khi bên nhận bấm Xác nhận (S-16).
                         </div>
+                      </div>
+                    ` : ""}
+                    ${isRejected && payloadObj && payloadObj.reason ? `
+                      <div style="background: rgba(220, 38, 38, 0.06); border: 1px solid rgba(220, 38, 38, 0.2); border-radius: var(--radius-sm); padding: 10px 14px; margin-bottom: 8px; font-size: 13px; color: #991b1b;">
+                        <div><strong>Lý do từ chối:</strong> <em>"${escapeHtml(payloadObj.reason)}"</em></div>
                       </div>
                     ` : ""}
                     <div class="hash-row">
