@@ -61,6 +61,7 @@ async function fetchAllLotsRaw(pool, inMemoryLots = []) {
     ...l,
     id: l.id,
     organizationId: l.organizationId || l.organization_id,
+    parentLotId: l.parentLotId || l.parent_lot_id || null,
   }));
 }
 

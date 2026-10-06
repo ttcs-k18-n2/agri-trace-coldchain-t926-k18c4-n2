@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>AGRI TRACEABILITY - Chi tiết lô thu hoạch</title>
+  <title>AGRI TRACEABILITY - Chi tiết lô thu hoạch & Phả hệ</title>
   <link rel="stylesheet" href="/styles.css">
 
   <style>
@@ -19,6 +19,7 @@
       justify-content: space-between;
       margin-bottom: 20px;
       gap: 12px;
+      flex-wrap: wrap;
     }
 
     .btn-back {
@@ -43,6 +44,13 @@
       background: rgba(255, 255, 255, 0.95);
       border-color: rgba(0, 0, 0, 0.15);
       transform: translateX(-2px);
+    }
+
+    .role-actions {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
     }
 
     /* Hero Lot Overview Card */
@@ -116,7 +124,7 @@
 
     .hero-stats-row {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
       gap: 16px;
       padding-top: 20px;
       border-top: 1px solid var(--color-border);
@@ -199,6 +207,209 @@
       color: var(--color-text-main);
       font-weight: 600;
       text-align: right;
+    }
+
+    /* Direct Lineage Card Styles */
+    .lineage-card {
+      background: var(--liquid-glass-bg);
+      border: var(--liquid-glass-border);
+      border-radius: var(--radius-xl);
+      padding: 28px;
+      margin-bottom: 24px;
+      backdrop-filter: var(--liquid-glass-blur);
+      -webkit-backdrop-filter: var(--liquid-glass-blur);
+      box-shadow: var(--liquid-glass-shadow);
+    }
+
+    .lineage-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 18px;
+      flex-wrap: wrap;
+      gap: 12px;
+      border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+      padding-bottom: 14px;
+    }
+
+    .lineage-block-title {
+      font-size: 13.5px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--color-text-muted);
+      margin-bottom: 12px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .count-badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(36, 138, 61, 0.12);
+      color: var(--color-primary);
+      font-size: 11px;
+      font-weight: 700;
+      border-radius: var(--radius-full);
+      padding: 2px 8px;
+    }
+
+    .parent-lot-box {
+      background: #ffffff;
+      border: 1.5px solid rgba(36, 138, 61, 0.25);
+      border-radius: var(--radius-lg);
+      padding: 18px 22px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      flex-wrap: wrap;
+      box-shadow: var(--shadow-sm);
+      transition: var(--transition-fast);
+    }
+
+    .parent-lot-box:hover {
+      border-color: var(--color-primary);
+      box-shadow: var(--shadow-hover);
+    }
+
+    .parent-lot-info {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .parent-lot-code-tag {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .parent-lot-name {
+      font-size: 17px;
+      font-weight: 700;
+      color: var(--color-text-main);
+    }
+
+    .parent-lot-meta {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12.5px;
+      color: var(--color-text-muted);
+      flex-wrap: wrap;
+    }
+
+    .btn-goto-lineage {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 16px;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--color-primary);
+      background: rgba(36, 138, 61, 0.08);
+      border: 1px solid rgba(36, 138, 61, 0.2);
+      border-radius: var(--radius-md);
+      text-decoration: none;
+      transition: var(--transition-fast);
+    }
+
+    .btn-goto-lineage:hover {
+      background: var(--color-primary);
+      color: #ffffff;
+      border-color: var(--color-primary);
+      transform: translateX(2px);
+    }
+
+    .lineage-empty-box {
+      background: rgba(0, 0, 0, 0.02);
+      border: 1px dashed var(--color-border);
+      border-radius: var(--radius-lg);
+      padding: 16px 20px;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+
+    .lineage-empty-icon {
+      font-size: 24px;
+      line-height: 1;
+    }
+
+    .child-lots-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 16px;
+    }
+
+    .child-lot-card {
+      background: #ffffff;
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-lg);
+      padding: 16px 18px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      gap: 12px;
+      box-shadow: var(--shadow-sm);
+      transition: var(--transition-fast);
+    }
+
+    .child-lot-card:hover {
+      border-color: rgba(36, 138, 61, 0.4);
+      box-shadow: var(--shadow-hover);
+      transform: translateY(-2px);
+    }
+
+    .child-lot-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+
+    .child-lot-code {
+      font-size: 13.5px;
+      font-weight: 700;
+      color: var(--color-primary);
+    }
+
+    .child-lot-title {
+      font-size: 15px;
+      font-weight: 700;
+      color: var(--color-text-main);
+    }
+
+    .child-lot-meta {
+      font-size: 12.5px;
+      color: var(--color-text-muted);
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .child-lot-footer {
+      padding-top: 10px;
+      border-top: 1px solid rgba(0, 0, 0, 0.05);
+    }
+
+    .child-lot-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12.5px;
+      font-weight: 600;
+      color: var(--color-primary);
+      text-decoration: none;
+      transition: var(--transition-fast);
+    }
+
+    .child-lot-link:hover {
+      color: var(--color-primary-hover);
+      transform: translateX(2px);
     }
 
     /* Ledger Events Timeline */
@@ -312,32 +523,9 @@
       color: var(--color-text-muted);
       font-weight: 600;
     }
-
-    /* Integrity banner */
-    .integrity-banner-box {
-      margin-top: 16px;
-      padding: 16px 20px;
-      border-radius: var(--radius-lg);
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 16px;
-      flex-wrap: wrap;
-    }
-
-    .integrity-banner-box.valid {
-      background: rgba(36, 138, 61, 0.08);
-      border: 1px solid rgba(36, 138, 61, 0.25);
-    }
-
-    .integrity-banner-box.invalid {
-      background: rgba(220, 38, 38, 0.08);
-      border: 1px solid rgba(220, 38, 38, 0.25);
-    }
   </style>
 </head>
 <body class="bg-gradient">
-  <!-- Dynamic Header / App Shell -->
   <!-- Dynamic Header / App Shell -->
   <header class="app-header">
     <div class="header-container">
@@ -390,12 +578,7 @@
         <span>Danh sách lô hàng</span>
       </a>
 
-      <div id="inspectorActions" style="display: none;">
-        <a id="btnCheckIntegrityLink" href="#" class="btn btn-secondary" style="border: 1px solid var(--color-primary); color: var(--color-primary); font-weight: 600;">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-          <span>Kiểm toán toàn vẹn dữ liệu</span>
-        </a>
-      </div>
+      <div class="role-actions" id="roleActions" style="display: none;"></div>
     </div>
 
     <!-- Container for dynamic lot details or error -->
@@ -428,8 +611,6 @@
     }
 
     async function loadLotDetail(lotId) {
-      const contentArea = document.getElementById("contentArea");
-
       try {
         const [lotRes, eventsRes] = await Promise.all([
           fetch(`/api/lots/${encodeURIComponent(lotId)}`, { credentials: "same-origin" }),
@@ -467,12 +648,48 @@
 
     function renderLot(lot, events) {
       const isInspectorOrAdmin = currentUser && ["inspector", "admin"].includes(currentUser.roleId);
-      const inspectorActions = document.getElementById("inspectorActions");
-      const btnCheckIntegrityLink = document.getElementById("btnCheckIntegrityLink");
+      const role = currentUser ? currentUser.roleId : "";
 
-      if (isInspectorOrAdmin && inspectorActions && btnCheckIntegrityLink) {
-        inspectorActions.style.display = "block";
-        btnCheckIntegrityLink.href = `/integrity.html?lotId=${encodeURIComponent(lot.id)}`;
+      // Render top action bar based on user role
+      const roleActionsEl = document.getElementById("roleActions");
+      if (roleActionsEl) {
+        let actionButtonsHtml = "";
+
+        if (isInspectorOrAdmin) {
+          actionButtonsHtml += `
+            <a id="btnCheckIntegrityLink" href="/integrity.html?lotId=${encodeURIComponent(lot.id)}" class="btn btn-secondary" style="border: 1px solid var(--color-primary); color: var(--color-primary); font-weight: 600; gap: 8px;">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg>
+              <span>Kiểm tra toàn vẹn chuỗi sự kiện</span>
+            </a>
+          `;
+        }
+
+        if (["cooperative", "org_admin", "admin"].includes(role)) {
+          actionButtonsHtml += `
+            <a href="/harvest.html" class="btn btn-primary" style="gap: 8px; font-weight: 600;">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
+              <span>Sơ chế / Tạo lô mới</span>
+            </a>
+            <a href="/farms.html" class="btn btn-secondary" style="gap: 8px; font-weight: 600;">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+              <span>Xem thửa đất gốc</span>
+            </a>
+          `;
+        } else if (role === "producer") {
+          actionButtonsHtml += `
+            <a href="/harvest.html" class="btn btn-primary" style="gap: 8px; font-weight: 600;">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
+              <span>Ghi nhận thu hoạch mới</span>
+            </a>
+            <a href="/farms.html" class="btn btn-secondary" style="gap: 8px; font-weight: 600;">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+              <span>Xem thửa đất</span>
+            </a>
+          `;
+        }
+
+        roleActionsEl.innerHTML = actionButtonsHtml;
+        roleActionsEl.style.display = actionButtonsHtml ? "flex" : "none";
       }
 
       const unit = lot.productUnit || "kg";
@@ -485,6 +702,7 @@
       const harvestDateFormatted = formatDate(lot.harvestedAt || lot.createdAt);
       const displayName = lot.productName || lot.name || "Nông sản";
       const farmDisplay = lot.farmName || lot.farmId || "Thửa chưa gán";
+      const orgDisplay = lot.organizationName || lot.organizationId || "--";
 
       const contentArea = document.getElementById("contentArea");
 
@@ -556,7 +774,104 @@
               <span class="hero-stat-label">Thửa đất sản xuất</span>
               <span class="hero-stat-val">${escapeHtml(farmDisplay)}</span>
             </div>
+            <div class="hero-stat-item">
+              <span class="hero-stat-label">Tổ chức nắm giữ</span>
+              <span class="hero-stat-val" style="font-size: 15px;">${escapeHtml(orgDisplay)}</span>
+            </div>
           </div>
+        </div>
+
+        <!-- Direct Lineage: Parent & Child Lots (Phả hệ trực tiếp) -->
+        <div class="lineage-card">
+          <div class="lineage-header">
+            <h3 class="card-heading" style="margin-bottom: 0;">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="6" y1="3" x2="6" y2="15"/>
+                <circle cx="18" cy="6" r="3"/>
+                <circle cx="6" cy="18" r="3"/>
+                <path d="M18 9a9 9 0 0 1-9 9"/>
+              </svg>
+              <span>Phả hệ trực tiếp (Lô mẹ & Lô con)</span>
+            </h3>
+            <span class="badge-role" style="background: rgba(36, 138, 61, 0.08); color: var(--color-primary); font-weight: 600; padding: 4px 10px; border-radius: var(--radius-sm);">Lô mẹ - Lô con trực tiếp</span>
+          </div>
+
+          <!-- Parent Lot Box -->
+          <div class="lineage-block-title">Lô mẹ trực tiếp (Nguồn gốc trực tiếp)</div>
+          ${lot.parentLot ? `
+            <div class="parent-lot-box">
+              <div class="parent-lot-info">
+                <div class="parent-lot-code-tag">
+                  <span class="font-mono" style="font-weight: 800; color: var(--color-primary); font-size: 14px;">${escapeHtml(lot.parentLot.id)}</span>
+                  <span class="status-pill ${lot.parentLot.status === 'Đã thu hoạch' || lot.parentLot.status === 'Đã nhập kho' ? 'success' : 'warning'}" style="font-size: 11px; padding: 2px 8px;">
+                    ${escapeHtml(lot.parentLot.status || "Đã thu hoạch")}
+                  </span>
+                </div>
+                <div class="parent-lot-name">${escapeHtml(lot.parentLot.productName || lot.parentLot.name || "Lô mẹ")}</div>
+                <div class="parent-lot-meta">
+                  <span><strong>Tổ chức:</strong> ${escapeHtml(lot.parentLot.organizationName || lot.parentLot.organizationId || "--")}</span>
+                  ${lot.parentLot.remainingQuantity !== null && lot.parentLot.remainingQuantity !== undefined ? `
+                    <span>&bull;</span>
+                    <span><strong>Khối lượng còn lại:</strong> ${Number(lot.parentLot.remainingQuantity).toFixed(3)} ${escapeHtml(lot.parentLot.productUnit || "kg")}</span>
+                  ` : ""}
+                </div>
+              </div>
+              <a href="/lot-detail.html?id=${encodeURIComponent(lot.parentLot.id)}" class="btn-goto-lineage">
+                <span>Xem lô mẹ</span>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+              </a>
+            </div>
+          ` : `
+            <div class="lineage-empty-box">
+              <div class="lineage-empty-icon">🌱</div>
+              <div>
+                <div style="font-weight: 600; color: var(--color-text-main);">Lô gốc F0 (Lô thu hoạch ban đầu)</div>
+                <div style="font-size: 12.5px; color: var(--color-text-muted);">Lô hàng này được thu hoạch trực tiếp từ thửa đất sản xuất, không tách hoặc sơ chế từ lô mẹ nào.</div>
+              </div>
+            </div>
+          `}
+
+          <!-- Child Lots Section -->
+          <div class="lineage-block-title" style="margin-top: 22px;">
+            <span>Các lô con trực tiếp</span>
+            <span class="count-badge">${(lot.childLots || []).length}</span>
+          </div>
+
+          ${(lot.childLots && lot.childLots.length > 0) ? `
+            <div class="child-lots-grid">
+              ${lot.childLots.map(child => `
+                <div class="child-lot-card">
+                  <div>
+                    <div class="child-lot-top">
+                      <span class="font-mono child-lot-code">${escapeHtml(child.id)}</span>
+                      <span class="status-pill success" style="font-size: 11px; padding: 2px 8px;">${escapeHtml(child.status || "Đã tạo")}</span>
+                    </div>
+                    <div class="child-lot-title" style="margin-top: 8px;">${escapeHtml(child.productName || child.name || "Lô con")}</div>
+                    <div class="child-lot-meta" style="margin-top: 6px;">
+                      <div><strong>Tổ chức:</strong> ${escapeHtml(child.organizationName || child.organizationId || "--")}</div>
+                      ${child.remainingQuantity !== null && child.remainingQuantity !== undefined ? `
+                        <div><strong>Khối lượng:</strong> ${Number(child.remainingQuantity).toFixed(3)} ${escapeHtml(child.productUnit || "kg")}</div>
+                      ` : ""}
+                    </div>
+                  </div>
+                  <div class="child-lot-footer">
+                    <a href="/lot-detail.html?id=${encodeURIComponent(child.id)}" class="child-lot-link">
+                      <span>Xem chi tiết lô con</span>
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+                    </a>
+                  </div>
+                </div>
+              `).join("")}
+            </div>
+          ` : `
+            <div class="lineage-empty-box">
+              <div class="lineage-empty-icon">📦</div>
+              <div>
+                <div style="font-weight: 600; color: var(--color-text-main);">Chưa có lô con trực tiếp</div>
+                <div style="font-size: 12.5px; color: var(--color-text-muted);">Chưa có lô hàng mới nào được phân tách, sơ chế hoặc đóng gói từ lô này.</div>
+              </div>
+            </div>
+          `}
         </div>
 
         <!-- Specifications Grid -->
@@ -580,7 +895,11 @@
             </div>
             <div class="meta-row">
               <span class="meta-key">Tổ chức nắm giữ</span>
-              <span class="meta-val">${escapeHtml(lot.organizationId || "--")}</span>
+              <span class="meta-val">${escapeHtml(orgDisplay)}</span>
+            </div>
+            <div class="meta-row">
+              <span class="meta-key">Trạng thái</span>
+              <span class="meta-val">${escapeHtml(lot.status || "Đã thu hoạch")}</span>
             </div>
           </div>
 

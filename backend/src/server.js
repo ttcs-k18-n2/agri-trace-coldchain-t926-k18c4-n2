@@ -67,6 +67,26 @@ app.use(
 
 // Fallback in-memory store for unit test environments without postgres
 const users = new Map();
+const ORG_NAME_FALLBACKS = {
+  "org-001": "Nông trại Thái Nguyên",
+  "org-002": "Hợp tác xã Rau Sạch Bắc Giang",
+  "org-003": "Nhà phân phối Chuỗi Lạnh",
+  "org-inspector": "Cục Kiểm tra An toàn Nông sản",
+  "org-system": "Cơ quan Quản lý Chuỗi Lạnh Toàn quốc",
+  "org-trans": "Công ty Cổ phần Vận chuyển Chuỗi Lạnh Á Châu",
+  "org-dist": "Tổng Công ty Phân phối Nông sản & Bán lẻ",
+};
+
+const inMemoryOrgs = [
+  { id: "org-001", name: "Nông trại Thái Nguyên", type: "producer" },
+  { id: "org-002", name: "Hợp tác xã Rau Sạch Bắc Giang", type: "cooperative" },
+  { id: "org-003", name: "Nhà phân phối Chuỗi Lạnh", type: "distributor" },
+  { id: "org-inspector", name: "Cục Kiểm tra An toàn Nông sản", type: "inspector" },
+  { id: "org-system", name: "Cơ quan Quản lý Chuỗi Lạnh Toàn quốc", type: "admin" },
+  { id: "org-trans", name: "Công ty Cổ phần Vận chuyển Chuỗi Lạnh Á Châu", type: "transporter" },
+  { id: "org-dist", name: "Tổng Công ty Phân phối Nông sản & Bán lẻ", type: "distributor" },
+];
+
 const inMemoryProducts = [
   { id: "PROD-TOMATO", name: "Cà chua", unit: "kg" },
   { id: "PROD-TEA", name: "Chè", unit: "kg" },
@@ -78,10 +98,10 @@ const inMemoryFarms = [
   { id: "FARM-101", name: "Thửa rau cải Yên Dũng 01", area: 3.0, coordinates: "21.2341, 106.1892", organizationId: "org-002" },
 ];
 const inMemoryLots = [
-  { id: "LOT-001", name: "Lô cà chua Thái Nguyên", status: "Đã thu hoạch", organizationId: "org-001", farmId: "FARM-002", productId: "PROD-TOMATO", initialQuantity: 500, remainingQuantity: 500, harvestedAt: "2026-09-25" },
-  { id: "LOT-002", name: "Lô chè Tân Cương", status: "Đã thu hoạch", organizationId: "org-001", farmId: "FARM-001", productId: "PROD-TEA", initialQuantity: 120, remainingQuantity: 120, harvestedAt: "2026-09-26" },
-  { id: "LOT-101", name: "Lô rau cải Bắc Giang", status: "Đã thu hoạch", organizationId: "org-002", farmId: "FARM-101", productId: "PROD-VEGETABLE", initialQuantity: 300, remainingQuantity: 300, harvestedAt: "2026-09-27" },
-  { id: "LOT-102", name: "Lô dưa chuột Hiệp Hòa", status: "Đã thu hoạch", organizationId: "org-002", farmId: null, productId: null, initialQuantity: 250, remainingQuantity: 250, harvestedAt: "2026-09-28" },
+  { id: "LOT-001", name: "Lô cà chua Thái Nguyên", status: "Đã thu hoạch", organizationId: "org-001", farmId: "FARM-002", productId: "PROD-TOMATO", initialQuantity: 500, remainingQuantity: 500, harvestedAt: "2026-09-25", parentLotId: null },
+  { id: "LOT-002", name: "Lô chè Tân Cương", status: "Đã thu hoạch", organizationId: "org-001", farmId: "FARM-001", productId: "PROD-TEA", initialQuantity: 120, remainingQuantity: 120, harvestedAt: "2026-09-26", parentLotId: null },
+  { id: "LOT-101", name: "Lô rau cải Bắc Giang", status: "Đã thu hoạch", organizationId: "org-002", farmId: "FARM-101", productId: "PROD-VEGETABLE", initialQuantity: 300, remainingQuantity: 300, harvestedAt: "2026-09-27", parentLotId: null },
+  { id: "LOT-102", name: "Lô dưa chuột Hiệp Hòa", status: "Đã thu hoạch", organizationId: "org-002", farmId: null, productId: null, initialQuantity: 250, remainingQuantity: 250, harvestedAt: "2026-09-28", parentLotId: null },
 ];
 
 const inMemoryIntegrityChecks = [];
@@ -1012,7 +1032,7 @@ app.get(
 );
 
 /**
- * Xem chi tiết lô hàng - chặn truy cập chéo tổ chức (T-13)
+ * Xem chi tiết lô hàng - kèm quan hệ lô mẹ/con trực tiếp và chặn truy cập chéo tổ chức (T-13, NFR)
  */
 app.get(
   ["/api/lots/:id", "/api/organization/lots/:id"],
@@ -1025,6 +1045,7 @@ app.get(
         authContext: req.auth,
         lotId,
         inMemoryLots,
+        inMemoryOrgs,
       });
 
       if (access.status === "NOT_FOUND") {
@@ -1049,53 +1070,194 @@ app.get(
         });
       }
 
-      const rawLot = access.lot;
-      let farmName = rawLot.farmName || null;
-      let productName = rawLot.productName || null;
-      let productUnit = rawLot.productUnit || null;
-      const farmId = rawLot.farmId || rawLot.farm_id || null;
-      const productId = rawLot.productId || rawLot.product_id || null;
-
+      let lot = null;
       if (pool) {
-        if (farmId && !farmName) {
-          const f = await scopedQueryById(pool, req.auth, "farms", farmId, { allowGlobal: true });
-          if (f.rows[0]) farmName = f.rows[0].name;
+        // Lệnh 1: Lấy thông tin lô hàng kèm JOIN sản phẩm, thửa đất, tổ chức và lô mẹ trực tiếp (NFR: 1 query)
+        const lotQuery = `
+          SELECT 
+            l.id, l.name, l.status, l.organization_id, l.farm_id, l.product_id,
+            l.initial_quantity, l.remaining_quantity, l.harvested_at, l.created_at, l.parent_lot_id,
+            f.name AS farm_name,
+            p.name AS product_name, p.unit AS product_unit,
+            o.name AS organization_name,
+            pl.id AS parent_id, pl.name AS parent_name, pl.status AS parent_status,
+            pl.product_id AS parent_product_id, pl.organization_id AS parent_organization_id,
+            pl.initial_quantity AS parent_initial_quantity, pl.remaining_quantity AS parent_remaining_quantity,
+            pp.name AS parent_product_name, pp.unit AS parent_product_unit,
+            po.name AS parent_organization_name
+          FROM lots l
+          LEFT JOIN farms f ON l.farm_id = f.id
+          LEFT JOIN products p ON l.product_id = p.id
+          LEFT JOIN organizations o ON l.organization_id = o.id
+          LEFT JOIN lots pl ON l.parent_lot_id = pl.id
+          LEFT JOIN products pp ON pl.product_id = pp.id
+          LEFT JOIN organizations po ON pl.organization_id = po.id
+          WHERE l.id = $1
+        `;
+        const lotRes = await pool.query(lotQuery, [lotId]);
+        const row = lotRes.rows[0];
+        if (!row) {
+          return res.status(404).json({ message: "Không tìm thấy lô hàng." });
         }
-        if (productId && !productName) {
-          const p = await pool.query("SELECT name, unit FROM products WHERE id = $1", [productId]);
-          if (p.rows[0]) {
-            productName = p.rows[0].name;
-            productUnit = p.rows[0].unit;
-          }
+
+        // Lệnh 2: Lấy danh sách các lô con trực tiếp (NFR: 1 query)
+        const childQuery = `
+          SELECT 
+            c.id, c.name, c.status, c.organization_id, c.product_id, c.farm_id,
+            c.initial_quantity, c.remaining_quantity, c.harvested_at, c.created_at, c.parent_lot_id,
+            p.name AS product_name, p.unit AS product_unit,
+            o.name AS organization_name
+          FROM lots c
+          LEFT JOIN products p ON c.product_id = p.id
+          LEFT JOIN organizations o ON c.organization_id = o.id
+          WHERE c.parent_lot_id = $1
+          ORDER BY c.created_at DESC, c.id DESC
+        `;
+        const childRes = await pool.query(childQuery, [lotId]);
+
+        let parentLot = null;
+        if (row.parent_id) {
+          parentLot = {
+            id: row.parent_id,
+            name: row.parent_name,
+            status: row.parent_status,
+            productId: row.parent_product_id,
+            productName: row.parent_product_name,
+            productUnit: row.parent_product_unit || "kg",
+            organizationId: row.parent_organization_id,
+            organizationName: row.parent_organization_name,
+            initialQuantity: row.parent_initial_quantity !== null && row.parent_initial_quantity !== undefined ? Number(row.parent_initial_quantity) : null,
+            remainingQuantity: row.parent_remaining_quantity !== null && row.parent_remaining_quantity !== undefined ? Number(row.parent_remaining_quantity) : null,
+          };
         }
+
+        const childLots = childRes.rows.map((c) => ({
+          id: c.id,
+          name: c.name,
+          status: c.status,
+          organizationId: c.organization_id,
+          organizationName: c.organization_name,
+          productId: c.product_id,
+          productName: c.product_name,
+          productUnit: c.product_unit || "kg",
+          initialQuantity: c.initial_quantity !== null && c.initial_quantity !== undefined ? Number(c.initial_quantity) : null,
+          remainingQuantity: c.remaining_quantity !== null && c.remaining_quantity !== undefined ? Number(c.remaining_quantity) : null,
+          harvestedAt: c.harvested_at,
+          createdAt: c.created_at,
+          parentLotId: c.parent_lot_id,
+        }));
+
+        lot = {
+          id: row.id,
+          name: row.name,
+          status: row.status,
+          organizationId: row.organization_id,
+          organizationName: row.organization_name,
+          farmId: row.farm_id,
+          farmName: row.farm_name,
+          productId: row.product_id,
+          productName: row.product_name,
+          productUnit: row.product_unit || "kg",
+          initialQuantity: row.initial_quantity !== null && row.initial_quantity !== undefined ? Number(row.initial_quantity) : null,
+          remainingQuantity: row.remaining_quantity !== null && row.remaining_quantity !== undefined ? Number(row.remaining_quantity) : null,
+          harvestedAt: row.harvested_at,
+          createdAt: row.created_at,
+          parentLotId: row.parent_lot_id || null,
+          parentLot,
+          childLots,
+          accessType: access.accessType,
+          ancestors: access.ancestors,
+        };
       } else {
+        const rawLot = access.lot;
+        const farmId = rawLot.farmId || rawLot.farm_id || null;
+        const productId = rawLot.productId || rawLot.product_id || null;
+        const parentLotId = rawLot.parentLotId || rawLot.parent_lot_id || null;
+
         const farm = inMemoryFarms.find((f) => f.id === farmId);
         const product = inMemoryProducts.find((p) => p.id === productId);
-        if (!farmName) farmName = farm ? farm.name : null;
-        if (!productName) productName = product ? product.name : null;
-        if (!productUnit) productUnit = product ? product.unit : "kg";
+        const farmName = rawLot.farmName || (farm ? farm.name : null);
+        const productName = rawLot.productName || (product ? product.name : null);
+        const productUnit = rawLot.productUnit || (product ? product.unit : "kg");
+
+        const getOrgName = (orgId) => {
+          if (!orgId) return null;
+          const org = inMemoryOrgs.find((o) => o.id === orgId);
+          return org ? org.name : (ORG_NAME_FALLBACKS[orgId] || orgId);
+        };
+
+        let parentLot = null;
+        if (parentLotId) {
+          const pLot = inMemoryLots.find((l) => l.id === parentLotId);
+          if (pLot) {
+            const pProd = inMemoryProducts.find((p) => p.id === (pLot.productId || pLot.product_id));
+            const pInitQty = pLot.initialQuantity !== undefined ? pLot.initialQuantity : pLot.initial_quantity;
+            const pRemQty = pLot.remainingQuantity !== undefined ? pLot.remainingQuantity : pLot.remaining_quantity;
+            parentLot = {
+              id: pLot.id,
+              name: pLot.name,
+              status: pLot.status,
+              productId: pLot.productId || pLot.product_id || null,
+              productName: pProd ? pProd.name : (pLot.productName || null),
+              productUnit: pProd ? pProd.unit : (pLot.productUnit || "kg"),
+              organizationId: pLot.organizationId || pLot.organization_id || null,
+              organizationName: getOrgName(pLot.organizationId || pLot.organization_id),
+              initialQuantity: pInitQty !== null && pInitQty !== undefined ? Number(pInitQty) : null,
+              remainingQuantity: pRemQty !== null && pRemQty !== undefined ? Number(pRemQty) : null,
+            };
+          } else {
+            parentLot = { id: parentLotId, name: parentLotId };
+          }
+        }
+
+        const childLots = inMemoryLots
+          .filter((l) => (l.parentLotId || l.parent_lot_id) === lotId)
+          .map((cL) => {
+            const cProd = inMemoryProducts.find((p) => p.id === (cL.productId || cL.product_id));
+            const cInitQty = cL.initialQuantity !== undefined ? cL.initialQuantity : cL.initial_quantity;
+            const cRemQty = cL.remainingQuantity !== undefined ? cL.remainingQuantity : cL.remaining_quantity;
+            return {
+              id: cL.id,
+              name: cL.name,
+              status: cL.status,
+              organizationId: cL.organizationId || cL.organization_id,
+              organizationName: getOrgName(cL.organizationId || cL.organization_id),
+              productId: cL.productId || cL.product_id || null,
+              productName: cProd ? cProd.name : (cL.productName || null),
+              productUnit: cProd ? cProd.unit : (cL.productUnit || "kg"),
+              initialQuantity: cInitQty !== null && cInitQty !== undefined ? Number(cInitQty) : null,
+              remainingQuantity: cRemQty !== null && cRemQty !== undefined ? Number(cRemQty) : null,
+              harvestedAt: cL.harvestedAt || cL.harvested_at || null,
+              createdAt: cL.createdAt || cL.created_at || null,
+              parentLotId: lotId,
+            };
+          });
+
+        const initQty = rawLot.initialQuantity !== undefined ? rawLot.initialQuantity : rawLot.initial_quantity;
+        const remQty = rawLot.remainingQuantity !== undefined ? rawLot.remainingQuantity : rawLot.remaining_quantity;
+
+        lot = {
+          id: rawLot.id,
+          name: rawLot.name,
+          status: rawLot.status,
+          organizationId: rawLot.organizationId || rawLot.organization_id,
+          organizationName: rawLot.organizationName || getOrgName(rawLot.organizationId || rawLot.organization_id),
+          farmId,
+          farmName,
+          productId,
+          productName,
+          productUnit,
+          initialQuantity: initQty !== null && initQty !== undefined ? Number(initQty) : null,
+          remainingQuantity: remQty !== null && remQty !== undefined ? Number(remQty) : null,
+          harvestedAt: rawLot.harvestedAt || rawLot.harvested_at || null,
+          createdAt: rawLot.createdAt || rawLot.created_at || null,
+          parentLotId,
+          parentLot,
+          childLots,
+          accessType: access.accessType,
+          ancestors: access.ancestors,
+        };
       }
-
-      const initQty = rawLot.initialQuantity !== undefined ? rawLot.initialQuantity : rawLot.initial_quantity;
-      const remQty = rawLot.remainingQuantity !== undefined ? rawLot.remainingQuantity : rawLot.remaining_quantity;
-
-      const lot = {
-        id: rawLot.id,
-        name: rawLot.name,
-        status: rawLot.status,
-        organizationId: rawLot.organizationId || rawLot.organization_id,
-        organizationName: rawLot.organizationName,
-        farmId,
-        farmName,
-        productId,
-        productName,
-        productUnit,
-        initialQuantity: initQty !== null && initQty !== undefined ? Number(initQty) : null,
-        remainingQuantity: remQty !== null && remQty !== undefined ? Number(remQty) : null,
-        harvestedAt: rawLot.harvestedAt || rawLot.harvested_at || null,
-        accessType: access.accessType,
-        ancestors: access.ancestors,
-      };
 
       return res.status(200).json({ lot });
     } catch (err) {
@@ -2060,6 +2222,7 @@ module.exports = {
   inMemoryLots,
   inMemoryFarms,
   inMemoryProducts,
+  inMemoryOrgs,
   seedDemoUser,
   hashPassword,
   verifyPassword,
