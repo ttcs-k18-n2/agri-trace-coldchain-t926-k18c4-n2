@@ -1,228 +1,324 @@
 # Development Workflow
 
-Tài liệu này quy định cách team làm việc trên GitHub cho toàn dự án. Phạm vi nghiệp vụ, SP, AC và DoD/DoR vẫn lấy từ Backlog Excel.
+Tài liệu này quy định **quy trình Git hiện tại** của nhóm. Phạm vi nghiệp vụ, SP, AC, dependency và DoD/DoR vẫn lấy từ Backlog/Jira.
 
-## 1. Vai trò của các branch
+## 1. Branch hiện tại
 
-- `main`: phiên bản ổn định dùng cho demo/release.
-- `develop`: nhánh tích hợp chính của Sprint; mọi Story đã review được merge vào đây.
+- `main`: nhánh tích hợp chính, đồng thời là nguồn triển khai staging/release.
 - `feature/s<sprint>-s<story>-<short-name>`: phát triển Story.
-- `fix/s<sprint>-s<story>-<short-name>`: sửa lỗi của Story.
-- `docs/s<sprint>-k<spike>-<short-name>`: Spike/tài liệu kỹ thuật.
-- `docs/s<sprint>-<short-name>`: tài liệu quản lý Sprint.
+- `fix/s<sprint>-s<story>-<short-name>`: sửa lỗi.
+- `docs/<short-name>`: cập nhật tài liệu/quy trình.
 
-Trong repo này, khi Backlog dùng cụm từ **"nhánh chính"** cho CI/CD của Sprint thì team quy ước `develop` là **nhánh tích hợp chính của Sprint**; `main` là **nhánh triển khai staging & release**. Sau khi các Story trên `develop` được kiểm tra, PR vào `main` sẽ kích hoạt pipeline tự động triển khai staging.
+**Không dùng `develop` trong luồng làm việc hiện tại.** Nếu còn branch hoặc tài liệu lịch sử nhắc `develop`, không dùng chúng làm hướng dẫn cho công việc mới.
 
-## 2. Cấu trúc tên branch
+## 2. Luồng chuẩn
+
+```text
+origin/main mới nhất
+      ↓
+feature/* | fix/* | docs/*
+      ↓
+code + test local
+      ↓
+git push
+      ↓
+CI trên branch
+      ↓
+Pull Request vào main
+      ↓
+review + CI xanh + AC đạt
+      ↓
+merge main
+      ↓
+CI + deploy staging
+```
+
+Không có auto-merge từ feature branch vào `main`.
+
+## 3. Tên branch
 
 Mẫu:
 
 ```text
 feature/s<sprint>-s<story>-<short-name>
 fix/s<sprint>-s<story>-<short-name>
-docs/s<sprint>-k<spike>-<short-name>
-docs/s<sprint>-<short-name>
+docs/<short-name>
 ```
-
-Sprint 1:
-
-```text
-feature/s1-s01-app-setup
-feature/s1-s02-ci
-feature/s1-s03-staging
-docs/s1-k01-integrity
-feature/s1-s04-login
-feature/s1-s05-org-access
-feature/s1-s06-farm
-```
-
-Khi sang Sprint 2 chỉ thay số Sprint/Story, không đổi cách đặt tên.
-
-Tên branch không chứa tên thành viên. Khi đổi người phụ trách, branch vẫn giữ nguyên.
-
-## 3. Story và Task
-
-Một Story có thể có nhiều Task nhưng dùng **một Story branch**.
 
 Ví dụ:
 
 ```text
-S-01
-├── T-01 Khởi tạo dự án + Docker Compose + PostgreSQL
-└── T-02 Migration đầu tiên + hướng dẫn chạy
-
-=> feature/s1-s01-app-setup
+feature/s3-s17-split-lots
+feature/s3-s19-merge-lots
+fix/s3-s24-overdue-badge
+docs/current-main-workflow
 ```
 
-Task được truy vết bằng commit:
+Tên branch không chứa tên thành viên.
+
+## 4. Lần đầu clone repo
+
+```bash
+git clone https://github.com/ttcs-k18-n2/agri-trace-coldchain-t926-k18c4-n2.git
+cd agri-trace-coldchain-t926-k18c4-n2
+git switch main
+git pull origin main
+```
+
+Sau đó tạo branch Story từ `main`:
+
+```bash
+git switch -c feature/s3-s19-merge-lots
+```
+
+## 5. Trước khi bắt đầu một nhiệm vụ
+
+Luôn lấy `main` mới nhất:
+
+```bash
+git fetch origin
+git switch main
+git pull origin main
+git switch -c feature/s<sprint>-s<story>-<short-name>
+```
+
+Nếu branch đã tồn tại:
+
+```bash
+git fetch origin
+git switch <story-branch>
+git pull origin <story-branch>
+git merge origin/main
+```
+
+Nếu có conflict, xử lý conflict rồi mới code tiếp.
+
+Không code trực tiếp trên `main`.
+
+## 6. Nếu lỡ sửa code khi đang đứng ở main
+
+Nếu **chưa commit**, tạo branch ngay:
+
+```bash
+git switch -c feature/s<sprint>-s<story>-<short-name>
+```
+
+Các thay đổi chưa commit vẫn đi theo branch mới.
+
+Nếu đã commit local vào `main` nhưng **chưa push**, chuyển commit sang branch rồi đưa local main về đúng origin/main:
+
+```bash
+git switch -c feature/s<sprint>-s<story>-<short-name>
+git switch main
+git reset --hard origin/main
+git switch feature/s<sprint>-s<story>-<short-name>
+```
+
+Chỉ dùng `reset --hard` khi chắc chắn commit cần giữ đã nằm trên branch mới.
+
+## 7. Chạy và test local
+
+Tạo `.env` từ mẫu:
+
+### Windows
+
+```powershell
+Copy-Item .env.example .env
+```
+
+### Linux/macOS
+
+```bash
+cp .env.example .env
+```
+
+Với local HTTP, đặt:
+
+```env
+COOKIE_SECURE=false
+```
+
+Chạy:
+
+```bash
+docker compose up -d --build
+docker compose ps
+```
+
+Mở:
 
 ```text
-feat: T-01 add docker compose with PostgreSQL
-feat: T-02 add initial migration and setup guide
+Frontend: http://localhost:8080
+Backend:  http://localhost:3000
+Health:   http://localhost:3000/health
 ```
 
-Không tạo branch `T-01`, `T-02` riêng nếu các Task cùng thuộc một Story.
-
-## 4. Lấy dự án về máy và bắt đầu làm Story
-
-### 4.1. Thành viên clone repo lần đầu
-
-Mỗi thành viên clone **toàn bộ repository** về máy. Sau đó chỉ checkout đúng Story branch được giao để làm việc.
+Chạy test backend:
 
 ```bash
-git clone https://github.com/ttcs-k18-n2/agri-trace-coldchain-t926-k18c4-n2.git
-cd agri-trace-coldchain-t926-k18c4-n2
-git fetch origin
-git checkout -b <story-branch> origin/<story-branch>
+docker compose exec backend npm test
 ```
 
-Ví dụ người được giao S-04:
+Chạy migration khi cần:
 
 ```bash
-git clone https://github.com/ttcs-k18-n2/agri-trace-coldchain-t926-k18c4-n2.git
-cd agri-trace-coldchain-t926-k18c4-n2
-git fetch origin
-git checkout -b feature/s1-s04-login origin/feature/s1-s04-login
+docker compose exec backend npm run migrate:up
 ```
 
-Kiểm tra đang đứng đúng branch:
+Reset database local khi cần môi trường sạch:
 
 ```bash
-git branch
+docker compose down -v
+docker compose up -d --build
 ```
 
-Dòng có dấu `*` phải là Story branch được giao.
+## 8. Commit
 
-### 4.2. Đồng bộ code mới từ `develop`
-
-Trước khi bắt đầu hoặc tiếp tục một Story:
+Trước khi commit:
 
 ```bash
-git fetch origin
-git checkout <story-branch>
-git pull origin <story-branch>
-git merge origin/develop
+git status
+git diff
 ```
 
-Nhờ vậy thành viên vẫn nhận được phần code mới đã được các Story khác merge vào `develop`, nhưng commit tiếp theo trên Story branch chỉ ghi nhận những thay đổi mà thành viên thực sự sửa.
-
-Nếu branch chưa có ở local nhưng đã tồn tại trên GitHub:
-
-```bash
-git checkout -b <story-branch> origin/<story-branch>
-```
-
-Không tạo branch mới theo tên cá nhân hoặc Task nếu Story branch chính thức đã tồn tại trên GitHub. Không code trực tiếp trên `develop` hoặc `main`.
-
-## 5. Commit và push
+Sau đó:
 
 ```bash
 git add .
-git commit -m "feat: T-xx mô tả ngắn"
-git push origin <story-branch>
+git commit -m "feat(S-19): implement lot merge"
 ```
 
-Loại commit:
+Quy ước:
 
 ```text
-feat:     thêm/chỉnh chức năng
-fix:      sửa lỗi
-docs:     tài liệu
-refactor: cấu trúc code, không đổi hành vi
-test:     test
-chore:    CI, cấu hình, công việc kỹ thuật
+feat(S-xx):     thêm/chỉnh chức năng
+fix(S-xx):      sửa lỗi
+test(S-xx):     thêm/sửa test
+docs:           tài liệu
+refactor:       đổi cấu trúc, không đổi hành vi
+chore:          CI/cấu hình/công việc kỹ thuật
 ```
 
-## 6. Pull Request
-
-Luồng bình thường:
+Nếu cần chỉ rõ Task:
 
 ```text
-<story-branch> -> develop
+feat(S-19/T-44): add merge transaction
+test(S-19/T-45): reject invalid parent lots
 ```
 
-Cuối Sprint:
+## 9. Push
+
+Lần đầu push branch:
+
+```bash
+git push -u origin <story-branch>
+```
+
+Các lần sau:
+
+```bash
+git push
+```
+
+Push chỉ cập nhật branch trên GitHub. **Không tự merge vào main.**
+
+## 10. Pull Request
+
+Story/bug/documentation PR hiện tại đều target:
 
 ```text
-develop -> main
+base: main
+compare: <branch-của-bạn>
+```
+
+Ví dụ:
+
+```text
+base: main
+compare: feature/s3-s19-merge-lots
 ```
 
 PR phải có:
 
-- Story và Task liên quan.
-- Mô tả thay đổi.
-- Acceptance Criteria nào được đáp ứng.
-- Cách kiểm tra.
+- Story/Task/Jira liên quan.
+- Thay đổi đã làm.
+- Acceptance Criteria đã đáp ứng.
+- Cách test.
 - Kết quả test/CI.
-- Kết quả kiểm tra trên staging khi áp dụng.
-- Ảnh chụp nếu có thay đổi giao diện.
-- Dependency/blocker còn lại nếu có.
+- Ảnh nếu thay đổi UI.
+- Migration hoặc biến môi trường mới nếu có.
+- Blocker/dependency còn lại nếu có.
 
-Mẫu tiêu đề:
-
-```text
-[S-02] Configure CI pipeline
-[S-04] Add login and lockout
-```
-
-## 7. Review và merge
-
-Reviewer:
-
-1. Đọc `Files changed`.
-2. Đối chiếu Story/Task và Acceptance Criteria.
-3. Kiểm tra test.
-4. Kiểm tra CI.
-5. Kiểm tra rủi ro bảo mật/dữ liệu nếu có.
-6. Request changes khi chưa đạt; Approve khi đạt.
+## 11. Review và merge
 
 Không merge khi:
 
 - CI đỏ.
 - Còn conflict.
-- Chưa có ít nhất một người khác review.
-- Acceptance Criteria chưa đạt.
-- Có secret/file nhạy cảm bị commit.
-- Story yêu cầu staging nhưng chưa kiểm trên staging.
+- AC chưa đạt.
+- Test cần thiết chưa có/chưa chạy.
+- Có secret/file nhạy cảm.
+- Migration chưa kiểm tra.
+- Chức năng cần staging nhưng staging chưa test.
 
-Người tạo PR không tự tính review của mình thay cho review chéo.
+Reviewer kiểm `Files changed`, AC, test, security/data isolation và rủi ro ảnh hưởng chức năng cũ.
 
-## 8. CI/CD và staging
+Sau khi đạt, merge PR vào `main`.
 
-Mục tiêu Sprint 1 yêu cầu CI và staging chạy thật.
+## 12. Sau khi merge
 
-- Push/PR: chạy build, lint, typecheck và test theo cấu hình dự án.
-- Story branch không tự triển khai staging.
-- Khi thay đổi được đưa vào `main` (qua PR từ `develop`), pipeline của `main` tự động đóng gói image và triển khai staging.
-- Migration phải chạy trước khi bản mới nhận request.
-- Health check thất bại thì giữ/khôi phục bản cũ và pipeline báo đỏ.
-- Secret triển khai nằm trong CI secret, không commit vào repo.
-- `main` chỉ nhận bản Sprint đã tích hợp ổn định.
+`main` là nguồn chuẩn mới.
 
-## 9. Branch protection
+Các thành viên khác cập nhật:
 
-Ít nhất `develop` phải được bảo vệ trong Sprint 1 để đáp ứng S-02:
+```bash
+git switch main
+git pull origin main
+```
 
-- Không push trực tiếp.
-- Yêu cầu CI xanh.
-- Yêu cầu ít nhất 1 approval từ người khác.
-- Không merge khi còn conflict.
+Nếu đang làm branch khác:
 
-`main` cũng nên áp dụng cùng mức bảo vệ vì là nhánh ổn định/release.
+```bash
+git fetch origin
+git switch <story-branch>
+git merge origin/main
+```
 
-## 10. Definition of Done áp dụng khi review
+## 13. CI/CD hiện tại
 
-- Review bởi ít nhất một thành viên khác.
-- Unit test cho logic mới; coverage phần thay đổi không giảm.
-- CI xanh: build, lint, typecheck, test.
-- Không có secret; dependency scan sạch.
-- AC pass trên staging.
-- Không log dữ liệu định danh nông hộ.
-- README cập nhật khi đổi hành vi công khai hoặc biến môi trường.
-- Các Story đặc thù phải có test integrity/graph/concurrency tương ứng theo Backlog.
+Cấu hình hiện tại:
 
-## 11. Branch cũ
+- Push `main`, `feature/**`, `fix/**`, `docs/**` → chạy CI.
+- Pull Request vào `main` → chạy CI.
+- Merge/push vào `main` → workflow staging được kích hoạt.
+- Staging checkout đúng `origin/main`, build/push Docker image và deploy.
+- Migration/health check phải thành công theo workflow deploy.
 
-Các branch thử nghiệm theo Jira Task hoặc theo tên thành viên tạo trong giai đoạn setup không còn là quy ước chính thức.
+## 14. Branch protection
 
-Thành viên chỉ bắt đầu công việc mới trên branch theo **Sprint + Story**. Branch cũ chỉ được giữ tạm nếu còn dữ liệu cần đối chiếu, sau đó xóa.
+`main` phải là nhánh được bảo vệ:
+
+- Thành viên không push trực tiếp.
+- Thay đổi đi qua PR.
+- CI phải xanh.
+- Không merge khi conflict.
+- Review theo quy định nhóm.
+
+Tài khoản quản trị chỉ dùng quyền bypass khi thật sự cần xử lý khẩn cấp; công việc bình thường vẫn đi qua PR để giữ lịch sử và bằng chứng review.
+
+## 15. Definition of Done
+
+Một Story/Task chỉ Done khi các mục áp dụng đạt:
+
+- Code đúng phạm vi Story/Task.
+- AC đạt.
+- Test logic mới có và chạy xanh.
+- CI xanh.
+- Review đạt.
+- Không lộ secret.
+- Multi-tenant/permission vẫn đúng.
+- Story chạm hash-chain giữ toàn vẹn.
+- Story chạm khối lượng có transaction/concurrency test khi backlog yêu cầu.
+- Migration chạy được nếu có schema change.
+- Staging smoke test đạt khi áp dụng.
+- Jira được cập nhật sau khi code đã merge và kiểm thử đạt.
