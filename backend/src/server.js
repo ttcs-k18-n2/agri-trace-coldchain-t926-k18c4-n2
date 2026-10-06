@@ -1342,9 +1342,11 @@ app.get(
           childLots,
           accessType: access.accessType,
           ancestors: access.ancestors,
-        const pendingTransfer = await getPendingTransferForLot(lot.id);
-        lot.pendingTransfer = pendingTransfer;
+        };
       }
+
+      const pendingTransfer = await getPendingTransferForLot(lot.id);
+      lot.pendingTransfer = pendingTransfer;
 
       return res.status(200).json({ lot });
     } catch (err) {
