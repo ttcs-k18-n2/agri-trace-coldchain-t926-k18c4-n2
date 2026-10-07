@@ -36,7 +36,7 @@ Deploy staging tự động
 Quy tắc:
 
 - Thành viên **không code/push trực tiếp vào `main`**.
-- Mỗi Story dùng một branch riêng, ví dụ `feature/s3-s19-merge-lots`.
+- Mỗi Backlog dùng một branch riêng, ví dụ `feature/s3-s19-merge-lots`.
 - Branch mới luôn tạo từ `main` mới nhất.
 - Story PR mở **trực tiếp vào `main`**.
 - Không dùng `develop` trong quy trình hiện tại.
