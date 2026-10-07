@@ -362,30 +362,47 @@
         </div>
       </div>
 
-      <div class="stat-card" id="statCardIncoming" style="cursor: pointer;" onclick="switchLotsTab('incoming')" title="Bấm để xem danh sách yêu cầu bàn giao đang chờ xác nhận">
-        <div class="stat-icon" style="background: rgba(245, 158, 11, 0.12); color: #d97706;">
+      <div class="stat-card" id="statCardOutgoing" style="cursor: pointer;" onclick="switchLotsTab('outgoing')" title="Bấm để xem danh sách lô bạn đã gửi đi đang chờ đối tác tiếp nhận">
+        <div class="stat-icon" style="background: rgba(59, 130, 246, 0.12); color: #2563eb;">
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
         </div>
         <div>
+          <div class="stat-value" id="statOutgoingCount">0</div>
+          <div class="stat-label">Đã gửi đi chờ nhận</div>
+        </div>
+      </div>
+
+      <div class="stat-card" id="statCardIncoming" style="cursor: pointer;" onclick="switchLotsTab('incoming')" title="Bấm để xem danh sách yêu cầu bàn giao đến đang chờ bạn tiếp nhận">
+        <div class="stat-icon" style="background: rgba(245, 158, 11, 0.12); color: #d97706;">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5"/><path d="m12 19-7-7 7-7"/></svg>
+        </div>
+        <div>
           <div class="stat-value" id="statIncomingCount">0</div>
-          <div class="stat-label">Bàn giao chờ tiếp nhận (S-15)</div>
+          <div class="stat-label">Bàn giao đến chờ nhận (S-15)</div>
         </div>
       </div>
     </div>
 
     <!-- Tab Strip (S-14 & S-15) -->
-    <div class="lots-tab-strip" style="display: flex; gap: 8px; margin-bottom: 20px; border-bottom: 1px solid var(--color-border); padding-bottom: 8px;">
-      <button type="button" class="tab-btn active" id="tabMyLots" onclick="switchLotsTab('my-lots')" style="background: none; border: none; font-size: 14px; font-weight: 700; color: var(--color-primary); padding: 8px 16px; border-radius: var(--radius-md); cursor: pointer; display: inline-flex; align-items: center; gap: 8px; border-bottom: 2px solid var(--color-primary); margin-bottom: -9px; transition: var(--transition-fast);">
+    <div class="lots-tab-strip" style="display: flex; gap: 8px; margin-bottom: 20px; border-bottom: 1px solid var(--color-border); padding-bottom: 8px; overflow-x: auto;">
+      <button type="button" class="tab-btn active" id="tabMyLots" onclick="switchLotsTab('my-lots')" style="background: none; border: none; font-size: 14px; font-weight: 700; color: var(--color-primary); padding: 8px 16px; border-radius: var(--radius-md); cursor: pointer; display: inline-flex; align-items: center; gap: 8px; border-bottom: 2px solid var(--color-primary); margin-bottom: -9px; transition: var(--transition-fast); white-space: nowrap;">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>
         <span>Lô hàng đang quản lý</span>
       </button>
 
-      <button type="button" class="tab-btn" id="tabIncomingTransfers" onclick="switchLotsTab('incoming')" style="background: none; border: none; font-size: 14px; font-weight: 600; color: var(--color-text-muted); padding: 8px 16px; border-radius: var(--radius-md); cursor: pointer; display: inline-flex; align-items: center; gap: 8px; border-bottom: 2px solid transparent; margin-bottom: -9px; transition: var(--transition-fast);">
+      <button type="button" class="tab-btn" id="tabOutgoingTransfers" onclick="switchLotsTab('outgoing')" style="background: none; border: none; font-size: 14px; font-weight: 600; color: var(--color-text-muted); padding: 8px 16px; border-radius: var(--radius-md); cursor: pointer; display: inline-flex; align-items: center; gap: 8px; border-bottom: 2px solid transparent; margin-bottom: -9px; transition: var(--transition-fast); white-space: nowrap;">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+        <span>Đã gửi đi (Chờ đối tác nhận)</span>
+        <span id="outgoingBadge" style="display: none; background: #2563eb; color: #fff; font-size: 11px; font-weight: 700; padding: 2px 7px; border-radius: 10px; line-height: 1;">0</span>
+      </button>
+
+      <button type="button" class="tab-btn" id="tabIncomingTransfers" onclick="switchLotsTab('incoming')" style="background: none; border: none; font-size: 14px; font-weight: 600; color: var(--color-text-muted); padding: 8px 16px; border-radius: var(--radius-md); cursor: pointer; display: inline-flex; align-items: center; gap: 8px; border-bottom: 2px solid transparent; margin-bottom: -9px; transition: var(--transition-fast); white-space: nowrap;">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
         <span>Yêu cầu bàn giao đến (Chờ xác nhận)</span>
         <span id="incomingBadge" style="display: none; background: #f59e0b; color: #fff; font-size: 11px; font-weight: 700; padding: 2px 7px; border-radius: 10px; line-height: 1;">0</span>
       </button>
     </div>
+
 
     <!-- Filter & Search Toolbar (S-14) -->
     <div class="filter-toolbar" id="filterToolbar">
@@ -419,6 +436,11 @@
       <button type="button" id="btnLoadMore" class="btn btn-secondary" style="padding: 10px 28px; border-radius: var(--radius-md); font-weight: 600; cursor: pointer;">
         <span>Tải thêm lô hàng</span>
       </button>
+    </div>
+
+    <!-- Outgoing Transfers Container (Bên gửi xem danh sách chờ đối tác tiếp nhận) -->
+    <div id="outgoingSection" style="display: none;" aria-live="polite">
+      <!-- Dynamic outgoing transfers inserted here -->
     </div>
 
     <!-- Incoming Transfers Container (S-15: Bên nhận xem danh sách chờ xác nhận) -->
@@ -1271,11 +1293,22 @@
     function switchLotsTab(tabName) {
       currentLotsTab = tabName;
       const tabMyLots = document.getElementById("tabMyLots");
+      const tabOutgoing = document.getElementById("tabOutgoingTransfers");
       const tabIncoming = document.getElementById("tabIncomingTransfers");
       const filterToolbar = document.getElementById("filterToolbar");
       const lotsContainer = document.getElementById("lots");
       const loadMoreContainer = document.getElementById("loadMoreContainer");
+      const outgoingSection = document.getElementById("outgoingSection");
       const incomingSection = document.getElementById("incomingSection");
+
+      // Reset all tabs styling
+      [tabMyLots, tabOutgoing, tabIncoming].forEach((t) => {
+        if (t) {
+          t.style.color = "var(--color-text-muted)";
+          t.style.borderBottomColor = "transparent";
+          t.style.fontWeight = "600";
+        }
+      });
 
       if (tabName === "my-lots") {
         if (tabMyLots) {
@@ -1283,29 +1316,34 @@
           tabMyLots.style.borderBottomColor = "var(--color-primary)";
           tabMyLots.style.fontWeight = "700";
         }
-        if (tabIncoming) {
-          tabIncoming.style.color = "var(--color-text-muted)";
-          tabIncoming.style.borderBottomColor = "transparent";
-          tabIncoming.style.fontWeight = "600";
-        }
         if (filterToolbar) filterToolbar.style.display = "";
         if (lotsContainer) lotsContainer.style.display = "";
         if (loadMoreContainer) loadMoreContainer.style.display = hasMore ? "block" : "none";
+        if (outgoingSection) outgoingSection.style.display = "none";
         if (incomingSection) incomingSection.style.display = "none";
+      } else if (tabName === "outgoing") {
+        if (tabOutgoing) {
+          tabOutgoing.style.color = "#1d4ed8";
+          tabOutgoing.style.borderBottomColor = "#2563eb";
+          tabOutgoing.style.fontWeight = "700";
+        }
+        if (filterToolbar) filterToolbar.style.display = "none";
+        if (lotsContainer) lotsContainer.style.display = "none";
+        if (loadMoreContainer) loadMoreContainer.style.display = "none";
+        if (outgoingSection) outgoingSection.style.display = "block";
+        if (incomingSection) incomingSection.style.display = "none";
+
+        loadOutgoingTransfers();
       } else {
         if (tabIncoming) {
           tabIncoming.style.color = "#b45309";
           tabIncoming.style.borderBottomColor = "#f59e0b";
           tabIncoming.style.fontWeight = "700";
         }
-        if (tabMyLots) {
-          tabMyLots.style.color = "var(--color-text-muted)";
-          tabMyLots.style.borderBottomColor = "transparent";
-          tabMyLots.style.fontWeight = "600";
-        }
         if (filterToolbar) filterToolbar.style.display = "none";
         if (lotsContainer) lotsContainer.style.display = "none";
         if (loadMoreContainer) loadMoreContainer.style.display = "none";
+        if (outgoingSection) outgoingSection.style.display = "none";
         if (incomingSection) incomingSection.style.display = "block";
 
         loadIncomingTransfers();
@@ -1314,26 +1352,180 @@
 
     async function updateIncomingBadge() {
       try {
-        const res = await fetch("/api/transfers?type=incoming&status=PENDING", { credentials: "same-origin" });
-        if (!res.ok) return;
-        const data = await res.json();
-        const transfers = data.transfers || [];
-        const count = transfers.length;
+        // Cập nhật cả 2 chiều: bàn giao đến (incoming) và bàn giao đi (outgoing)
+        const [incomingRes, outgoingRes] = await Promise.all([
+          fetch("/api/transfers?type=incoming&status=PENDING", { credentials: "same-origin" }),
+          fetch("/api/transfers?type=outgoing&status=PENDING", { credentials: "same-origin" })
+        ]);
 
-        const badge = document.getElementById("incomingBadge");
-        const statIncoming = document.getElementById("statIncomingCount");
-        if (statIncoming) statIncoming.textContent = count;
+        if (incomingRes.ok) {
+          const incomingData = await incomingRes.json();
+          const incomingTransfers = incomingData.transfers || [];
+          const inCount = incomingTransfers.length;
 
-        if (badge) {
-          if (count > 0) {
-            badge.textContent = count;
-            badge.style.display = "inline-block";
-          } else {
-            badge.style.display = "none";
+          const badge = document.getElementById("incomingBadge");
+          const statIncoming = document.getElementById("statIncomingCount");
+          if (statIncoming) statIncoming.textContent = inCount;
+
+          if (badge) {
+            if (inCount > 0) {
+              badge.textContent = inCount;
+              badge.style.display = "inline-block";
+            } else {
+              badge.style.display = "none";
+            }
+          }
+        }
+
+        if (outgoingRes.ok) {
+          const outgoingData = await outgoingRes.json();
+          const outgoingTransfers = outgoingData.transfers || [];
+          const outCount = outgoingTransfers.length;
+
+          const outBadge = document.getElementById("outgoingBadge");
+          const statOutgoing = document.getElementById("statOutgoingCount");
+          if (statOutgoing) statOutgoing.textContent = outCount;
+
+          if (outBadge) {
+            if (outCount > 0) {
+              outBadge.textContent = outCount;
+              outBadge.style.display = "inline-block";
+            } else {
+              outBadge.style.display = "none";
+            }
           }
         }
       } catch (err) {
-        console.warn("Could not update incoming transfers badge", err);
+        console.warn("Could not update transfers badge", err);
+      }
+    }
+
+    async function loadOutgoingTransfers() {
+      const container = document.getElementById("outgoingSection");
+      if (!container) return;
+
+      container.innerHTML = `
+        <div style="text-align: center; padding: 48px 20px; color: var(--color-text-muted);">
+          <div style="display: inline-block; width: 28px; height: 28px; border: 3px solid rgba(37, 99, 235, 0.2); border-top-color: #2563eb; border-radius: 50%; animation: spin 0.8s linear infinite; margin-bottom: 12px;"></div>
+          <div style="font-size: 14px; font-weight: 500;">Đang tải danh sách lô hàng bạn đã gửi đi...</div>
+        </div>
+      `;
+
+      try {
+        const res = await fetch("/api/transfers?type=outgoing&status=PENDING", { credentials: "same-origin" });
+        if (res.status === 401) {
+          container.innerHTML = `
+            <div style="text-align: center; padding: 40px; color: #dc2626;">
+              <p style="font-weight: 600; margin-bottom: 8px;">Phiên đăng nhập đã hết hạn.</p>
+              <a href="/index.html" class="btn btn-primary" style="text-decoration: none; display: inline-block;">Đăng nhập lại</a>
+            </div>
+          `;
+          return;
+        }
+        if (!res.ok) throw new Error("Không thể tải danh sách bàn giao từ máy chủ.");
+        const data = await res.json();
+        const transfers = data.transfers || [];
+
+        updateIncomingBadge();
+
+        if (transfers.length === 0) {
+          container.innerHTML = `
+            <div class="empty-state" style="padding: 60px 20px; background: #fff; border: 1px dashed var(--color-border); border-radius: var(--radius-lg); text-align: center;">
+              <div class="empty-state-icon" style="background: rgba(37, 99, 235, 0.1); color: #2563eb; width: 56px; height: 56px; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 16px;">
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+              </div>
+              <div style="font-size: 16px; font-weight: 700; color: var(--color-text-main); margin-bottom: 6px;">Không có lô hàng nào đang gửi đi chờ xác nhận</div>
+              <p style="font-size: 13.5px; color: var(--color-text-muted); max-width: 480px; margin: 0 auto 16px; line-height: 1.5;">
+                Khi bạn bàn giao lô hàng cho hợp tác xã, nhà vận chuyển hoặc đối tác, các yêu cầu chờ họ tiếp nhận sẽ xuất hiện tại đây.
+              </p>
+            </div>
+          `;
+          return;
+        }
+
+        container.innerHTML = `
+          <div style="margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+            <div style="font-size: 14px; color: var(--color-text-muted);">
+              Bạn đã gửi <strong style="color: var(--color-text-main);">${transfers.length}</strong> yêu cầu bàn giao đang chờ đối tác tiếp nhận:
+            </div>
+            <div style="font-size: 12px; color: #1d4ed8; background: rgba(37, 99, 235, 0.1); border: 1px solid rgba(37, 99, 235, 0.2); padding: 4px 12px; border-radius: var(--radius-full); font-weight: 600;">
+              Chờ đối tác xác nhận (Story S-15)
+            </div>
+          </div>
+          <div class="lots-grid">
+            ${transfers.map((tr) => `
+              <div class="lot-card" style="border-top: 3px solid #2563eb;">
+                <div class="lot-card-top">
+                  <div>
+                    <span class="lot-code-tag font-mono" style="background: rgba(37, 99, 235, 0.12); color: #1d4ed8;">
+                      ${escapeHtml(tr.lotId)}
+                    </span>
+                    <h3 class="lot-title" style="margin-top: 8px;">
+                      ${escapeHtml(tr.lotName || 'Lô hàng nông sản')}
+                    </h3>
+                  </div>
+                  <div style="display: flex; gap: 4px; align-items: center; flex-wrap: wrap;">
+                    <span class="status-pill warning" title="Đang chờ đối tác xác nhận tiếp nhận">
+                      <span class="status-dot"></span>
+                      <span>Chờ bàn giao</span>
+                    </span>
+                    ${(tr.isOverdue || tr.is_overdue) ? `
+                      <span class="status-pill danger overdue-badge" style="background: #fee2e2; color: #b91c1c; border: 1px solid #f87171; font-weight: 700; text-transform: uppercase;" title="Yêu cầu bàn giao đã quá hạn 48 giờ">
+                        <span>QUÁ HẠN</span>
+                      </span>
+                    ` : ""}
+                  </div>
+                </div>
+
+                <div class="lot-meta-list">
+                  <div class="lot-meta-item">
+                    <span class="lot-meta-label">Bên nhận:</span>
+                    <span class="lot-meta-value" style="font-weight: 600; color: #2563eb;">
+                      ${escapeHtml(tr.toOrganizationName || tr.toOrganizationId || '--')}
+                    </span>
+                  </div>
+                  <div class="lot-meta-item">
+                    <span class="lot-meta-label">Thời điểm gửi:</span>
+                    <span class="lot-meta-value">
+                      ${formatDateTime(tr.createdAt)}
+                    </span>
+                  </div>
+                  <div class="lot-meta-item">
+                    <span class="lot-meta-label">Mã giao dịch:</span>
+                    <span class="lot-meta-value font-mono" style="font-size: 12px; color: var(--color-text-muted);">
+                      ${escapeHtml(tr.id)}
+                    </span>
+                  </div>
+                  ${tr.notes ? `
+                    <div style="margin-top: 6px; padding: 8px 10px; background: rgba(0,0,0,0.02); border-radius: var(--radius-sm); font-size: 12.5px; border-left: 2px solid #2563eb;">
+                      <strong style="color: var(--color-text-muted); font-size: 11.5px; text-transform: uppercase;">Ghi chú gửi kèm:</strong>
+                      <div style="margin-top: 2px; color: var(--color-text-main); font-style: italic;">
+                        ${escapeHtml(tr.notes)}
+                      </div>
+                    </div>
+                  ` : ''}
+                </div>
+
+                <div style="background: rgba(37, 99, 235, 0.06); border-radius: var(--radius-sm); padding: 8px 10px; font-size: 12px; color: #1e40af; line-height: 1.4;">
+                  ℹ️ Lô hàng vẫn thuộc quyền sở hữu của bạn cho đến khi <strong>${escapeHtml(tr.toOrganizationName || tr.toOrganizationId)}</strong> bấm xác nhận tiếp nhận.
+                </div>
+
+                <div class="lot-card-actions" style="margin-top: 10px;">
+                  <a href="/lot-detail.html?id=${encodeURIComponent(tr.lotId)}" class="btn-lot-action" style="text-align: center; justify-content: center; text-decoration: none; padding: 4px 0; font-size: 12.5px; width: 100%;">
+                    <span>Xem chi tiết lô</span> &rarr;
+                  </a>
+                </div>
+              </div>
+            `).join('')}
+          </div>
+        `;
+      } catch (err) {
+        container.innerHTML = `
+          <div style="text-align: center; padding: 40px; color: #dc2626;">
+            <p>Lỗi tải danh sách yêu cầu bàn giao: ${escapeHtml(err.message)}</p>
+            <button type="button" class="btn btn-secondary" onclick="loadOutgoingTransfers()">Thử lại</button>
+          </div>
+        `;
       }
     }
 
@@ -1347,6 +1539,7 @@
           <div style="font-size: 14px; font-weight: 500;">Đang tải danh sách bàn giao chờ tiếp nhận...</div>
         </div>
       `;
+
 
       try {
         const res = await fetch("/api/transfers?type=incoming&status=PENDING", { credentials: "same-origin" });

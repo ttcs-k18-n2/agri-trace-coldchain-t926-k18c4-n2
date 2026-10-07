@@ -9,6 +9,7 @@ const {
   inMemoryBatchEvents,
   inMemoryProducts,
   inMemoryFarms,
+  setDatabasePool,
 } = require("../src/server");
 
 async function loginAs(email, password = "Password123!") {
@@ -217,4 +218,108 @@ test("Lot Detail Direct Lineage & Multi-tenant S-23 Access Control (GET /api/lot
     assert.equal(unrelatedRes.status, 200);
     assert.equal(unrelatedRes.body.lot.id, "LOT-TEST-UNRELATED");
   });
+
+  await t.test("6. T-58 / S-25: GET /api/lots/:id performs <= 3 SQL queries against database", async () => {
+    let queryCount = 0;
+    const executedQueries = [];
+
+    // Mock PostgreSQL pool to intercept and count SQL queries
+    const mockPool = {
+      query: async (sql, params) => {
+        queryCount++;
+        executedQueries.push(sql.trim().replace(/\s+/g, " "));
+
+        // evaluateLotAccess: fetchAllLotsRaw
+        if (sql.includes("SELECT * FROM lots")) {
+          return {
+            rows: [
+              {
+                id: "LOT-SQL-TEST-01",
+                name: "Lô Cà chua Bi Đà Lạt",
+                status: "Đã thu hoạch",
+                organization_id: "org-001",
+                farm_id: "FARM-001",
+                product_id: "PROD-TOMATO",
+                initial_quantity: "500",
+                remaining_quantity: "500",
+                harvested_at: "2026-10-05T08:00:00.000Z",
+                created_at: "2026-10-05T08:00:00.000Z",
+                parent_lot_id: null,
+              },
+            ],
+          };
+        }
+
+        // Query 1: Lot header + parent join
+        if (sql.includes("FROM lots l")) {
+          return {
+            rows: [
+              {
+                id: "LOT-SQL-TEST-01",
+                name: "Lô Cà chua Bi Đà Lạt",
+                status: "Đã thu hoạch",
+                organization_id: "org-001",
+                farm_id: "FARM-001",
+                product_id: "PROD-TOMATO",
+                initial_quantity: "500",
+                remaining_quantity: "500",
+                harvested_at: "2026-10-05T08:00:00.000Z",
+                created_at: "2026-10-05T08:00:00.000Z",
+                parent_lot_id: null,
+                farm_name: "Nông trại Rau sạch Đà Lạt",
+                product_name: "Cà chua Bi",
+                product_unit: "kg",
+                organization_name: "Nông trại Xanh (Org 1)",
+                parent_id: null,
+                parent_name: null,
+                parent_status: null,
+                parent_product_id: null,
+                parent_organization_id: null,
+                parent_initial_quantity: null,
+                parent_remaining_quantity: null,
+                parent_product_name: null,
+                parent_product_unit: null,
+                parent_organization_name: null,
+              },
+            ],
+          };
+        }
+
+        // Query 2: Child lots
+        if (sql.includes("WHERE c.parent_lot_id = $1") || sql.includes("FROM lots c")) {
+          return {
+            rows: [],
+          };
+        }
+
+        // Any other DB lookup (e.g., organizations or batches)
+        return { rows: [] };
+      },
+    };
+
+    const org1Agent = await loginAs("producer@org1.vn");
+
+    try {
+      setDatabasePool(mockPool);
+      queryCount = 0;
+      executedQueries.length = 0;
+
+      const res = await org1Agent.get("/api/lots/LOT-SQL-TEST-01");
+
+      assert.equal(res.status, 200);
+      assert.ok(res.body.lot);
+      assert.equal(res.body.lot.id, "LOT-SQL-TEST-01");
+      assert.equal(res.body.lot.name, "Lô Cà chua Bi Đà Lạt");
+
+      // T-58 requirement: optimize route to <= 3 SQL queries
+      assert.ok(
+        queryCount <= 3,
+        `Expected <= 3 SQL queries for lot detail, but executed ${queryCount} queries:\n` +
+          executedQueries.map((q, idx) => `  ${idx + 1}: ${q}`).join("\n")
+      );
+    } finally {
+      setDatabasePool(null);
+    }
+  });
 });
+

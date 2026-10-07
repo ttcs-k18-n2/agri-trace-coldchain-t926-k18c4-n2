@@ -11,6 +11,7 @@ const {
   inMemoryProducts,
   inMemoryFarms,
   inMemoryBatchRelations,
+  setAppendHookForTesting,
 } = require("../src/server");
 
 async function loginAs(email, password = "Password123!") {
@@ -258,4 +259,62 @@ test("Lot Split API [S-17 / S-18] & Direct Lineage Integration Test", async (t) 
     assert.equal(lot.parentLot.id, testParentId);
     assert.equal(lot.parentLot.name, "Lô Dưa lưới Chuẩn VietGAP");
   });
+
+  await t.test("10. T-40 Rollback: Simulating failure on second child lot rolls back parent quantity, child lots, relations and events", async () => {
+    const coopAgent = await loginAs("coop_split@org2.vn");
+
+    // Parent lot currently has remainingQuantity = 250
+    const parentBefore = inMemoryLots.find((l) => l.id === testParentId);
+    const initialRemaining = parentBefore.remainingQuantity;
+    const initialLotsCount = inMemoryLots.length;
+    const initialRelationsCount = inMemoryBatchRelations.length;
+    const initialEventsCount = inMemoryBatchEvents.length;
+
+    // Set hook to throw an error when appending the event for the 2nd child lot
+    let createdFromSplitCount = 0;
+    setAppendHookForTesting((eventData) => {
+      if (eventData.eventType === "CREATED_FROM_SPLIT") {
+        createdFromSplitCount++;
+        if (createdFromSplitCount === 2) {
+          throw new Error("Simulated failure during second child lot creation (T-40)");
+        }
+      }
+    });
+
+    try {
+      const res = await coopAgent
+        .post(`/api/lots/${testParentId}/split`)
+        .send({
+          splits: [
+            { name: "Lô con tách thử nghiệm A", quantity: 50 },
+            { name: "Lô con tách thử nghiệm B (gây lỗi)", quantity: 60 },
+          ],
+        });
+
+      assert.equal(res.status, 500);
+      assert.match(res.body.message, /Simulated failure during second child lot creation/);
+
+      // Verify parent remaining quantity is rolled back to original
+      const parentAfter = inMemoryLots.find((l) => l.id === testParentId);
+      assert.equal(parentAfter.remainingQuantity, initialRemaining, "Parent remaining quantity must not be reduced after rollback");
+
+      // Verify no child lots were persisted (neither child 1 nor child 2)
+      assert.equal(inMemoryLots.length, initialLotsCount, "Child lots must be removed from inMemoryLots");
+      assert.equal(
+        inMemoryLots.some((l) => l.name === "Lô con tách thử nghiệm A"),
+        false,
+        "First child lot must be rolled back"
+      );
+
+      // Verify relations are rolled back
+      assert.equal(inMemoryBatchRelations.length, initialRelationsCount, "Batch relations must be rolled back");
+
+      // Verify no orphan batch events remain
+      assert.equal(inMemoryBatchEvents.length, initialEventsCount, "Batch events must be rolled back");
+    } finally {
+      // Clear hook
+      setAppendHookForTesting(null);
+    }
+  });
 });
+

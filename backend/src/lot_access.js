@@ -112,7 +112,7 @@ function findCutoffSequenceForPastHolder(events, orgId) {
  * Quy tắc quyền tập trung cho S-23 (T-54):
  * Dùng chung cho chi tiết lô, dòng thời gian sự kiện và truy xuất nguồn gốc.
  */
-async function evaluateLotAccess({ pool, authContext, lotId, inMemoryLots = [], inMemoryOrgs = [] }) {
+async function evaluateLotAccess({ pool, authContext, lotId, inMemoryLots = [], inMemoryOrgs = [], skipEvents = false }) {
   const isGlobal = Boolean(
     authContext &&
       (authContext.roleId === "inspector" ||
@@ -130,21 +130,32 @@ async function evaluateLotAccess({ pool, authContext, lotId, inMemoryLots = [], 
     return { status: "NOT_FOUND", allowed: false, lot: null, events: [], ancestors: [] };
   }
 
-  const orgMap = await getOrganizationMap(pool, inMemoryOrgs);
-  const enrichEvents = (evList) =>
-    evList.map((e) => {
-      const eOrg = e.organizationId || e.organization_id;
-      return {
-        ...e,
-        organizationId: eOrg,
-        organizationName: (e.payload && e.payload.organizationName) || orgMap[eOrg] || eOrg,
-      };
-    });
-
-  const targetEvents = await getBatchEvents(pool, lotId);
-
   // 1. Admin / Inspector hoặc Tổ chức đang trực tiếp giữ lô hàng
   if (isGlobal || (orgId && targetLot.organizationId === orgId)) {
+    if (skipEvents) {
+      return {
+        status: "ALLOWED_FULL",
+        allowed: true,
+        accessType: "CURRENT_HOLDER",
+        lot: targetLot,
+        events: [],
+        ancestorEvents: [],
+        ancestors: [],
+      };
+    }
+
+    const orgMap = await getOrganizationMap(pool, inMemoryOrgs);
+    const enrichEvents = (evList) =>
+      evList.map((e) => {
+        const eOrg = e.organizationId || e.organization_id;
+        return {
+          ...e,
+          organizationId: eOrg,
+          organizationName: (e.payload && e.payload.organizationName) || orgMap[eOrg] || eOrg,
+        };
+      });
+
+    const targetEvents = await getBatchEvents(pool, lotId);
     const ancestorIds = await collectAncestorLotIds(pool, lotId, lotsMap);
     const ancestors = [];
     const ancestorEvents = [];
@@ -175,6 +186,19 @@ async function evaluateLotAccess({ pool, authContext, lotId, inMemoryLots = [], 
       ancestors,
     };
   }
+
+  const orgMap = await getOrganizationMap(pool, inMemoryOrgs);
+  const enrichEvents = (evList) =>
+    evList.map((e) => {
+      const eOrg = e.organizationId || e.organization_id;
+      return {
+        ...e,
+        organizationId: eOrg,
+        organizationName: (e.payload && e.payload.organizationName) || orgMap[eOrg] || eOrg,
+      };
+    });
+
+  const targetEvents = await getBatchEvents(pool, lotId);
 
   // 2. Kiểm tra nếu targetLot là TỔ TIÊN của bất kỳ lô nào mà orgId đang giữ
   const myHeldLots = allLots.filter((l) => l.organizationId === orgId);

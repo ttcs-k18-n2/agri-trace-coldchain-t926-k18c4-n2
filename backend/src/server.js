@@ -1127,36 +1127,6 @@ app.get(
   async (req, res) => {
     const lotId = req.params.id;
     try {
-      const access = await evaluateLotAccess({
-        pool,
-        authContext: req.auth,
-        lotId,
-        inMemoryLots,
-        inMemoryOrgs,
-      });
-
-      if (access.status === "NOT_FOUND") {
-        return res.status(404).json({ message: "Không tìm thấy lô hàng." });
-      }
-
-      if (!access.allowed) {
-        logSecurityEvent("CROSS_TENANT_ACCESS_DENIED", {
-          userId: req.auth.userId || req.auth.id,
-          userEmail: req.auth.email,
-          userOrgId: req.auth.organizationId,
-          userRole: req.auth.roleId,
-          resourceType: "lots",
-          resourceId: lotId,
-          targetOrgId: access.targetOrgId,
-          action: "READ",
-          ip: req.ip,
-          userAgent: req.get("User-Agent"),
-        });
-        return res.status(403).json({
-          message: "Truy cập bị từ chối: bạn không có quyền xem dữ liệu của tổ chức khác.",
-        });
-      }
-
       let lot = null;
       if (pool) {
         // Lệnh 1: Lấy thông tin lô hàng kèm JOIN sản phẩm, thửa đất, tổ chức và lô mẹ trực tiếp (NFR: 1 query)
@@ -1185,6 +1155,51 @@ app.get(
         const row = lotRes.rows[0];
         if (!row) {
           return res.status(404).json({ message: "Không tìm thấy lô hàng." });
+        }
+
+        const callerOrgId = req.auth ? req.auth.organizationId || req.auth.organization_id : null;
+        const isGlobal = Boolean(
+          req.auth &&
+            (req.auth.roleId === "inspector" ||
+              req.auth.isInspector ||
+              req.auth.roleId === "admin" ||
+              req.auth.isAdmin)
+        );
+
+        let accessType = "CURRENT_HOLDER";
+        let ancestors = [];
+
+        // Nếu người gọi không phải inspector/admin và không phải tổ chức đang nắm giữ trực tiếp -> kiểm tra phả hệ/lịch sử
+        if (!isGlobal && row.organization_id !== callerOrgId) {
+          const access = await evaluateLotAccess({
+            pool,
+            authContext: req.auth,
+            lotId,
+            inMemoryLots,
+            inMemoryOrgs,
+            skipEvents: true,
+          });
+
+          if (!access.allowed) {
+            logSecurityEvent("CROSS_TENANT_ACCESS_DENIED", {
+              userId: req.auth.userId || req.auth.id,
+              userEmail: req.auth.email,
+              userOrgId: req.auth.organizationId,
+              userRole: req.auth.roleId,
+              resourceType: "lots",
+              resourceId: lotId,
+              targetOrgId: row.organization_id,
+              action: "READ",
+              ip: req.ip,
+              userAgent: req.get("User-Agent"),
+            });
+            return res.status(403).json({
+              message: "Truy cập bị từ chối: bạn không có quyền xem dữ liệu của tổ chức khác.",
+            });
+          }
+
+          accessType = access.accessType;
+          ancestors = access.ancestors || [];
         }
 
         // Lệnh 2: Lấy danh sách các lô con trực tiếp (NFR: 1 query)
@@ -1252,10 +1267,41 @@ app.get(
           parentLotId: row.parent_lot_id || null,
           parentLot,
           childLots,
-          accessType: access.accessType,
-          ancestors: access.ancestors,
+          accessType,
+          ancestors,
         };
       } else {
+        const access = await evaluateLotAccess({
+          pool,
+          authContext: req.auth,
+          lotId,
+          inMemoryLots,
+          inMemoryOrgs,
+          skipEvents: true,
+        });
+
+        if (access.status === "NOT_FOUND") {
+          return res.status(404).json({ message: "Không tìm thấy lô hàng." });
+        }
+
+        if (!access.allowed) {
+          logSecurityEvent("CROSS_TENANT_ACCESS_DENIED", {
+            userId: req.auth.userId || req.auth.id,
+            userEmail: req.auth.email,
+            userOrgId: req.auth.organizationId,
+            userRole: req.auth.roleId,
+            resourceType: "lots",
+            resourceId: lotId,
+            targetOrgId: access.targetOrgId,
+            action: "READ",
+            ip: req.ip,
+            userAgent: req.get("User-Agent"),
+          });
+          return res.status(403).json({
+            message: "Truy cập bị từ chối: bạn không có quyền xem dữ liệu của tổ chức khác.",
+          });
+        }
+
         const rawLot = access.lot;
         const farmId = rawLot.farmId || rawLot.farm_id || null;
         const productId = rawLot.productId || rawLot.product_id || null;
@@ -1747,6 +1793,18 @@ app.post(
         for (const cid of rollbackChildLots) {
           const idx = inMemoryLots.findIndex((l) => l.id === cid);
           if (idx !== -1) inMemoryLots.splice(idx, 1);
+
+          for (let rIdx = inMemoryBatchRelations.length - 1; rIdx >= 0; rIdx--) {
+            if (inMemoryBatchRelations[rIdx].childBatchId === cid) {
+              inMemoryBatchRelations.splice(rIdx, 1);
+            }
+          }
+
+          for (let eIdx = inMemoryBatchEvents.length - 1; eIdx >= 0; eIdx--) {
+            if (inMemoryBatchEvents[eIdx].batchId === cid) {
+              inMemoryBatchEvents.splice(eIdx, 1);
+            }
+          }
         }
         return res.status(500).json({ message: memErr.message });
       }
