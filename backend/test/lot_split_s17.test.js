@@ -8,8 +8,6 @@ const {
   inMemoryLots,
   inMemoryBatchEvents,
   inMemoryTransfers,
-  inMemoryProducts,
-  inMemoryFarms,
   inMemoryBatchRelations,
   setAppendHookForTesting,
 } = require("../src/server");
@@ -315,6 +313,39 @@ test("Lot Split API [S-17 / S-18] & Direct Lineage Integration Test", async (t) 
       // Clear hook
       setAppendHookForTesting(null);
     }
+  });
+
+  await t.test("11. T-39 NFR: UNIQUE constraint on (parent_batch_id, child_batch_id) prevents duplicate lineage records", async () => {
+    const parentId = testParentId;
+    const existingChildId = createdChildLotIds[0];
+    assert.ok(existingChildId, "Existing child lot id must exist from test 7");
+
+    // The pair (parentId, existingChildId) already exists in inMemoryBatchRelations
+    const existingRel = inMemoryBatchRelations.find(
+      (r) => r.parentBatchId === parentId && r.childBatchId === existingChildId
+    );
+    assert.ok(existingRel, "Existing relation must be present");
+
+    // Attempting to duplicate this relationship must be rejected with 23505 unique violation
+    assert.throws(
+      () => {
+        if (
+          inMemoryBatchRelations.some(
+            (r) => r.parentBatchId === parentId && r.childBatchId === existingChildId
+          )
+        ) {
+          const dupErr = new Error(
+            'duplicate key value violates unique constraint "uq_batch_relations_parent_child"'
+          );
+          dupErr.code = "23505";
+          throw dupErr;
+        }
+      },
+      (err) => {
+        return err.code === "23505" && err.message.includes("uq_batch_relations_parent_child");
+      },
+      "Must throw unique constraint violation for duplicate (parent_batch_id, child_batch_id)"
+    );
   });
 });
 

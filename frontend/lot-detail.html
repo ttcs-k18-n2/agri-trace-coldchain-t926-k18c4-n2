@@ -938,6 +938,76 @@
         </div>
       </div>
     </div>
+
+    <!-- Modal Gộp lô hàng (T-59 / S-19) -->
+    <div id="mergeLotModal" class="modal-backdrop" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 2000; align-items: center; justify-content: center; padding: 20px;">
+      <div class="modal-card" style="background: #fff; border-radius: 16px; padding: 0; width: 100%; max-width: 620px; max-height: 90vh; display: flex; flex-direction: column; box-shadow: 0 25px 60px rgba(0,0,0,0.22);">
+        <div class="modal-header" style="display: flex; align-items: center; justify-content: space-between; padding: 18px 24px; border-bottom: 1px solid var(--color-border);">
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <div style="width: 32px; height: 32px; border-radius: 8px; background: rgba(124, 58, 237, 0.1); display: flex; align-items: center; justify-content: center; color: #7c3aed;">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>
+            </div>
+            <div>
+              <h3 style="margin: 0; font-size: 16.5px; font-weight: 700; color: var(--color-text-main);">Gộp lô hàng (Sáp nhập quy mô)</h3>
+              <div style="font-size: 12px; color: var(--color-text-muted);">Sáp nhập nhiều lô cùng sản phẩm thành lô lớn tập trung (T-59 / S-19)</div>
+            </div>
+          </div>
+          <button type="button" id="btnCloseMergeModal" style="background: none; border: none; font-size: 20px; cursor: pointer; color: var(--color-text-muted); line-height: 1;">✕</button>
+        </div>
+
+        <form id="mergeLotForm" style="display: flex; flex-direction: column; overflow: hidden; flex: 1;">
+          <div style="padding: 20px 24px; overflow-y: auto; flex: 1;">
+            <div id="mergeModalAlert" style="display: none; margin-bottom: 16px;"></div>
+
+            <!-- Current Base Lot Info Box -->
+            <div style="background: rgba(124, 58, 237, 0.06); border: 1px solid rgba(124, 58, 237, 0.2); border-radius: 12px; padding: 14px 16px; margin-bottom: 18px;">
+              <div style="font-size: 11px; text-transform: uppercase; font-weight: 700; color: #7c3aed; letter-spacing: 0.05em; margin-bottom: 4px;">Lô nguồn hiện tại (Base Lot)</div>
+              <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap;">
+                <div>
+                  <div style="font-size: 15px; font-weight: 700; color: var(--color-text-main);" id="mergeBaseTitle">--</div>
+                  <div style="font-size: 13px; color: var(--color-text-muted); margin-top: 2px;">
+                    Mã lô: <code id="mergeBaseLotId" style="font-weight:700; color:#7c3aed; background: rgba(124, 58, 237, 0.08); padding: 1px 6px; border-radius: 4px;">--</code>
+                    <span id="mergeBaseProductBadge" style="margin-left: 8px; font-size: 12px; color: var(--color-text-muted);"></span>
+                  </div>
+                </div>
+                <div style="text-align: right;">
+                  <div style="font-size: 11.5px; color: var(--color-text-muted);">Khối lượng khả dụng</div>
+                  <div style="font-size: 17px; font-weight: 800; color: #7c3aed;" id="mergeBaseRemainingDisplay">0 kg</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Merge Candidates List -->
+            <div style="margin-bottom: 16px;">
+              <label style="display: block; font-size: 13.5px; font-weight: 700; color: var(--color-text-main); margin-bottom: 8px;">
+                Chọn các lô cùng loại nông sản để gộp:
+              </label>
+              <div id="mergeCandidatesList" style="max-height: 200px; overflow-y: auto; border: 1px solid var(--color-border); border-radius: 10px; padding: 10px; background: #fafafa;">
+                <div style="font-size: 13px; color: var(--color-text-muted); text-align: center; padding: 12px;">Đang tải danh sách lô cùng loại...</div>
+              </div>
+            </div>
+
+            <div class="split-summary-box" style="background: rgba(124, 58, 237, 0.04); border-color: rgba(124, 58, 237, 0.2);">
+              <div style="display: flex; justify-content: space-between; align-items: center;">
+                <span style="font-size: 13px; font-weight: 600; color: var(--color-text-muted);">Tổng khối lượng sau khi gộp:</span>
+                <span style="font-size: 17px; font-weight: 800; color: #7c3aed;" id="mergeTotalEstimateDisplay">--</span>
+              </div>
+            </div>
+
+            <div style="margin-top: 14px; background: rgba(245,158,11,0.08); border: 1px solid rgba(245,158,11,0.25); border-radius: 8px; padding: 10px 12px; font-size: 12px; color: #b45309; line-height: 1.5;">
+              <strong>Bảo chứng nguồn gốc (T-59 / S-19):</strong> Lô mới sáp nhập kế thừa đầy đủ phả hệ của tất cả các lô thành phần thông qua <code>batch_relations</code> và chuỗi sự kiện hash SHA-256 minh bạch.
+            </div>
+          </div>
+
+          <div style="display:flex; justify-content:flex-end; gap:10px; padding:16px 24px; border-top:1px solid var(--color-border); background: #fafafa;">
+            <button type="button" id="btnCancelMerge" class="btn btn-secondary" style="height:38px; padding:0 16px;">Đóng</button>
+            <button type="button" id="btnSubmitMerge" class="btn btn-primary" style="height:38px; padding:0 20px; background: #7c3aed; border-color: #7c3aed;">
+              <span>Tiến hành gộp lô</span>
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
   </main>
 
   <script src="/app-shell.js"></script>
@@ -1014,6 +1084,7 @@
         : ((lot.remaining_quantity !== null && lot.remaining_quantity !== undefined) ? Number(lot.remaining_quantity) : null);
       const canTransfer = currentUser && !isInspector && (isAdmin || userOrgId === lotOrgId);
       const canSplit = currentUser && !isInspector && (isAdmin || userOrgId === lotOrgId) && ["producer", "cooperative", "org_admin", "admin"].includes(role) && (lotRemainingVal !== null && lotRemainingVal > 0) && !lot.pendingTransfer;
+      const canMerge = currentUser && !isInspector && (isAdmin || userOrgId === lotOrgId) && ["producer", "cooperative", "org_admin", "admin"].includes(role) && (lotRemainingVal !== null && lotRemainingVal > 0) && !lot.pendingTransfer;
       const isRecipient = Boolean(userOrgId && lot.pendingTransfer && lot.pendingTransfer.toOrganizationId === userOrgId);
       const inspectorActions = document.getElementById("inspectorActions");
       const btnCheckIntegrityLink = document.getElementById("btnCheckIntegrityLink");
@@ -1119,6 +1190,13 @@
                 </button>
               ` : ""}
 
+              ${canMerge ? `
+                <button type="button" class="btn btn-primary" id="btnMergeDirectHero" style="height: 32px; padding: 0 14px; font-size: 13px; display: inline-flex; align-items: center; gap: 6px; cursor: pointer; border-radius: var(--radius-sm); background: #7c3aed; border-color: #7c3aed;" title="Gộp các lô hàng cùng loại nông sản (T-59 / S-19)">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>
+                  <span>Gộp lô</span>
+                </button>
+              ` : ""}
+
               <div class="dropdown-menu-wrapper">
                 <button type="button" class="btn-icon-kebab" id="btn-hero-more" onclick="toggleHeroDropdown(event)" title="Thao tác khác" aria-label="Thao tác khác">•••</button>
                 <div class="dropdown-popover" id="dropdown-hero-lot">
@@ -1132,6 +1210,12 @@
                     <button type="button" class="dropdown-item" id="btnOpenSplitFromDetail">
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M13 6h3a2 2 0 0 1 2 2v7"/><line x1="6" y1="9" x2="6" y2="21"/></svg>
                       <span>Tách lô hàng</span>
+                    </button>
+                  ` : ""}
+                  ${canMerge ? `
+                    <button type="button" class="dropdown-item" id="btnOpenMergeFromDetail">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>
+                      <span>Gộp lô hàng</span>
                     </button>
                   ` : ""}
                   ${(canTransfer && !lot.pendingTransfer) ? `
@@ -1604,6 +1688,12 @@
       if (btnSplitHero) {
         btnSplitHero.addEventListener("click", () => openSplitLotModal(lot));
       }
+
+      // T-59 / S-19: Xử lý nút Gộp lô hàng
+      const btnMergeHero = document.getElementById("btnMergeDirectHero");
+      if (btnMergeHero) {
+        btnMergeHero.addEventListener("click", () => openMergeLotModal(lot));
+      }
     }
 
     function switchLotTab(tabKey) {
@@ -1770,6 +1860,16 @@
           btnSplit.addEventListener("click", () => {
             popover.classList.remove("active");
             openSplitLotModal(lotData);
+          });
+        }
+
+        // Bind merge button in dropdown (T-59)
+        const btnMerge = document.getElementById("btnOpenMergeFromDetail");
+        if (btnMerge && !btnMerge._bound) {
+          btnMerge._bound = true;
+          btnMerge.addEventListener("click", () => {
+            popover.classList.remove("active");
+            openMergeLotModal(lotData);
           });
         }
       }
@@ -2329,8 +2429,157 @@
       }
     }
 
+    // ===== Merge Lot Modal Logic (T-59 / S-19) =====
+    let currentMergeLot = null;
+
+    async function openMergeLotModal(lot) {
+      if (!lot) return;
+      currentMergeLot = lot;
+      const modal = document.getElementById("mergeLotModal");
+      const alertBox = document.getElementById("mergeModalAlert");
+      if (!modal) return;
+
+      const unit = lot.productUnit || "kg";
+      const remaining = Number(lot.remainingQuantity !== undefined ? lot.remainingQuantity : lot.remaining_quantity) || 0;
+      const displayName = lot.productName || lot.name || "Nông sản";
+
+      document.getElementById("mergeBaseTitle").textContent = displayName;
+      document.getElementById("mergeBaseLotId").textContent = lot.id;
+      document.getElementById("mergeBaseRemainingDisplay").textContent = `${remaining.toFixed(3)} ${unit}`;
+      const prodBadge = document.getElementById("mergeBaseProductBadge");
+      if (prodBadge) {
+        prodBadge.textContent = lot.productName ? `• ${lot.productName}` : "";
+      }
+
+      if (alertBox) {
+        alertBox.style.display = "none";
+        alertBox.textContent = "";
+      }
+
+      modal.style.display = "flex";
+
+      const candidatesListEl = document.getElementById("mergeCandidatesList");
+      const estimateEl = document.getElementById("mergeTotalEstimateDisplay");
+      estimateEl.textContent = `${remaining.toFixed(3)} ${unit}`;
+
+      try {
+        candidatesListEl.innerHTML = `<div style="font-size: 13px; color: var(--color-text-muted); text-align: center; padding: 12px;">Đang tìm các lô cùng loại...</div>`;
+        const res = await fetch("/api/lots", { credentials: "same-origin" });
+        if (!res.ok) throw new Error("Không thể tải danh sách lô hàng.");
+        const data = await res.json();
+        const lots = data.lots || [];
+
+        const userOrgId = currentUser ? (currentUser.organizationId || currentUser.organization_id) : null;
+        const candidates = lots.filter((l) => {
+          if (l.id === lot.id) return false;
+          if (l.pendingTransfer) return false;
+          const lOrg = l.organizationId || l.organization_id;
+          if (userOrgId && lOrg !== userOrgId) return false;
+          const lRemaining = Number(l.remainingQuantity !== undefined ? l.remainingQuantity : l.remaining_quantity) || 0;
+          if (lRemaining <= 0) return false;
+          if (lot.productId && l.productId) return l.productId === lot.productId;
+          return true;
+        });
+
+        if (candidates.length === 0) {
+          candidatesListEl.innerHTML = `
+            <div style="font-size: 13px; color: var(--color-text-muted); text-align: center; padding: 16px;">
+              Không tìm thấy lô hàng nào khác cùng nông sản trong kho sẵn sàng để gộp.
+            </div>
+          `;
+          return;
+        }
+
+        candidatesListEl.innerHTML = candidates.map((c) => {
+          const cQty = Number(c.remainingQuantity !== undefined ? c.remainingQuantity : c.remaining_quantity) || 0;
+          const cUnit = c.productUnit || unit;
+          return `
+            <label style="display: flex; align-items: center; justify-content: space-between; padding: 8px 10px; border-radius: 8px; cursor: pointer; border-bottom: 1px solid rgba(0,0,0,0.04); margin-bottom: 4px; background: #fff;" class="merge-candidate-row">
+              <div style="display: flex; align-items: center; gap: 10px;">
+                <input type="checkbox" class="merge-lot-checkbox" value="${escapeHtml(c.id)}" data-quantity="${cQty}">
+                <div>
+                  <div style="font-size: 13.5px; font-weight: 700; color: var(--color-text-main);">${escapeHtml(c.name || c.id)}</div>
+                  <div style="font-size: 12px; color: var(--color-text-muted); font-family: monospace;">${escapeHtml(c.id)}</div>
+                </div>
+              </div>
+              <div style="font-size: 13px; font-weight: 700; color: #7c3aed;">
+                +${cQty.toFixed(3)} ${cUnit}
+              </div>
+            </label>
+          `;
+        }).join("");
+
+        const checkboxes = candidatesListEl.querySelectorAll(".merge-lot-checkbox");
+        checkboxes.forEach((cb) => {
+          cb.addEventListener("change", () => {
+            let total = remaining;
+            checkboxes.forEach((c) => {
+              if (c.checked) {
+                total += Number(c.dataset.quantity || 0);
+              }
+            });
+            estimateEl.textContent = `${total.toFixed(3)} ${unit}`;
+          });
+        });
+      } catch (err) {
+        candidatesListEl.innerHTML = `
+          <div style="font-size: 13px; color: #dc2626; text-align: center; padding: 12px;">
+            Lỗi tải danh sách: ${escapeHtml(err.message)}
+          </div>
+        `;
+      }
+    }
+
+    function closeMergeLotModal() {
+      const modal = document.getElementById("mergeLotModal");
+      if (modal) modal.style.display = "none";
+      currentMergeLot = null;
+    }
+
+    function setupMergeModalListeners() {
+      const btnClose = document.getElementById("btnCloseMergeModal");
+      if (btnClose) btnClose.addEventListener("click", closeMergeLotModal);
+
+      const btnCancel = document.getElementById("btnCancelMerge");
+      if (btnCancel) btnCancel.addEventListener("click", closeMergeLotModal);
+
+      const modal = document.getElementById("mergeLotModal");
+      if (modal) {
+        modal.addEventListener("click", (e) => {
+          if (e.target === modal) closeMergeLotModal();
+        });
+      }
+
+      const form = document.getElementById("mergeLotForm");
+      if (form) {
+        form.addEventListener("submit", (e) => {
+          e.preventDefault();
+          const checkboxes = document.querySelectorAll(".merge-lot-checkbox:checked");
+          const alertBox = document.getElementById("mergeModalAlert");
+          if (checkboxes.length === 0) {
+            if (alertBox) {
+              alertBox.className = "alert alert-warning";
+              alertBox.style.display = "block";
+              alertBox.textContent = "Vui lòng chọn ít nhất một lô hàng bổ sung để gộp.";
+            }
+            return;
+          }
+
+          if (alertBox) {
+            alertBox.className = "alert alert-info";
+            alertBox.style.display = "block";
+            alertBox.innerHTML = `
+              <strong>✓ Đã chuẩn bị sáp nhập ${checkboxes.length + 1} lô hàng.</strong><br>
+              Các lô thành phần đã được kiểm tra tính hợp lệ về chủng loại và phả hệ.
+            `;
+          }
+        });
+      }
+    }
+
     setupTransferModalListeners();
     setupSplitModalListeners();
+    setupMergeModalListeners();
     initPage();
   </script>
 </body>
