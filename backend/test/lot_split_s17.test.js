@@ -10,6 +10,7 @@ const {
   inMemoryTransfers,
   inMemoryProducts,
   inMemoryFarms,
+  inMemoryBatchRelations,
 } = require("../src/server");
 
 async function loginAs(email, password = "Password123!") {
@@ -221,6 +222,12 @@ test("Lot Split API [S-17 / S-18] & Direct Lineage Integration Test", async (t) 
       assert.ok(createdEvent, `Child lot ${childId} must have a CREATED_FROM_SPLIT event in ledger`);
       assert.ok(createdEvent.eventHash, "Child event hash must be calculated");
       assert.equal(createdEvent.payload.parentLotId, testParentId);
+
+      // Verify batch_relations (T-39)
+      const rel = inMemoryBatchRelations.find((r) => r.parentBatchId === testParentId && r.childBatchId === childId);
+      assert.ok(rel, `Batch relation must exist between parent ${testParentId} and child ${childId}`);
+      assert.equal(rel.relationType, "SPLIT");
+      assert.equal(rel.organizationId, "org-split-002");
     }
   });
 

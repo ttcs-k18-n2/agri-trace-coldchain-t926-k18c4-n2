@@ -117,6 +117,7 @@ const inMemoryOrganizations = [
 ];
 
 const inMemoryTransfers = [];
+const inMemoryBatchRelations = [];
 
 async function getPendingTransferForLot(lotId) {
   if (pool) {
@@ -1097,7 +1098,7 @@ app.get(
           productName: product ? product.name : null,
           productUnit: product ? product.unit : "kg",
           initialQuantity: l.initialQuantity !== undefined ? l.initialQuantity : 100,
-          remainingQuantity: l.remainingQuantity !== undefined ? l.remainingQuantity : 100,
+          remainingQuantity: l.remainingQuantity !== undefined ? l.remainingQuantity : (l.remaining_quantity !== undefined ? l.remaining_quantity : 100),
           harvestedAt: l.harvestedAt || "2026-09-30",
           createdAt: l.createdAt || "2026-09-30T00:00:00.000Z",
           pendingTransfer: pending ? {
@@ -1513,6 +1514,14 @@ app.post(
             throw new Error("Không thể sinh mã duy nhất cho lô con.");
           }
 
+          // Ghi nhận liên kết lô mẹ - lô con vào bảng batch_relations (T-39)
+          await client.query(
+            `INSERT INTO batch_relations (
+              parent_batch_id, child_batch_id, relation_type, quantity, organization_id
+            ) VALUES ($1, $2, 'SPLIT', $3, $4)`,
+            [parentLotId, childLotId, splitQty, parentLot.organization_id]
+          );
+
           // Ghi sự kiện CREATED_FROM_SPLIT vào chuỗi sự kiện của lô con
           await appendBatchEvent(client, {
             batchId: childLotId,
@@ -1667,6 +1676,16 @@ app.post(
           inMemoryLots.push(newLot);
           rollbackChildLots.push(newLot.id);
           createdChildLots.push(newLot);
+
+          inMemoryBatchRelations.push({
+            id: `rel-${crypto.randomUUID().slice(0, 12)}`,
+            parentBatchId: parentLotId,
+            childBatchId: childLotId,
+            relationType: "SPLIT",
+            quantity: splitQty,
+            organizationId: pOrg,
+            createdAt: nowIso,
+          });
 
           await appendBatchEvent(null, {
             batchId: childLotId,
@@ -3922,6 +3941,7 @@ module.exports = {
   inMemoryIntegrityChecks,
   inMemoryOrganizations,
   inMemoryTransfers,
+  inMemoryBatchRelations,
   seedDemoEvents,
   setAppendHookForTesting,
   markOverdueTransfers,

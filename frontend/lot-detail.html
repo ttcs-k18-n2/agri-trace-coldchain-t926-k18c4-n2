@@ -372,9 +372,14 @@
     }
 
     .child-lot-code {
-      font-size: 13.5px;
-      font-weight: 700;
+      font-size: 15.5px;
+      font-weight: 800;
       color: var(--color-primary);
+      letter-spacing: 0.04em;
+      background: rgba(36, 138, 61, 0.08);
+      padding: 3px 8px;
+      border-radius: var(--radius-sm);
+      border: 1px solid rgba(36, 138, 61, 0.2);
     }
 
     .child-lot-title {
@@ -816,6 +821,36 @@
             </button>
           </div>
         </form>
+
+        <!-- Success Result View (T-41) -->
+        <div id="splitSuccessContainer" style="display: none; flex-direction: column; flex: 1; overflow-y: auto; padding: 24px;">
+          <div style="text-align: center; margin-bottom: 20px;">
+            <div style="width: 52px; height: 52px; border-radius: 50%; background: #dcfce7; color: #16a34a; font-size: 26px; display: inline-flex; align-items: center; justify-content: center; margin-bottom: 10px;">✓</div>
+            <h3 style="margin: 0; font-size: 19px; font-weight: 800; color: #16a34a;">TÁCH LÔ HÀNG THÀNH CÔNG</h3>
+            <p style="margin: 4px 0 0; font-size: 13px; color: var(--color-text-muted);">
+              Các lô con mới đã được khởi tạo độc lập và liên kết với lô mẹ trong hệ thống.
+            </p>
+          </div>
+
+          <div style="background: rgba(36, 138, 61, 0.05); border: 1px solid rgba(36, 138, 61, 0.2); border-radius: 12px; padding: 12px 16px; margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center;">
+            <span style="font-size: 13px; color: var(--color-text-muted);">Khối lượng lô mẹ còn lại:</span>
+            <strong id="splitSuccessParentRemaining" style="font-size: 15px; color: var(--color-primary);">--</strong>
+          </div>
+
+          <div style="font-size: 13.5px; font-weight: 700; color: var(--color-text-main); margin-bottom: 10px;">
+            Danh sách lô con đã tạo (<span id="splitSuccessCount">0</span>):
+          </div>
+
+          <div id="splitSuccessList" style="display: flex; flex-direction: column; gap: 12px; margin-bottom: 20px;">
+            <!-- Dynamically populated -->
+          </div>
+
+          <div style="display: flex; justify-content: flex-end; gap: 10px; padding-top: 16px; border-top: 1px solid var(--color-border);">
+            <button type="button" id="btnFinishSplitSuccess" class="btn btn-primary" style="height: 38px; padding: 0 20px; background: #2563eb; border-color: #2563eb;">
+              <span>Hoàn tất & Cập nhật chi tiết</span>
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   </main>
@@ -889,8 +924,11 @@
       const role = currentUser ? currentUser.roleId : "";
       const userOrgId = currentUser ? (currentUser.organizationId || currentUser.organization_id) : null;
       const lotOrgId = lot.organizationId || lot.organization_id;
+      const lotRemainingVal = (lot.remainingQuantity !== null && lot.remainingQuantity !== undefined)
+        ? Number(lot.remainingQuantity)
+        : ((lot.remaining_quantity !== null && lot.remaining_quantity !== undefined) ? Number(lot.remaining_quantity) : null);
       const canTransfer = currentUser && !isInspector && (isAdmin || userOrgId === lotOrgId);
-      const canSplit = currentUser && !isInspector && (isAdmin || userOrgId === lotOrgId) && ["producer", "cooperative", "org_admin", "admin"].includes(role) && Number(lot.remainingQuantity) > 0 && !lot.pendingTransfer;
+      const canSplit = currentUser && !isInspector && (isAdmin || userOrgId === lotOrgId) && ["producer", "cooperative", "org_admin", "admin"].includes(role) && (lotRemainingVal !== null && lotRemainingVal > 0) && !lot.pendingTransfer;
       const isRecipient = Boolean(userOrgId && lot.pendingTransfer && lot.pendingTransfer.toOrganizationId === userOrgId);
       const inspectorActions = document.getElementById("inspectorActions");
       const btnCheckIntegrityLink = document.getElementById("btnCheckIntegrityLink");
@@ -911,12 +949,6 @@
 
         if (["cooperative", "org_admin", "admin"].includes(role)) {
           actionButtonsHtml += `
-            ${canSplit ? `
-              <button type="button" class="btn btn-primary" id="btnSplitLotTop" style="gap: 8px; font-weight: 600; background: #2563eb; border-color: #2563eb;" title="Tách lô hàng thành các lô con (S-17 / S-18)">
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M13 6h3a2 2 0 0 1 2 2v7"/><line x1="6" y1="9" x2="6" y2="21"/></svg>
-                <span>Tách lô hàng</span>
-              </button>
-            ` : ""}
             <a href="/harvest.html" class="btn btn-primary" style="gap: 8px; font-weight: 600;">
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
               <span>Sơ chế / Tạo lô mới</span>
@@ -928,12 +960,6 @@
           `;
         } else if (role === "producer") {
           actionButtonsHtml += `
-            ${canSplit ? `
-              <button type="button" class="btn btn-primary" id="btnSplitLotTop" style="gap: 8px; font-weight: 600; background: #2563eb; border-color: #2563eb;" title="Tách lô hàng thành các lô con (S-17 / S-18)">
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M13 6h3a2 2 0 0 1 2 2v7"/><line x1="6" y1="9" x2="6" y2="21"/></svg>
-                <span>Tách lô hàng</span>
-              </button>
-            ` : ""}
             <a href="/harvest.html" class="btn btn-primary" style="gap: 8px; font-weight: 600;">
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
               <span>Ghi nhận thu hoạch mới</span>
@@ -952,9 +978,9 @@
       const unit = lot.productUnit || "kg";
       const initialQtyFormatted = (lot.initialQuantity !== null && lot.initialQuantity !== undefined)
         ? `${Number(lot.initialQuantity).toFixed(3)} ${unit}`
-        : "--";
-      const remainingQtyFormatted = (lot.remainingQuantity !== null && lot.remainingQuantity !== undefined)
-        ? `${Number(lot.remainingQuantity).toFixed(3)} ${unit}`
+        : ((lot.initial_quantity !== null && lot.initial_quantity !== undefined) ? `${Number(lot.initial_quantity).toFixed(3)} ${unit}` : "--");
+      const remainingQtyFormatted = lotRemainingVal !== null
+        ? `${lotRemainingVal.toFixed(3)} ${unit}`
         : "--";
       const harvestDateFormatted = formatDate(lot.harvestedAt || lot.createdAt);
       const displayName = lot.productName || lot.name || "Nông sản";
@@ -1137,12 +1163,6 @@
               <span>Phả hệ trực tiếp (Lô mẹ & Lô con)</span>
             </h3>
             <div style="display: flex; align-items: center; gap: 8px;">
-              ${canSplit ? `
-                <button type="button" class="btn btn-primary" id="btnSplitFromLineage" style="height: 30px; padding: 0 12px; font-size: 12px; font-weight: 600; display: inline-flex; align-items: center; gap: 5px; background: #2563eb; border-color: #2563eb; cursor: pointer; border-radius: var(--radius-sm);" title="Tách lô hàng thành các lô con (S-17 / S-18)">
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M13 6h3a2 2 0 0 1 2 2v7"/><line x1="6" y1="9" x2="6" y2="21"/></svg>
-                  <span>Tách lô con mới</span>
-                </button>
-              ` : ""}
               <span class="badge-role" style="background: rgba(36, 138, 61, 0.08); color: var(--color-primary); font-weight: 600; padding: 4px 10px; border-radius: var(--radius-sm);">Lô mẹ - Lô con trực tiếp</span>
             </div>
           </div>
@@ -1161,10 +1181,15 @@
                 <div class="parent-lot-name">${escapeHtml(lot.parentLot.productName || lot.parentLot.name || "Lô mẹ")}</div>
                 <div class="parent-lot-meta">
                   <span><strong>Tổ chức:</strong> ${escapeHtml(lot.parentLot.organizationName || lot.parentLot.organizationId || "--")}</span>
-                  ${lot.parentLot.remainingQuantity !== null && lot.parentLot.remainingQuantity !== undefined ? `
-                    <span>&bull;</span>
-                    <span><strong>Khối lượng còn lại:</strong> ${Number(lot.parentLot.remainingQuantity).toFixed(3)} ${escapeHtml(lot.parentLot.productUnit || "kg")}</span>
-                  ` : ""}
+                  ${(() => {
+                    const pRem = (lot.parentLot.remainingQuantity !== null && lot.parentLot.remainingQuantity !== undefined)
+                      ? Number(lot.parentLot.remainingQuantity)
+                      : ((lot.parentLot.remaining_quantity !== null && lot.parentLot.remaining_quantity !== undefined) ? Number(lot.parentLot.remaining_quantity) : null);
+                    return pRem !== null ? `
+                      <span>&bull;</span>
+                      <span><strong>Khối lượng còn lại:</strong> ${pRem.toFixed(3)} ${escapeHtml(lot.parentLot.productUnit || "kg")}</span>
+                    ` : "";
+                  })()}
                 </div>
               </div>
               <a href="/lot-detail.html?id=${encodeURIComponent(lot.parentLot.id)}" class="btn-goto-lineage">
@@ -1190,7 +1215,11 @@
 
           ${(lot.childLots && lot.childLots.length > 0) ? `
             <div class="child-lots-grid">
-              ${lot.childLots.map(child => `
+              ${lot.childLots.map(child => {
+                const cRem = (child.remainingQuantity !== null && child.remainingQuantity !== undefined)
+                  ? Number(child.remainingQuantity)
+                  : ((child.remaining_quantity !== null && child.remaining_quantity !== undefined) ? Number(child.remaining_quantity) : null);
+                return `
                 <div class="child-lot-card">
                   <div>
                     <div class="child-lot-top">
@@ -1200,8 +1229,8 @@
                     <div class="child-lot-title" style="margin-top: 8px;">${escapeHtml(child.productName || child.name || "Lô con")}</div>
                     <div class="child-lot-meta" style="margin-top: 6px;">
                       <div><strong>Tổ chức:</strong> ${escapeHtml(child.organizationName || child.organizationId || "--")}</div>
-                      ${child.remainingQuantity !== null && child.remainingQuantity !== undefined ? `
-                        <div><strong>Khối lượng:</strong> ${Number(child.remainingQuantity).toFixed(3)} ${escapeHtml(child.productUnit || "kg")}</div>
+                      ${cRem !== null ? `
+                        <div><strong>Khối lượng:</strong> ${cRem.toFixed(3)} ${escapeHtml(child.productUnit || "kg")}</div>
                       ` : ""}
                     </div>
                   </div>
@@ -1212,7 +1241,8 @@
                     </a>
                   </div>
                 </div>
-              `).join("")}
+              `;
+              }).join("")}
             </div>
           ` : `
             <div class="lineage-empty-box">
@@ -1452,20 +1482,10 @@
         });
       }
 
-      // S-17 / S-18: Xử lý các nút Tách lô hàng
+      // S-17 / S-18: Xử lý nút Tách lô hàng (cạnh nút Bàn giao lô)
       const btnSplitHero = document.getElementById("btnSplitDirectHero");
       if (btnSplitHero) {
         btnSplitHero.addEventListener("click", () => openSplitLotModal(lot));
-      }
-
-      const btnSplitTop = document.getElementById("btnSplitLotTop");
-      if (btnSplitTop) {
-        btnSplitTop.addEventListener("click", () => openSplitLotModal(lot));
-      }
-
-      const btnSplitLineage = document.getElementById("btnSplitFromLineage");
-      if (btnSplitLineage) {
-        btnSplitLineage.addEventListener("click", () => openSplitLotModal(lot));
       }
     }
 
@@ -1893,6 +1913,11 @@
       document.getElementById("splitParentLotId").textContent = lot.id;
       document.getElementById("splitParentRemainingDisplay").textContent = `${remaining.toFixed(3)} ${unit}`;
 
+      const form = document.getElementById("splitLotForm");
+      const successBox = document.getElementById("splitSuccessContainer");
+      if (form) form.style.display = "flex";
+      if (successBox) successBox.style.display = "none";
+
       if (alertBox) {
         alertBox.style.display = "none";
         alertBox.textContent = "";
@@ -1915,6 +1940,10 @@
     function closeSplitLotModal() {
       const modal = document.getElementById("splitLotModal");
       if (modal) modal.style.display = "none";
+      const form = document.getElementById("splitLotForm");
+      const successBox = document.getElementById("splitSuccessContainer");
+      if (form) form.style.display = "flex";
+      if (successBox) successBox.style.display = "none";
       currentSplitLot = null;
     }
 
@@ -2092,9 +2121,61 @@
             if (!res.ok) throw new Error(data.message || "Không thể tách lô hàng.");
 
             const parentLotId = currentSplitLot.id;
-            closeSplitLotModal();
-            alert(`✓ Tách lô thành công! Đã tạo ${data.childLots ? data.childLots.length : 'các'} lô con mới.`);
-            await loadLotDetail(parentLotId);
+            const unit = currentSplitLot.productUnit || "kg";
+            const createdLots = data.childLots || [];
+
+            // T-41: Hiển thị giao diện kết quả với mã lô con cỡ lớn và danh sách chi tiết
+            const splitFormEl = document.getElementById("splitLotForm");
+            const splitSuccessEl = document.getElementById("splitSuccessContainer");
+            const parentRemEl = document.getElementById("splitSuccessParentRemaining");
+            const countEl = document.getElementById("splitSuccessCount");
+            const listEl = document.getElementById("splitSuccessList");
+
+            if (parentRemEl && data.parentLot) {
+              parentRemEl.textContent = `${Number(data.parentLot.remainingQuantity).toFixed(3)} ${unit}`;
+            }
+            if (countEl) countEl.textContent = createdLots.length;
+
+            if (listEl) {
+              listEl.innerHTML = createdLots.map((c) => {
+                const qtyFormatted = (c.initialQuantity !== null && c.initialQuantity !== undefined)
+                  ? `${Number(c.initialQuantity).toFixed(3)} ${unit}`
+                  : "--";
+                return `
+                  <div style="background: #ffffff; border: 1.5px solid var(--color-border); border-radius: 12px; padding: 14px 16px; box-shadow: var(--shadow-xs);">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; flex-wrap: wrap; gap: 8px;">
+                      <div style="display: flex; align-items: center; gap: 10px;">
+                        <span class="font-mono" style="font-size: 18px; font-weight: 800; color: var(--color-primary); letter-spacing: 0.05em; background: rgba(36, 138, 61, 0.08); padding: 4px 10px; border-radius: 6px; border: 1px solid rgba(36, 138, 61, 0.25);">
+                          ${escapeHtml(c.id)}
+                        </span>
+                        <button type="button" class="btn btn-outline btn-sm" onclick="copyLotCode('${escapeHtml(c.id)}')" style="height: 28px; padding: 0 8px; font-size: 11.5px; border-radius: 4px; display: inline-flex; align-items: center; gap: 4px;" title="Sao chép mã lô con">
+                          📋 <span>Chép</span>
+                        </button>
+                      </div>
+                      <span class="status-pill success" style="font-size: 11px; padding: 2px 8px;">${escapeHtml(c.status || "Đã thu hoạch")}</span>
+                    </div>
+                    <div style="font-size: 14.5px; font-weight: 700; color: var(--color-text-main); margin-top: 4px;">
+                      ${escapeHtml(c.name || "Lô con")}
+                    </div>
+                    <div style="margin-top: 6px; font-size: 12.5px; color: var(--color-text-muted); display: flex; gap: 16px; flex-wrap: wrap;">
+                      <div><strong>Khối lượng:</strong> <span style="color: var(--color-primary); font-weight: 700;">${qtyFormatted}</span></div>
+                      <div><strong>Lô mẹ:</strong> <span class="font-mono">${escapeHtml(parentLotId)}</span></div>
+                    </div>
+                  </div>
+                `;
+              }).join("");
+            }
+
+            if (splitFormEl) splitFormEl.style.display = "none";
+            if (splitSuccessEl) splitSuccessEl.style.display = "flex";
+
+            const btnFinish = document.getElementById("btnFinishSplitSuccess");
+            if (btnFinish) {
+              btnFinish.onclick = async () => {
+                closeSplitLotModal();
+                await loadLotDetail(parentLotId);
+              };
+            }
           } catch (err) {
             if (alertBox) {
               alertBox.className = "alert alert-danger";

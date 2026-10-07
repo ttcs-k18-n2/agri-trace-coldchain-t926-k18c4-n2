@@ -727,12 +727,23 @@
       const card = document.createElement("div");
       card.className = "lot-card";
 
-      const unit = lot.productUnit || "kg";
-      const initialQtyFormatted = (lot.initialQuantity !== null && lot.initialQuantity !== undefined)
-        ? `${Number(lot.initialQuantity).toFixed(3)} ${unit}`
-        : "";
-      const remainingQtyFormatted = (lot.remainingQuantity !== null && lot.remainingQuantity !== undefined)
-        ? `${Number(lot.remainingQuantity).toFixed(3)} ${unit}`
+      const unit = lot.productUnit || lot.product_unit || "kg";
+
+      const remainingVal = (lot.remainingQuantity !== null && lot.remainingQuantity !== undefined)
+        ? Number(lot.remainingQuantity)
+        : ((lot.remaining_quantity !== null && lot.remaining_quantity !== undefined) ? Number(lot.remaining_quantity) : null);
+      const initialVal = (lot.initialQuantity !== null && lot.initialQuantity !== undefined)
+        ? Number(lot.initialQuantity)
+        : ((lot.initial_quantity !== null && lot.initial_quantity !== undefined) ? Number(lot.initial_quantity) : null);
+
+      const qtyDisplay = (remainingVal !== null && initialVal !== null)
+        ? `${remainingVal.toFixed(3)} / ${initialVal.toFixed(3)} ${unit}`
+        : (remainingVal !== null
+            ? `${remainingVal.toFixed(3)} ${unit}`
+            : (initialVal !== null ? `${initialVal.toFixed(3)} ${unit}` : ""));
+
+      const remainingQtyFormatted = remainingVal !== null
+        ? `${remainingVal.toFixed(3)} ${unit}`
         : "N/A";
       const harvestDateFormatted = formatDate(lot.harvestedAt || lot.createdAt);
       const displayName = lot.productName || lot.name || "Nông sản";
@@ -774,7 +785,7 @@
               ${displayName}
             </a>
           </h3>
-          ${initialQtyFormatted ? `<div class="lot-quantity-sub">${initialQtyFormatted}</div>` : ""}
+          ${qtyDisplay ? `<div class="lot-quantity-sub">${qtyDisplay}</div>` : ""}
         </div>
 
         <div class="lot-meta-list" onclick="window.location.href='/lot-detail.html?id=${encodeURIComponent(lot.id)}'" style="cursor: pointer;" title="Bấm để xem chi tiết lô ${lot.id}">
