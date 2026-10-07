@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>AGRI TRACEABILITY - Chi tiết lô thu hoạch</title>
+  <title>AGRI TRACEABILITY - Chi tiết lô thu hoạch & Phả hệ</title>
   <link rel="stylesheet" href="/styles.css">
 
   <style>
@@ -19,6 +19,7 @@
       justify-content: space-between;
       margin-bottom: 20px;
       gap: 12px;
+      flex-wrap: wrap;
     }
 
     .btn-back {
@@ -43,6 +44,13 @@
       background: rgba(255, 255, 255, 0.95);
       border-color: rgba(0, 0, 0, 0.15);
       transform: translateX(-2px);
+    }
+
+    .role-actions {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
     }
 
     /* Hero Lot Overview Card */
@@ -116,7 +124,7 @@
 
     .hero-stats-row {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
       gap: 16px;
       padding-top: 20px;
       border-top: 1px solid var(--color-border);
@@ -140,6 +148,91 @@
       font-size: 18px;
       font-weight: 700;
       color: var(--color-text-main);
+    }
+
+    /* 3 Tabs Navigation (T-59) */
+    .lot-tabs-nav {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 24px;
+      background: rgba(255, 255, 255, 0.7);
+      backdrop-filter: var(--liquid-glass-blur);
+      -webkit-backdrop-filter: var(--liquid-glass-blur);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-xl);
+      padding: 6px;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.04);
+      overflow-x: auto;
+    }
+
+    .lot-tab-btn {
+      flex: 1;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 12px 20px;
+      font-size: 14.5px;
+      font-weight: 600;
+      color: var(--color-text-muted);
+      background: transparent;
+      border: none;
+      border-radius: var(--radius-lg);
+      cursor: pointer;
+      transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+      white-space: nowrap;
+      user-select: none;
+    }
+
+    .lot-tab-btn:hover {
+      color: var(--color-text-main);
+      background: rgba(0, 0, 0, 0.03);
+    }
+
+    .lot-tab-btn.active {
+      color: #ffffff;
+      background: var(--color-primary);
+      box-shadow: 0 4px 12px rgba(36, 138, 61, 0.25);
+    }
+
+    .lot-tab-btn .tab-badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 20px;
+      height: 20px;
+      padding: 0 6px;
+      border-radius: 10px;
+      font-size: 11.5px;
+      font-weight: 700;
+      background: rgba(0, 0, 0, 0.08);
+      color: inherit;
+    }
+
+    .lot-tab-btn.active .tab-badge {
+      background: rgba(255, 255, 255, 0.25);
+      color: #ffffff;
+    }
+
+    .lot-tab-pane {
+      display: none;
+      animation: fadeInTab 0.25s ease-out;
+    }
+
+    .lot-tab-pane.active {
+      display: block;
+    }
+
+    @keyframes fadeInTab {
+      from {
+        opacity: 0;
+        transform: translateY(4px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
     }
 
     /* Details Grid */
@@ -199,6 +292,214 @@
       color: var(--color-text-main);
       font-weight: 600;
       text-align: right;
+    }
+
+    /* Direct Lineage Card Styles */
+    .lineage-card {
+      background: var(--liquid-glass-bg);
+      border: var(--liquid-glass-border);
+      border-radius: var(--radius-xl);
+      padding: 28px;
+      margin-bottom: 24px;
+      backdrop-filter: var(--liquid-glass-blur);
+      -webkit-backdrop-filter: var(--liquid-glass-blur);
+      box-shadow: var(--liquid-glass-shadow);
+    }
+
+    .lineage-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 18px;
+      flex-wrap: wrap;
+      gap: 12px;
+      border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+      padding-bottom: 14px;
+    }
+
+    .lineage-block-title {
+      font-size: 13.5px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--color-text-muted);
+      margin-bottom: 12px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .count-badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(36, 138, 61, 0.12);
+      color: var(--color-primary);
+      font-size: 11px;
+      font-weight: 700;
+      border-radius: var(--radius-full);
+      padding: 2px 8px;
+    }
+
+    .parent-lot-box {
+      background: #ffffff;
+      border: 1.5px solid rgba(36, 138, 61, 0.25);
+      border-radius: var(--radius-lg);
+      padding: 18px 22px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      flex-wrap: wrap;
+      box-shadow: var(--shadow-sm);
+      transition: var(--transition-fast);
+    }
+
+    .parent-lot-box:hover {
+      border-color: var(--color-primary);
+      box-shadow: var(--shadow-hover);
+    }
+
+    .parent-lot-info {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .parent-lot-code-tag {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .parent-lot-name {
+      font-size: 17px;
+      font-weight: 700;
+      color: var(--color-text-main);
+    }
+
+    .parent-lot-meta {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12.5px;
+      color: var(--color-text-muted);
+      flex-wrap: wrap;
+    }
+
+    .btn-goto-lineage {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 16px;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--color-primary);
+      background: rgba(36, 138, 61, 0.08);
+      border: 1px solid rgba(36, 138, 61, 0.2);
+      border-radius: var(--radius-md);
+      text-decoration: none;
+      transition: var(--transition-fast);
+    }
+
+    .btn-goto-lineage:hover {
+      background: var(--color-primary);
+      color: #ffffff;
+      border-color: var(--color-primary);
+      transform: translateX(2px);
+    }
+
+    .lineage-empty-box {
+      background: rgba(0, 0, 0, 0.02);
+      border: 1px dashed var(--color-border);
+      border-radius: var(--radius-lg);
+      padding: 16px 20px;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+
+    .lineage-empty-icon {
+      font-size: 24px;
+      line-height: 1;
+    }
+
+    .child-lots-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 16px;
+    }
+
+    .child-lot-card {
+      background: #ffffff;
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-lg);
+      padding: 16px 18px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      gap: 12px;
+      box-shadow: var(--shadow-sm);
+      transition: var(--transition-fast);
+    }
+
+    .child-lot-card:hover {
+      border-color: rgba(36, 138, 61, 0.4);
+      box-shadow: var(--shadow-hover);
+      transform: translateY(-2px);
+    }
+
+    .child-lot-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+
+    .child-lot-code {
+      font-size: 15.5px;
+      font-weight: 800;
+      color: var(--color-primary);
+      letter-spacing: 0.04em;
+      background: rgba(36, 138, 61, 0.08);
+      padding: 3px 8px;
+      border-radius: var(--radius-sm);
+      border: 1px solid rgba(36, 138, 61, 0.2);
+    }
+
+    .child-lot-title {
+      font-size: 15px;
+      font-weight: 700;
+      color: var(--color-text-main);
+    }
+
+    .child-lot-meta {
+      font-size: 12.5px;
+      color: var(--color-text-muted);
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .child-lot-footer {
+      padding-top: 10px;
+      border-top: 1px solid rgba(0, 0, 0, 0.05);
+    }
+
+    .child-lot-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12.5px;
+      font-weight: 600;
+      color: var(--color-primary);
+      text-decoration: none;
+      transition: var(--transition-fast);
+    }
+
+    .child-lot-link:hover {
+      color: var(--color-primary-hover);
+      transform: translateX(2px);
     }
 
     /* Ledger Events Timeline */
@@ -313,31 +614,38 @@
       font-weight: 600;
     }
 
-    /* Integrity banner */
-    .integrity-banner-box {
-      margin-top: 16px;
-      padding: 16px 20px;
-      border-radius: var(--radius-lg);
+    /* Split Lot Modal Styles (S-17 / S-18) */
+    .split-row-item {
+      background: #f8fafc;
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-md);
+      padding: 14px 16px;
+      margin-bottom: 12px;
+      transition: var(--transition-fast);
+    }
+
+    .split-row-item:hover {
+      border-color: rgba(37, 99, 235, 0.4);
+      background: #f1f5f9;
+    }
+
+    .split-row-header {
       display: flex;
-      align-items: center;
       justify-content: space-between;
-      gap: 16px;
-      flex-wrap: wrap;
+      align-items: center;
+      margin-bottom: 8px;
     }
 
-    .integrity-banner-box.valid {
-      background: rgba(36, 138, 61, 0.08);
-      border: 1px solid rgba(36, 138, 61, 0.25);
-    }
-
-    .integrity-banner-box.invalid {
-      background: rgba(220, 38, 38, 0.08);
-      border: 1px solid rgba(220, 38, 38, 0.25);
+    .split-summary-box {
+      background: rgba(37, 99, 235, 0.05);
+      border: 1px solid rgba(37, 99, 235, 0.2);
+      border-radius: var(--radius-md);
+      padding: 14px 16px;
+      margin-top: 14px;
     }
   </style>
 </head>
 <body class="bg-gradient">
-  <!-- Dynamic Header / App Shell -->
   <!-- Dynamic Header / App Shell -->
   <header class="app-header">
     <div class="header-container">
@@ -390,12 +698,7 @@
         <span>Danh sách lô hàng</span>
       </a>
 
-      <div id="inspectorActions" style="display: none;">
-        <a id="btnCheckIntegrityLink" href="#" class="btn btn-secondary" style="border: 1px solid var(--color-primary); color: var(--color-primary); font-weight: 600;">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-          <span>Kiểm toán toàn vẹn dữ liệu</span>
-        </a>
-      </div>
+      <div class="role-actions" id="roleActions" style="display: none;"></div>
     </div>
 
     <!-- Container for dynamic lot details or error -->
@@ -525,6 +828,116 @@
         </div>
       </div>
     </div>
+
+    <!-- Modal Tách lô hàng (S-17 / S-18) -->
+    <div id="splitLotModal" class="modal-backdrop" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 2000; align-items: center; justify-content: center; padding: 20px;">
+      <div class="modal-card" style="background: #fff; border-radius: 16px; padding: 0; width: 100%; max-width: 620px; max-height: 90vh; display: flex; flex-direction: column; box-shadow: 0 25px 60px rgba(0,0,0,0.22);">
+        <div class="modal-header" style="display: flex; align-items: center; justify-content: space-between; padding: 18px 24px; border-bottom: 1px solid var(--color-border);">
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <div style="width: 32px; height: 32px; border-radius: 8px; background: rgba(37, 99, 235, 0.1); display: flex; align-items: center; justify-content: center; color: #2563eb;">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M13 6h3a2 2 0 0 1 2 2v7"/><line x1="6" y1="9" x2="6" y2="21"/></svg>
+            </div>
+            <div>
+              <h3 style="margin: 0; font-size: 16.5px; font-weight: 700; color: var(--color-text-main);">Tách lô hàng thành các lô con</h3>
+              <div style="font-size: 12px; color: var(--color-text-muted);">Tính năng sơ chế & phân chia quy mô lô nông sản (S-17 / S-18)</div>
+            </div>
+          </div>
+          <button type="button" id="btnCloseSplitModal" style="background: none; border: none; font-size: 20px; cursor: pointer; color: var(--color-text-muted); line-height: 1;">✕</button>
+        </div>
+
+        <form id="splitLotForm" style="display: flex; flex-direction: column; overflow: hidden; flex: 1;">
+          <div style="padding: 20px 24px; overflow-y: auto; flex: 1;">
+            <div id="splitModalAlert" style="display: none; margin-bottom: 16px;"></div>
+
+            <!-- Parent Lot Info Box -->
+            <div style="background: rgba(37, 99, 235, 0.06); border: 1px solid rgba(37, 99, 235, 0.2); border-radius: 12px; padding: 14px 16px; margin-bottom: 18px;">
+              <div style="font-size: 11px; text-transform: uppercase; font-weight: 700; color: #2563eb; letter-spacing: 0.05em; margin-bottom: 4px;">Lô mẹ nguồn (Parent Lot)</div>
+              <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap;">
+                <div>
+                  <div style="font-size: 15px; font-weight: 700; color: var(--color-text-main);" id="splitParentTitle">--</div>
+                  <div style="font-size: 13px; color: var(--color-text-muted); margin-top: 2px;">
+                    Mã lô: <code id="splitParentLotId" style="font-weight:700; color:#2563eb; background: rgba(37, 99, 235, 0.08); padding: 1px 6px; border-radius: 4px;">--</code>
+                  </div>
+                </div>
+                <div style="text-align: right;">
+                  <div style="font-size: 11.5px; color: var(--color-text-muted);">Khối lượng khả dụng còn lại</div>
+                  <div style="font-size: 17px; font-weight: 800; color: var(--color-primary);" id="splitParentRemainingDisplay">0 kg</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Split Items List -->
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+              <label style="font-size: 13.5px; font-weight: 700; color: var(--color-text-main); margin: 0;">Danh sách các lô con cần tạo <span style="color:#dc2626">*</span></label>
+              <button type="button" id="btnAddSplitRow" class="btn btn-secondary" style="height: 30px; padding: 0 10px; font-size: 12px; gap: 4px; border-color: rgba(37,99,235,0.4); color: #2563eb;">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                <span>Thêm lô con</span>
+              </button>
+            </div>
+
+            <div id="splitRowsContainer">
+              <!-- Dynamically rendered rows -->
+            </div>
+
+            <!-- Balance / Validation Summary -->
+            <div class="split-summary-box">
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 10px;">
+                <div>
+                  <div style="font-size: 12px; color: var(--color-text-muted);">Tổng khối lượng tách:</div>
+                  <div style="font-size: 16px; font-weight: 700; color: #2563eb;" id="splitTotalDisplay">0.000 kg</div>
+                </div>
+                <div>
+                  <div style="font-size: 12px; color: var(--color-text-muted);">Khối lượng lô mẹ sau tách:</div>
+                  <div style="font-size: 16px; font-weight: 700; color: var(--color-text-main);" id="splitBalanceDisplay">0.000 kg</div>
+                </div>
+              </div>
+              <div id="splitValidationWarning" style="display: none; font-size: 12.5px; color: #dc2626; font-weight: 600; padding-top: 6px; border-top: 1px dashed rgba(220,38,38,0.3);"></div>
+            </div>
+
+            <div style="margin-top: 14px; background: rgba(245,158,11,0.08); border: 1px solid rgba(245,158,11,0.25); border-radius: 8px; padding: 10px 12px; font-size: 12px; color: #b45309; line-height: 1.5;">
+              <strong>Bảo chứng nguồn gốc:</strong> Mỗi lô con sẽ tự động được gán <code>parent_lot_id</code> trỏ về lô mẹ. Hệ thống ghi nhận hai sự kiện bảo chứng <code>LOT_SPLIT</code> (lô mẹ) và <code>CREATED_FROM_SPLIT</code> (lô con) trên chuỗi hash SHA-256 bất biến.
+            </div>
+          </div>
+
+          <div style="display:flex; justify-content:flex-end; gap:10px; padding:16px 24px; border-top:1px solid var(--color-border); background: #fafafa;">
+            <button type="button" id="btnCancelSplit" class="btn btn-secondary" style="height:38px; padding:0 16px;">Hủy bỏ</button>
+            <button type="submit" id="btnSubmitSplit" class="btn btn-primary" style="height:38px; padding:0 20px; background: #2563eb; border-color: #2563eb;">
+              <span>Xác nhận tách lô</span>
+            </button>
+          </div>
+        </form>
+
+        <!-- Success Result View (T-41) -->
+        <div id="splitSuccessContainer" style="display: none; flex-direction: column; flex: 1; overflow-y: auto; padding: 24px;">
+          <div style="text-align: center; margin-bottom: 20px;">
+            <div style="width: 52px; height: 52px; border-radius: 50%; background: #dcfce7; color: #16a34a; font-size: 26px; display: inline-flex; align-items: center; justify-content: center; margin-bottom: 10px;">✓</div>
+            <h3 style="margin: 0; font-size: 19px; font-weight: 800; color: #16a34a;">TÁCH LÔ HÀNG THÀNH CÔNG</h3>
+            <p style="margin: 4px 0 0; font-size: 13px; color: var(--color-text-muted);">
+              Các lô con mới đã được khởi tạo độc lập và liên kết với lô mẹ trong hệ thống.
+            </p>
+          </div>
+
+          <div style="background: rgba(36, 138, 61, 0.05); border: 1px solid rgba(36, 138, 61, 0.2); border-radius: 12px; padding: 12px 16px; margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center;">
+            <span style="font-size: 13px; color: var(--color-text-muted);">Khối lượng lô mẹ còn lại:</span>
+            <strong id="splitSuccessParentRemaining" style="font-size: 15px; color: var(--color-primary);">--</strong>
+          </div>
+
+          <div style="font-size: 13.5px; font-weight: 700; color: var(--color-text-main); margin-bottom: 10px;">
+            Danh sách lô con đã tạo (<span id="splitSuccessCount">0</span>):
+          </div>
+
+          <div id="splitSuccessList" style="display: flex; flex-direction: column; gap: 12px; margin-bottom: 20px;">
+            <!-- Dynamically populated -->
+          </div>
+
+          <div style="display: flex; justify-content: flex-end; gap: 10px; padding-top: 16px; border-top: 1px solid var(--color-border);">
+            <button type="button" id="btnFinishSplitSuccess" class="btn btn-primary" style="height: 38px; padding: 0 20px; background: #2563eb; border-color: #2563eb;">
+              <span>Hoàn tất & Cập nhật chi tiết</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
   </main>
 
   <script src="/app-shell.js"></script>
@@ -549,8 +962,6 @@
     }
 
     async function loadLotDetail(lotId) {
-      const contentArea = document.getElementById("contentArea");
-
       try {
         const [lotRes, eventsRes] = await Promise.all([
           fetch(`/api/lots/${encodeURIComponent(lotId)}`, { credentials: "same-origin" }),
@@ -595,28 +1006,71 @@
       const isInspector = currentUser && currentUser.roleId === "inspector";
       const isAdmin = currentUser && currentUser.roleId === "admin";
       const isInspectorOrAdmin = isInspector || isAdmin;
+      const role = currentUser ? currentUser.roleId : "";
       const userOrgId = currentUser ? (currentUser.organizationId || currentUser.organization_id) : null;
       const lotOrgId = lot.organizationId || lot.organization_id;
+      const lotRemainingVal = (lot.remainingQuantity !== null && lot.remainingQuantity !== undefined)
+        ? Number(lot.remainingQuantity)
+        : ((lot.remaining_quantity !== null && lot.remaining_quantity !== undefined) ? Number(lot.remaining_quantity) : null);
       const canTransfer = currentUser && !isInspector && (isAdmin || userOrgId === lotOrgId);
+      const canSplit = currentUser && !isInspector && (isAdmin || userOrgId === lotOrgId) && ["producer", "cooperative", "org_admin", "admin"].includes(role) && (lotRemainingVal !== null && lotRemainingVal > 0) && !lot.pendingTransfer;
       const isRecipient = Boolean(userOrgId && lot.pendingTransfer && lot.pendingTransfer.toOrganizationId === userOrgId);
       const inspectorActions = document.getElementById("inspectorActions");
       const btnCheckIntegrityLink = document.getElementById("btnCheckIntegrityLink");
 
-      if (isInspectorOrAdmin && inspectorActions && btnCheckIntegrityLink) {
-        inspectorActions.style.display = "block";
-        btnCheckIntegrityLink.href = `/integrity.html?lotId=${encodeURIComponent(lot.id)}`;
+      // Render top action bar based on user role
+      const roleActionsEl = document.getElementById("roleActions");
+      if (roleActionsEl) {
+        let actionButtonsHtml = "";
+
+        if (isInspectorOrAdmin) {
+          actionButtonsHtml += `
+            <a id="btnCheckIntegrityLink" href="/integrity.html?lotId=${encodeURIComponent(lot.id)}" class="btn btn-secondary" style="border: 1px solid var(--color-primary); color: var(--color-primary); font-weight: 600; gap: 8px;">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg>
+              <span>Kiểm tra toàn vẹn chuỗi sự kiện</span>
+            </a>
+          `;
+        }
+
+        if (["cooperative", "org_admin", "admin"].includes(role)) {
+          actionButtonsHtml += `
+            <a href="/harvest.html" class="btn btn-primary" style="gap: 8px; font-weight: 600;">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
+              <span>Sơ chế / Tạo lô mới</span>
+            </a>
+            <a href="/farms.html" class="btn btn-secondary" style="gap: 8px; font-weight: 600;">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+              <span>Xem thửa đất gốc</span>
+            </a>
+          `;
+        } else if (role === "producer") {
+          actionButtonsHtml += `
+            <a href="/harvest.html" class="btn btn-primary" style="gap: 8px; font-weight: 600;">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
+              <span>Ghi nhận thu hoạch mới</span>
+            </a>
+            <a href="/farms.html" class="btn btn-secondary" style="gap: 8px; font-weight: 600;">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+              <span>Xem thửa đất</span>
+            </a>
+          `;
+        }
+
+        roleActionsEl.innerHTML = actionButtonsHtml;
+        roleActionsEl.style.display = actionButtonsHtml ? "flex" : "none";
       }
 
       const unit = lot.productUnit || "kg";
       const initialQtyFormatted = (lot.initialQuantity !== null && lot.initialQuantity !== undefined)
         ? `${Number(lot.initialQuantity).toFixed(3)} ${unit}`
-        : "--";
-      const remainingQtyFormatted = (lot.remainingQuantity !== null && lot.remainingQuantity !== undefined)
-        ? `${Number(lot.remainingQuantity).toFixed(3)} ${unit}`
+        : ((lot.initial_quantity !== null && lot.initial_quantity !== undefined) ? `${Number(lot.initial_quantity).toFixed(3)} ${unit}` : "--");
+      const remainingQtyFormatted = lotRemainingVal !== null
+        ? `${lotRemainingVal.toFixed(3)} ${unit}`
         : "--";
       const harvestDateFormatted = formatDate(lot.harvestedAt || lot.createdAt);
       const displayName = lot.productName || lot.name || "Nông sản";
       const farmDisplay = lot.farmName || lot.farmId || "Thửa chưa gán";
+      const orgDisplay = lot.organizationName || lot.organizationId || "--";
 
       const contentArea = document.getElementById("contentArea");
 
@@ -658,6 +1112,13 @@
                 </button>
               ` : ""}
 
+              ${canSplit ? `
+                <button type="button" class="btn btn-primary" id="btnSplitDirectHero" style="height: 32px; padding: 0 14px; font-size: 13px; display: inline-flex; align-items: center; gap: 6px; cursor: pointer; border-radius: var(--radius-sm); background: #2563eb; border-color: #2563eb;" title="Tách lô hàng thành các lô con (S-17 / S-18)">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M13 6h3a2 2 0 0 1 2 2v7"/><line x1="6" y1="9" x2="6" y2="21"/></svg>
+                  <span>Tách lô</span>
+                </button>
+              ` : ""}
+
               <div class="dropdown-menu-wrapper">
                 <button type="button" class="btn-icon-kebab" id="btn-hero-more" onclick="toggleHeroDropdown(event)" title="Thao tác khác" aria-label="Thao tác khác">•••</button>
                 <div class="dropdown-popover" id="dropdown-hero-lot">
@@ -666,6 +1127,12 @@
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
                       <span>Kiểm tra toàn vẹn</span>
                     </a>
+                  ` : ""}
+                  ${canSplit ? `
+                    <button type="button" class="dropdown-item" id="btnOpenSplitFromDetail">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M13 6h3a2 2 0 0 1 2 2v7"/><line x1="6" y1="9" x2="6" y2="21"/></svg>
+                      <span>Tách lô hàng</span>
+                    </button>
                   ` : ""}
                   ${(canTransfer && !lot.pendingTransfer) ? `
                     <button type="button" class="dropdown-item" id="btnOpenTransferFromDetail" data-lot-id="${escapeHtml(lot.id)}" data-lot-name="${escapeHtml(displayName)}">
@@ -761,207 +1228,352 @@
               <span class="hero-stat-label">Thửa đất sản xuất</span>
               <span class="hero-stat-val">${escapeHtml(farmDisplay)}</span>
             </div>
-          </div>
-        </div>
-
-        <!-- Specifications Grid -->
-        <div class="details-grid">
-          <div class="info-card">
-            <h3 class="card-heading">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
-              <span>Thông tin nông sản & sản xuất</span>
-            </h3>
-            <div class="meta-row">
-              <span class="meta-key">Tên sản phẩm</span>
-              <span class="meta-val">${escapeHtml(displayName)}</span>
-            </div>
-            <div class="meta-row">
-              <span class="meta-key">Mã sản phẩm</span>
-              <span class="meta-val font-mono">${escapeHtml(lot.productId || "--")}</span>
-            </div>
-            <div class="meta-row">
-              <span class="meta-key">Đơn vị đo lường</span>
-              <span class="meta-val">${escapeHtml(unit)}</span>
-            </div>
-            <div class="meta-row">
-              <span class="meta-key">Tổ chức nắm giữ</span>
-              <span class="meta-val">${escapeHtml(lot.organizationId || "--")}</span>
-            </div>
-          </div>
-
-          <div class="info-card">
-            <h3 class="card-heading">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s-8-4.5-8-11.8A8 8 0 0 1 12 2a8 8 0 0 1 8 8.2c0 7.3-8 11.8-8 11.8z"/><circle cx="12" cy="10" r="3"/></svg>
-              <span>Thông tin thửa đất & nguồn gốc</span>
-            </h3>
-            <div class="meta-row">
-              <span class="meta-key">Tên thửa</span>
-              <span class="meta-val">${escapeHtml(farmDisplay)}</span>
-            </div>
-            <div class="meta-row">
-              <span class="meta-key">Mã thửa đất</span>
-              <span class="meta-val font-mono">${escapeHtml(lot.farmId || "--")}</span>
-            </div>
-            <div class="meta-row">
-              <span class="meta-key">Ngày ghi nhận lô</span>
-              <span class="meta-val">${formatDateTime(lot.createdAt || lot.harvestedAt)}</span>
-            </div>
-            <div class="meta-row">
-              <span class="meta-key">Toàn vẹn sự kiện</span>
-              <span class="meta-val" style="color: var(--color-primary); font-weight: 700;">Append-only Ledger</span>
+            <div class="hero-stat-item">
+              <span class="hero-stat-label">Tổ chức nắm giữ</span>
+              <span class="hero-stat-val" style="font-size: 15px;">${escapeHtml(orgDisplay)}</span>
             </div>
           </div>
         </div>
 
-        <!-- Ledger Events Timeline (S-13 / S-12) -->
-        <div class="ledger-card" id="ledgerEventsSection">
-          <div class="ledger-header">
-            <div>
-              <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 6px; flex-wrap: wrap;">
-                <h3 class="card-heading" style="margin: 0;">
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
-                  <span>Dòng thời gian sự kiện (${events.length} sự kiện)</span>
-                </h3>
-                ${events.length > 0 ? (
-                  integrity.isIntegrityValid ? `
-                    <span class="status-pill success" style="display: inline-flex; align-items: center; gap: 5px; padding: 3px 10px; font-size: 12px; font-weight: 600;">
-                      <span class="status-dot"></span> Chuỗi toàn vẹn (SHA-256)
-                    </span>
-                  ` : `
-                    <span class="status-pill danger" style="display: inline-flex; align-items: center; gap: 5px; padding: 3px 10px; font-size: 12px; font-weight: 600; background: #fee2e2; color: #dc2626; border-color: #fca5a5;">
-                      <span class="status-dot" style="background: #dc2626;"></span> Lỗi toàn vẹn dữ liệu
-                    </span>
-                  `
-                ) : ""}
+        <!-- Tab Navigation (T-59) -->
+        <div class="lot-tabs-nav" role="tablist" aria-label="Phân nhóm chi tiết lô hàng">
+          <button type="button" class="lot-tab-btn active" id="tabBtnOverview" role="tab" aria-selected="true" aria-controls="tabPaneOverview" onclick="switchLotTab('overview')">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/>
+            </svg>
+            <span>Tổng quan</span>
+          </button>
+          <button type="button" class="lot-tab-btn" id="tabBtnTimeline" role="tab" aria-selected="false" aria-controls="tabPaneTimeline" onclick="switchLotTab('timeline')">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+            </svg>
+            <span>Dòng thời gian</span>
+            <span class="tab-badge">${events.length}</span>
+          </button>
+          <button type="button" class="lot-tab-btn" id="tabBtnLineage" role="tab" aria-selected="false" aria-controls="tabPaneLineage" onclick="switchLotTab('lineage')">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/>
+            </svg>
+            <span>Nguồn gốc</span>
+            <span class="tab-badge">${(lot.parentLot ? 1 : 0) + (lot.childLots ? lot.childLots.length : 0)}</span>
+          </button>
+        </div>
+
+        <!-- Tab 1: Tổng quan (T-59) -->
+        <div class="lot-tab-pane active" id="tabPaneOverview" role="tabpanel" aria-labelledby="tabBtnOverview">
+          <div class="details-grid">
+            <div class="info-card">
+              <h3 class="card-heading">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
+                <span>Thông tin nông sản & sản xuất</span>
+              </h3>
+              <div class="meta-row">
+                <span class="meta-key">Tên sản phẩm</span>
+                <span class="meta-val">${escapeHtml(displayName)}</span>
               </div>
-              <p style="font-size: 13px; color: var(--color-text-muted); margin: 0;">Chuỗi sự kiện bất biến được liên kết bằng hàm băm mật mã cryptographic SHA-256 (K-01 / S-10 / S-13).</p>
+              <div class="meta-row">
+                <span class="meta-key">Mã sản phẩm</span>
+                <span class="meta-val font-mono">${escapeHtml(lot.productId || "--")}</span>
+              </div>
+              <div class="meta-row">
+                <span class="meta-key">Đơn vị đo lường</span>
+                <span class="meta-val">${escapeHtml(unit)}</span>
+              </div>
+              <div class="meta-row">
+                <span class="meta-key">Tổ chức nắm giữ</span>
+                <span class="meta-val">${escapeHtml(orgDisplay)}</span>
+              </div>
+              <div class="meta-row">
+                <span class="meta-key">Trạng thái</span>
+                <span class="meta-val">${escapeHtml(lot.status || "Đã thu hoạch")}</span>
+              </div>
             </div>
 
-            ${isInspectorOrAdmin ? `
-              <a href="/integrity.html?lotId=${encodeURIComponent(lot.id)}" class="btn-lot-action" style="background: rgba(36, 138, 61, 0.08); color: var(--color-primary); border-color: rgba(36, 138, 61, 0.25);">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-                <span>Kiểm tra toàn vẹn</span> &rarr;
-              </a>
-            ` : ""}
+            <div class="info-card">
+              <h3 class="card-heading">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s-8-4.5-8-11.8A8 8 0 0 1 12 2a8 8 0 0 1 8 8.2c0 7.3-8 11.8-8 11.8z"/><circle cx="12" cy="10" r="3"/></svg>
+                <span>Thông tin thửa đất & nguồn gốc</span>
+              </h3>
+              <div class="meta-row">
+                <span class="meta-key">Tên thửa</span>
+                <span class="meta-val">${escapeHtml(farmDisplay)}</span>
+              </div>
+              <div class="meta-row">
+                <span class="meta-key">Mã thửa đất</span>
+                <span class="meta-val font-mono">${escapeHtml(lot.farmId || "--")}</span>
+              </div>
+              <div class="meta-row">
+                <span class="meta-key">Ngày ghi nhận lô</span>
+                <span class="meta-val">${formatDateTime(lot.createdAt || lot.harvestedAt)}</span>
+              </div>
+              <div class="meta-row">
+                <span class="meta-key">Toàn vẹn sự kiện</span>
+                <span class="meta-val" style="color: var(--color-primary); font-weight: 700;">Append-only Ledger</span>
+              </div>
+            </div>
           </div>
+        </div>
 
-          <!-- Banner cảnh báo lỗi toàn vẹn ở đầu timeline (S-13 / T-32) -->
-          ${!integrity.isIntegrityValid ? `
-            <div class="integrity-alert-banner" id="integrityAlertBanner" style="background: #fef2f2; border: 1.5px solid #ef4444; border-radius: var(--radius-md); padding: 16px 20px; margin-bottom: 24px; display: flex; align-items: flex-start; gap: 14px; color: #991b1b; box-shadow: 0 4px 12px rgba(239, 68, 68, 0.08);">
-              <div style="flex-shrink: 0; color: #dc2626; margin-top: 2px;">
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-              </div>
-              <div style="flex-grow: 1;">
-                <div style="font-size: 15px; font-weight: 700; color: #b91c1c; margin-bottom: 4px;">
-                  ⚠️ CẢNH BÁO: CHUỖI SỰ KIỆN BỊ VI PHẠM TÍNH TOÀN VẸN
-                </div>
-                <div style="font-size: 13.5px; line-height: 1.5; color: #7f1d1d;">
-                  Phát hiện dữ liệu trong chuỗi băm bảo chứng SHA-256 của lô hàng này đã bị can thiệp, sửa đổi trái phép hoặc xóa lén sự kiện! Lô hàng không còn đảm bảo độ tin cậy.
-                </div>
-                ${integrity.integrityError ? `
-                  <div style="font-size: 13px; margin-top: 8px; font-family: monospace; background: rgba(220, 38, 38, 0.08); padding: 8px 12px; border-radius: 6px; color: #b91c1c; border-left: 3px solid #dc2626;">
-                    ${escapeHtml(integrity.integrityError)}
-                  </div>
-                ` : ""}
-              </div>
-            </div>
-          ` : ""}
-
-          ${events.length === 0 ? `
-            <div style="text-align: center; padding: 32px; color: var(--color-text-muted);">
-              Chưa có sự kiện nào được ghi nhận cho lô hàng này.
-            </div>
-          ` : `
-            <div class="timeline-list">
-              ${events.map((evt, idx) => {
-                let payloadObj = null;
-                if (evt.payload) {
-                  try {
-                    payloadObj = typeof evt.payload === "string" ? JSON.parse(evt.payload) : evt.payload;
-                  } catch (e) {
-                    payloadObj = null;
-                  }
-                }
-                const isTransfer = evt.eventType === "TRANSFER_INITIATED";
-                const isConfirmed = evt.eventType === "TRANSFER_CONFIRMED";
-                const isRejected = evt.eventType === "TRANSFER_REJECTED";
-                const isHarvest = evt.eventType === "HARVEST_CREATED";
-
-                let badgeLabel = escapeHtml(evt.eventType || "EVENT");
-                let badgeStyle = "background: rgba(36, 138, 61, 0.1); color: var(--color-primary); border-color: rgba(36, 138, 61, 0.2);";
-                let nodeStyle = "";
-
-                if (isHarvest) {
-                  badgeLabel = "🌾 Thu hoạch lô hàng (HARVEST_CREATED)";
-                  badgeStyle = "background: rgba(22, 163, 74, 0.12); color: #15803d; border-color: rgba(22, 163, 74, 0.3);";
-                } else if (isTransfer) {
-                  badgeLabel = "🔄 Bàn giao lô (TRANSFER_INITIATED)";
-                  badgeStyle = "background: rgba(245, 158, 11, 0.12); color: #b45309; border-color: rgba(245, 158, 11, 0.3);";
-                  nodeStyle = 'style="border-color: #f59e0b; color: #b45309; box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.2);"';
-                } else if (isConfirmed) {
-                  badgeLabel = "✅ Xác nhận nhận lô (TRANSFER_CONFIRMED)";
-                  badgeStyle = "background: rgba(5, 150, 105, 0.12); color: #047857; border-color: rgba(5, 150, 105, 0.3);";
-                  nodeStyle = 'style="border-color: #059669; color: #047857; box-shadow: 0 0 0 2px rgba(5, 150, 105, 0.2);"';
-                } else if (isRejected) {
-                  badgeLabel = "❌ Từ chối nhận lô (TRANSFER_REJECTED)";
-                  badgeStyle = "background: rgba(220, 38, 38, 0.12); color: #b91c1c; border-color: rgba(220, 38, 38, 0.3);";
-                  nodeStyle = 'style="border-color: #dc2626; color: #b91c1c; box-shadow: 0 0 0 2px rgba(220, 38, 38, 0.2);"';
-                }
-
-                return `
-                <div class="timeline-item">
-                  <div class="timeline-node" ${nodeStyle}>${evt.sequenceNo || (idx + 1)}</div>
-                  <div class="timeline-content">
-                    <div class="timeline-top">
-                      <span class="event-type-badge" style="${badgeStyle}">
-                        ${badgeLabel}
+        <!-- Tab 2: Dòng thời gian (T-59) -->
+        <div class="lot-tab-pane" id="tabPaneTimeline" role="tabpanel" aria-labelledby="tabBtnTimeline">
+          <!-- Ledger Events Timeline (S-13 / S-12) -->
+          <div class="ledger-card" id="ledgerEventsSection">
+            <div class="ledger-header">
+              <div>
+                <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 6px; flex-wrap: wrap;">
+                  <h3 class="card-heading" style="margin: 0;">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+                    <span>Dòng thời gian sự kiện (${events.length} sự kiện)</span>
+                  </h3>
+                  ${events.length > 0 ? (
+                    integrity.isIntegrityValid ? `
+                      <span class="status-pill success" style="display: inline-flex; align-items: center; gap: 5px; padding: 3px 10px; font-size: 12px; font-weight: 600;">
+                        <span class="status-dot"></span> Chuỗi toàn vẹn (SHA-256)
                       </span>
-                      <span class="event-time">${formatDateTime(evt.occurredAt || evt.createdAt)}</span>
+                    ` : `
+                      <span class="status-pill danger" style="display: inline-flex; align-items: center; gap: 5px; padding: 3px 10px; font-size: 12px; font-weight: 600; background: #fee2e2; color: #dc2626; border-color: #fca5a5;">
+                        <span class="status-dot" style="background: #dc2626;"></span> Lỗi toàn vẹn dữ liệu
+                      </span>
+                    `
+                  ) : ""}
+                </div>
+                <p style="font-size: 13px; color: var(--color-text-muted); margin: 0;">Chuỗi sự kiện bất biến được liên kết bằng hàm băm mật mã cryptographic SHA-256 (K-01 / S-10 / S-13).</p>
+              </div>
+
+              ${isInspectorOrAdmin ? `
+                <a href="/integrity.html?lotId=${encodeURIComponent(lot.id)}" class="btn-lot-action" style="background: rgba(36, 138, 61, 0.08); color: var(--color-primary); border-color: rgba(36, 138, 61, 0.25);">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                  <span>Kiểm tra toàn vẹn</span> &rarr;
+                </a>
+              ` : ""}
+            </div>
+
+            <!-- Banner cảnh báo lỗi toàn vẹn ở đầu timeline (S-13 / T-32) -->
+            ${!integrity.isIntegrityValid ? `
+              <div class="integrity-alert-banner" id="integrityAlertBanner" style="background: #fef2f2; border: 1.5px solid #ef4444; border-radius: var(--radius-md); padding: 16px 20px; margin-bottom: 24px; display: flex; align-items: flex-start; gap: 14px; color: #991b1b; box-shadow: 0 4px 12px rgba(239, 68, 68, 0.08);">
+                <div style="flex-shrink: 0; color: #dc2626; margin-top: 2px;">
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                </div>
+                <div style="flex-grow: 1;">
+                  <div style="font-size: 15px; font-weight: 700; color: #b91c1c; margin-bottom: 4px;">
+                    ⚠️ CẢNH BÁO: CHUỖI SỰ KIỆN BỊ VI PHẠM TÍNH TOÀN VẸN
+                  </div>
+                  <div style="font-size: 13.5px; line-height: 1.5; color: #7f1d1d;">
+                    Phát hiện dữ liệu trong chuỗi băm bảo chứng SHA-256 của lô hàng này đã bị can thiệp, sửa đổi trái phép hoặc xóa lén sự kiện! Lô hàng không còn đảm bảo độ tin cậy.
+                  </div>
+                  ${integrity.integrityError ? `
+                    <div style="font-size: 13px; margin-top: 8px; font-family: monospace; background: rgba(220, 38, 38, 0.08); padding: 8px 12px; border-radius: 6px; color: #b91c1c; border-left: 3px solid #dc2626;">
+                      ${escapeHtml(integrity.integrityError)}
                     </div>
-                    <div style="font-size: 13px; color: var(--color-text-main); margin-bottom: 6px;">
-                      <strong>Thực hiện:</strong> <span style="font-weight: 600; color: var(--color-primary);">${escapeHtml(evt.organizationName || evt.organizationId || "--")}</span>
-                      ${evt.organizationName && evt.organizationId && evt.organizationName !== evt.organizationId ? `<span style="font-size: 12px; color: var(--color-text-muted);">(${escapeHtml(evt.organizationId)})</span>` : ""}
-                      | <strong>Người thực hiện:</strong> ${escapeHtml(evt.actorUserId || "--")}
-                    </div>
-                    ${isTransfer && payloadObj ? `
-                      <div style="background: rgba(245, 158, 11, 0.06); border: 1px solid rgba(245, 158, 11, 0.2); border-radius: var(--radius-sm); padding: 10px 14px; margin-bottom: 8px; font-size: 13px; color: #78350f;">
-                        <div><strong>Bên nhận đề xuất:</strong> ${escapeHtml(payloadObj.toOrganizationName || payloadObj.toOrganizationId || "--")}</div>
-                        <div style="margin-top: 3px;"><strong>Trạng thái bàn giao:</strong> <span class="status-pill warning" style="display: inline-flex; padding: 2px 8px; font-size: 11.5px; vertical-align: middle;"><span class="status-dot"></span>Chờ xác nhận (PENDING)</span></div>
-                        ${payloadObj.notes ? `<div style="margin-top: 3px;"><strong>Ghi chú:</strong> ${escapeHtml(payloadObj.notes)}</div>` : ""}
-                        <div style="margin-top: 5px; font-size: 12px; color: #92400e; font-style: italic;">
-                          * Quyền sở hữu lô vẫn thuộc bên gửi cho đến khi bên nhận bấm Xác nhận (S-16).
-                        </div>
+                  ` : ""}
+                </div>
+              </div>
+            ` : ""}
+
+            ${events.length === 0 ? `
+              <div style="text-align: center; padding: 32px; color: var(--color-text-muted);">
+                Chưa có sự kiện nào được ghi nhận cho lô hàng này.
+              </div>
+            ` : `
+              <div class="timeline-list">
+                ${events.map((evt, idx) => {
+                  let payloadObj = null;
+                  if (evt.payload) {
+                    try {
+                      payloadObj = typeof evt.payload === "string" ? JSON.parse(evt.payload) : evt.payload;
+                    } catch (e) {
+                      payloadObj = null;
+                    }
+                  }
+                  const isTransfer = evt.eventType === "TRANSFER_INITIATED";
+                  const isConfirmed = evt.eventType === "TRANSFER_CONFIRMED";
+                  const isRejected = evt.eventType === "TRANSFER_REJECTED";
+                  const isHarvest = evt.eventType === "HARVEST_CREATED";
+
+                  let badgeLabel = escapeHtml(evt.eventType || "EVENT");
+                  let badgeStyle = "background: rgba(36, 138, 61, 0.1); color: var(--color-primary); border-color: rgba(36, 138, 61, 0.2);";
+                  let nodeStyle = "";
+
+                  if (isHarvest) {
+                    badgeLabel = "🌾 Thu hoạch lô hàng (HARVEST_CREATED)";
+                    badgeStyle = "background: rgba(22, 163, 74, 0.12); color: #15803d; border-color: rgba(22, 163, 74, 0.3);";
+                  } else if (isTransfer) {
+                    badgeLabel = "🔄 Bàn giao lô (TRANSFER_INITIATED)";
+                    badgeStyle = "background: rgba(245, 158, 11, 0.12); color: #b45309; border-color: rgba(245, 158, 11, 0.3);";
+                    nodeStyle = 'style="border-color: #f59e0b; color: #b45309; box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.2);"';
+                  } else if (isConfirmed) {
+                    badgeLabel = "✅ Xác nhận nhận lô (TRANSFER_CONFIRMED)";
+                    badgeStyle = "background: rgba(5, 150, 105, 0.12); color: #047857; border-color: rgba(5, 150, 105, 0.3);";
+                    nodeStyle = 'style="border-color: #059669; color: #047857; box-shadow: 0 0 0 2px rgba(5, 150, 105, 0.2);"';
+                  } else if (isRejected) {
+                    badgeLabel = "❌ Từ chối nhận lô (TRANSFER_REJECTED)";
+                    badgeStyle = "background: rgba(220, 38, 38, 0.12); color: #b91c1c; border-color: rgba(220, 38, 38, 0.3);";
+                    nodeStyle = 'style="border-color: #dc2626; color: #b91c1c; box-shadow: 0 0 0 2px rgba(220, 38, 38, 0.2);"';
+                  }
+
+                  return `
+                  <div class="timeline-item">
+                    <div class="timeline-node" ${nodeStyle}>${evt.sequenceNo || (idx + 1)}</div>
+                    <div class="timeline-content">
+                      <div class="timeline-top">
+                        <span class="event-type-badge" style="${badgeStyle}">
+                          ${badgeLabel}
+                        </span>
+                        <span class="event-time">${formatDateTime(evt.occurredAt || evt.createdAt)}</span>
                       </div>
-                    ` : ""}
-                    ${isConfirmed && payloadObj ? `
-                      <div style="background: rgba(5, 150, 105, 0.06); border: 1px solid rgba(5, 150, 105, 0.2); border-radius: var(--radius-sm); padding: 10px 14px; margin-bottom: 8px; font-size: 13px; color: #065f46;">
-                        <div><strong>Bên giao:</strong> ${escapeHtml(payloadObj.fromOrganizationName || payloadObj.fromOrganizationId || "--")} &rarr; <strong>Bên nhận:</strong> ${escapeHtml(payloadObj.toOrganizationName || payloadObj.toOrganizationId || "--")}</div>
-                        ${payloadObj.lateConfirmation ? `
-                          <div style="margin-top: 5px; display: inline-flex; align-items: center; gap: 6px;">
-                            <span class="status-pill danger" style="background: #fee2e2; color: #b91c1c; border: 1px solid #f87171; font-weight: 700; font-size: 11px; padding: 1px 6px;">QUÁ HẠN</span>
-                            <span style="font-weight: 600; color: #b91c1c;">Xác nhận muộn: Có</span>
+                      <div style="font-size: 13px; color: var(--color-text-main); margin-bottom: 6px;">
+                        <strong>Thực hiện:</strong> <span style="font-weight: 600; color: var(--color-primary);">${escapeHtml(evt.organizationName || evt.organizationId || "--")}</span>
+                        ${evt.organizationName && evt.organizationId && evt.organizationName !== evt.organizationId ? `<span style="font-size: 12px; color: var(--color-text-muted);">(${escapeHtml(evt.organizationId)})</span>` : ""}
+                        | <strong>Người thực hiện:</strong> ${escapeHtml(evt.actorUserId || "--")}
+                      </div>
+                      ${isTransfer && payloadObj ? `
+                        <div style="background: rgba(245, 158, 11, 0.06); border: 1px solid rgba(245, 158, 11, 0.2); border-radius: var(--radius-sm); padding: 10px 14px; margin-bottom: 8px; font-size: 13px; color: #78350f;">
+                          <div><strong>Bên nhận đề xuất:</strong> ${escapeHtml(payloadObj.toOrganizationName || payloadObj.toOrganizationId || "--")}</div>
+                          <div style="margin-top: 3px;"><strong>Trạng thái bàn giao:</strong> <span class="status-pill warning" style="display: inline-flex; padding: 2px 8px; font-size: 11.5px; vertical-align: middle;"><span class="status-dot"></span>Chờ xác nhận (PENDING)</span></div>
+                          ${payloadObj.notes ? `<div style="margin-top: 3px;"><strong>Ghi chú:</strong> ${escapeHtml(payloadObj.notes)}</div>` : ""}
+                          <div style="margin-top: 5px; font-size: 12px; color: #92400e; font-style: italic;">
+                            * Quyền sở hữu lô vẫn thuộc bên gửi cho đến khi bên nhận bấm Xác nhận (S-16).
                           </div>
-                        ` : `
-                          <div style="margin-top: 5px; font-size: 12px; color: var(--color-text-muted);">Xác nhận muộn: Không</div>
-                        `}
-                        ${payloadObj.notes ? `<div style="margin-top: 4px; font-size: 12.5px;"><strong>Ghi chú:</strong> ${escapeHtml(payloadObj.notes)}</div>` : ""}
+                        </div>
+                      ` : ""}
+                      ${isConfirmed && payloadObj ? `
+                        <div style="background: rgba(5, 150, 105, 0.06); border: 1px solid rgba(5, 150, 105, 0.2); border-radius: var(--radius-sm); padding: 10px 14px; margin-bottom: 8px; font-size: 13px; color: #065f46;">
+                          <div><strong>Bên giao:</strong> ${escapeHtml(payloadObj.fromOrganizationName || payloadObj.fromOrganizationId || "--")} &rarr; <strong>Bên nhận:</strong> ${escapeHtml(payloadObj.toOrganizationName || payloadObj.toOrganizationId || "--")}</div>
+                          ${payloadObj.lateConfirmation ? `
+                            <div style="margin-top: 5px; display: inline-flex; align-items: center; gap: 6px;">
+                              <span class="status-pill danger" style="background: #fee2e2; color: #b91c1c; border: 1px solid #f87171; font-weight: 700; font-size: 11px; padding: 1px 6px;">QUÁ HẠN</span>
+                              <span style="font-weight: 600; color: #b91c1c;">Xác nhận muộn: Có</span>
+                            </div>
+                          ` : `
+                            <div style="margin-top: 5px; font-size: 12px; color: var(--color-text-muted);">Xác nhận muộn: Không</div>
+                          `}
+                          ${payloadObj.notes ? `<div style="margin-top: 4px; font-size: 12.5px;"><strong>Ghi chú:</strong> ${escapeHtml(payloadObj.notes)}</div>` : ""}
+                        </div>
+                      ` : ""}
+                      ${isRejected && payloadObj && payloadObj.reason ? `
+                        <div style="background: rgba(220, 38, 38, 0.06); border: 1px solid rgba(220, 38, 38, 0.2); border-radius: var(--radius-sm); padding: 10px 14px; margin-bottom: 8px; font-size: 13px; color: #991b1b;">
+                          <div><strong>Lý do từ chối:</strong> <em>"${escapeHtml(payloadObj.reason)}"</em></div>
+                        </div>
+                      ` : ""}
+                      <div class="hash-row">
+                        <div><span style="font-weight: 700;">Event Hash:</span> <span class="hash-val">${escapeHtml(evt.eventHash || "--")}</span></div>
+                        <div style="margin-top: 4px;"><span style="font-weight: 700;">Prev Hash:</span> <span class="hash-val">${escapeHtml(evt.previousHash || "--")}</span></div>
                       </div>
-                    ` : ""}
-                    ${isRejected && payloadObj && payloadObj.reason ? `
-                      <div style="background: rgba(220, 38, 38, 0.06); border: 1px solid rgba(220, 38, 38, 0.2); border-radius: var(--radius-sm); padding: 10px 14px; margin-bottom: 8px; font-size: 13px; color: #991b1b;">
-                        <div><strong>Lý do từ chối:</strong> <em>"${escapeHtml(payloadObj.reason)}"</em></div>
-                      </div>
-                    ` : ""}
-                    <div class="hash-row">
-                      <div><span style="font-weight: 700;">Event Hash:</span> <span class="hash-val">${escapeHtml(evt.eventHash || "--")}</span></div>
-                      <div style="margin-top: 4px;"><span style="font-weight: 700;">Prev Hash:</span> <span class="hash-val">${escapeHtml(evt.previousHash || "--")}</span></div>
                     </div>
                   </div>
-                </div>
-              `;
-              }).join("")}
+                `;
+                }).join("")}
+              </div>
+            `}
+          </div>
+        </div>
+
+        <!-- Tab 3: Nguồn gốc (T-59) -->
+        <div class="lot-tab-pane" id="tabPaneLineage" role="tabpanel" aria-labelledby="tabBtnLineage">
+          <!-- Direct Lineage: Parent & Child Lots (Phả hệ trực tiếp) -->
+          <div class="lineage-card">
+            <div class="lineage-header">
+              <h3 class="card-heading" style="margin-bottom: 0;">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                  <line x1="6" y1="3" x2="6" y2="15"/>
+                  <circle cx="18" cy="6" r="3"/>
+                  <circle cx="6" cy="18" r="3"/>
+                  <path d="M18 9a9 9 0 0 1-9 9"/>
+                </svg>
+                <span>Phả hệ trực tiếp (Lô mẹ & Lô con)</span>
+              </h3>
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <span class="badge-role" style="background: rgba(36, 138, 61, 0.08); color: var(--color-primary); font-weight: 600; padding: 4px 10px; border-radius: var(--radius-sm);">Lô mẹ - Lô con trực tiếp</span>
+              </div>
             </div>
-          `}
+
+            <!-- Parent Lot Box -->
+            <div class="lineage-block-title">Lô mẹ trực tiếp (Nguồn gốc trực tiếp)</div>
+            ${lot.parentLot ? `
+              <div class="parent-lot-box">
+                <div class="parent-lot-info">
+                  <div class="parent-lot-code-tag">
+                    <span class="font-mono" style="font-weight: 800; color: var(--color-primary); font-size: 14px;">${escapeHtml(lot.parentLot.id)}</span>
+                    <span class="status-pill ${lot.parentLot.status === 'Đã thu hoạch' || lot.parentLot.status === 'Đã nhập kho' ? 'success' : 'warning'}" style="font-size: 11px; padding: 2px 8px;">
+                      ${escapeHtml(lot.parentLot.status || "Đã thu hoạch")}
+                    </span>
+                  </div>
+                  <div class="parent-lot-name">${escapeHtml(lot.parentLot.productName || lot.parentLot.name || "Lô mẹ")}</div>
+                  <div class="parent-lot-meta">
+                    <span><strong>Tổ chức:</strong> ${escapeHtml(lot.parentLot.organizationName || lot.parentLot.organizationId || "--")}</span>
+                    ${(() => {
+                      const pRem = (lot.parentLot.remainingQuantity !== null && lot.parentLot.remainingQuantity !== undefined)
+                        ? Number(lot.parentLot.remainingQuantity)
+                        : ((lot.parentLot.remaining_quantity !== null && lot.parentLot.remaining_quantity !== undefined) ? Number(lot.parentLot.remaining_quantity) : null);
+                      return pRem !== null ? `
+                        <span>&bull;</span>
+                        <span><strong>Khối lượng còn lại:</strong> ${pRem.toFixed(3)} ${escapeHtml(lot.parentLot.productUnit || "kg")}</span>
+                      ` : "";
+                    })()}
+                  </div>
+                </div>
+                <a href="/lot-detail.html?id=${encodeURIComponent(lot.parentLot.id)}" class="btn-goto-lineage">
+                  <span>Xem lô mẹ</span>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+                </a>
+              </div>
+            ` : `
+              <div class="lineage-empty-box">
+                <div class="lineage-empty-icon">🌱</div>
+                <div>
+                  <div style="font-weight: 600; color: var(--color-text-main);">Lô gốc F0 (Lô thu hoạch ban đầu)</div>
+                  <div style="font-size: 12.5px; color: var(--color-text-muted);">Lô hàng này được thu hoạch trực tiếp từ thửa đất sản xuất, không tách hoặc sơ chế từ lô mẹ nào.</div>
+                </div>
+              </div>
+            `}
+
+            <!-- Child Lots Section -->
+            <div class="lineage-block-title" style="margin-top: 22px;">
+              <span>Các lô con trực tiếp</span>
+              <span class="count-badge">${(lot.childLots || []).length}</span>
+            </div>
+
+            ${(lot.childLots && lot.childLots.length > 0) ? `
+              <div class="child-lots-grid">
+                ${lot.childLots.map(child => {
+                  const cRem = (child.remainingQuantity !== null && child.remainingQuantity !== undefined)
+                    ? Number(child.remainingQuantity)
+                    : ((child.remaining_quantity !== null && child.remaining_quantity !== undefined) ? Number(child.remaining_quantity) : null);
+                  return `
+                  <div class="child-lot-card">
+                    <div>
+                      <div class="child-lot-top">
+                        <span class="font-mono child-lot-code">${escapeHtml(child.id)}</span>
+                        <span class="status-pill success" style="font-size: 11px; padding: 2px 8px;">${escapeHtml(child.status || "Đã tạo")}</span>
+                      </div>
+                      <div class="child-lot-title" style="margin-top: 8px;">${escapeHtml(child.productName || child.name || "Lô con")}</div>
+                      <div class="child-lot-meta" style="margin-top: 6px;">
+                        <div><strong>Tổ chức:</strong> ${escapeHtml(child.organizationName || child.organizationId || "--")}</div>
+                        ${cRem !== null ? `
+                          <div><strong>Khối lượng:</strong> ${cRem.toFixed(3)} ${escapeHtml(child.productUnit || "kg")}</div>
+                        ` : ""}
+                      </div>
+                    </div>
+                    <div class="child-lot-footer">
+                      <a href="/lot-detail.html?id=${encodeURIComponent(child.id)}" class="child-lot-link">
+                        <span>Xem chi tiết lô con</span>
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+                      </a>
+                    </div>
+                  </div>
+                `;
+                }).join("")}
+              </div>
+            ` : `
+              <div class="lineage-empty-box">
+                <div class="lineage-empty-icon">📦</div>
+                <div>
+                  <div style="font-weight: 600; color: var(--color-text-main);">Chưa có lô con trực tiếp</div>
+                  <div style="font-size: 12.5px; color: var(--color-text-muted);">Chưa có lô hàng mới nào được phân tách, sơ chế hoặc đóng gói từ lô này.</div>
+                </div>
+              </div>
+            `}
+          </div>
         </div>
       `;
 
@@ -986,7 +1598,35 @@
           openDetailRejectModal(btnDetailReject.dataset.transferId, lot.id, displayName);
         });
       }
+
+      // S-17 / S-18: Xử lý nút Tách lô hàng (cạnh nút Bàn giao lô)
+      const btnSplitHero = document.getElementById("btnSplitDirectHero");
+      if (btnSplitHero) {
+        btnSplitHero.addEventListener("click", () => openSplitLotModal(lot));
+      }
     }
+
+    function switchLotTab(tabKey) {
+      const tabs = [
+        { key: "overview", btnId: "tabBtnOverview", paneId: "tabPaneOverview" },
+        { key: "timeline", btnId: "tabBtnTimeline", paneId: "tabPaneTimeline" },
+        { key: "lineage", btnId: "tabBtnLineage", paneId: "tabPaneLineage" },
+      ];
+
+      tabs.forEach((t) => {
+        const btn = document.getElementById(t.btnId);
+        const pane = document.getElementById(t.paneId);
+        if (btn) {
+          const isActive = t.key === tabKey;
+          btn.classList.toggle("active", isActive);
+          btn.setAttribute("aria-selected", isActive ? "true" : "false");
+        }
+        if (pane) {
+          pane.classList.toggle("active", t.key === tabKey);
+        }
+      });
+    }
+    window.switchLotTab = switchLotTab;
 
     function renderError(title, desc) {
       const contentArea = document.getElementById("contentArea");
@@ -1120,6 +1760,16 @@
           btnTransfer.addEventListener("click", () => {
             popover.classList.remove("active");
             openDetailTransferModal(btnTransfer.dataset.lotId, btnTransfer.dataset.lotName);
+          });
+        }
+
+        // Bind split button in dropdown
+        const btnSplit = document.getElementById("btnOpenSplitFromDetail");
+        if (btnSplit && !btnSplit._bound) {
+          btnSplit._bound = true;
+          btnSplit.addEventListener("click", () => {
+            popover.classList.remove("active");
+            openSplitLotModal(lotData);
           });
         }
       }
@@ -1383,7 +2033,304 @@
       });
     }
 
+    // ===== Split Lot Modal Logic (S-17 / S-18) =====
+    let splitRows = [];
+    let currentSplitLot = null;
+
+    function openSplitLotModal(lot) {
+      if (!lot) return;
+      currentSplitLot = lot;
+      const modal = document.getElementById("splitLotModal");
+      const alertBox = document.getElementById("splitModalAlert");
+      if (!modal) return;
+
+      const unit = lot.productUnit || "kg";
+      const remaining = Number(lot.remainingQuantity !== undefined ? lot.remainingQuantity : lot.remaining_quantity) || 0;
+      const displayName = lot.productName || lot.name || "Nông sản";
+
+      document.getElementById("splitParentTitle").textContent = displayName;
+      document.getElementById("splitParentLotId").textContent = lot.id;
+      document.getElementById("splitParentRemainingDisplay").textContent = `${remaining.toFixed(3)} ${unit}`;
+
+      const form = document.getElementById("splitLotForm");
+      const successBox = document.getElementById("splitSuccessContainer");
+      if (form) form.style.display = "flex";
+      if (successBox) successBox.style.display = "none";
+
+      if (alertBox) {
+        alertBox.style.display = "none";
+        alertBox.textContent = "";
+      }
+
+      // Khởi tạo 2 dòng mẫu mặc định
+      const halfQty = Number((remaining / 2).toFixed(3));
+      const otherQty = Number((remaining - halfQty).toFixed(3));
+      splitRows = [
+        { name: `${displayName} (Phần 1)`, quantity: halfQty > 0 ? halfQty : remaining, notes: "" },
+        { name: `${displayName} (Phần 2)`, quantity: otherQty > 0 ? otherQty : 0, notes: "" }
+      ];
+
+      renderSplitRows();
+      updateSplitCalculations();
+
+      modal.style.display = "flex";
+    }
+
+    function closeSplitLotModal() {
+      const modal = document.getElementById("splitLotModal");
+      if (modal) modal.style.display = "none";
+      const form = document.getElementById("splitLotForm");
+      const successBox = document.getElementById("splitSuccessContainer");
+      if (form) form.style.display = "flex";
+      if (successBox) successBox.style.display = "none";
+      currentSplitLot = null;
+    }
+
+    function renderSplitRows() {
+      const container = document.getElementById("splitRowsContainer");
+      if (!container || !currentSplitLot) return;
+      const unit = currentSplitLot.productUnit || "kg";
+
+      container.innerHTML = splitRows.map((row, idx) => `
+        <div class="split-row-item" data-idx="${idx}">
+          <div class="split-row-header">
+            <span style="font-size: 13px; font-weight: 700; color: #2563eb;">Lô con #${idx + 1}</span>
+            ${splitRows.length > 1 ? `
+              <button type="button" class="btn btn-secondary btn-sm" onclick="removeSplitRow(${idx})" style="height: 24px; padding: 0 8px; font-size: 11px; color: #dc2626; border-color: rgba(220,38,38,0.3); cursor: pointer;" title="Xóa dòng này">
+                ✕ Xóa
+              </button>
+            ` : ""}
+          </div>
+          <div style="display: grid; grid-template-columns: 2fr 1.2fr; gap: 10px; margin-bottom: 8px;">
+            <div>
+              <label style="display: block; font-size: 12px; font-weight: 600; margin-bottom: 4px; color: var(--color-text-muted);">Tên lô con</label>
+              <input type="text" class="split-name-input" data-idx="${idx}" value="${escapeHtml(row.name)}" placeholder="Nhập tên lô con..." style="width: 100%; height: 36px; padding: 0 10px; border-radius: 6px; border: 1px solid var(--color-border); font-size: 13px; box-sizing: border-box;">
+            </div>
+            <div>
+              <label style="display: block; font-size: 12px; font-weight: 600; margin-bottom: 4px; color: var(--color-text-muted);">Khối lượng (${unit}) <span style="color:#dc2626">*</span></label>
+              <input type="number" step="0.001" min="0.001" class="split-qty-input" data-idx="${idx}" value="${row.quantity !== null && row.quantity !== undefined ? row.quantity : ''}" placeholder="0.000" style="width: 100%; height: 36px; padding: 0 10px; border-radius: 6px; border: 1px solid var(--color-border); font-size: 13px; box-sizing: border-box; font-weight: 600;">
+            </div>
+          </div>
+          <div>
+            <input type="text" class="split-notes-input" data-idx="${idx}" value="${escapeHtml(row.notes || '')}" placeholder="Ghi chú phân tách / quy cách sơ chế (tùy chọn)..." style="width: 100%; height: 32px; padding: 0 10px; border-radius: 6px; border: 1px solid var(--color-border); font-size: 12px; box-sizing: border-box;">
+          </div>
+        </div>
+      `).join("");
+
+      container.querySelectorAll(".split-qty-input").forEach((input) => {
+        input.addEventListener("input", (e) => {
+          const i = parseInt(e.target.dataset.idx, 10);
+          splitRows[i].quantity = parseFloat(e.target.value) || 0;
+          updateSplitCalculations();
+        });
+      });
+
+      container.querySelectorAll(".split-name-input").forEach((input) => {
+        input.addEventListener("input", (e) => {
+          const i = parseInt(e.target.dataset.idx, 10);
+          splitRows[i].name = e.target.value;
+        });
+      });
+
+      container.querySelectorAll(".split-notes-input").forEach((input) => {
+        input.addEventListener("input", (e) => {
+          const i = parseInt(e.target.dataset.idx, 10);
+          splitRows[i].notes = e.target.value;
+        });
+      });
+    }
+
+    function addSplitRow() {
+      if (!currentSplitLot) return;
+      const displayName = currentSplitLot.productName || currentSplitLot.name || "Nông sản";
+      splitRows.push({
+        name: `${displayName} (Phần ${splitRows.length + 1})`,
+        quantity: 0,
+        notes: ""
+      });
+      renderSplitRows();
+      updateSplitCalculations();
+    }
+
+    function removeSplitRow(idx) {
+      if (splitRows.length <= 1) return;
+      splitRows.splice(idx, 1);
+      renderSplitRows();
+      updateSplitCalculations();
+    }
+
+    function updateSplitCalculations() {
+      if (!currentSplitLot) return;
+      const unit = currentSplitLot.productUnit || "kg";
+      const parentRemaining = Number(
+        currentSplitLot.remainingQuantity !== undefined ? currentSplitLot.remainingQuantity : currentSplitLot.remaining_quantity
+      ) || 0;
+
+      let totalSplit = 0;
+      let hasInvalidQty = false;
+
+      splitRows.forEach((r) => {
+        const q = Number(r.quantity);
+        if (isNaN(q) || q <= 0) {
+          hasInvalidQty = true;
+        } else {
+          totalSplit += q;
+        }
+      });
+
+      totalSplit = Number(totalSplit.toFixed(3));
+      const remainingAfter = Number((parentRemaining - totalSplit).toFixed(3));
+
+      const totalEl = document.getElementById("splitTotalDisplay");
+      const balanceEl = document.getElementById("splitBalanceDisplay");
+      const warningEl = document.getElementById("splitValidationWarning");
+      const submitBtn = document.getElementById("btnSubmitSplit");
+
+      if (totalEl) totalEl.textContent = `${totalSplit.toFixed(3)} ${unit}`;
+      if (balanceEl) {
+        balanceEl.textContent = `${remainingAfter.toFixed(3)} ${unit}`;
+        balanceEl.style.color = remainingAfter < 0 ? "#dc2626" : "var(--color-text-main)";
+      }
+
+      let errorMsg = null;
+      if (totalSplit <= 0) {
+        errorMsg = "⚠️ Vui lòng nhập khối lượng lớn hơn 0 cho các lô con.";
+      } else if (hasInvalidQty) {
+        errorMsg = "⚠️ Mỗi lô con đều phải có khối lượng lớn hơn 0.";
+      } else if (totalSplit > parentRemaining) {
+        errorMsg = `⚠️ Tổng khối lượng tách (${totalSplit.toFixed(3)} ${unit}) vượt quá khối lượng còn lại của lô mẹ (${parentRemaining.toFixed(3)} ${unit})!`;
+      }
+
+      if (warningEl) {
+        if (errorMsg) {
+          warningEl.textContent = errorMsg;
+          warningEl.style.display = "block";
+        } else {
+          warningEl.style.display = "none";
+        }
+      }
+
+      if (submitBtn) {
+        submitBtn.disabled = Boolean(errorMsg);
+      }
+    }
+
+    function setupSplitModalListeners() {
+      const btnClose = document.getElementById("btnCloseSplitModal");
+      if (btnClose) btnClose.addEventListener("click", closeSplitLotModal);
+
+      const btnCancel = document.getElementById("btnCancelSplit");
+      if (btnCancel) btnCancel.addEventListener("click", closeSplitLotModal);
+
+      const btnAddRow = document.getElementById("btnAddSplitRow");
+      if (btnAddRow) btnAddRow.addEventListener("click", addSplitRow);
+
+      const modal = document.getElementById("splitLotModal");
+      if (modal) {
+        modal.addEventListener("click", (e) => {
+          if (e.target === modal) closeSplitLotModal();
+        });
+      }
+
+      const splitForm = document.getElementById("splitLotForm");
+      if (splitForm) {
+        splitForm.addEventListener("submit", async (e) => {
+          e.preventDefault();
+          const alertBox = document.getElementById("splitModalAlert");
+          const submitBtn = document.getElementById("btnSubmitSplit");
+          if (!currentSplitLot) return;
+
+          const splitsPayload = splitRows.map((r) => ({
+            name: r.name ? r.name.trim() : "",
+            quantity: Number(r.quantity),
+            notes: r.notes ? r.notes.trim() : undefined,
+          }));
+
+          submitBtn.disabled = true;
+          submitBtn.innerHTML = "<span>Đang xử lý tách lô...</span>";
+
+          try {
+            const res = await fetch(`/api/lots/${encodeURIComponent(currentSplitLot.id)}/split`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              credentials: "same-origin",
+              body: JSON.stringify({ splits: splitsPayload }),
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.message || "Không thể tách lô hàng.");
+
+            const parentLotId = currentSplitLot.id;
+            const unit = currentSplitLot.productUnit || "kg";
+            const createdLots = data.childLots || [];
+
+            // T-41: Hiển thị giao diện kết quả với mã lô con cỡ lớn và danh sách chi tiết
+            const splitFormEl = document.getElementById("splitLotForm");
+            const splitSuccessEl = document.getElementById("splitSuccessContainer");
+            const parentRemEl = document.getElementById("splitSuccessParentRemaining");
+            const countEl = document.getElementById("splitSuccessCount");
+            const listEl = document.getElementById("splitSuccessList");
+
+            if (parentRemEl && data.parentLot) {
+              parentRemEl.textContent = `${Number(data.parentLot.remainingQuantity).toFixed(3)} ${unit}`;
+            }
+            if (countEl) countEl.textContent = createdLots.length;
+
+            if (listEl) {
+              listEl.innerHTML = createdLots.map((c) => {
+                const qtyFormatted = (c.initialQuantity !== null && c.initialQuantity !== undefined)
+                  ? `${Number(c.initialQuantity).toFixed(3)} ${unit}`
+                  : "--";
+                return `
+                  <div style="background: #ffffff; border: 1.5px solid var(--color-border); border-radius: 12px; padding: 14px 16px; box-shadow: var(--shadow-xs);">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; flex-wrap: wrap; gap: 8px;">
+                      <div style="display: flex; align-items: center; gap: 10px;">
+                        <span class="font-mono" style="font-size: 18px; font-weight: 800; color: var(--color-primary); letter-spacing: 0.05em; background: rgba(36, 138, 61, 0.08); padding: 4px 10px; border-radius: 6px; border: 1px solid rgba(36, 138, 61, 0.25);">
+                          ${escapeHtml(c.id)}
+                        </span>
+                        <button type="button" class="btn btn-outline btn-sm" onclick="copyLotCode('${escapeHtml(c.id)}')" style="height: 28px; padding: 0 8px; font-size: 11.5px; border-radius: 4px; display: inline-flex; align-items: center; gap: 4px;" title="Sao chép mã lô con">
+                          📋 <span>Chép</span>
+                        </button>
+                      </div>
+                      <span class="status-pill success" style="font-size: 11px; padding: 2px 8px;">${escapeHtml(c.status || "Đã thu hoạch")}</span>
+                    </div>
+                    <div style="font-size: 14.5px; font-weight: 700; color: var(--color-text-main); margin-top: 4px;">
+                      ${escapeHtml(c.name || "Lô con")}
+                    </div>
+                    <div style="margin-top: 6px; font-size: 12.5px; color: var(--color-text-muted); display: flex; gap: 16px; flex-wrap: wrap;">
+                      <div><strong>Khối lượng:</strong> <span style="color: var(--color-primary); font-weight: 700;">${qtyFormatted}</span></div>
+                      <div><strong>Lô mẹ:</strong> <span class="font-mono">${escapeHtml(parentLotId)}</span></div>
+                    </div>
+                  </div>
+                `;
+              }).join("");
+            }
+
+            if (splitFormEl) splitFormEl.style.display = "none";
+            if (splitSuccessEl) splitSuccessEl.style.display = "flex";
+
+            const btnFinish = document.getElementById("btnFinishSplitSuccess");
+            if (btnFinish) {
+              btnFinish.onclick = async () => {
+                closeSplitLotModal();
+                await loadLotDetail(parentLotId);
+              };
+            }
+          } catch (err) {
+            if (alertBox) {
+              alertBox.className = "alert alert-danger";
+              alertBox.style.display = "block";
+              alertBox.textContent = err.message;
+            }
+          } finally {
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = "<span>Xác nhận tách lô</span>";
+          }
+        });
+      }
+    }
+
     setupTransferModalListeners();
+    setupSplitModalListeners();
     initPage();
   </script>
 </body>
