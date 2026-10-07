@@ -1126,6 +1126,14 @@ app.get(
   requirePermission(["producer", "cooperative", "transporter", "distributor", "inspector", "org_admin", "admin"]),
   async (req, res) => {
     const lotId = req.params.id;
+    const callerOrgId = req.auth ? req.auth.organizationId || req.auth.organization_id : null;
+    const isGlobal = Boolean(
+      req.auth &&
+        (req.auth.roleId === "inspector" ||
+          req.auth.isInspector ||
+          req.auth.roleId === "admin" ||
+          req.auth.isAdmin)
+    );
     try {
       let lot = null;
       if (pool) {
@@ -1157,30 +1165,41 @@ app.get(
           return res.status(404).json({ message: "Không tìm thấy lô hàng." });
         }
 
-        const callerOrgId = req.auth ? req.auth.organizationId || req.auth.organization_id : null;
-        const isGlobal = Boolean(
-          req.auth &&
-            (req.auth.roleId === "inspector" ||
-              req.auth.isInspector ||
-              req.auth.roleId === "admin" ||
-              req.auth.isAdmin)
-        );
-
         let accessType = "CURRENT_HOLDER";
         let ancestors = [];
 
         // Nếu người gọi không phải inspector/admin và không phải tổ chức đang nắm giữ trực tiếp -> kiểm tra phả hệ/lịch sử
+        // NFR T-58: Gom toàn bộ kiểm tra quyền phả hệ / lịch sử bàn giao vào đúng 1 truy vấn SQL duy nhất (<= 3 queries tổng)
         if (!isGlobal && row.organization_id !== callerOrgId) {
-          const access = await evaluateLotAccess({
-            pool,
-            authContext: req.auth,
-            lotId,
-            inMemoryLots,
-            inMemoryOrgs,
-            skipEvents: true,
-          });
+          if (!callerOrgId) {
+            return res.status(403).json({
+              message: "Truy cập bị từ chối: bạn không có quyền xem dữ liệu của tổ chức khác.",
+            });
+          }
 
-          if (!access.allowed) {
+          const accessCheckSql = `
+            WITH RECURSIVE descendants AS (
+              SELECT id FROM lots WHERE id = $1
+              UNION
+              SELECT l.id FROM lots l
+              JOIN descendants d ON l.parent_lot_id = d.id
+              UNION
+              SELECT br.child_batch_id FROM batch_relations br
+              JOIN descendants d ON br.parent_batch_id = d.id
+            )
+            SELECT 'ANCESTOR_OF_HELD_LOT' AS access_type
+            FROM descendants d
+            JOIN lots l ON d.id = l.id
+            WHERE l.organization_id = $2 AND l.id <> $1
+            UNION ALL
+            SELECT 'PAST_HOLDER' AS access_type
+            FROM lot_transfers
+            WHERE lot_id = $1 AND (from_organization_id = $2 OR to_organization_id = $2)
+            LIMIT 1;
+          `;
+          const accessRes = await pool.query(accessCheckSql, [lotId, callerOrgId]);
+
+          if (accessRes.rows.length === 0) {
             logSecurityEvent("CROSS_TENANT_ACCESS_DENIED", {
               userId: req.auth.userId || req.auth.id,
               userEmail: req.auth.email,
@@ -1198,8 +1217,8 @@ app.get(
             });
           }
 
-          accessType = access.accessType;
-          ancestors = access.ancestors || [];
+          accessType = accessRes.rows[0].access_type;
+          ancestors = [];
         }
 
         // Lệnh 2: Lấy danh sách các lô con trực tiếp (NFR: 1 query)
@@ -1392,8 +1411,13 @@ app.get(
         };
       }
 
-      const pendingTransfer = await getPendingTransferForLot(lot.id);
-      lot.pendingTransfer = pendingTransfer;
+      const isCurrentHolder = Boolean(callerOrgId && lot && (lot.organizationId === callerOrgId || lot.organization_id === callerOrgId));
+      if (isGlobal || isCurrentHolder || !pool) {
+        const pendingTransfer = await getPendingTransferForLot(lot.id);
+        lot.pendingTransfer = pendingTransfer;
+      } else {
+        lot.pendingTransfer = null;
+      }
 
       return res.status(200).json({ lot });
     } catch (err) {
@@ -1722,6 +1746,12 @@ app.post(
           inMemoryLots.push(newLot);
           rollbackChildLots.push(newLot.id);
           createdChildLots.push(newLot);
+
+          if (inMemoryBatchRelations.some((r) => r.parentBatchId === parentLotId && r.childBatchId === childLotId)) {
+            const dupErr = new Error('duplicate key value violates unique constraint "uq_batch_relations_parent_child"');
+            dupErr.code = "23505";
+            throw dupErr;
+          }
 
           inMemoryBatchRelations.push({
             id: `rel-${crypto.randomUUID().slice(0, 12)}`,

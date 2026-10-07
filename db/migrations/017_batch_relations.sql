@@ -8,7 +8,8 @@ CREATE TABLE IF NOT EXISTS batch_relations (
     quantity NUMERIC(15, 3) NOT NULL CHECK (quantity > 0),
     organization_id VARCHAR(64) NOT NULL REFERENCES organizations(id),
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT chk_diff_batch CHECK (parent_batch_id <> child_batch_id)
+    CONSTRAINT chk_diff_batch CHECK (parent_batch_id <> child_batch_id),
+    CONSTRAINT uq_batch_relations_parent_child UNIQUE (parent_batch_id, child_batch_id)
 );
 
 CREATE INDEX IF NOT EXISTS idx_batch_relations_parent ON batch_relations(parent_batch_id);

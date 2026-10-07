@@ -53,6 +53,11 @@ test("T-39: Migration 017 creates batch_relations table with rollback", () => {
   assert.match(upSql, /parent_batch_id/i);
   assert.match(upSql, /child_batch_id/i);
   assert.match(upSql, /relation_type/i);
+  assert.match(
+    upSql,
+    /UNIQUE\s*\(\s*parent_batch_id\s*,\s*child_batch_id\s*\)/i,
+    "Migration 017 must enforce UNIQUE (parent_batch_id, child_batch_id) constraint (T-39 NFR)"
+  );
 
   assert.match(
     downSql,

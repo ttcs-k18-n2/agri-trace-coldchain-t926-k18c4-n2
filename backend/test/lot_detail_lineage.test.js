@@ -6,9 +6,6 @@ const {
   users,
   hashPassword,
   inMemoryLots,
-  inMemoryBatchEvents,
-  inMemoryProducts,
-  inMemoryFarms,
   setDatabasePool,
 } = require("../src/server");
 
@@ -225,7 +222,7 @@ test("Lot Detail Direct Lineage & Multi-tenant S-23 Access Control (GET /api/lot
 
     // Mock PostgreSQL pool to intercept and count SQL queries
     const mockPool = {
-      query: async (sql, params) => {
+      query: async (sql, _params) => {
         queryCount++;
         executedQueries.push(sql.trim().replace(/\s+/g, " "));
 
@@ -292,7 +289,7 @@ test("Lot Detail Direct Lineage & Multi-tenant S-23 Access Control (GET /api/lot
           };
         }
 
-        // Any other DB lookup (e.g., organizations or batches)
+        // Any other DB lookup (e.g., organizations or transfers)
         return { rows: [] };
       },
     };
@@ -320,6 +317,136 @@ test("Lot Detail Direct Lineage & Multi-tenant S-23 Access Control (GET /api/lot
     } finally {
       setDatabasePool(null);
     }
+  });
+
+  await t.test("7. T-58 / S-25: GET /api/lots/:id performs <= 3 SQL queries for lineage/ancestor viewing", async () => {
+    let queryCount = 0;
+    const executedQueries = [];
+
+    const mockPool = {
+      query: async (sql, _params) => {
+        queryCount++;
+        executedQueries.push(sql.trim().replace(/\s+/g, " "));
+
+        // Query 1: Lot header + parent join
+        if (sql.includes("FROM lots l") && !sql.includes("WITH RECURSIVE")) {
+          return {
+            rows: [
+              {
+                id: "LOT-SQL-ANCESTOR-ROOT",
+                name: "Lô Cà chua Bi Đà Lạt (Root)",
+                status: "Đã thu hoạch",
+                organization_id: "org-001", // Belongs to Org 1
+                farm_id: "FARM-001",
+                product_id: "PROD-TOMATO",
+                initial_quantity: "1000",
+                remaining_quantity: "200",
+                harvested_at: "2026-10-01T08:00:00.000Z",
+                created_at: "2026-10-01T08:00:00.000Z",
+                parent_lot_id: null,
+                farm_name: "Nông trại Rau sạch Đà Lạt",
+                product_name: "Cà chua Bi",
+                product_unit: "kg",
+                organization_name: "Nông trại Xanh (Org 1)",
+                parent_id: null,
+                parent_name: null,
+                parent_status: null,
+                parent_product_id: null,
+                parent_organization_id: null,
+                parent_initial_quantity: null,
+                parent_remaining_quantity: null,
+                parent_product_name: null,
+                parent_product_unit: null,
+                parent_organization_name: null,
+              },
+            ],
+          };
+        }
+
+        // Query 2: Lineage access check via recursive CTE
+        if (sql.includes("WITH RECURSIVE descendants")) {
+          return {
+            rows: [{ access_type: "ANCESTOR_OF_HELD_LOT" }],
+          };
+        }
+
+        // Query 3: Child lots
+        if (sql.includes("WHERE c.parent_lot_id = $1") || sql.includes("FROM lots c")) {
+          return {
+            rows: [
+              {
+                id: "LOT-SQL-CHILD-01",
+                name: "Lô Cà chua Sơ chế",
+                status: "Đang chế biến",
+                organization_id: "org-002",
+                product_id: "PROD-TOMATO",
+                farm_id: "FARM-001",
+                initial_quantity: "500",
+                remaining_quantity: "500",
+                harvested_at: "2026-10-02T08:00:00.000Z",
+                created_at: "2026-10-02T08:00:00.000Z",
+                parent_lot_id: "LOT-SQL-ANCESTOR-ROOT",
+                product_name: "Cà chua Bi",
+                product_unit: "kg",
+                organization_name: "HTX Chế biến (Org 2)",
+              },
+            ],
+          };
+        }
+
+        return { rows: [] };
+      },
+    };
+
+    // Caller is Org 3 (Distributor) viewing Org 1's Root lot through lineage
+    const org3Agent = await loginAs("dist@org3.vn");
+
+    try {
+      setDatabasePool(mockPool);
+      queryCount = 0;
+      executedQueries.length = 0;
+
+      const res = await org3Agent.get("/api/lots/LOT-SQL-ANCESTOR-ROOT");
+
+      assert.equal(res.status, 200);
+      assert.ok(res.body.lot);
+      assert.equal(res.body.lot.id, "LOT-SQL-ANCESTOR-ROOT");
+      assert.equal(res.body.lot.accessType, "ANCESTOR_OF_HELD_LOT");
+
+      // T-58 requirement: optimize route to <= 3 SQL queries for lineage access
+      assert.ok(
+        queryCount <= 3,
+        `Expected <= 3 SQL queries for lineage lot detail, but executed ${queryCount} queries:\n` +
+          executedQueries.map((q, idx) => `  ${idx + 1}: ${q}`).join("\n")
+      );
+    } finally {
+      setDatabasePool(null);
+    }
+  });
+
+  await t.test("8. S-25 NFR: Response time of GET /api/lots/:id is strictly under 1 second (< 1000ms)", async () => {
+    const org1Agent = await loginAs("producer@org1.vn");
+    const org3Agent = await loginAs("dist@org3.vn");
+
+    // Measure holder response time
+    const startHolder = performance.now();
+    const resHolder = await org1Agent.get("/api/lots/LOT-TEST-ROOT");
+    const elapsedHolder = performance.now() - startHolder;
+    assert.equal(resHolder.status, 200);
+    assert.ok(
+      elapsedHolder < 1000,
+      `Holder request took ${elapsedHolder.toFixed(2)}ms, exceeding 1000ms NFR limit`
+    );
+
+    // Measure lineage viewer response time
+    const startLineage = performance.now();
+    const resLineage = await org3Agent.get("/api/lots/LOT-TEST-ROOT");
+    const elapsedLineage = performance.now() - startLineage;
+    assert.equal(resLineage.status, 200);
+    assert.ok(
+      elapsedLineage < 1000,
+      `Lineage request took ${elapsedLineage.toFixed(2)}ms, exceeding 1000ms NFR limit`
+    );
   });
 });
 
