@@ -997,6 +997,8 @@
         currentUser.roleId === "admin" ||
         (currentUser.organizationId === (lot.organizationId || lot.organization_id) && !["inspector"].includes(currentUser.roleId))
       );
+      const isPending = Boolean(lot.pendingTransfer);
+      const pendingOrgName = isPending ? (lot.pendingTransfer.toOrganizationName || lot.pendingTransfer.toOrganizationId) : "";
       const canMerge = canTransfer && !isPending && remainingVal > 0;
       card.dataset.lotId = lot.id;
       card.dataset.productId = lot.productId || lot.product_id || "";
