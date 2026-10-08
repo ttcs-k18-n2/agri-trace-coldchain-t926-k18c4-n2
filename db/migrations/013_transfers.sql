@@ -27,3 +27,11 @@ CREATE INDEX IF NOT EXISTS idx_lot_transfers_from_org ON lot_transfers(from_orga
 CREATE INDEX IF NOT EXISTS idx_lot_transfers_to_org ON lot_transfers(to_organization_id);
 CREATE INDEX IF NOT EXISTS idx_lot_transfers_status ON lot_transfers(status);
 CREATE INDEX IF NOT EXISTS idx_lot_transfers_created_at ON lot_transfers(created_at DESC);
+
+-- Cấp quyền DML trên lot_transfers cho tài khoản ứng dụng agri_app
+DO $$
+BEGIN
+    IF EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = 'agri_app') THEN
+        GRANT SELECT, INSERT, UPDATE, DELETE ON lot_transfers TO agri_app;
+    END IF;
+END $$;

@@ -18,6 +18,12 @@ const {
 const { verifyBatchIntegrity } = require("./integrity_verifier");
 const { evaluateLotAccess } = require("./lot_access");
 const { markOverdueTransfers, startTransferOverdueJob } = require("./transfer_overdue_job");
+const {
+  toMilliUnits,
+  fromMilliUnits,
+  formatQuantityString,
+  validateSplitItems,
+} = require("./quantity");
 const app = express();
 const PORT = Number(process.env.PORT || 3000);
 
@@ -1449,19 +1455,17 @@ app.post(
       });
     }
 
-    // Kiểm tra từng lô con hợp lệ
-    for (let i = 0; i < splitItems.length; i++) {
-      const s = splitItems[i];
-      const q = Number(s.quantity);
-      if (isNaN(q) || q <= 0) {
-        return res.status(400).json({
-          error: "INVALID_QUANTITY",
-          message: `Khối lượng của lô con thứ ${i + 1} phải là số dương lớn hơn 0.`,
-        });
-      }
+    // Kiểm tra từng lô con và tính tổng khối lượng chuẩn xác (S-18 / T-42)
+    const splitValidation = validateSplitItems(splitItems);
+    if (!splitValidation.valid) {
+      return res.status(400).json({
+        error: splitValidation.error,
+        message: splitValidation.message,
+      });
     }
 
-    const totalSplitQuantity = splitItems.reduce((acc, s) => acc + Number(s.quantity), 0);
+    const totalSplitQuantity = splitValidation.totalQuantity;
+    const totalSplitMilli = splitValidation.totalMilli;
     const userOrgId = req.auth ? (req.auth.organizationId || req.auth.organization_id) : null;
     const userId = req.auth ? (req.auth.userId || req.auth.id) : null;
     const isAdmin = req.auth && (req.auth.roleId === "admin" || req.auth.isAdmin);
@@ -1522,7 +1526,8 @@ app.post(
         }
 
         const parentRemaining = Number(parentLot.remaining_quantity);
-        if (totalSplitQuantity > parentRemaining) {
+        const parentRemainingMilli = toMilliUnits(parentRemaining, true);
+        if (totalSplitMilli > parentRemainingMilli) {
           await client.query("ROLLBACK");
           return res.status(400).json({
             error: "EXCEEDS_REMAINING_QUANTITY",
@@ -1530,13 +1535,26 @@ app.post(
           });
         }
 
-        // 1. Trừ khối lượng còn lại của lô mẹ
-        const newRemaining = parentRemaining - totalSplitQuantity;
+        // 1. Trừ khối lượng còn lại của lô mẹ bằng phép tính NUMERIC trong PostgreSQL (T-42)
+        // kèm điều kiện remaining_quantity >= $1::numeric để phòng vệ bổ sung
         const updateParentRes = await client.query(
-          "UPDATE lots SET remaining_quantity = $1 WHERE id = $2 RETURNING *",
-          [newRemaining, parentLotId]
+          `UPDATE lots
+           SET remaining_quantity = (remaining_quantity - $1::numeric)
+           WHERE id = $2 AND remaining_quantity >= $1::numeric
+           RETURNING *`,
+          [formatQuantityString(totalSplitQuantity), parentLotId]
         );
+
+        if (updateParentRes.rowCount === 0) {
+          await client.query("ROLLBACK");
+          return res.status(400).json({
+            error: "EXCEEDS_REMAINING_QUANTITY",
+            message: `Tổng khối lượng tách (${totalSplitQuantity.toFixed(3)}) vượt quá khối lượng còn lại của lô mẹ.`,
+          });
+        }
+
         const updatedParent = updateParentRes.rows[0];
+        const newRemaining = Number(updatedParent.remaining_quantity);
 
         // 2. Tạo các lô con với mã sinh ngẫu nhiên
         const createdChildLots = [];
@@ -1698,16 +1716,17 @@ app.post(
       const parentRemaining = Number(
         parentLot.remainingQuantity !== undefined ? parentLot.remainingQuantity : parentLot.remaining_quantity
       );
-      if (totalSplitQuantity > parentRemaining) {
+      const parentRemainingMilli = toMilliUnits(parentRemaining, true);
+      if (totalSplitMilli > parentRemainingMilli) {
         return res.status(400).json({
           error: "EXCEEDS_REMAINING_QUANTITY",
           message: `Tổng khối lượng tách (${totalSplitQuantity.toFixed(3)}) vượt quá khối lượng còn lại của lô mẹ (${parentRemaining.toFixed(3)}).`,
         });
       }
 
-      // Trừ khối lượng còn lại của lô mẹ
+      // Trừ khối lượng còn lại của lô mẹ chuẩn xác theo milli-units (T-42)
       const oldRemaining = parentRemaining;
-      const newRemaining = parentRemaining - totalSplitQuantity;
+      const newRemaining = fromMilliUnits(parentRemainingMilli - totalSplitMilli);
       parentLot.remainingQuantity = newRemaining;
       if (parentLot.remaining_quantity !== undefined) parentLot.remaining_quantity = newRemaining;
 
