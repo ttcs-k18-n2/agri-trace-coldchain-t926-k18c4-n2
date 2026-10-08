@@ -2550,31 +2550,79 @@
         });
       }
 
-      const form = document.getElementById("mergeLotForm");
-      if (form) {
-        form.addEventListener("submit", (e) => {
-          e.preventDefault();
-          const checkboxes = document.querySelectorAll(".merge-lot-checkbox:checked");
-          const alertBox = document.getElementById("mergeModalAlert");
-          if (checkboxes.length === 0) {
-            if (alertBox) {
-              alertBox.className = "alert alert-warning";
-              alertBox.style.display = "block";
-              alertBox.textContent = "Vui lòng chọn ít nhất một lô hàng bổ sung để gộp.";
-            }
-            return;
+      const submitBtn = document.getElementById("btnSubmitMerge");
+      const executeMerge = async () => {
+        const checkboxes = document.querySelectorAll(".merge-lot-checkbox:checked");
+        const alertBox = document.getElementById("mergeModalAlert");
+        if (checkboxes.length === 0) {
+          if (alertBox) {
+            alertBox.className = "alert alert-warning";
+            alertBox.style.display = "block";
+            alertBox.textContent = "Vui lòng chọn ít nhất một lô hàng bổ sung để gộp.";
+          }
+          return;
+        }
+
+        if (!currentMergeLot) return;
+
+        const baseQty = Number(currentMergeLot.remainingQuantity !== undefined ? currentMergeLot.remainingQuantity : currentMergeLot.remaining_quantity) || 0;
+        const items = [{ parent_batch_id: currentMergeLot.id, take_quantity: baseQty }];
+
+        checkboxes.forEach((cb) => {
+          items.push({
+            parent_batch_id: cb.value,
+            take_quantity: Number(cb.dataset.quantity || 0),
+          });
+        });
+
+        try {
+          if (submitBtn) {
+            submitBtn.disabled = true;
+            submitBtn.textContent = "Đang gộp lô...";
+          }
+
+          const res = await fetch("/api/lots/merge", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            credentials: "same-origin",
+            body: JSON.stringify({ items }),
+          });
+
+          const data = await res.json();
+          if (!res.ok) {
+            throw new Error(data.message || data.error || "Gộp lô không thành công.");
           }
 
           if (alertBox) {
-            alertBox.className = "alert alert-info";
+            alertBox.className = "alert alert-success";
             alertBox.style.display = "block";
             alertBox.innerHTML = `
-              <strong>✓ Đã chuẩn bị sáp nhập ${checkboxes.length + 1} lô hàng.</strong><br>
-              Các lô thành phần đã được kiểm tra tính hợp lệ về chủng loại và phả hệ.
+              <strong>✓ Gộp lô thành công!</strong><br>
+              Lô mới tạo: <strong>${escapeHtml(data.lot.id)}</strong>.<br>
+              Đang chuyển hướng sang chi tiết lô mới...
             `;
           }
-        });
-      }
+
+          setTimeout(() => {
+            window.location.href = `/lot-detail.html?id=${encodeURIComponent(data.lot.id)}`;
+          }, 1200);
+        } catch (err) {
+          if (alertBox) {
+            alertBox.className = "alert alert-danger";
+            alertBox.style.display = "block";
+            alertBox.textContent = err.message;
+          }
+        } finally {
+          if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.textContent = "Tiến hành gộp lô";
+          }
+        }
+      };
+
+      if (submitBtn) submitBtn.addEventListener("click", executeMerge);
+      const form = document.getElementById("mergeLotForm");
+      if (form) form.addEventListener("submit", (e) => { e.preventDefault(); executeMerge(); });
     }
 
     setupTransferModalListeners();

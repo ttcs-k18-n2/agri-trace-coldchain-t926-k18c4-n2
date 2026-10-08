@@ -218,6 +218,99 @@
       text-decoration: underline;
     }
 
+    /* Multi-select & Merge Bar (S-19 / Task T-46) */
+    .lot-card.selectable {
+      position: relative;
+      cursor: pointer;
+      user-select: none;
+    }
+    .lot-card.selectable.selected {
+      border-color: #7c3aed;
+      background: rgba(124, 58, 237, 0.03);
+      box-shadow: 0 0 0 2px rgba(124, 58, 237, 0.25);
+    }
+    .lot-card .lot-select-checkbox {
+      width: 18px;
+      height: 18px;
+      cursor: pointer;
+      accent-color: #7c3aed;
+      display: none;
+    }
+    .multi-select-active .lot-card .lot-select-checkbox {
+      display: inline-block;
+    }
+    .multi-select-bar {
+      position: sticky;
+      bottom: 24px;
+      z-index: 100;
+      background: #1e1b4b;
+      color: #fff;
+      padding: 12px 20px;
+      border-radius: var(--radius-lg);
+      box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3), 0 8px 10px -6px rgba(0, 0, 0, 0.2);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      margin-top: 20px;
+      animation: slideUp 0.2s ease-out;
+    }
+    @keyframes slideUp {
+      from { transform: translateY(20px); opacity: 0; }
+      to { transform: translateY(0); opacity: 1; }
+    }
+    .btn-merge-action {
+      background: #7c3aed;
+      color: #fff;
+      border: none;
+      padding: 8px 18px;
+      border-radius: var(--radius-md);
+      font-weight: 600;
+      font-size: 13.5px;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      cursor: pointer;
+      transition: background 0.15s ease;
+    }
+    .btn-merge-action:hover:not(:disabled) {
+      background: #6d28d9;
+    }
+    .btn-merge-action:disabled {
+      background: #475569;
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+    .merge-input-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+      margin-top: 8px;
+    }
+    .merge-input-table th {
+      background: #f8fafc;
+      padding: 8px 10px;
+      border-bottom: 1px solid var(--color-border);
+      text-align: left;
+      font-weight: 600;
+      color: var(--color-text-muted);
+    }
+    .merge-input-table td {
+      padding: 10px;
+      border-bottom: 1px solid var(--color-border-subtle);
+      vertical-align: middle;
+    }
+    .merge-qty-input {
+      width: 110px;
+      padding: 6px 10px;
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-sm);
+      font-weight: 600;
+      color: #7c3aed;
+      font-size: 13.5px;
+      text-align: right;
+    }
+
     /* Empty state - Clean Content Surface */
     .empty-state {
       text-align: center;
@@ -340,6 +433,10 @@
         <p class="page-subtitle">Giám sát danh sách lô thu hoạch theo phân quyền tổ chức</p>
       </div>
       <div class="page-actions">
+        <button type="button" class="btn-secondary" id="btnToggleMultiSelect" style="display: none; border: 1px solid #7c3aed; color: #7c3aed; font-weight: 600; background: #fff;">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+          <span id="btnToggleMultiSelectText">Chọn nhiều để gộp lô</span>
+        </button>
         <a href="/harvest.html" class="btn-primary" id="btnGoHarvest">
           <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
           <span>Ghi nhận thu hoạch</span>
@@ -584,6 +681,117 @@
         </div>
       </div>
     </div>
+
+    <!-- Multi-select Bottom Action Bar (S-19 / Task T-46) -->
+    <div id="multiSelectBar" class="multi-select-bar" style="display: none;">
+      <div style="display: flex; align-items: center; gap: 14px;">
+        <span style="font-size: 18px;">📦</span>
+        <div>
+          <div style="font-size: 14px; font-weight: 700;">
+            Đã chọn <span id="selectedLotsCount" style="color: #a78bfa;">0</span> lô hàng
+          </div>
+          <div id="multiSelectWarning" style="font-size: 12px; color: #cbd5e1;">
+            Chọn ít nhất 2 lô cùng loại sản phẩm để gộp.
+          </div>
+        </div>
+      </div>
+      <div style="display: flex; align-items: center; gap: 10px;">
+        <button type="button" class="btn btn-secondary" id="btnCancelSelection" style="background: rgba(255, 255, 255, 0.12); color: #fff; border: 1px solid rgba(255, 255, 255, 0.25); height: 36px; padding: 0 14px; font-size: 13px;">
+          Bỏ chọn
+        </button>
+        <button type="button" class="btn-merge-action" id="btnOpenMergeModal" disabled title="Vui lòng chọn ít nhất 2 lô cùng sản phẩm để gộp">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3v3a2 2 0 0 1-2 2H3"/><path d="M21 8h-3a2 2 0 0 1-2-2V3"/><path d="M3 16h3a2 2 0 0 1 2 2v3"/><path d="M16 21v-3a2 2 0 0 1 2-2h3"/></svg>
+          <span>Gộp các lô đã chọn (S-19)</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Modal Gộp Lô Hàng (S-19 / Task T-46) -->
+    <div id="mergeLotsModal" class="modal-backdrop" style="display: none;">
+      <div class="modal-card" style="max-width: 680px; width: 100%;">
+        <div class="modal-header">
+          <div>
+            <h3 class="modal-title" style="color: #7c3aed; display: flex; align-items: center; gap: 8px;">
+              <span>🔀</span> Gộp nhiều lô thành một lô lớn (S-19)
+            </h3>
+            <div style="font-size: 12px; color: var(--color-text-muted); margin-top: 2px;">
+              Sáp nhập số lượng từ các lô mẹ cùng loại nông sản, bảo lưu liên kết phả hệ bất biến
+            </div>
+          </div>
+          <button type="button" class="btn-icon" id="btnCloseMergeLotsModal" title="Đóng" style="background: none; border: none; font-size: 18px; cursor: pointer; color: var(--color-text-muted);">✕</button>
+        </div>
+        <form id="mergeLotsForm">
+          <div class="modal-body" style="max-height: 70vh; overflow-y: auto;">
+            <div id="mergeLotsModalAlert" style="display: none; margin-bottom: 16px;"></div>
+
+            <!-- Header Info -->
+            <div style="background: rgba(124, 58, 237, 0.05); border: 1px solid rgba(124, 58, 237, 0.2); border-radius: var(--radius-md); padding: 12px 16px; margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+              <div>
+                <div style="font-size: 11px; text-transform: uppercase; font-weight: 700; color: #7c3aed; letter-spacing: 0.05em;">Sản phẩm áp dụng</div>
+                <div style="font-size: 15px; font-weight: 700; color: var(--color-text-main);" id="mergeProductNameDisplay">--</div>
+              </div>
+              <div style="text-align: right;">
+                <div style="font-size: 11px; text-transform: uppercase; font-weight: 700; color: #7c3aed; letter-spacing: 0.05em;">Tổng khối lượng lô mới</div>
+                <div style="font-size: 20px; font-weight: 800; color: #7c3aed;" id="mergeCalculatedTotalDisplay">0.000 kg</div>
+              </div>
+            </div>
+
+            <div class="form-group" style="margin-bottom: 14px;">
+              <label class="form-label" for="mergeNewLotName" style="display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px;">
+                Tên lô hàng mới (tùy chọn)
+              </label>
+              <input type="text" id="mergeNewLotName" class="form-control" placeholder="Để trống hệ thống sẽ tự đặt tên theo lô gộp..." style="width: 100%; height: 38px; padding: 0 12px; border-radius: var(--radius-md); border: 1px solid var(--color-border); font-size: 13.5px; box-sizing: border-box;">
+            </div>
+
+            <div class="form-group" style="margin-bottom: 16px;">
+              <label class="form-label" style="display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px;">
+                Danh sách các lô thành phần & Khối lượng lấy <span style="color: #dc2626;">*</span>
+              </label>
+              <table class="merge-input-table">
+                <thead>
+                  <tr>
+                    <th>Mã lô mẹ</th>
+                    <th>Hiện có</th>
+                    <th style="text-align: right;">Khối lượng lấy</th>
+                  </tr>
+                </thead>
+                <tbody id="mergeModalItemsTableBody">
+                  <!-- Rendered dynamically -->
+                </tbody>
+              </table>
+              <small style="color: var(--color-text-light); font-size: 12px; display: block; margin-top: 6px;">
+                Mặc định điền sẵn toàn bộ số lượng còn lại. Bạn có thể sửa để <strong>gộp một phần</strong>.
+              </small>
+            </div>
+
+            <div class="form-group" style="margin-bottom: 14px;">
+              <label class="form-label" for="mergeNotes" style="display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px;">
+                Ghi chú sáp nhập
+              </label>
+              <textarea id="mergeNotes" class="form-control" rows="2" placeholder="Ghi chú thêm về lý do gộp lô hoặc kho bảo quản tập trung..." style="width: 100%; padding: 8px 12px; border-radius: var(--radius-md); border: 1px solid var(--color-border); font-size: 13px; font-family: inherit; resize: vertical; box-sizing: border-box;"></textarea>
+            </div>
+
+            <!-- Success Box (Task T-46) -->
+            <div id="mergeSuccessBox" style="display: none; background: #ecfdf5; border: 1px solid #10b981; border-radius: var(--radius-md); padding: 16px; margin-top: 14px; text-align: center;">
+              <div style="font-size: 28px; margin-bottom: 4px;">🎉</div>
+              <div style="font-size: 16px; font-weight: 700; color: #065f46;">Gộp lô hàng thành công!</div>
+              <div style="font-size: 13px; color: #047857; margin-top: 4px;">Mã lô lớn mới vừa tạo:</div>
+              <div id="mergeNewLotCodeDisplay" style="font-size: 22px; font-weight: 800; font-family: monospace; color: #059669; margin: 8px 0; letter-spacing: 0.05em;">--</div>
+              <div style="display: flex; gap: 8px; justify-content: center; margin-top: 12px;">
+                <a id="btnViewNewMergedLot" href="#" class="btn btn-primary" style="background: #10b981; border-color: #10b981; font-size: 13px; height: 34px; padding: 0 16px;">Xem chi tiết lô mới</a>
+                <button type="button" class="btn btn-secondary" id="btnDoneMergeModal" style="font-size: 13px; height: 34px; padding: 0 16px;">Hoàn tất</button>
+              </div>
+            </div>
+          </div>
+          <div class="modal-footer" id="mergeModalFooter" style="display: flex; justify-content: flex-end; gap: 10px; padding: 14px 22px; border-top: 1px solid var(--color-border);">
+            <button type="button" class="btn btn-secondary" id="btnCancelMergeModal" style="height: 38px; padding: 0 16px;">Hủy bỏ</button>
+            <button type="submit" class="btn-merge-action" id="btnSubmitMergeForm" style="height: 38px; padding: 0 20px;">
+              <span>Xác nhận gộp lô</span>
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
   </main>
 
   <script src="/app-shell.js"></script>
@@ -594,6 +802,9 @@
     let debounceTimer = null;
     let totalLoadedCount = 0;
     let currentUser = null;
+    let isMultiSelectActive = false;
+    const selectedLotIds = new Set();
+    let loadedLotsMap = new Map();
 
     async function loadPage() {
       try {
@@ -608,6 +819,12 @@
         const harvestButton = document.getElementById("btnGoHarvest");
         if (harvestButton) {
           harvestButton.style.display = canHarvest ? "" : "none";
+        }
+
+        const canMergeRole = ["producer", "cooperative", "distributor", "org_admin", "admin"].includes(currentUser.roleId);
+        const toggleMultiBtn = document.getElementById("btnToggleMultiSelect");
+        if (toggleMultiBtn) {
+          toggleMultiBtn.style.display = canMergeRole ? "inline-flex" : "none";
         }
 
         // 2. Tải danh mục sản phẩm vào dropdown lọc
@@ -705,6 +922,7 @@
         hasMore = Boolean(data.hasMore);
 
         if (isReset) {
+          loadedLotsMap.clear();
           lotsContainer.innerHTML = "";
           if (lots.length === 0) {
             lotsContainer.innerHTML = `
@@ -721,9 +939,12 @@
         }
 
         lots.forEach((lot) => {
+          loadedLotsMap.set(lot.id, lot);
           renderLotCard(lot, lotsContainer);
           totalLoadedCount++;
         });
+
+        updateMultiSelectBar();
 
         document.getElementById("statTotalLots").textContent = totalLoadedCount;
 
@@ -776,13 +997,28 @@
         currentUser.roleId === "admin" ||
         (currentUser.organizationId === (lot.organizationId || lot.organization_id) && !["inspector"].includes(currentUser.roleId))
       );
-      const isPending = Boolean(lot.pendingTransfer);
-      const pendingOrgName = isPending ? (lot.pendingTransfer.toOrganizationName || lot.pendingTransfer.toOrganizationId) : "";
+      const canMerge = canTransfer && !isPending && remainingVal > 0;
+      card.dataset.lotId = lot.id;
+      card.dataset.productId = lot.productId || lot.product_id || "";
+      card.dataset.remainingQuantity = remainingVal !== null ? remainingVal : 0;
+      card.dataset.unit = unit;
+      card.dataset.name = displayName;
+      card.dataset.canMerge = canMerge ? "true" : "false";
+
+      if (isMultiSelectActive && canMerge) {
+        card.classList.add("selectable");
+        if (selectedLotIds.has(lot.id)) {
+          card.classList.add("selected");
+        }
+      }
 
       card.innerHTML = `
         <div>
           <div class="lot-card-top">
-            <span class="lot-code-tag">${lot.id}</span>
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <input type="checkbox" class="lot-select-checkbox" data-lot-id="${escapeHtml(lot.id)}" ${selectedLotIds.has(lot.id) ? "checked" : ""} ${!canMerge ? "disabled" : ""} title="${canMerge ? "Chọn lô để gộp" : "Không thể chọn lô này để gộp"}">
+              <span class="lot-code-tag">${lot.id}</span>
+            </div>
             ${isPending ? `
               <div style="display: flex; gap: 4px; align-items: center; flex-wrap: wrap;">
                 <span class="status-pill warning" title="Đang chờ ${escapeHtml(pendingOrgName)} xác nhận bàn giao">
@@ -941,6 +1177,26 @@
           alert(`Lô ${lot.id} đang có yêu cầu bàn giao chờ xác nhận tới: ${pendingOrgName}.\nQuyền sở hữu chỉ chuyển giao sau khi bên nhận xác nhận (S-16).`);
         });
       }
+
+      // Xử lý sự kiện chọn thẻ lô khi đang ở chế độ multi-select (Task T-46)
+      const selectCheckbox = card.querySelector(".lot-select-checkbox");
+      if (selectCheckbox) {
+        selectCheckbox.addEventListener("click", (e) => {
+          e.stopPropagation();
+          toggleLotSelection(lot.id);
+        });
+      }
+
+      card.addEventListener("click", (e) => {
+        if (!isMultiSelectActive) return;
+        // Nếu bấm vào các nút hành động con thì không kích hoạt chọn
+        if (e.target.closest("button") || e.target.closest("a") || e.target.closest(".dropdown-popover")) {
+          return;
+        }
+        if (canMerge) {
+          toggleLotSelection(lot.id);
+        }
+      });
 
       container.appendChild(card);
     }
@@ -1722,6 +1978,348 @@
         .replace(/'/g, "&#039;");
     }
 
+    // ===== S-19 / Task T-46: Multi-Select & Merge Lots Logic =====
+
+    function toggleMultiSelectMode() {
+      isMultiSelectActive = !isMultiSelectActive;
+      const bodyEl = document.body;
+      const toggleBtn = document.getElementById("btnToggleMultiSelect");
+      const toggleText = document.getElementById("btnToggleMultiSelectText");
+      const multiBar = document.getElementById("multiSelectBar");
+
+      if (isMultiSelectActive) {
+        bodyEl.classList.add("multi-select-active");
+        if (toggleBtn) {
+          toggleBtn.style.background = "#7c3aed";
+          toggleBtn.style.color = "#fff";
+        }
+        if (toggleText) toggleText.textContent = "Hủy chế độ gộp lô";
+        if (multiBar) multiBar.style.display = "flex";
+      } else {
+        bodyEl.classList.remove("multi-select-active");
+        if (toggleBtn) {
+          toggleBtn.style.background = "#fff";
+          toggleBtn.style.color = "#7c3aed";
+        }
+        if (toggleText) toggleText.textContent = "Chọn nhiều để gộp lô";
+        if (multiBar) multiBar.style.display = "none";
+        clearLotSelection();
+      }
+
+      // Cập nhật lại giao diện các thẻ lô
+      document.querySelectorAll(".lot-card").forEach((card) => {
+        const canMerge = card.dataset.canMerge === "true";
+        if (isMultiSelectActive && canMerge) {
+          card.classList.add("selectable");
+        } else {
+          card.classList.remove("selectable");
+          card.classList.remove("selected");
+          const cb = card.querySelector(".lot-select-checkbox");
+          if (cb) cb.checked = false;
+        }
+      });
+    }
+
+    function toggleLotSelection(lotId) {
+      if (!lotId) return;
+      const card = document.querySelector(`.lot-card[data-lot-id="${lotId}"]`);
+      const cb = card ? card.querySelector(".lot-select-checkbox") : null;
+
+      if (selectedLotIds.has(lotId)) {
+        selectedLotIds.delete(lotId);
+        if (card) card.classList.remove("selected");
+        if (cb) cb.checked = false;
+      } else {
+        selectedLotIds.add(lotId);
+        if (card) card.classList.add("selected");
+        if (cb) cb.checked = true;
+
+        // Tự động kích hoạt bộ lọc theo sản phẩm của lô đầu tiên được chọn (Task T-46 AC1)
+        if (selectedLotIds.size === 1) {
+          const selectedLot = loadedLotsMap.get(lotId);
+          if (selectedLot && (selectedLot.productId || selectedLot.product_id)) {
+            const prodId = selectedLot.productId || selectedLot.product_id;
+            const filterSelect = document.getElementById("productFilter");
+            if (filterSelect && filterSelect.value !== prodId) {
+              filterSelect.value = prodId;
+            }
+          }
+        }
+      }
+
+      updateMultiSelectBar();
+    }
+
+    function clearLotSelection() {
+      selectedLotIds.clear();
+      document.querySelectorAll(".lot-card").forEach((card) => {
+        card.classList.remove("selected");
+        const cb = card.querySelector(".lot-select-checkbox");
+        if (cb) cb.checked = false;
+      });
+      updateMultiSelectBar();
+    }
+
+    function updateMultiSelectBar() {
+      const bar = document.getElementById("multiSelectBar");
+      const countEl = document.getElementById("selectedLotsCount");
+      const btnMerge = document.getElementById("btnOpenMergeModal");
+      const warningEl = document.getElementById("multiSelectWarning");
+      if (!bar || !countEl || !btnMerge || !warningEl) return;
+
+      const count = selectedLotIds.size;
+      countEl.textContent = count;
+
+      if (count === 0) {
+        btnMerge.disabled = true;
+        btnMerge.title = "Vui lòng chọn ít nhất 2 lô cùng sản phẩm để gộp";
+        warningEl.textContent = "Chọn ít nhất 2 lô cùng loại sản phẩm để gộp.";
+        warningEl.style.color = "#cbd5e1";
+        return;
+      }
+
+      // Kiểm tra sản phẩm của các lô đã chọn (Task T-46 AC1)
+      const selectedLots = Array.from(selectedLotIds).map((id) => loadedLotsMap.get(id)).filter(Boolean);
+      const productIds = new Set(selectedLots.map((l) => l.productId || l.product_id));
+
+      if (productIds.size > 1) {
+        btnMerge.disabled = true;
+        const msg = "Không thể gộp: Các lô được chọn khác loại sản phẩm!";
+        btnMerge.title = msg;
+        warningEl.textContent = msg;
+        warningEl.style.color = "#f87171"; // Đỏ cảnh báo
+      } else if (count < 2) {
+        btnMerge.disabled = true;
+        const msg = "Cần chọn thêm ít nhất 1 lô cùng sản phẩm nữa để đủ điều kiện gộp.";
+        btnMerge.title = msg;
+        warningEl.textContent = msg;
+        warningEl.style.color = "#cbd5e1";
+      } else {
+        btnMerge.disabled = false;
+        btnMerge.title = "Bấm để mở form gộp các lô đã chọn";
+        const firstLot = selectedLots[0];
+        const pName = firstLot.productName || firstLot.name || "Nông sản";
+        warningEl.textContent = `Hợp lệ: ${count} lô cùng loại ${pName} đã sẵn sàng gộp.`;
+        warningEl.style.color = "#34d399"; // Xanh hợp lệ
+      }
+    }
+
+    // ===== Merge Modal Functions (Task T-46 AC2 & AC3) =====
+    function openMergeLotsModal() {
+      const modal = document.getElementById("mergeLotsModal");
+      const tableBody = document.getElementById("mergeModalItemsTableBody");
+      const alertBox = document.getElementById("mergeLotsModalAlert");
+      const successBox = document.getElementById("mergeSuccessBox");
+      const footer = document.getElementById("mergeModalFooter");
+      const prodDisplay = document.getElementById("mergeProductNameDisplay");
+      if (!modal || !tableBody) return;
+
+      if (alertBox) {
+        alertBox.style.display = "none";
+        alertBox.textContent = "";
+      }
+      if (successBox) successBox.style.display = "none";
+      if (footer) footer.style.display = "flex";
+
+      const selectedLots = Array.from(selectedLotIds).map((id) => loadedLotsMap.get(id)).filter(Boolean);
+      if (selectedLots.length < 2) {
+        alert("Vui lòng chọn ít nhất 2 lô để gộp.");
+        return;
+      }
+
+      const first = selectedLots[0];
+      const prodName = first.productName || first.name || "Nông sản";
+      const unit = first.productUnit || first.product_unit || "kg";
+      if (prodDisplay) {
+        prodDisplay.textContent = `${prodName} (${unit})`;
+      }
+
+      const defaultMergedTitle = `Lô ${prodName} Gộp (${selectedLots.length} lô)`;
+      const nameInput = document.getElementById("mergeNewLotName");
+      if (nameInput) nameInput.value = defaultMergedTitle;
+
+      // Render từng dòng lô với ô input khối lượng lấy (mặc định điền sẵn toàn bộ số lượng còn lại)
+      tableBody.innerHTML = selectedLots.map((lot) => {
+        const remaining = Number(lot.remainingQuantity !== undefined ? lot.remainingQuantity : lot.remaining_quantity) || 0;
+        const displayName = lot.productName || lot.name || lot.id;
+        return `
+          <tr class="merge-item-row" data-lot-id="${escapeHtml(lot.id)}" data-max="${remaining}">
+            <td>
+              <div style="font-weight: 700; color: var(--color-text-main);">${escapeHtml(displayName)}</div>
+              <div style="font-family: monospace; font-size: 11.5px; color: var(--color-text-muted);">${escapeHtml(lot.id)}</div>
+            </td>
+            <td>
+              <span style="font-weight: 600; color: var(--color-primary);">${remaining.toFixed(3)}</span> ${unit}
+            </td>
+            <td style="text-align: right;">
+              <input type="number" step="any" min="0.001" max="${remaining}" value="${remaining}" class="merge-qty-input" data-lot-id="${escapeHtml(lot.id)}" required>
+            </td>
+          </tr>
+        `;
+      }).join("");
+
+      // Lắng nghe thay đổi khối lượng để tự động tính tổng (Task T-46 AC2)
+      const inputs = tableBody.querySelectorAll(".merge-qty-input");
+      inputs.forEach((input) => {
+        input.addEventListener("input", recalculateMergeTotal);
+      });
+
+      recalculateMergeTotal();
+      modal.style.display = "flex";
+    }
+
+    function recalculateMergeTotal() {
+      const inputs = document.querySelectorAll("#mergeModalItemsTableBody .merge-qty-input");
+      const totalDisplay = document.getElementById("mergeCalculatedTotalDisplay");
+      let total = 0;
+      let unit = "kg";
+
+      inputs.forEach((inp) => {
+        const val = parseFloat(inp.value);
+        if (!isNaN(val) && val > 0) {
+          total += val;
+        }
+      });
+
+      const selectedLots = Array.from(selectedLotIds).map((id) => loadedLotsMap.get(id)).filter(Boolean);
+      if (selectedLots.length > 0) {
+        unit = selectedLots[0].productUnit || selectedLots[0].product_unit || "kg";
+      }
+
+      if (totalDisplay) {
+        totalDisplay.textContent = `${total.toFixed(3)} ${unit}`;
+      }
+    }
+
+    function closeMergeLotsModal() {
+      const modal = document.getElementById("mergeLotsModal");
+      if (modal) modal.style.display = "none";
+    }
+
+    async function handleMergeLotsSubmit(e) {
+      e.preventDefault();
+      const alertBox = document.getElementById("mergeLotsModalAlert");
+      const successBox = document.getElementById("mergeSuccessBox");
+      const footer = document.getElementById("mergeModalFooter");
+      const submitBtn = document.getElementById("btnSubmitMergeForm");
+
+      if (alertBox) {
+        alertBox.style.display = "none";
+        alertBox.textContent = "";
+      }
+
+      const rows = document.querySelectorAll("#mergeModalItemsTableBody .merge-item-row");
+      const items = [];
+
+      for (const row of rows) {
+        const lotId = row.dataset.lotId;
+        const max = parseFloat(row.dataset.max);
+        const input = row.querySelector(".merge-qty-input");
+        const qty = parseFloat(input.value);
+
+        if (isNaN(qty) || qty <= 0) {
+          if (alertBox) {
+            alertBox.className = "alert alert-danger";
+            alertBox.style.display = "block";
+            alertBox.textContent = `Khối lượng lấy của lô [${lotId}] phải lớn hơn 0.`;
+          }
+          input.focus();
+          return;
+        }
+
+        if (qty > max) {
+          if (alertBox) {
+            alertBox.className = "alert alert-danger";
+            alertBox.style.display = "block";
+            alertBox.textContent = `Khối lượng lấy (${qty}) vượt quá khối lượng còn lại (${max}) của lô [${lotId}].`;
+          }
+          input.focus();
+          return;
+        }
+
+        items.push({ parent_batch_id: lotId, take_quantity: qty });
+      }
+
+      const name = document.getElementById("mergeNewLotName").value.trim() || undefined;
+      const notes = document.getElementById("mergeNotes").value.trim() || undefined;
+
+      try {
+        if (submitBtn) {
+          submitBtn.disabled = true;
+          submitBtn.innerHTML = `<span>Đang thực hiện gộp lô...</span>`;
+        }
+
+        const res = await fetch("/api/lots/merge", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "same-origin",
+          body: JSON.stringify({ items, name, notes }),
+        });
+
+        const data = await res.json();
+
+        if (!res.ok) {
+          throw new Error(data.message || data.error || "Gộp lô hàng không thành công.");
+        }
+
+        // Thành công: Hiển thị giao diện kết quả kèm mã lô mới (Task T-46 AC3)
+        const newLot = data.lot;
+        if (successBox) {
+          successBox.style.display = "block";
+          document.getElementById("mergeNewLotCodeDisplay").textContent = newLot.id;
+          const detailBtn = document.getElementById("btnViewNewMergedLot");
+          if (detailBtn) detailBtn.href = `/lot-detail.html?id=${encodeURIComponent(newLot.id)}`;
+        }
+
+        if (footer) footer.style.display = "none";
+
+        // Tải lại danh sách lô để cập nhật số dư các lô cũ
+        await fetchLots(true);
+        clearLotSelection();
+      } catch (err) {
+        if (alertBox) {
+          alertBox.className = "alert alert-danger";
+          alertBox.style.display = "block";
+          alertBox.textContent = err.message;
+        }
+      } finally {
+        if (submitBtn) {
+          submitBtn.disabled = false;
+          submitBtn.innerHTML = `<span>Xác nhận gộp lô</span>`;
+        }
+      }
+    }
+
+    function setupMergeLotListeners() {
+      const toggleBtn = document.getElementById("btnToggleMultiSelect");
+      if (toggleBtn) toggleBtn.addEventListener("click", toggleMultiSelectMode);
+
+      const cancelSelBtn = document.getElementById("btnCancelSelection");
+      if (cancelSelBtn) cancelSelBtn.addEventListener("click", clearLotSelection);
+
+      const openModalBtn = document.getElementById("btnOpenMergeModal");
+      if (openModalBtn) openModalBtn.addEventListener("click", openMergeLotsModal);
+
+      const closeModalBtn = document.getElementById("btnCloseMergeLotsModal");
+      if (closeModalBtn) closeModalBtn.addEventListener("click", closeMergeLotsModal);
+
+      const cancelModalBtn = document.getElementById("btnCancelMergeModal");
+      if (cancelModalBtn) cancelModalBtn.addEventListener("click", closeMergeLotsModal);
+
+      const doneModalBtn = document.getElementById("btnDoneMergeModal");
+      if (doneModalBtn) doneModalBtn.addEventListener("click", closeMergeLotsModal);
+
+      const form = document.getElementById("mergeLotsForm");
+      if (form) form.addEventListener("submit", handleMergeLotsSubmit);
+
+      const modal = document.getElementById("mergeLotsModal");
+      if (modal) {
+        modal.addEventListener("click", (e) => {
+          if (e.target === modal) closeMergeLotsModal();
+        });
+      }
+    }
+
     function resetFilters() {
       document.getElementById("searchInput").value = "";
       document.getElementById("productFilter").value = "";
@@ -1762,6 +2360,7 @@
       }
     });
 
+    setupMergeLotListeners();
     loadPage();
   </script>
 </body>
