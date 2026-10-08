@@ -12,6 +12,7 @@
     "migrate": "node src/migrate.js",
     "migrate:up": "node src/migrate.js up",
     "migrate:down": "node src/migrate.js down",
+    "seed:s22": "node scripts/seed_s22.js",
     "check:tenant": "node scripts/check_tenant_queries.js"
   },
   "dependencies": {

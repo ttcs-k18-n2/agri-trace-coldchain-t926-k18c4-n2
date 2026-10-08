@@ -16,7 +16,13 @@ const {
   setAppendHookForTesting,
 } = require("./event_repository");
 const { verifyBatchIntegrity } = require("./integrity_verifier");
-const { evaluateLotAccess } = require("./lot_access");
+const {
+  evaluateLotAccess,
+  collectAncestorLotIds,
+  collectDescendantLotIds,
+  fetchAllLotsRaw,
+} = require("./lot_access");
+const { seedS22InMemory } = require("../scripts/seed_s22");
 const { markOverdueTransfers, startTransferOverdueJob } = require("./transfer_overdue_job");
 const app = express();
 const PORT = Number(process.env.PORT || 3000);
@@ -1221,9 +1227,9 @@ app.get(
           ancestors = [];
         }
 
-        // Lệnh 2: Lấy danh sách các lô con trực tiếp (NFR: 1 query)
+        // Lệnh 2: Lấy danh sách các lô con trực tiếp (NFR: 1 query kết hợp batch_relations và lots)
         const childQuery = `
-          SELECT 
+          SELECT DISTINCT
             c.id, c.name, c.status, c.organization_id, c.product_id, c.farm_id,
             c.initial_quantity, c.remaining_quantity, c.harvested_at, c.created_at, c.parent_lot_id,
             p.name AS product_name, p.unit AS product_unit,
@@ -1232,6 +1238,7 @@ app.get(
           LEFT JOIN products p ON c.product_id = p.id
           LEFT JOIN organizations o ON c.organization_id = o.id
           WHERE c.parent_lot_id = $1
+             OR c.id IN (SELECT child_batch_id FROM batch_relations WHERE parent_batch_id = $1)
           ORDER BY c.created_at DESC, c.id DESC
         `;
         const childRes = await pool.query(childQuery, [lotId]);
@@ -1382,27 +1389,46 @@ app.get(
 
         const parentLot = parentLots.length > 0 ? parentLots[0] : null;
 
-        const childLots = inMemoryLots
-          .filter((l) => (l.parentLotId || l.parent_lot_id) === lotId)
-          .map((cL) => {
-            const cProd = inMemoryProducts.find((p) => p.id === (cL.productId || cL.product_id));
-            const cInitQty = cL.initialQuantity !== undefined ? cL.initialQuantity : cL.initial_quantity;
-            const cRemQty = cL.remainingQuantity !== undefined ? cL.remainingQuantity : cL.remaining_quantity;
-            return {
-              id: cL.id,
-              name: cL.name,
-              status: cL.status,
-              organizationId: cL.organizationId || cL.organization_id,
-              organizationName: getOrgName(cL.organizationId || cL.organization_id),
-              productId: cL.productId || cL.product_id || null,
-              productName: cProd ? cProd.name : (cL.productName || null),
-              productUnit: cProd ? cProd.unit : (cL.productUnit || "kg"),
-              initialQuantity: cInitQty !== null && cInitQty !== undefined ? Number(cInitQty) : null,
-              remainingQuantity: cRemQty !== null && cRemQty !== undefined ? Number(cRemQty) : null,
-              harvestedAt: cL.harvestedAt || cL.harvested_at || null,
-              createdAt: cL.createdAt || cL.created_at || null,
-              parentLotId: lotId,
-            };
+        const childIdList = [];
+        for (const l of inMemoryLots) {
+          if ((l.parentLotId || l.parent_lot_id) === lotId && !childIdList.includes(l.id)) {
+            childIdList.push(l.id);
+          }
+        }
+        if (Array.isArray(inMemoryBatchRelations)) {
+          for (const rel of inMemoryBatchRelations) {
+            const pId = rel.parentBatchId || rel.parent_batch_id;
+            const cId = rel.childBatchId || rel.child_batch_id;
+            if (pId === lotId && cId && !childIdList.includes(cId)) {
+              childIdList.push(cId);
+            }
+          }
+        }
+
+        const childLots = childIdList
+          .map((cId) => {
+            const cL = inMemoryLots.find((l) => l.id === cId);
+            if (cL) {
+              const cProd = inMemoryProducts.find((p) => p.id === (cL.productId || cL.product_id));
+              const cInitQty = cL.initialQuantity !== undefined ? cL.initialQuantity : cL.initial_quantity;
+              const cRemQty = cL.remainingQuantity !== undefined ? cL.remainingQuantity : cL.remaining_quantity;
+              return {
+                id: cL.id,
+                name: cL.name,
+                status: cL.status,
+                organizationId: cL.organizationId || cL.organization_id,
+                organizationName: getOrgName(cL.organizationId || cL.organization_id),
+                productId: cL.productId || cL.product_id || null,
+                productName: cProd ? cProd.name : (cL.productName || null),
+                productUnit: cProd ? cProd.unit : (cL.productUnit || "kg"),
+                initialQuantity: cInitQty !== null && cInitQty !== undefined ? Number(cInitQty) : null,
+                remainingQuantity: cRemQty !== null && cRemQty !== undefined ? Number(cRemQty) : null,
+                harvestedAt: cL.harvestedAt || cL.harvested_at || null,
+                createdAt: cL.createdAt || cL.created_at || null,
+                parentLotId: cL.parentLotId || cL.parent_lot_id || null,
+              };
+            }
+            return { id: cId, name: cId };
           });
 
         const initQty = rawLot.initialQuantity !== undefined ? rawLot.initialQuantity : rawLot.initial_quantity;
@@ -2445,6 +2471,123 @@ app.get(
         isIntegrityValid: integrityCheck.valid,
         integrityError: integrityCheck.error || null,
         integrityDetails: integrityCheck,
+      });
+    } catch (err) {
+      return res.status(500).json({ message: err.message });
+    }
+  }
+);
+
+/**
+ * API Truy xuất phả hệ toàn diện (S-21 Truy ngược, S-22 Đối chiếu độc lập, S-26 Truy xuôi, S-27 Hậu duệ, S-28 Đồ thị phả hệ)
+ */
+app.get(
+  ["/api/lots/:id/genealogy", "/api/lots/:id/descendants"],
+  requirePermission(["producer", "cooperative", "transporter", "distributor", "org_admin", "admin", "inspector"]),
+  async (req, res) => {
+    const lotId = req.params.id;
+    try {
+      const access = await evaluateLotAccess({
+        pool,
+        authContext: req.auth,
+        lotId,
+        inMemoryLots,
+      });
+
+      if (access.status === "NOT_FOUND") {
+        return res.status(404).json({ message: "Không tìm thấy lô hàng." });
+      }
+
+      if (!access.allowed) {
+        return res.status(403).json({
+          message: "Truy cập bị từ chối: bạn không có quyền xem dữ liệu của tổ chức khác.",
+        });
+      }
+
+      const rawLots = await fetchAllLotsRaw(pool, inMemoryLots);
+      const lotsMap = new Map();
+      for (const l of rawLots) {
+        lotsMap.set(l.id, l);
+      }
+
+      const ancestorSet = await collectAncestorLotIds(pool, lotId, lotsMap, inMemoryBatchRelations);
+      const descendantSet = await collectDescendantLotIds(pool, lotId, lotsMap, inMemoryBatchRelations);
+
+      const ancestors = Array.from(ancestorSet).map((id) => {
+        const l = lotsMap.get(id);
+        return l
+          ? { id: l.id, name: l.name, status: l.status, organizationId: l.organizationId || l.organization_id }
+          : { id };
+      });
+
+      const descendants = Array.from(descendantSet).map((id) => {
+        const l = lotsMap.get(id);
+        return l
+          ? { id: l.id, name: l.name, status: l.status, organizationId: l.organizationId || l.organization_id }
+          : { id };
+      });
+
+      const allNodeIds = new Set([lotId, ...ancestorSet, ...descendantSet]);
+      const nodes = Array.from(allNodeIds).map((id) => {
+        const l = lotsMap.get(id);
+        return {
+          id,
+          name: l ? l.name : id,
+          status: l ? l.status : "Đã thu hoạch",
+          isCurrent: id === lotId,
+          isAncestor: ancestorSet.has(id),
+          isDescendant: descendantSet.has(id),
+        };
+      });
+
+      const edges = [];
+      if (Array.isArray(inMemoryBatchRelations)) {
+        for (const rel of inMemoryBatchRelations) {
+          const pId = rel.parentBatchId || rel.parent_batch_id;
+          const cId = rel.childBatchId || rel.child_batch_id;
+          if (allNodeIds.has(pId) && allNodeIds.has(cId)) {
+            edges.push({
+              source: pId,
+              target: cId,
+              relationType: rel.relationType || rel.relation_type || "MERGE",
+              quantity: rel.quantity,
+            });
+          }
+        }
+      }
+      if (pool && typeof pool.query === "function") {
+        try {
+          const edgeRes = await pool.query(
+            "SELECT parent_batch_id, child_batch_id, relation_type, quantity FROM batch_relations WHERE parent_batch_id = ANY($1::text[]) AND child_batch_id = ANY($1::text[])",
+            [Array.from(allNodeIds)]
+          );
+          for (const r of edgeRes.rows) {
+            if (!edges.some((e) => e.source === r.parent_batch_id && e.target === r.child_batch_id)) {
+              edges.push({
+                source: r.parent_batch_id,
+                target: r.child_batch_id,
+                relationType: r.relation_type,
+                quantity: Number(r.quantity),
+              });
+            }
+          }
+        } catch {
+          // ignore
+        }
+      }
+
+      return res.status(200).json({
+        lotId,
+        ancestorIds: Array.from(ancestorSet),
+        descendantIds: Array.from(descendantSet),
+        ancestors,
+        descendants,
+        ancestorCount: ancestorSet.size,
+        descendantCount: descendantSet.size,
+        graph: {
+          nodes,
+          edges,
+        },
       });
     } catch (err) {
       return res.status(500).json({ message: err.message });
@@ -4587,5 +4730,16 @@ module.exports = {
   markOverdueTransfers,
   startTransferOverdueJob,
   validateMergeLotInput,
+  collectAncestorLotIds,
+  collectDescendantLotIds,
+  seedS22Data: () =>
+    seedS22InMemory({
+      inMemoryLots,
+      inMemoryBatchRelations,
+      inMemoryBatchEvents,
+      inMemoryOrgs,
+      inMemoryProducts,
+      inMemoryFarms,
+    }),
 };
 
