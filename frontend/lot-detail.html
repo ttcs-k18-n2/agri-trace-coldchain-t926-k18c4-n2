@@ -1008,6 +1008,58 @@
         </form>
       </div>
     </div>
+
+    <!-- Modal Ghi nhận Lô đã bán hết cho người tiêu dùng (S-29) -->
+    <div id="consumeLotModal" class="modal-backdrop" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 2000; align-items: center; justify-content: center; padding: 20px;">
+      <div class="modal-content" style="background: #fff; border-radius: 16px; width: 100%; max-width: 520px; overflow: hidden; box-shadow: 0 20px 40px rgba(0,0,0,0.2); display: flex; flex-direction: column;">
+        <div style="padding: 20px 24px; border-bottom: 1px solid var(--color-border); display: flex; justify-content: space-between; align-items: center; background: #fafafa;">
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <div style="width: 36px; height: 36px; border-radius: 8px; background: rgba(5, 150, 105, 0.12); color: #059669; display: flex; align-items: center; justify-content: center;">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
+            </div>
+            <div>
+              <h3 style="font-size: 17px; font-weight: 700; color: var(--color-text-main); margin: 0;">Ghi nhận đã bán hết</h3>
+              <div style="font-size: 12px; color: var(--color-text-muted);">Xác nhận lô đã tiêu thụ hết tới người tiêu dùng (S-29)</div>
+            </div>
+          </div>
+          <button type="button" id="btnCloseConsumeModal" style="background: none; border: none; font-size: 20px; cursor: pointer; color: var(--color-text-muted); line-height: 1;">✕</button>
+        </div>
+
+        <form id="consumeLotForm" style="display: flex; flex-direction: column; overflow: hidden; flex: 1;">
+          <div style="padding: 20px 24px; overflow-y: auto;">
+            <div id="consumeModalAlert" style="display: none; margin-bottom: 16px;"></div>
+
+            <div style="background: #f8fafc; border: 1px solid var(--color-border); border-radius: 10px; padding: 14px 16px; margin-bottom: 16px;">
+              <div style="font-size: 14px; font-weight: 700; color: var(--color-text-main); margin-bottom: 4px;" id="consumeModalLotTitle">--</div>
+              <div style="font-size: 13px; color: var(--color-text-muted);">
+                Mã lô: <code id="consumeModalLotId" style="font-weight: 700; color: #2563eb; background: rgba(37,99,235,0.08); padding: 1px 6px; border-radius: 4px;">--</code>
+              </div>
+              <div style="font-size: 13px; color: var(--color-text-muted); margin-top: 4px;">
+                Số lượng hiện còn: <strong id="consumeModalRemainingQty" style="color: #059669;">--</strong>
+              </div>
+            </div>
+
+            <div style="margin-bottom: 16px;">
+              <label for="consumeNotes" style="display: block; font-size: 13.5px; font-weight: 600; color: var(--color-text-main); margin-bottom: 6px;">
+                Ghi chú tiêu thụ / Kênh bán lẻ:
+              </label>
+              <textarea id="consumeNotes" class="form-control" rows="3" placeholder="Ví dụ: Đã bán hết tại hệ thống siêu thị VinMart / Go!..." style="width: 100%; border: 1px solid var(--color-border); border-radius: 8px; padding: 10px 12px; font-size: 13.5px; font-family: inherit; resize: vertical;"></textarea>
+            </div>
+
+            <div style="background: rgba(16, 185, 129, 0.08); border: 1px solid rgba(16, 185, 129, 0.25); border-radius: 8px; padding: 10px 12px; font-size: 12px; color: #047857; line-height: 1.5;">
+              <strong>Bảo chứng chuỗi lạnh (Story S-29):</strong> Khi xác nhận, trạng thái lô sẽ chuyển thành <code>Đã bán hết</code> và khối lượng còn lại về <code>0</code>. Sự kiện <code>LOT_CONSUMED</code> sẽ được ghi vào chuỗi băm SHA-256 bất biến.
+            </div>
+          </div>
+
+          <div style="display:flex; justify-content:flex-end; gap:10px; padding:16px 24px; border-top:1px solid var(--color-border); background: #fafafa;">
+            <button type="button" id="btnCancelConsume" class="btn btn-secondary" style="height:38px; padding:0 16px;">Hủy bỏ</button>
+            <button type="submit" id="btnSubmitConsume" class="btn btn-primary" style="height:38px; padding:0 20px; background: #059669; border-color: #059669;">
+              <span>Xác nhận đã bán hết</span>
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
   </main>
 
   <script src="/app-shell.js"></script>
@@ -1082,9 +1134,10 @@
       const lotRemainingVal = (lot.remainingQuantity !== null && lot.remainingQuantity !== undefined)
         ? Number(lot.remainingQuantity)
         : ((lot.remaining_quantity !== null && lot.remaining_quantity !== undefined) ? Number(lot.remaining_quantity) : null);
-      const canTransfer = currentUser && !isInspector && (isAdmin || userOrgId === lotOrgId);
-      const canSplit = currentUser && !isInspector && (isAdmin || userOrgId === lotOrgId) && ["producer", "cooperative", "org_admin", "admin"].includes(role) && (lotRemainingVal !== null && lotRemainingVal > 0) && !lot.pendingTransfer;
-      const canMerge = currentUser && !isInspector && (isAdmin || userOrgId === lotOrgId) && ["producer", "cooperative", "org_admin", "admin"].includes(role) && (lotRemainingVal !== null && lotRemainingVal > 0) && !lot.pendingTransfer;
+      const canTransfer = currentUser && !isInspector && (isAdmin || userOrgId === lotOrgId) && lot.status !== "Đã bán hết" && lot.status !== "Đã tiêu thụ";
+      const canSplit = currentUser && !isInspector && (isAdmin || userOrgId === lotOrgId) && ["producer", "cooperative", "org_admin", "admin"].includes(role) && (lotRemainingVal !== null && lotRemainingVal > 0) && !lot.pendingTransfer && lot.status !== "Đã bán hết" && lot.status !== "Đã tiêu thụ";
+      const canMerge = currentUser && !isInspector && (isAdmin || userOrgId === lotOrgId) && ["producer", "cooperative", "org_admin", "admin"].includes(role) && (lotRemainingVal !== null && lotRemainingVal > 0) && !lot.pendingTransfer && lot.status !== "Đã bán hết" && lot.status !== "Đã tiêu thụ";
+      const canConsume = currentUser && !isInspector && (isAdmin || userOrgId === lotOrgId) && ["distributor", "org_admin", "admin"].includes(role) && (lotRemainingVal !== null && lotRemainingVal > 0) && !lot.pendingTransfer && lot.status !== "Đã bán hết" && lot.status !== "Đã tiêu thụ";
       const isRecipient = Boolean(userOrgId && lot.pendingTransfer && lot.pendingTransfer.toOrganizationId === userOrgId);
       const inspectorActions = document.getElementById("inspectorActions");
       const btnCheckIntegrityLink = document.getElementById("btnCheckIntegrityLink");
@@ -1197,6 +1250,13 @@
                 </button>
               ` : ""}
 
+              ${canConsume ? `
+                <button type="button" class="btn btn-primary" id="btnConsumeDirectHero" style="height: 32px; padding: 0 14px; font-size: 13px; display: inline-flex; align-items: center; gap: 6px; cursor: pointer; border-radius: var(--radius-sm); background: #059669; border-color: #059669;" title="Ghi nhận lô đã bán hết cho người tiêu dùng (S-29)">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
+                  <span>Đã bán hết</span>
+                </button>
+              ` : ""}
+
               <div class="dropdown-menu-wrapper">
                 <button type="button" class="btn-icon-kebab" id="btn-hero-more" onclick="toggleHeroDropdown(event)" title="Thao tác khác" aria-label="Thao tác khác">•••</button>
                 <div class="dropdown-popover" id="dropdown-hero-lot">
@@ -1216,6 +1276,12 @@
                     <button type="button" class="dropdown-item" id="btnOpenMergeFromDetail">
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>
                       <span>Gộp lô hàng</span>
+                    </button>
+                  ` : ""}
+                  ${canConsume ? `
+                    <button type="button" class="dropdown-item" id="btnOpenConsumeFromDetail" style="color: #059669;">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
+                      <span>Ghi nhận đã bán hết</span>
                     </button>
                   ` : ""}
                   ${(canTransfer && !lot.pendingTransfer) ? `
@@ -1694,6 +1760,12 @@
       if (btnMergeHero) {
         btnMergeHero.addEventListener("click", () => openMergeLotModal(lot));
       }
+
+      // S-29: Xử lý nút Đã bán hết (Dành cho Nhà phân phối)
+      const btnConsumeHero = document.getElementById("btnConsumeDirectHero");
+      if (btnConsumeHero) {
+        btnConsumeHero.addEventListener("click", () => openConsumeLotModal(lot));
+      }
     }
 
     function switchLotTab(tabKey) {
@@ -1870,6 +1942,16 @@
           btnMerge.addEventListener("click", () => {
             popover.classList.remove("active");
             openMergeLotModal(lotData);
+          });
+        }
+
+        // Bind consume button in dropdown (S-29)
+        const btnConsume = document.getElementById("btnOpenConsumeFromDetail");
+        if (btnConsume && !btnConsume._bound) {
+          btnConsume._bound = true;
+          btnConsume.addEventListener("click", () => {
+            popover.classList.remove("active");
+            openConsumeLotModal(lotData);
           });
         }
       }
@@ -2577,9 +2659,121 @@
       }
     }
 
+    // ===== Consume Lot Modal Logic (S-29) =====
+    let currentConsumeLot = null;
+
+    function openConsumeLotModal(lot) {
+      currentConsumeLot = lot;
+      const modal = document.getElementById("consumeLotModal");
+      const titleEl = document.getElementById("consumeModalLotTitle");
+      const lotIdEl = document.getElementById("consumeModalLotId");
+      const remEl = document.getElementById("consumeModalRemainingQty");
+      const notesEl = document.getElementById("consumeNotes");
+      const alertEl = document.getElementById("consumeModalAlert");
+
+      if (titleEl) titleEl.textContent = lot.productName || lot.name || lot.id;
+      if (lotIdEl) lotIdEl.textContent = lot.id;
+
+      const unit = lot.productUnit || "kg";
+      const remVal = (lot.remainingQuantity !== null && lot.remainingQuantity !== undefined)
+        ? Number(lot.remainingQuantity)
+        : ((lot.remaining_quantity !== null && lot.remaining_quantity !== undefined) ? Number(lot.remaining_quantity) : 0);
+
+      if (remEl) remEl.textContent = `${remVal.toFixed(3)} ${unit}`;
+      if (notesEl) notesEl.value = "";
+      if (alertEl) {
+        alertEl.style.display = "none";
+        alertEl.textContent = "";
+      }
+
+      if (modal) modal.style.display = "flex";
+    }
+
+    function closeConsumeLotModal() {
+      const modal = document.getElementById("consumeLotModal");
+      if (modal) modal.style.display = "none";
+      currentConsumeLot = null;
+    }
+
+    function setupConsumeModalListeners() {
+      const btnClose = document.getElementById("btnCloseConsumeModal");
+      if (btnClose) btnClose.addEventListener("click", closeConsumeLotModal);
+
+      const btnCancel = document.getElementById("btnCancelConsume");
+      if (btnCancel) btnCancel.addEventListener("click", closeConsumeLotModal);
+
+      const modal = document.getElementById("consumeLotModal");
+      if (modal) {
+        modal.addEventListener("click", (e) => {
+          if (e.target === modal) closeConsumeLotModal();
+        });
+      }
+
+      const form = document.getElementById("consumeLotForm");
+      if (form) {
+        form.addEventListener("submit", async (e) => {
+          e.preventDefault();
+          if (!currentConsumeLot) return;
+
+          const notesInput = document.getElementById("consumeNotes");
+          const alertBox = document.getElementById("consumeModalAlert");
+          const btnSubmit = document.getElementById("btnSubmitConsume");
+
+          const notes = notesInput ? notesInput.value.trim() : "";
+
+          if (btnSubmit) {
+            btnSubmit.disabled = true;
+            btnSubmit.innerHTML = `
+              <svg class="spin" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 2a10 10 0 0 1 10 10"/></svg>
+              <span>Đang xử lý...</span>
+            `;
+          }
+
+          try {
+            const res = await fetch(`/api/lots/${encodeURIComponent(currentConsumeLot.id)}/consume`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              credentials: "same-origin",
+              body: JSON.stringify({ notes }),
+            });
+
+            const data = await res.json();
+
+            if (!res.ok) {
+              throw new Error(data.message || data.error || "Ghi nhận tiêu thụ thất bại.");
+            }
+
+            closeConsumeLotModal();
+
+            // Hiển thị thông báo toast thành công
+            if (typeof window.showToast === "function") {
+              window.showToast("Đã ghi nhận lô hàng bán hết cho người tiêu dùng!", "success");
+            } else {
+              alert("Thành công: Đã ghi nhận lô hàng bán hết cho người tiêu dùng!");
+            }
+
+            // Tải lại chi tiết lô và chuỗi sự kiện
+            await loadLotDetail();
+          } catch (err) {
+            if (alertBox) {
+              alertBox.className = "alert alert-danger";
+              alertBox.style.display = "block";
+              alertBox.textContent = err.message || "Lỗi ghi nhận tiêu thụ.";
+            }
+          } finally {
+            if (btnSubmit) {
+              btnSubmit.disabled = false;
+              btnSubmit.innerHTML = "<span>Xác nhận đã bán hết</span>";
+            }
+          }
+        });
+      }
+    }
+
     setupTransferModalListeners();
     setupSplitModalListeners();
     setupMergeModalListeners();
+    setupConsumeModalListeners();
     initPage();
   </script>
 </body>

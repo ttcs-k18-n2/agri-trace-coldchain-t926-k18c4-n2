@@ -66,6 +66,42 @@ test("T-39: Migration 017 creates batch_relations table with rollback", () => {
   );
 });
 
+test("S-29: Migration 018 creates idx_lots_status and idx_lots_org_status with rollback", () => {
+  const fs = require("node:fs");
+  const path = require("node:path");
+
+  const upPath = path.resolve(__dirname, "../../db/migrations/018_lot_consumed_status.sql");
+  const downPath = path.resolve(__dirname, "../../db/migrations/down/018_lot_consumed_status.down.sql");
+
+  assert.ok(fs.existsSync(upPath), "Migration 018 UP file must exist");
+  assert.ok(fs.existsSync(downPath), "Migration 018 DOWN file must exist");
+
+  const upSql = fs.readFileSync(upPath, "utf-8");
+  const downSql = fs.readFileSync(downPath, "utf-8");
+
+  assert.match(
+    upSql,
+    /CREATE\s+INDEX\s+(IF\s+NOT\s+EXISTS\s+)?idx_lots_status\s+ON\s+lots\s*\(\s*status\s*\)/i,
+    "Migration 018 must create index idx_lots_status on lots(status)"
+  );
+  assert.match(
+    upSql,
+    /CREATE\s+INDEX\s+(IF\s+NOT\s+EXISTS\s+)?idx_lots_org_status\s+ON\s+lots\s*\(\s*organization_id\s*,\s*status\s*\)/i,
+    "Migration 018 must create index idx_lots_org_status on lots(organization_id, status)"
+  );
+
+  assert.match(
+    downSql,
+    /DROP\s+INDEX\s+(IF\s+EXISTS\s+)?idx_lots_org_status/i,
+    "Migration 018 rollback must drop index idx_lots_org_status"
+  );
+  assert.match(
+    downSql,
+    /DROP\s+INDEX\s+(IF\s+EXISTS\s+)?idx_lots_status/i,
+    "Migration 018 rollback must drop index idx_lots_status"
+  );
+});
+
 if (process.env.DATABASE_URL) {
   test("migrate: up and down work with database", async () => {
     const upRes = await runMigrations("up");
