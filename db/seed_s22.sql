@@ -1,0 +1,31 @@
+-- S-22 sample data
+-- IMPORTANT:
+-- This file intentionally documents the hand-checked dataset.
+-- Map the logical IDs/relationships to the repository's existing schema
+-- from S-19 before executing in the project database.
+--
+-- Hand-checked expected graph:
+-- L01 -> L07
+-- L03 -> L07
+-- L02 -> L05, L06
+-- L04 -> L08, L09
+-- L05 + L08 -> L10
+-- L06 + L09 -> L11
+-- L12 is isolated
+--
+-- Expected ancestors:
+-- L07={L01,L03}
+-- L10={L05,L08,L02,L04}
+-- L11={L06,L09,L02,L04}
+--
+-- Expected descendants:
+-- L01={L07}
+-- L02={L05,L06,L10,L11}
+-- L03={L07}
+-- L04={L08,L09,L10,L11}
+-- L05={L10}
+-- L06={L11}
+-- L08={L10}
+-- L09={L11}
+--
+-- Do NOT generate expected values from the query under test.
