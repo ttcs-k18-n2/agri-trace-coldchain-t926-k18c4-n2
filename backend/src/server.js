@@ -1237,6 +1237,7 @@ app.get(
         const childRes = await pool.query(childQuery, [lotId]);
 
         let parentLot = null;
+        let parentLots = [];
         if (row.parent_id) {
           parentLot = {
             id: row.parent_id,
@@ -1250,6 +1251,7 @@ app.get(
             initialQuantity: row.parent_initial_quantity !== null && row.parent_initial_quantity !== undefined ? Number(row.parent_initial_quantity) : null,
             remainingQuantity: row.parent_remaining_quantity !== null && row.parent_remaining_quantity !== undefined ? Number(row.parent_remaining_quantity) : null,
           };
+          parentLots.push(parentLot);
         }
 
         const childLots = childRes.rows.map((c) => ({
@@ -1285,6 +1287,7 @@ app.get(
           createdAt: row.created_at,
           parentLotId: row.parent_lot_id || null,
           parentLot,
+          parentLots,
           childLots,
           accessType,
           ancestors,
@@ -1338,14 +1341,30 @@ app.get(
           return org ? org.name : (ORG_NAME_FALLBACKS[orgId] || orgId);
         };
 
-        let parentLot = null;
-        if (parentLotId) {
-          const pLot = inMemoryLots.find((l) => l.id === parentLotId);
+        // Lấy tất cả các lô mẹ (hỗ trợ cả trường hợp tách lô 1 mẹ và gộp nhiều lô mẹ)
+        const parentIdList = [];
+        if (parentLotId && !parentIdList.includes(parentLotId)) {
+          parentIdList.push(parentLotId);
+        }
+        if (Array.isArray(inMemoryBatchRelations)) {
+          const relations = inMemoryBatchRelations.filter(
+            (r) => (r.childBatchId === lotId || r.child_batch_id === lotId)
+          );
+          for (const rel of relations) {
+            const pId = rel.parentBatchId || rel.parent_batch_id;
+            if (pId && !parentIdList.includes(pId)) {
+              parentIdList.push(pId);
+            }
+          }
+        }
+
+        const parentLots = parentIdList.map((pId) => {
+          const pLot = inMemoryLots.find((l) => l.id === pId);
           if (pLot) {
             const pProd = inMemoryProducts.find((p) => p.id === (pLot.productId || pLot.product_id));
             const pInitQty = pLot.initialQuantity !== undefined ? pLot.initialQuantity : pLot.initial_quantity;
             const pRemQty = pLot.remainingQuantity !== undefined ? pLot.remainingQuantity : pLot.remaining_quantity;
-            parentLot = {
+            return {
               id: pLot.id,
               name: pLot.name,
               status: pLot.status,
@@ -1357,10 +1376,11 @@ app.get(
               initialQuantity: pInitQty !== null && pInitQty !== undefined ? Number(pInitQty) : null,
               remainingQuantity: pRemQty !== null && pRemQty !== undefined ? Number(pRemQty) : null,
             };
-          } else {
-            parentLot = { id: parentLotId, name: parentLotId };
           }
-        }
+          return { id: pId, name: pId };
+        });
+
+        const parentLot = parentLots.length > 0 ? parentLots[0] : null;
 
         const childLots = inMemoryLots
           .filter((l) => (l.parentLotId || l.parent_lot_id) === lotId)
@@ -1405,6 +1425,7 @@ app.get(
           createdAt: rawLot.createdAt || rawLot.created_at || null,
           parentLotId,
           parentLot,
+          parentLots,
           childLots,
           accessType: access.accessType,
           ancestors: access.ancestors,

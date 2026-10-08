@@ -450,4 +450,27 @@ test("Lot Merge API [S-19] (Tasks T-44, T-45, T-46) & Parent-Child Lineage Integ
     assert.equal(res.status, 201);
     assert.equal(res.body.lot.initialQuantity, 40);
   });
+
+  await t.test("10. GET /api/lots/:id returns multiple parent lots (parentLots) and direct lineage for merged lot", async () => {
+    const distAgent = await loginAs("dist_merge@org3.vn");
+    const detailRes = await distAgent.get(`/api/lots/${createdPartialMergedLotId}`);
+
+    assert.equal(detailRes.status, 200);
+    const lot = detailRes.body.lot;
+    assert.ok(lot);
+    assert.equal(lot.id, createdPartialMergedLotId);
+
+    // Kiểm tra parentLots chứa đủ 2 lô mẹ lotA và lotB
+    assert.ok(Array.isArray(lot.parentLots), "lot.parentLots must be an array");
+    assert.equal(lot.parentLots.length, 2, "lot.parentLots must contain exactly 2 parent lots");
+
+    const parentIds = lot.parentLots.map((p) => p.id);
+    assert.ok(parentIds.includes(lotA), `parentLots must include ${lotA}`);
+    assert.ok(parentIds.includes(lotB), `parentLots must include ${lotB}`);
+
+    // Backward compatibility: parentLot vẫn trỏ tới 1 trong các lô mẹ
+    assert.ok(lot.parentLot, "lot.parentLot must not be null");
+    assert.ok(parentIds.includes(lot.parentLot.id));
+  });
 });
+
