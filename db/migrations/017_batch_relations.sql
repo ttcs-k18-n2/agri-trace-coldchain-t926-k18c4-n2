@@ -17,3 +17,11 @@ CREATE INDEX IF NOT EXISTS idx_batch_relations_child ON batch_relations(child_ba
 CREATE INDEX IF NOT EXISTS idx_batch_relations_org ON batch_relations(organization_id);
 CREATE INDEX IF NOT EXISTS idx_batch_relations_type ON batch_relations(relation_type);
 CREATE INDEX IF NOT EXISTS idx_batch_relations_created_at ON batch_relations(created_at DESC);
+
+-- Cấp quyền DML trên batch_relations cho tài khoản ứng dụng agri_app
+DO $$
+BEGIN
+    IF EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = 'agri_app') THEN
+        GRANT SELECT, INSERT, UPDATE, DELETE ON batch_relations TO agri_app;
+    END IF;
+END $$;

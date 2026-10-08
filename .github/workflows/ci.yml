@@ -8,9 +8,13 @@ on:
       - "fix/**"
       - "fix-*"
       - "docs/**"
+      - "s18**"
+      - "s-**"
+      - "S-**"
   pull_request:
     branches:
       - main
+      - develop
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
