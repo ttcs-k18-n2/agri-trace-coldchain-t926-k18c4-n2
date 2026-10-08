@@ -2154,7 +2154,7 @@
               <span style="font-weight: 600; color: var(--color-primary);">${remaining.toFixed(3)}</span> ${unit}
             </td>
             <td style="text-align: right;">
-              <input type="number" step="any" min="0.001" max="${remaining}" value="${remaining}" class="merge-qty-input" data-lot-id="${escapeHtml(lot.id)}" required>
+              <input type="number" step="0.001" min="0.001" max="${remaining}" value="${remaining.toFixed(3)}" class="merge-qty-input" data-lot-id="${escapeHtml(lot.id)}" required>
             </td>
           </tr>
         `;
@@ -2217,13 +2217,25 @@
         const lotId = row.dataset.lotId;
         const max = parseFloat(row.dataset.max);
         const input = row.querySelector(".merge-qty-input");
-        const qty = parseFloat(input.value);
+        const strVal = String(input.value || "").trim();
+        const qty = parseFloat(strVal);
 
         if (isNaN(qty) || qty <= 0) {
           if (alertBox) {
             alertBox.className = "alert alert-danger";
             alertBox.style.display = "block";
             alertBox.textContent = `Khối lượng lấy của lô [${lotId}] phải lớn hơn 0.`;
+          }
+          input.focus();
+          return;
+        }
+
+        const parts = strVal.split(".");
+        if (parts.length === 2 && parts[1].length > 3) {
+          if (alertBox) {
+            alertBox.className = "alert alert-danger";
+            alertBox.style.display = "block";
+            alertBox.textContent = `Khối lượng lấy của lô [${lotId}] chỉ được có tối đa 3 chữ số thập phân (đến 0,001 kg).`;
           }
           input.focus();
           return;

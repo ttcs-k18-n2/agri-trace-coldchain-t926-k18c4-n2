@@ -128,6 +128,86 @@ function validateSplitItems(splitItems) {
   };
 }
 
+/**
+ * Kiểm tra danh sách gộp lô (items / parents) theo nghiệp vụ S-19:
+ * - Danh sách là mảng có ít nhất 2 phần tử
+ * - Không trùng lặp mã lô mẹ trong cùng một yêu cầu
+ * - Từng phần tử có mã lô và khối lượng lấy hợp lệ (> 0, tối đa 3 chữ số thập phân)
+ * - Tính tổng khối lượng gộp chính xác theo milli-units
+ *
+ * @param {Array} items
+ * @returns {{valid: boolean, error?: string, message?: string, totalMilli?: number, totalQuantity?: number, normalizedItems?: Array}}
+ */
+function validateMergeItems(items) {
+  if (!Array.isArray(items) || items.length < 2) {
+    return {
+      valid: false,
+      error: "INVALID_MERGE_INPUT",
+      message: "Cần chọn ít nhất 2 lô hàng để thực hiện gộp lô.",
+    };
+  }
+
+  const seenIds = new Set();
+  const normalizedItems = [];
+  let totalMilli = 0;
+
+  for (let i = 0; i < items.length; i++) {
+    const item = items[i];
+    const lotId = String(
+      item ? (item.parent_batch_id || item.parentBatchId || item.lotId || item.id || "") : ""
+    ).trim();
+
+    if (!lotId) {
+      return {
+        valid: false,
+        error: "MISSING_LOT_ID",
+        message: `Lô thứ ${i + 1} thiếu mã lô hàng (parent_batch_id).`,
+      };
+    }
+
+    if (seenIds.has(lotId)) {
+      return {
+        valid: false,
+        error: "DUPLICATE_PARENT_LOT",
+        message: `Lô [${lotId}] bị trùng lặp trong danh sách gộp.`,
+      };
+    }
+    seenIds.add(lotId);
+
+    const rawQty = item.take_quantity !== undefined
+      ? item.take_quantity
+      : (item.takeQuantity !== undefined ? item.takeQuantity : item.quantity);
+
+    if (!isValidQuantity(rawQty, false)) {
+      return {
+        valid: false,
+        error: "INVALID_QUANTITY",
+        message: `Khối lượng lấy của lô [${lotId}] phải là số dương lớn hơn 0 và có tối đa ${SCALE} chữ số thập phân.`,
+        index: i,
+      };
+    }
+
+    const itemMilli = toMilliUnits(rawQty, false);
+    totalMilli += itemMilli;
+    normalizedItems.push({
+      parent_batch_id: lotId,
+      take_quantity: fromMilliUnits(itemMilli),
+      take_milli: itemMilli,
+      take_quantity_str: formatQuantityString(rawQty, false),
+    });
+  }
+
+  // Chống deadlock: Sắp xếp danh sách theo parent_batch_id tăng dần
+  normalizedItems.sort((a, b) => a.parent_batch_id.localeCompare(b.parent_batch_id));
+
+  return {
+    valid: true,
+    totalMilli,
+    totalQuantity: fromMilliUnits(totalMilli),
+    normalizedItems,
+  };
+}
+
 module.exports = {
   SCALE,
   MULTIPLIER,
@@ -137,4 +217,5 @@ module.exports = {
   normalizeQuantity,
   formatQuantityString,
   validateSplitItems,
+  validateMergeItems,
 };

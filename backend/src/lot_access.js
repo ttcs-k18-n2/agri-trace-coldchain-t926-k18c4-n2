@@ -54,6 +54,12 @@ function extractParentLotIdsFromLot(lot) {
   if (parentId) ids.push(parentId);
   if (Array.isArray(lot.parentLotIds)) ids.push(...lot.parentLotIds);
   if (Array.isArray(lot.sourceLotIds)) ids.push(...lot.sourceLotIds);
+  if (Array.isArray(lot.parentLots)) {
+    for (const pl of lot.parentLots) {
+      const plId = pl ? (pl.id || pl.parent_batch_id || pl.parentBatchId) : null;
+      if (plId) ids.push(plId);
+    }
+  }
   return ids.filter(Boolean);
 }
 
