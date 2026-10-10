@@ -18,6 +18,8 @@ const {
 const { verifyBatchIntegrity } = require("./integrity_verifier");
 const { evaluateLotAccess } = require("./lot_access");
 const { markOverdueTransfers, startTransferOverdueJob } = require("./transfer_overdue_job");
+const { seedS22InMemory } = require("../scripts/seed_s22");
+const { traceLotOrigins, CycleDetectedError } = require("./lot_genealogy");
 const app = express();
 const PORT = Number(process.env.PORT || 3000);
 
@@ -2115,7 +2117,7 @@ app.post(
         // 4. Tạo bản ghi lô hàng mới
         let newMergedLotId = null;
         let createdMergedLot = null;
-        const newLotTitle = mergedName || `${firstParent.name} (Gộp ${normalizedItems.length} lô)`;
+        const newLotTitle = mergedName || `${firstParent.name || firstParent.productName} (Gộp ${normalizedItems.length} lô)`;
 
         for (let attempt = 0; attempt < 5; attempt++) {
           const candidateId = generateLotCode();
@@ -2290,7 +2292,7 @@ app.post(
         }
 
         const nowIso = new Date().toISOString();
-        const newLotTitle = mergedName || `${firstParent.name} (Gộp ${normalizedItems.length} lô)`;
+        const newLotTitle = mergedName || `${firstParent.name || firstParent.productName} (Gộp ${normalizedItems.length} lô)`;
 
         createdMergedLot = {
           id: newMergedLotId,
@@ -2398,7 +2400,7 @@ app.post(
  * Lấy chuỗi sự kiện hash-chain và lịch sử nguồn gốc của lô hàng (S-10, S-11, S-21, S-23)
  */
 app.get(
-  ["/api/lots/:id/events", "/api/lots/:id/timeline", "/api/lots/:id/lineage", "/api/lots/:id/origins"],
+  ["/api/lots/:id/events", "/api/lots/:id/timeline", "/api/lots/:id/lineage"],
   requirePermission(["producer", "cooperative", "transporter", "distributor", "org_admin", "admin", "inspector"]),
   async (req, res) => {
     const lotId = req.params.id;
@@ -2448,6 +2450,111 @@ app.get(
       });
     } catch (err) {
       return res.status(500).json({ message: err.message });
+    }
+  }
+);
+
+// In-memory cache cho truy xuất nguồn gốc (T-50 NFR: TTL = 60s)
+const lotOriginsCache = new Map();
+const LOT_ORIGINS_CACHE_TTL_MS = 60 * 1000;
+
+function clearLotOriginsCache(lotId) {
+  if (lotId) {
+    lotOriginsCache.delete(lotId);
+  } else {
+    lotOriginsCache.clear();
+  }
+}
+
+/**
+ * T-50: API Endpoint truy xuất nguồn gốc và phả hệ đa tầng kèm thông tin vùng trồng (Farms)
+ * Hỗ trợ cache in-memory 60 giây và kiểm soát quyền truy cập S-23 (T-54).
+ */
+app.get(
+  ["/api/lots/:id/origins", "/api/lineage/origins/:id"],
+  requirePermission(["producer", "cooperative", "transporter", "distributor", "org_admin", "admin", "inspector"]),
+  async (req, res) => {
+    const lotId = req.params.id;
+    try {
+      // 1. Kiểm soát quyền truy cập S-23 / T-54 qua evaluateLotAccess
+      const access = await evaluateLotAccess({
+        pool,
+        authContext: req.auth,
+        lotId,
+        inMemoryLots,
+      });
+
+      if (access.status === "NOT_FOUND") {
+        return res.status(404).json({ message: "Không tìm thấy lô hàng." });
+      }
+
+      if (!access.allowed) {
+        logSecurityEvent("CROSS_TENANT_ACCESS_DENIED", {
+          userId: req.auth.userId || req.auth.id,
+          userEmail: req.auth.email,
+          userOrgId: req.auth.organizationId,
+          userRole: req.auth.roleId,
+          resourceType: "lots",
+          resourceId: lotId,
+          targetOrgId: access.targetOrgId,
+          action: "READ_ORIGINS",
+          ip: req.ip,
+          userAgent: req.get("User-Agent"),
+        });
+        return res.status(403).json({
+          message: "Truy cập bị từ chối: bạn không có quyền xem nguồn gốc của lô hàng thuộc tổ chức khác.",
+        });
+      }
+
+      // 2. NFR Cache 60 giây (T-50 NFR)
+      const now = Date.now();
+      const cached = lotOriginsCache.get(lotId);
+      if (cached && now - cached.timestamp < LOT_ORIGINS_CACHE_TTL_MS) {
+        return res.status(200).json({
+          ...cached.data,
+          cached: true,
+          cachedAt: cached.cachedAt,
+        });
+      }
+
+      // 3. Gọi thuật toán traceLotOrigins duyệt ngược BFS
+      const result = await traceLotOrigins(pool, lotId, {
+        inMemoryLots,
+        inMemoryBatchRelations,
+        inMemoryFarms,
+      });
+
+      const responsePayload = {
+        lotId: result.lotId,
+        isRoot: result.isRoot,
+        rootLots: result.rootLots,
+        levels: result.levels,
+        allAncestors: result.allAncestors,
+        ancestorIds: result.ancestorIds,
+        totalAncestors: result.totalAncestors,
+        accessType: access.accessType,
+      };
+
+      // Lưu cache 60s
+      lotOriginsCache.set(lotId, {
+        timestamp: now,
+        cachedAt: new Date(now).toISOString(),
+        data: responsePayload,
+      });
+
+      return res.status(200).json({
+        ...responsePayload,
+        cached: false,
+      });
+    } catch (err) {
+      if (err.name === "CycleDetectedError") {
+        return res.status(400).json({
+          error: "CycleDetectedError",
+          message: err.message,
+          cycleLotId: err.cycleLotId,
+        });
+      }
+      return res.status(err.statusCode || 500).json({ message: err.message });
     }
   }
 );
@@ -4529,6 +4636,15 @@ async function start() {
   }
 
   await seedDemoOverdueTransfer();
+  // Nạp bộ dữ liệu phả hệ 3 tầng mẫu S-22 vào in-memory khi khởi động
+  seedS22InMemory({
+    inMemoryLots,
+    inMemoryBatchRelations,
+    inMemoryBatchEvents,
+    inMemoryOrgs,
+    inMemoryProducts,
+    inMemoryFarms,
+  });
 
   // Khởi động job rà soát bàn giao quá hạn định kỳ (S-24 / T-56)
   startTransferOverdueJob({ pool, inMemoryTransfers });
@@ -4587,5 +4703,19 @@ module.exports = {
   markOverdueTransfers,
   startTransferOverdueJob,
   validateMergeLotInput,
+  seedS22InMemory,
+  traceLotOrigins,
+  CycleDetectedError,
+  lotOriginsCache,
+  clearLotOriginsCache,
+  seedS22Data: () =>
+    seedS22InMemory({
+      inMemoryLots,
+      inMemoryBatchRelations,
+      inMemoryBatchEvents,
+      inMemoryOrgs,
+      inMemoryProducts,
+      inMemoryFarms,
+    }),
 };
 
