@@ -260,7 +260,11 @@
         <h1>Vùng trồng & Khai báo thửa đất</h1>
         <p class="page-subtitle">Quản lý định danh vùng canh tác, tọa độ và kết nối với các lô nông sản thu hoạch</p>
       </div>
-      <div>
+      <div style="display: flex; gap: 8px; align-items: center;">
+        <button type="button" id="btn-open-farm-csv-modal" class="btn-primary" style="background: var(--color-surface); color: var(--color-text-main); border: 1px solid var(--color-border); display: none; align-items: center; gap: 6px;">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path></svg>
+          <span>Nhập từ CSV</span>
+        </button>
         <a href="/lots" class="btn-secondary">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m15 18-6-6 6-6"/></svg>
           <span>Quay lại Danh sách lô</span>
@@ -397,6 +401,67 @@
     </div>
   </main>
 
+  <!-- Modal Nhập Thửa đất từ CSV -->
+  <div id="modal-import-farm-csv" class="modal-backdrop" style="display: none;">
+    <div class="modal-card" style="max-width: 620px;">
+      <div class="modal-header">
+        <h2 class="modal-title">Nhập danh mục thửa đất từ CSV</h2>
+        <button id="btn-close-farm-csv-modal" class="btn-icon" aria-label="Đóng">&times;</button>
+      </div>
+      <form id="form-import-farm-csv">
+        <div class="modal-body">
+          <p style="font-size: 13px; color: var(--color-text-muted); margin-bottom: 12px; line-height: 1.5;">
+            Nhập nhanh danh mục thửa đất cho tổ chức của bạn. Ràng buộc toàn vẹn: nếu có bất kỳ dòng nào sai định dạng, diện tích &le; 0 hoặc trùng tên thửa trong tổ chức, toàn bộ sẽ bị hủy bỏ (<strong>All-or-Nothing</strong>).
+          </p>
+
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+            <span style="font-size: 12px; font-weight: 600; color: var(--color-text-main);">Tệp dữ liệu (.csv)</span>
+            <button type="button" id="btn-download-farm-csv-sample" class="csv-template-download">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+              Tải file CSV mẫu chuẩn
+            </button>
+          </div>
+
+          <div id="farm-csv-dropzone" class="csv-dropzone">
+            <div class="csv-dropzone-icon">🌱</div>
+            <div class="csv-dropzone-text">Nhấp để chọn tệp CSV hoặc kéo thả vào đây</div>
+            <div class="csv-dropzone-hint">Cột quy chuẩn: <strong>name, area, coordinates</strong> (diện tích > 0)</div>
+            <input type="file" id="farm-csv-file" accept=".csv,text/csv" style="display: none;">
+          </div>
+
+          <div id="farm-csv-selected" class="csv-file-selected" style="display: none; margin-top: 10px;">
+            <span id="farm-csv-filename">filename.csv</span>
+            <button type="button" id="btn-remove-farm-csv" style="background: none; border: none; color: #dc2626; cursor: pointer; font-size: 16px;">&times;</button>
+          </div>
+
+          <!-- Bảng chi tiết lỗi -->
+          <div id="farm-csv-error-box" class="csv-error-container" style="display: none;">
+            <div class="csv-error-header">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+              <span id="farm-csv-error-title">Phát hiện lỗi dữ liệu - Không dòng nào được tạo</span>
+            </div>
+            <div style="max-height: 220px; overflow-y: auto;">
+              <table class="csv-error-table">
+                <thead>
+                  <tr>
+                    <th style="width: 70px;">Dòng</th>
+                    <th style="width: 110px;">Cột</th>
+                    <th>Chi tiết lỗi</th>
+                  </tr>
+                </thead>
+                <tbody id="farm-csv-error-tbody"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" id="btn-cancel-farm-csv-modal" class="btn-secondary">Hủy bỏ</button>
+          <button type="submit" id="btn-submit-farm-csv" class="btn-primary" disabled>Tiến hành nhập</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <script src="/app-shell.js"></script>
   <script>
     let isSubmitting = false;
@@ -448,12 +513,189 @@
         } else {
           if (formCard) formCard.style.display = "";
           if (noticeEl) noticeEl.style.display = "none";
+          const btnCsv = document.getElementById("btn-open-farm-csv-modal");
+          if (btnCsv) btnCsv.style.display = "inline-flex";
         }
 
         await loadFarms();
       } catch (err) {
         showAlert("Lỗi kết nối máy chủ.", false);
       }
+    }
+
+    // ==========================================
+    // LOGIC NHẬP THỬA ĐẤT TỪ CSV (ALL-OR-NOTHING)
+    // ==========================================
+    const farmCsvModal = document.getElementById("modal-import-farm-csv");
+    const openFarmCsvBtn = document.getElementById("btn-open-farm-csv-modal");
+    const closeFarmCsvBtn = document.getElementById("btn-close-farm-csv-modal");
+    const cancelFarmCsvBtn = document.getElementById("btn-cancel-farm-csv-modal");
+    const farmCsvFileInput = document.getElementById("farm-csv-file");
+    const farmCsvDropzone = document.getElementById("farm-csv-dropzone");
+    const farmCsvSelectedBox = document.getElementById("farm-csv-selected");
+    const farmCsvFilenameEl = document.getElementById("farm-csv-filename");
+    const farmCsvRemoveBtn = document.getElementById("btn-remove-farm-csv");
+    const farmCsvSubmitBtn = document.getElementById("btn-submit-farm-csv");
+    const farmCsvErrorBox = document.getElementById("farm-csv-error-box");
+    const farmCsvErrorTbody = document.getElementById("farm-csv-error-tbody");
+    const downloadFarmSampleBtn = document.getElementById("btn-download-farm-csv-sample");
+
+    let selectedFarmCsvText = "";
+
+    function openFarmCsvModal() {
+      resetFarmCsvModal();
+      farmCsvModal.style.display = "flex";
+    }
+
+    function closeFarmCsvModal() {
+      farmCsvModal.style.display = "none";
+      resetFarmCsvModal();
+    }
+
+    function resetFarmCsvModal() {
+      selectedFarmCsvText = "";
+      farmCsvFileInput.value = "";
+      farmCsvSelectedBox.style.display = "none";
+      farmCsvDropzone.style.display = "flex";
+      farmCsvErrorBox.style.display = "none";
+      farmCsvErrorTbody.innerHTML = "";
+      farmCsvSubmitBtn.disabled = true;
+      farmCsvSubmitBtn.textContent = "Tiến hành nhập";
+    }
+
+    if (openFarmCsvBtn) openFarmCsvBtn.addEventListener("click", openFarmCsvModal);
+    if (closeFarmCsvBtn) closeFarmCsvBtn.addEventListener("click", closeFarmCsvModal);
+    if (cancelFarmCsvBtn) cancelFarmCsvBtn.addEventListener("click", closeFarmCsvModal);
+    if (farmCsvModal) {
+      farmCsvModal.addEventListener("click", (e) => {
+        if (e.target === farmCsvModal) closeFarmCsvModal();
+      });
+    }
+
+    if (farmCsvDropzone) {
+      farmCsvDropzone.addEventListener("click", () => farmCsvFileInput.click());
+      farmCsvDropzone.addEventListener("dragover", (e) => {
+        e.preventDefault();
+        farmCsvDropzone.classList.add("dragover");
+      });
+      farmCsvDropzone.addEventListener("dragleave", () => {
+        farmCsvDropzone.classList.remove("dragover");
+      });
+      farmCsvDropzone.addEventListener("drop", (e) => {
+        e.preventDefault();
+        farmCsvDropzone.classList.remove("dragover");
+        if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+          handleFarmCsvFile(e.dataTransfer.files[0]);
+        }
+      });
+    }
+
+    if (farmCsvFileInput) {
+      farmCsvFileInput.addEventListener("change", (e) => {
+        if (e.target.files && e.target.files.length > 0) {
+          handleFarmCsvFile(e.target.files[0]);
+        }
+      });
+    }
+
+    if (farmCsvRemoveBtn) {
+      farmCsvRemoveBtn.addEventListener("click", resetFarmCsvModal);
+    }
+
+    function handleFarmCsvFile(file) {
+      if (!file.name.toLowerCase().endsWith(".csv")) {
+        alert("Vui lòng chọn tệp có định dạng .csv");
+        return;
+      }
+
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        selectedFarmCsvText = e.target.result;
+        farmCsvFilenameEl.textContent = `${file.name} (${(file.size / 1024).toFixed(1)} KB)`;
+        farmCsvDropzone.style.display = "none";
+        farmCsvSelectedBox.style.display = "flex";
+        farmCsvErrorBox.style.display = "none";
+        farmCsvSubmitBtn.disabled = false;
+      };
+      reader.readAsText(file, "UTF-8");
+    }
+
+    if (downloadFarmSampleBtn) {
+      downloadFarmSampleBtn.addEventListener("click", () => {
+        const sampleCsvContent = "\uFEFFname,area,coordinates\nThửa xoài Cát Chu 01,2.5,\"10.3541, 105.7891\"\nThửa dưa hấu Hắc Mỹ Nhân 02,1.8,\"10.3621, 105.7942\"\nThửa rau thủy canh Tân Phú,0.95,\"10.3702, 105.8015\"";
+        const blob = new Blob([sampleCsvContent], { type: "text/csv;charset=utf-8;" });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.setAttribute("href", url);
+        link.setAttribute("download", "mau_danh_muc_thua_dat.csv");
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      });
+    }
+
+    document.getElementById("form-import-farm-csv").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      if (!selectedFarmCsvText || !selectedFarmCsvText.trim()) {
+        alert("Vui lòng chọn tệp CSV có nội dung hợp lệ.");
+        return;
+      }
+
+      farmCsvSubmitBtn.disabled = true;
+      farmCsvSubmitBtn.textContent = "Đang xử lý nhập dữ liệu...";
+      farmCsvErrorBox.style.display = "none";
+      farmCsvErrorTbody.innerHTML = "";
+
+      try {
+        const res = await fetch("/api/farms/import-csv", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ csvContent: selectedFarmCsvText }),
+        });
+
+        const data = await res.json();
+
+        if (!res.ok) {
+          if (data.errors && Array.isArray(data.errors) && data.errors.length > 0) {
+            farmCsvErrorTbody.innerHTML = data.errors
+              .map(
+                (err) => `
+              <tr>
+                <td><span class="csv-badge-row">Dòng ${escapeHtml(err.row)}</span></td>
+                <td><span class="csv-badge-col">${escapeHtml(err.column)}</span></td>
+                <td>${escapeHtml(err.message)}</td>
+              </tr>
+            `
+              )
+              .join("");
+            farmCsvErrorBox.style.display = "block";
+          } else {
+            farmCsvErrorTbody.innerHTML = `<tr><td colspan="3">${escapeHtml(data.message || "Lỗi xử lý file.")}</td></tr>`;
+            farmCsvErrorBox.style.display = "block";
+          }
+          return;
+        }
+
+        closeFarmCsvModal();
+        showAlert(`✓ ${data.message}`, true);
+        await loadFarms();
+      } catch (err) {
+        farmCsvErrorTbody.innerHTML = `<tr><td colspan="3">${escapeHtml(err.message || "Lỗi kết nối máy chủ.")}</td></tr>`;
+        farmCsvErrorBox.style.display = "block";
+      } finally {
+        farmCsvSubmitBtn.disabled = false;
+        farmCsvSubmitBtn.textContent = "Tiến hành nhập";
+      }
+    });
+
+    function escapeHtml(str) {
+      if (!str) return "";
+      return String(str)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
     }
 
     async function loadFarms() {

@@ -153,7 +153,11 @@
         <h1>Danh mục sản phẩm</h1>
         <p class="page-subtitle">Danh mục nông sản quy chuẩn và đơn vị tính dùng chung toàn bộ hệ thống chuỗi lạnh.</p>
       </div>
-      <div id="admin-actions" style="display: none;">
+      <div id="admin-actions" style="display: none; align-items: center; gap: 8px;">
+        <button id="btn-open-csv-modal" class="btn btn-secondary" style="display: inline-flex; align-items: center; gap: 6px;">
+          <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path></svg>
+          Nhập từ CSV
+        </button>
         <button id="btn-open-modal" class="btn btn-primary">
           <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
           Thêm sản phẩm
@@ -189,6 +193,67 @@
 
     <div id="product-grid" class="product-grid" style="display: none;"></div>
   </main>
+
+  <!-- Modal Nhập Sản phẩm từ CSV (Chỉ dành cho Admin) -->
+  <div id="modal-import-csv" class="modal-backdrop" style="display: none;">
+    <div class="modal-card" style="max-width: 620px;">
+      <div class="modal-header">
+        <h2 class="modal-title">Nhập danh mục sản phẩm từ CSV</h2>
+        <button id="btn-close-csv-modal" class="btn-icon" aria-label="Đóng">&times;</button>
+      </div>
+      <form id="form-import-csv">
+        <div class="modal-body">
+          <p style="font-size: 13px; color: var(--color-text-muted); margin-bottom: 12px; line-height: 1.5;">
+            Nhập nhanh danh mục quy chuẩn. Hệ thống áp dụng quy tắc toàn vẹn: nếu có bất kỳ dòng nào sai hoặc trùng lặp, toàn bộ quá trình sẽ bị hủy bỏ (<strong>All-or-Nothing</strong>).
+          </p>
+
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+            <span style="font-size: 12px; font-weight: 600; color: var(--color-text-main);">Tệp dữ liệu (.csv)</span>
+            <button type="button" id="btn-download-product-csv-sample" class="csv-template-download">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+              Tải file CSV mẫu chuẩn
+            </button>
+          </div>
+
+          <div id="product-csv-dropzone" class="csv-dropzone">
+            <div class="csv-dropzone-icon">📄</div>
+            <div class="csv-dropzone-text">Nhấp để chọn tệp CSV hoặc kéo thả vào đây</div>
+            <div class="csv-dropzone-hint">Cột quy chuẩn: <strong>name, unit</strong> (đơn vị: kg, tan, thung)</div>
+            <input type="file" id="product-csv-file" accept=".csv,text/csv" style="display: none;">
+          </div>
+
+          <div id="product-csv-selected" class="csv-file-selected" style="display: none; margin-top: 10px;">
+            <span id="product-csv-filename">filename.csv</span>
+            <button type="button" id="btn-remove-product-csv" style="background: none; border: none; color: #dc2626; cursor: pointer; font-size: 16px;">&times;</button>
+          </div>
+
+          <!-- Bảng chi tiết lỗi -->
+          <div id="product-csv-error-box" class="csv-error-container" style="display: none;">
+            <div class="csv-error-header">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+              <span id="product-csv-error-title">Phát hiện lỗi dữ liệu - Không dòng nào được tạo</span>
+            </div>
+            <div style="max-height: 220px; overflow-y: auto;">
+              <table class="csv-error-table">
+                <thead>
+                  <tr>
+                    <th style="width: 70px;">Dòng</th>
+                    <th style="width: 110px;">Cột</th>
+                    <th>Chi tiết lỗi</th>
+                  </tr>
+                </thead>
+                <tbody id="product-csv-error-tbody"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" id="btn-cancel-csv-modal" class="btn btn-outline">Hủy bỏ</button>
+          <button type="submit" id="btn-submit-csv" class="btn btn-primary" disabled>Tiến hành nhập</button>
+        </div>
+      </form>
+    </div>
+  </div>
 
   <!-- Modal Thêm sản phẩm (Chỉ dành cho Admin) -->
   <div id="modal-add-product" class="modal-backdrop" style="display: none;">
@@ -278,7 +343,7 @@
 
           if (canWriteProduct) {
             const adminActions = document.getElementById("admin-actions");
-            if (adminActions) adminActions.style.display = "block";
+            if (adminActions) adminActions.style.display = "flex";
           }
         }
       } catch (err) {
@@ -602,6 +667,175 @@
       modal.addEventListener("click", (e) => {
         if (e.target === modal) closeModal();
       });
+
+      // CSV Modal controls
+      const csvModal = document.getElementById("modal-import-csv");
+      const openCsvBtn = document.getElementById("btn-open-csv-modal");
+      const closeCsvBtn = document.getElementById("btn-close-csv-modal");
+      const cancelCsvBtn = document.getElementById("btn-cancel-csv-modal");
+      const csvFileInput = document.getElementById("product-csv-file");
+      const csvDropzone = document.getElementById("product-csv-dropzone");
+      const csvSelectedBox = document.getElementById("product-csv-selected");
+      const csvFilenameEl = document.getElementById("product-csv-filename");
+      const csvRemoveBtn = document.getElementById("btn-remove-product-csv");
+      const csvSubmitBtn = document.getElementById("btn-submit-csv");
+      const csvErrorBox = document.getElementById("product-csv-error-box");
+      const csvErrorTbody = document.getElementById("product-csv-error-tbody");
+      const downloadSampleBtn = document.getElementById("btn-download-product-csv-sample");
+
+      let selectedCsvText = "";
+
+      function openCsvModal() {
+        resetCsvModal();
+        csvModal.style.display = "flex";
+      }
+
+      function closeCsvModal() {
+        csvModal.style.display = "none";
+        resetCsvModal();
+      }
+
+      function resetCsvModal() {
+        selectedCsvText = "";
+        csvFileInput.value = "";
+        csvSelectedBox.style.display = "none";
+        csvDropzone.style.display = "flex";
+        csvErrorBox.style.display = "none";
+        csvErrorTbody.innerHTML = "";
+        csvSubmitBtn.disabled = true;
+        csvSubmitBtn.textContent = "Tiến hành nhập";
+      }
+
+      if (openCsvBtn) openCsvBtn.addEventListener("click", openCsvModal);
+      if (closeCsvBtn) closeCsvBtn.addEventListener("click", closeCsvModal);
+      if (cancelCsvBtn) cancelCsvBtn.addEventListener("click", closeCsvModal);
+      if (csvModal) {
+        csvModal.addEventListener("click", (e) => {
+          if (e.target === csvModal) closeCsvModal();
+        });
+      }
+
+      // Drag and drop
+      if (csvDropzone) {
+        csvDropzone.addEventListener("click", () => csvFileInput.click());
+        csvDropzone.addEventListener("dragover", (e) => {
+          e.preventDefault();
+          csvDropzone.classList.add("dragover");
+        });
+        csvDropzone.addEventListener("dragleave", () => {
+          csvDropzone.classList.remove("dragover");
+        });
+        csvDropzone.addEventListener("drop", (e) => {
+          e.preventDefault();
+          csvDropzone.classList.remove("dragover");
+          if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+            handleCsvFile(e.dataTransfer.files[0]);
+          }
+        });
+      }
+
+      if (csvFileInput) {
+        csvFileInput.addEventListener("change", (e) => {
+          if (e.target.files && e.target.files.length > 0) {
+            handleCsvFile(e.target.files[0]);
+          }
+        });
+      }
+
+      if (csvRemoveBtn) {
+        csvRemoveBtn.addEventListener("click", resetCsvModal);
+      }
+
+      function handleCsvFile(file) {
+        if (!file.name.toLowerCase().endsWith(".csv")) {
+          alert("Vui lòng chọn tệp có định dạng .csv");
+          return;
+        }
+
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          selectedCsvText = e.target.result;
+          csvFilenameEl.textContent = `${file.name} (${(file.size / 1024).toFixed(1)} KB)`;
+          csvDropzone.style.display = "none";
+          csvSelectedBox.style.display = "flex";
+          csvErrorBox.style.display = "none";
+          csvSubmitBtn.disabled = false;
+        };
+        reader.readAsText(file, "UTF-8");
+      }
+
+      // Tải CSV mẫu
+      if (downloadSampleBtn) {
+        downloadSampleBtn.addEventListener("click", () => {
+          const sampleCsvContent = "\uFEFFname,unit\nKhoai tây Đà Lạt,tan\nDưa leo baby,kg\nBưởi da xanh Bến Tre,thung";
+          const blob = new Blob([sampleCsvContent], { type: "text/csv;charset=utf-8;" });
+          const url = URL.createObjectURL(blob);
+          const link = document.createElement("a");
+          link.setAttribute("href", url);
+          link.setAttribute("download", "mau_danh_muc_san_pham.csv");
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+        });
+      }
+
+      // Submit CSV Import
+      document.getElementById("form-import-csv").addEventListener("submit", async (e) => {
+        e.preventDefault();
+        if (!selectedCsvText || !selectedCsvText.trim()) {
+          alert("Vui lòng chọn tệp CSV có nội dung hợp lệ.");
+          return;
+        }
+
+        csvSubmitBtn.disabled = true;
+        csvSubmitBtn.textContent = "Đang xử lý nhập dữ liệu...";
+        csvErrorBox.style.display = "none";
+        csvErrorTbody.innerHTML = "";
+
+        try {
+          const res = await fetch("/api/products/import-csv", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ csvContent: selectedCsvText }),
+          });
+
+          const data = await res.json();
+
+          if (!res.ok) {
+            // Hiển thị lỗi dòng và cột
+            if (data.errors && Array.isArray(data.errors) && data.errors.length > 0) {
+              csvErrorTbody.innerHTML = data.errors
+                .map(
+                  (err) => `
+                <tr>
+                  <td><span class="csv-badge-row">Dòng ${escapeHtml(err.row)}</span></td>
+                  <td><span class="csv-badge-col">${escapeHtml(err.column)}</span></td>
+                  <td>${escapeHtml(err.message)}</td>
+                </tr>
+              `
+                )
+                .join("");
+              csvErrorBox.style.display = "block";
+            } else {
+              csvErrorTbody.innerHTML = `<tr><td colspan="3">${escapeHtml(data.message || "Lỗi xử lý file.")}</td></tr>`;
+              csvErrorBox.style.display = "block";
+            }
+            return;
+          }
+
+          // Thành công
+          closeCsvModal();
+          showBanner("success", `✓ ${data.message}`);
+          await loadProducts();
+        } catch (err) {
+          csvErrorTbody.innerHTML = `<tr><td colspan="3">${escapeHtml(err.message || "Lỗi kết nối máy chủ.")}</td></tr>`;
+          csvErrorBox.style.display = "block";
+        } finally {
+          csvSubmitBtn.disabled = false;
+          csvSubmitBtn.textContent = "Tiến hành nhập";
+        }
+      });
+
 
       // Detail Modal controls
       const detailModal = document.getElementById("modal-detail-product");

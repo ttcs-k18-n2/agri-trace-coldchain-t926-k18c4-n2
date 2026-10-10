@@ -32,6 +32,10 @@ const {
   validateSplitItems,
   validateMergeItems,
 } = require("./quantity");
+const {
+  validateProductsCsv,
+  validateFarmsCsv,
+} = require("./csv_importer");
 const app = express();
 const PORT = Number(process.env.PORT || 3000);
 
@@ -817,6 +821,86 @@ app.post(
     });
   }
 );
+
+/**
+ * Nhập danh mục sản phẩm từ CSV (All-or-Nothing)
+ * Chỉ admin hệ thống mới có quyền nhập danh mục sản phẩm
+ */
+app.post(
+  "/api/products/import-csv",
+  requirePermission(["admin"]),
+  async (req, res) => {
+    const csvContent = typeof req.body === "string" ? req.body : req.body.csvContent;
+    if (!csvContent || typeof csvContent !== "string" || !csvContent.trim()) {
+      return res.status(400).json({
+        message: "Nội dung tệp CSV không được để trống.",
+        errors: [{ row: 1, column: "file", message: "Nội dung tệp CSV không được để trống." }],
+      });
+    }
+
+    // Lấy danh sách tên sản phẩm hiện tại để đối chiếu trùng
+    let existingNamesLower = new Set();
+    if (pool) {
+      try {
+        const existRes = await pool.query("SELECT LOWER(name) AS name_lower FROM products");
+        existingNamesLower = new Set(existRes.rows.map((r) => r.name_lower));
+      } catch (err) {
+        return res.status(500).json({ message: err.message });
+      }
+    } else {
+      existingNamesLower = new Set(inMemoryProducts.map((p) => p.name.toLowerCase()));
+    }
+
+    const validation = validateProductsCsv(csvContent, existingNamesLower);
+    if (!validation.valid) {
+      return res.status(400).json({
+        message: "Dữ liệu CSV chứa lỗi, không có dòng nào được tạo.",
+        errors: validation.errors,
+      });
+    }
+
+    const createdProducts = [];
+    if (pool) {
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN");
+        for (const item of validation.rows) {
+          const prodId = `PROD-${crypto.randomBytes(4).toString("hex").toUpperCase()}`;
+          const insertRes = await client.query(
+            "INSERT INTO products (id, name, unit) VALUES ($1, $2, $3) RETURNING id, name, unit, created_at",
+            [prodId, item.name, item.unit]
+          );
+          createdProducts.push(insertRes.rows[0]);
+        }
+        await client.query("COMMIT");
+      } catch (err) {
+        await client.query("ROLLBACK");
+        return res.status(500).json({ message: "Lỗi trong quá trình nhập dữ liệu: " + err.message });
+      } finally {
+        client.release();
+      }
+    } else {
+      for (const item of validation.rows) {
+        const prodId = `PROD-${crypto.randomBytes(4).toString("hex").toUpperCase()}`;
+        const newProd = {
+          id: prodId,
+          name: item.name,
+          unit: item.unit,
+          created_at: new Date().toISOString(),
+        };
+        inMemoryProducts.push(newProd);
+        createdProducts.push(newProd);
+      }
+    }
+
+    return res.status(201).json({
+      message: `Nhập danh mục sản phẩm thành công (${createdProducts.length} dòng).`,
+      importedCount: createdProducts.length,
+      products: createdProducts,
+    });
+  }
+);
+
 
 /**
  * Chỉnh sửa sản phẩm (T-17, S-07)
@@ -3334,6 +3418,101 @@ app.post(
     });
   }
 );
+
+/**
+ * Nhập danh mục thửa đất từ CSV (All-or-Nothing)
+ * Hỗ trợ producer, cooperative, org_admin, admin
+ */
+app.post(
+  "/api/farms/import-csv",
+  requirePermission(["producer", "cooperative", "org_admin", "admin"]),
+  async (req, res) => {
+    const orgId = req.auth.organizationId;
+    const csvContent = typeof req.body === "string" ? req.body : req.body.csvContent;
+    if (!csvContent || typeof csvContent !== "string" || !csvContent.trim()) {
+      return res.status(400).json({
+        message: "Nội dung tệp CSV không được để trống.",
+        errors: [{ row: 1, column: "file", message: "Nội dung tệp CSV không được để trống." }],
+      });
+    }
+
+    let existingFarmNamesLower = new Set();
+    if (pool) {
+      try {
+        const existRes = await pool.query(
+          "SELECT LOWER(name) AS name_lower FROM farms WHERE organization_id = $1",
+          [orgId]
+        );
+        existingFarmNamesLower = new Set(existRes.rows.map((r) => r.name_lower));
+      } catch (err) {
+        return res.status(500).json({ message: err.message });
+      }
+    } else {
+      existingFarmNamesLower = new Set(
+        inMemoryFarms
+          .filter((f) => f.organizationId === orgId)
+          .map((f) => f.name.toLowerCase())
+      );
+    }
+
+    const validation = validateFarmsCsv(csvContent, existingFarmNamesLower);
+    if (!validation.valid) {
+      return res.status(400).json({
+        message: "Dữ liệu CSV chứa lỗi, không có dòng nào được tạo.",
+        errors: validation.errors,
+      });
+    }
+
+    const createdFarms = [];
+    if (pool) {
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN");
+        for (const item of validation.rows) {
+          const farmId = "FARM-" + crypto.randomBytes(3).toString("hex").toUpperCase();
+          const insertRes = await client.query(
+            "INSERT INTO farms (id, name, area, coordinates, organization_id) VALUES ($1, $2, $3, $4, $5) RETURNING id, name, area, coordinates, organization_id",
+            [farmId, item.name, item.area, item.coordinates || null, orgId]
+          );
+          const r = insertRes.rows[0];
+          createdFarms.push({
+            id: r.id,
+            name: r.name,
+            area: parseFloat(r.area),
+            coordinates: r.coordinates,
+            organizationId: r.organization_id,
+          });
+        }
+        await client.query("COMMIT");
+      } catch (err) {
+        await client.query("ROLLBACK");
+        return res.status(500).json({ message: "Lỗi trong quá trình nhập dữ liệu: " + err.message });
+      } finally {
+        client.release();
+      }
+    } else {
+      for (const item of validation.rows) {
+        const farmId = "FARM-" + crypto.randomBytes(3).toString("hex").toUpperCase();
+        const newFarm = {
+          id: farmId,
+          name: item.name,
+          area: item.area,
+          coordinates: item.coordinates || "",
+          organizationId: orgId,
+        };
+        inMemoryFarms.push(newFarm);
+        createdFarms.push(newFarm);
+      }
+    }
+
+    return res.status(201).json({
+      message: `Nhập danh mục thửa đất thành công (${createdFarms.length} dòng).`,
+      importedCount: createdFarms.length,
+      farms: createdFarms,
+    });
+  }
+);
+
 
 /**
  * Chỉnh sửa thửa đất - Đổi tên không làm hỏng liên kết với lô (T-15)
