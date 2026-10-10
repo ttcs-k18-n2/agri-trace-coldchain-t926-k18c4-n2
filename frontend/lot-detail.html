@@ -1339,7 +1339,7 @@
               <line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/>
             </svg>
             <span>Nguồn gốc</span>
-            <span class="tab-badge">${(lot.parentLot ? 1 : 0) + (lot.childLots ? lot.childLots.length : 0)}</span>
+            <span class="tab-badge">${((Array.isArray(lot.parentLots) && lot.parentLots.length > 0) ? lot.parentLots.length : (lot.parentLot ? 1 : 0)) + (lot.childLots ? lot.childLots.length : 0)}</span>
           </button>
         </div>
 
@@ -1572,44 +1572,62 @@
             </div>
 
             <!-- Parent Lot Box -->
-            <div class="lineage-block-title">Lô mẹ trực tiếp (Nguồn gốc trực tiếp)</div>
-            ${lot.parentLot ? `
-              <div class="parent-lot-box">
-                <div class="parent-lot-info">
-                  <div class="parent-lot-code-tag">
-                    <span class="font-mono" style="font-weight: 800; color: var(--color-primary); font-size: 14px;">${escapeHtml(lot.parentLot.id)}</span>
-                    <span class="status-pill ${lot.parentLot.status === 'Đã thu hoạch' || lot.parentLot.status === 'Đã nhập kho' ? 'success' : 'warning'}" style="font-size: 11px; padding: 2px 8px;">
-                      ${escapeHtml(lot.parentLot.status || "Đã thu hoạch")}
-                    </span>
+            ${(() => {
+              const parents = (Array.isArray(lot.parentLots) && lot.parentLots.length > 0)
+                ? lot.parentLots
+                : (lot.parentLot ? [lot.parentLot] : []);
+              
+              if (parents.length === 0) {
+                return `
+                  <div class="lineage-block-title">Lô mẹ trực tiếp (Nguồn gốc trực tiếp)</div>
+                  <div class="lineage-empty-box">
+                    <div class="lineage-empty-icon">🌱</div>
+                    <div>
+                      <div style="font-weight: 600; color: var(--color-text-main);">Lô gốc F0 (Lô thu hoạch ban đầu)</div>
+                      <div style="font-size: 12.5px; color: var(--color-text-muted);">Lô hàng này được thu hoạch trực tiếp từ thửa đất sản xuất, không tách hoặc sơ chế từ lô mẹ nào.</div>
+                    </div>
                   </div>
-                  <div class="parent-lot-name">${escapeHtml(lot.parentLot.productName || lot.parentLot.name || "Lô mẹ")}</div>
-                  <div class="parent-lot-meta">
-                    <span><strong>Tổ chức:</strong> ${escapeHtml(lot.parentLot.organizationName || lot.parentLot.organizationId || "--")}</span>
-                    ${(() => {
-                      const pRem = (lot.parentLot.remainingQuantity !== null && lot.parentLot.remainingQuantity !== undefined)
-                        ? Number(lot.parentLot.remainingQuantity)
-                        : ((lot.parentLot.remaining_quantity !== null && lot.parentLot.remaining_quantity !== undefined) ? Number(lot.parentLot.remaining_quantity) : null);
-                      return pRem !== null ? `
-                        <span>&bull;</span>
-                        <span><strong>Khối lượng còn lại:</strong> ${pRem.toFixed(3)} ${escapeHtml(lot.parentLot.productUnit || "kg")}</span>
-                      ` : "";
-                    })()}
-                  </div>
+                `;
+              }
+
+              return `
+                <div class="lineage-block-title">
+                  <span>${parents.length > 1 ? `Các lô mẹ trực tiếp (${parents.length} lô ghép)` : "Lô mẹ trực tiếp (Nguồn gốc trực tiếp)"}</span>
+                  <span class="count-badge">${parents.length}</span>
                 </div>
-                <a href="/lot-detail.html?id=${encodeURIComponent(lot.parentLot.id)}" class="btn-goto-lineage">
-                  <span>Xem lô mẹ</span>
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
-                </a>
-              </div>
-            ` : `
-              <div class="lineage-empty-box">
-                <div class="lineage-empty-icon">🌱</div>
-                <div>
-                  <div style="font-weight: 600; color: var(--color-text-main);">Lô gốc F0 (Lô thu hoạch ban đầu)</div>
-                  <div style="font-size: 12.5px; color: var(--color-text-muted);">Lô hàng này được thu hoạch trực tiếp từ thửa đất sản xuất, không tách hoặc sơ chế từ lô mẹ nào.</div>
+                <div style="display: flex; flex-direction: column; gap: 12px;">
+                  ${parents.map(p => {
+                    const pRem = (p.remainingQuantity !== null && p.remainingQuantity !== undefined)
+                      ? Number(p.remainingQuantity)
+                      : ((p.remaining_quantity !== null && p.remaining_quantity !== undefined) ? Number(p.remaining_quantity) : null);
+                    return `
+                    <div class="parent-lot-box">
+                      <div class="parent-lot-info">
+                        <div class="parent-lot-code-tag">
+                          <span class="font-mono" style="font-weight: 800; color: var(--color-primary); font-size: 14px;">${escapeHtml(p.id)}</span>
+                          <span class="status-pill ${p.status === 'Đã thu hoạch' || p.status === 'Đã nhập kho' ? 'success' : 'warning'}" style="font-size: 11px; padding: 2px 8px;">
+                            ${escapeHtml(p.status || "Đã thu hoạch")}
+                          </span>
+                        </div>
+                        <div class="parent-lot-name">${escapeHtml(p.productName || p.name || "Lô mẹ")}</div>
+                        <div class="parent-lot-meta">
+                          <span><strong>Tổ chức:</strong> ${escapeHtml(p.organizationName || p.organizationId || "--")}</span>
+                          ${pRem !== null ? `
+                            <span>&bull;</span>
+                            <span><strong>Khối lượng còn lại:</strong> ${pRem.toFixed(3)} ${escapeHtml(p.productUnit || "kg")}</span>
+                          ` : ""}
+                        </div>
+                      </div>
+                      <a href="/lot-detail.html?id=${encodeURIComponent(p.id)}" class="btn-goto-lineage">
+                        <span>Xem lô mẹ</span>
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+                      </a>
+                    </div>
+                    `;
+                  }).join("")}
                 </div>
-              </div>
-            `}
+              `;
+            })()}
 
             <!-- Child Lots Section -->
             <div class="lineage-block-title" style="margin-top: 22px;">
@@ -2550,31 +2568,79 @@
         });
       }
 
-      const form = document.getElementById("mergeLotForm");
-      if (form) {
-        form.addEventListener("submit", (e) => {
-          e.preventDefault();
-          const checkboxes = document.querySelectorAll(".merge-lot-checkbox:checked");
-          const alertBox = document.getElementById("mergeModalAlert");
-          if (checkboxes.length === 0) {
-            if (alertBox) {
-              alertBox.className = "alert alert-warning";
-              alertBox.style.display = "block";
-              alertBox.textContent = "Vui lòng chọn ít nhất một lô hàng bổ sung để gộp.";
-            }
-            return;
+      const submitBtn = document.getElementById("btnSubmitMerge");
+      const executeMerge = async () => {
+        const checkboxes = document.querySelectorAll(".merge-lot-checkbox:checked");
+        const alertBox = document.getElementById("mergeModalAlert");
+        if (checkboxes.length === 0) {
+          if (alertBox) {
+            alertBox.className = "alert alert-warning";
+            alertBox.style.display = "block";
+            alertBox.textContent = "Vui lòng chọn ít nhất một lô hàng bổ sung để gộp.";
+          }
+          return;
+        }
+
+        if (!currentMergeLot) return;
+
+        const baseQty = Number(currentMergeLot.remainingQuantity !== undefined ? currentMergeLot.remainingQuantity : currentMergeLot.remaining_quantity) || 0;
+        const items = [{ parent_batch_id: currentMergeLot.id, take_quantity: baseQty }];
+
+        checkboxes.forEach((cb) => {
+          items.push({
+            parent_batch_id: cb.value,
+            take_quantity: Number(cb.dataset.quantity || 0),
+          });
+        });
+
+        try {
+          if (submitBtn) {
+            submitBtn.disabled = true;
+            submitBtn.textContent = "Đang gộp lô...";
+          }
+
+          const res = await fetch("/api/lots/merge", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            credentials: "same-origin",
+            body: JSON.stringify({ items }),
+          });
+
+          const data = await res.json();
+          if (!res.ok) {
+            throw new Error(data.message || data.error || "Gộp lô không thành công.");
           }
 
           if (alertBox) {
-            alertBox.className = "alert alert-info";
+            alertBox.className = "alert alert-success";
             alertBox.style.display = "block";
             alertBox.innerHTML = `
-              <strong>✓ Đã chuẩn bị sáp nhập ${checkboxes.length + 1} lô hàng.</strong><br>
-              Các lô thành phần đã được kiểm tra tính hợp lệ về chủng loại và phả hệ.
+              <strong>✓ Gộp lô thành công!</strong><br>
+              Lô mới tạo: <strong>${escapeHtml(data.lot.id)}</strong>.<br>
+              Đang chuyển hướng sang chi tiết lô mới...
             `;
           }
-        });
-      }
+
+          setTimeout(() => {
+            window.location.href = `/lot-detail.html?id=${encodeURIComponent(data.lot.id)}`;
+          }, 1200);
+        } catch (err) {
+          if (alertBox) {
+            alertBox.className = "alert alert-danger";
+            alertBox.style.display = "block";
+            alertBox.textContent = err.message;
+          }
+        } finally {
+          if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.textContent = "Tiến hành gộp lô";
+          }
+        }
+      };
+
+      if (submitBtn) submitBtn.addEventListener("click", executeMerge);
+      const form = document.getElementById("mergeLotForm");
+      if (form) form.addEventListener("submit", (e) => { e.preventDefault(); executeMerge(); });
     }
 
     setupTransferModalListeners();

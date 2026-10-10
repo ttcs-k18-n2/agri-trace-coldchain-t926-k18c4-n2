@@ -45,6 +45,7 @@ Quy tắc:
 
 ```text
 feat(S-19): implement lot merge transaction
+feat(S-22): implement idempotent 3-tier sample dataset with hand-checked answers
 fix(S-24): fix overdue badge
 test(S-19): add merge rollback tests
 ```
@@ -85,6 +86,52 @@ compare: feature/s3-s19-merge-lots
 ```
 
 Chỉ merge khi CI xanh, không conflict và review/Acceptance Criteria đạt.
+
+---
+
+## Tính năng S-19 – Gộp lô hàng (Lot Merge)
+
+Nghiệp vụ cho phép sáp nhập nhiều lô hàng cùng loại sản phẩm thành một lô lớn tập trung:
+- **API Backend**: `POST /api/lots/merge`
+  - Kiểm tra điều kiện đầu vào: tối thiểu 2 lô, cùng sản phẩm, cùng quyền quản lý của tổ chức, không có bàn giao PENDING, khối lượng lấy hợp lệ.
+  - Chống deadlock (NFR): Tự động sắp xếp các mã lô cha tăng dần trước khi khoá dòng (`SELECT ... FOR UPDATE`).
+  - Giao dịch nguyên tử: Trừ `remaining_quantity` của các lô mẹ, tạo lô mới, ghi liên kết vào bảng `batch_relations` (loại `MERGE`).
+  - Bảo chứng mật mã: Ghi sự kiện `LOT_MERGED_FROM` vào chuỗi từng lô mẹ và `CREATED_FROM_MERGE` vào lô mới tạo với hash SHA-256 bất biến.
+- **Frontend**:
+  - Giao diện chọn nhiều lô (multi-select) trên `lots.html` kèm thanh tác vụ gộp nhanh dưới chân trang.
+  - Modal gộp trực tiếp trên `lot-detail.html` kế thừa lô hiện tại.
+  - Hiển thị danh sách đầy đủ tất cả các lô mẹ (`parentLots`) và các lô con (`childLots`) trong tab Nguồn gốc.
+
+---
+
+## Tính năng S-22 – Bộ dữ liệu mẫu 3 tầng có đáp án đếm tay
+
+Cung cấp bộ dữ liệu mẫu độc lập qua 3 tầng (12 lô L01 đến L12) với đáp án tổ tiên/hậu duệ tính sẵn bằng tay để kiểm tra mọi thuật toán truy vấn phả hệ (S-21, S-26, S-27, S-28):
+- **File seed SQL thực thi**: `db/seed_s22.sql` (100% idempotent với `ON CONFLICT DO UPDATE/DO NOTHING`).
+- **3 tổ chức**: `ORG-A` (Hợp tác xã), `ORG-B` (Nhà máy sơ chế), `ORG-C` (Trung tâm phân phối).
+- **Mô hình phả hệ 3 tầng**:
+  ```text
+  TẦNG 1:  L01   L02   L03   L04
+             |    / \    |    |
+             |   /   \   |    |
+  TẦNG 2:  L05 L06   L07 L08 L09
+               \      /   \  /
+                \    /     \/
+  TẦNG 3:       L10       L11 L12
+  ```
+- **Đáp án đếm tay độc lập**:
+  - Tổ tiên: `L07={L01,L03}`, `L10={L05,L08,L02,L04}`, `L11={L06,L09,L02,L04}`, `L12={}`
+  - Hậu duệ: `L01={L07}`, `L02={L05,L06,L10,L11}`, `L04={L08,L09,L10,L11}`, `L10={}`, `L12={}`
+- **Chạy seed**:
+  ```bash
+  cd backend
+  npm run seed:s22
+  ```
+- **API truy xuất phả hệ toàn diện**: `GET /api/lots/:id/genealogy`
+  - Trả về `ancestorIds`, `descendantIds`, `ancestorCount`, `descendantCount` và đồ thị `graph` (nodes, edges) phục vụ sơ đồ phả hệ.
+- **Báo cáo chi tiết**: Xem [docs/bao-cao-S22.md](docs/bao-cao-S22.md).
+
+---
 
 ## Chạy ứng dụng local
 
@@ -166,7 +213,7 @@ docker compose up -d --build
 
 Lưu ý: `down -v` xóa database **local của máy đó**, không ảnh hưởng server staging.
 
-## Migration
+## Migration & Seed
 
 Migration nằm tại:
 
@@ -175,11 +222,12 @@ db/migrations/
 db/migrations/down/
 ```
 
-Chạy migration thủ công:
+Chạy migration và seed thủ công:
 
 ```bash
 docker compose exec backend npm run migrate:up
 docker compose exec backend npm run migrate:down
+docker compose exec backend npm run seed:s22
 ```
 
 ## Cấu trúc repository
@@ -195,7 +243,8 @@ docker compose exec backend npm run migrate:down
 │   └── package.json
 ├── frontend/
 ├── db/
-│   └── migrations/
+│   ├── migrations/
+│   └── seed_s22.sql
 ├── deploy/
 ├── docs/
 ├── .github/workflows/

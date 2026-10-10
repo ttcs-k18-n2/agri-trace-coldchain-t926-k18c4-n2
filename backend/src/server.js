@@ -16,8 +16,22 @@ const {
   setAppendHookForTesting,
 } = require("./event_repository");
 const { verifyBatchIntegrity } = require("./integrity_verifier");
-const { evaluateLotAccess } = require("./lot_access");
+const {
+  evaluateLotAccess,
+  collectAncestorLotIds,
+  collectDescendantLotIds,
+  fetchAllLotsRaw,
+} = require("./lot_access");
+const { seedS22InMemory } = require("../scripts/seed_s22");
 const { markOverdueTransfers, startTransferOverdueJob } = require("./transfer_overdue_job");
+const {
+  isValidQuantity,
+  toMilliUnits,
+  fromMilliUnits,
+  formatQuantityString,
+  validateSplitItems,
+  validateMergeItems,
+} = require("./quantity");
 const app = express();
 const PORT = Number(process.env.PORT || 3000);
 
@@ -1149,7 +1163,31 @@ app.get(
             pl.product_id AS parent_product_id, pl.organization_id AS parent_organization_id,
             pl.initial_quantity AS parent_initial_quantity, pl.remaining_quantity AS parent_remaining_quantity,
             pp.name AS parent_product_name, pp.unit AS parent_product_unit,
-            po.name AS parent_organization_name
+            po.name AS parent_organization_name,
+            COALESCE((
+              SELECT json_agg(json_build_object(
+                'id', m_pl.id,
+                'name', m_pl.name,
+                'status', m_pl.status,
+                'productId', m_pl.product_id,
+                'productName', m_pp.name,
+                'productUnit', COALESCE(m_pp.unit, 'kg'),
+                'organizationId', m_pl.organization_id,
+                'organizationName', m_po.name,
+                'initialQuantity', m_pl.initial_quantity,
+                'remainingQuantity', m_pl.remaining_quantity
+              ))
+              FROM (
+                SELECT DISTINCT pr_id FROM (
+                  SELECT parent_batch_id AS pr_id FROM batch_relations WHERE child_batch_id = l.id
+                  UNION ALL
+                  SELECT l.parent_lot_id AS pr_id WHERE l.parent_lot_id IS NOT NULL
+                ) pr_u WHERE pr_id IS NOT NULL
+              ) m_parents
+              JOIN lots m_pl ON m_parents.pr_id = m_pl.id
+              LEFT JOIN products m_pp ON m_pl.product_id = m_pp.id
+              LEFT JOIN organizations m_po ON m_pl.organization_id = m_po.id
+            ), '[]'::json) AS parent_lots_json
           FROM lots l
           LEFT JOIN farms f ON l.farm_id = f.id
           LEFT JOIN products p ON l.product_id = p.id
@@ -1221,9 +1259,9 @@ app.get(
           ancestors = [];
         }
 
-        // Lệnh 2: Lấy danh sách các lô con trực tiếp (NFR: 1 query)
+        // Lệnh 2: Lấy danh sách các lô con trực tiếp (NFR: 1 query kết hợp batch_relations và lots)
         const childQuery = `
-          SELECT 
+          SELECT DISTINCT
             c.id, c.name, c.status, c.organization_id, c.product_id, c.farm_id,
             c.initial_quantity, c.remaining_quantity, c.harvested_at, c.created_at, c.parent_lot_id,
             p.name AS product_name, p.unit AS product_unit,
@@ -1232,12 +1270,28 @@ app.get(
           LEFT JOIN products p ON c.product_id = p.id
           LEFT JOIN organizations o ON c.organization_id = o.id
           WHERE c.parent_lot_id = $1
+             OR c.id IN (SELECT child_batch_id FROM batch_relations WHERE parent_batch_id = $1)
           ORDER BY c.created_at DESC, c.id DESC
         `;
         const childRes = await pool.query(childQuery, [lotId]);
 
         let parentLot = null;
-        if (row.parent_id) {
+        let parentLots = [];
+        if (Array.isArray(row.parent_lots_json) && row.parent_lots_json.length > 0) {
+          parentLots = row.parent_lots_json.map((p) => ({
+            id: p.id,
+            name: p.name,
+            status: p.status,
+            productId: p.productId,
+            productName: p.productName,
+            productUnit: p.productUnit || "kg",
+            organizationId: p.organizationId,
+            organizationName: p.organizationName,
+            initialQuantity: p.initialQuantity !== null && p.initialQuantity !== undefined ? Number(p.initialQuantity) : null,
+            remainingQuantity: p.remainingQuantity !== null && p.remainingQuantity !== undefined ? Number(p.remainingQuantity) : null,
+          }));
+          parentLot = parentLots[0];
+        } else if (row.parent_id) {
           parentLot = {
             id: row.parent_id,
             name: row.parent_name,
@@ -1250,6 +1304,7 @@ app.get(
             initialQuantity: row.parent_initial_quantity !== null && row.parent_initial_quantity !== undefined ? Number(row.parent_initial_quantity) : null,
             remainingQuantity: row.parent_remaining_quantity !== null && row.parent_remaining_quantity !== undefined ? Number(row.parent_remaining_quantity) : null,
           };
+          parentLots.push(parentLot);
         }
 
         const childLots = childRes.rows.map((c) => ({
@@ -1285,6 +1340,7 @@ app.get(
           createdAt: row.created_at,
           parentLotId: row.parent_lot_id || null,
           parentLot,
+          parentLots,
           childLots,
           accessType,
           ancestors,
@@ -1338,14 +1394,30 @@ app.get(
           return org ? org.name : (ORG_NAME_FALLBACKS[orgId] || orgId);
         };
 
-        let parentLot = null;
-        if (parentLotId) {
-          const pLot = inMemoryLots.find((l) => l.id === parentLotId);
+        // Lấy tất cả các lô mẹ (hỗ trợ cả trường hợp tách lô 1 mẹ và gộp nhiều lô mẹ)
+        const parentIdList = [];
+        if (parentLotId && !parentIdList.includes(parentLotId)) {
+          parentIdList.push(parentLotId);
+        }
+        if (Array.isArray(inMemoryBatchRelations)) {
+          const relations = inMemoryBatchRelations.filter(
+            (r) => (r.childBatchId === lotId || r.child_batch_id === lotId)
+          );
+          for (const rel of relations) {
+            const pId = rel.parentBatchId || rel.parent_batch_id;
+            if (pId && !parentIdList.includes(pId)) {
+              parentIdList.push(pId);
+            }
+          }
+        }
+
+        const parentLots = parentIdList.map((pId) => {
+          const pLot = inMemoryLots.find((l) => l.id === pId);
           if (pLot) {
             const pProd = inMemoryProducts.find((p) => p.id === (pLot.productId || pLot.product_id));
             const pInitQty = pLot.initialQuantity !== undefined ? pLot.initialQuantity : pLot.initial_quantity;
             const pRemQty = pLot.remainingQuantity !== undefined ? pLot.remainingQuantity : pLot.remaining_quantity;
-            parentLot = {
+            return {
               id: pLot.id,
               name: pLot.name,
               status: pLot.status,
@@ -1357,32 +1429,52 @@ app.get(
               initialQuantity: pInitQty !== null && pInitQty !== undefined ? Number(pInitQty) : null,
               remainingQuantity: pRemQty !== null && pRemQty !== undefined ? Number(pRemQty) : null,
             };
-          } else {
-            parentLot = { id: parentLotId, name: parentLotId };
+          }
+          return { id: pId, name: pId };
+        });
+
+        const parentLot = parentLots.length > 0 ? parentLots[0] : null;
+
+        const childIdList = [];
+        for (const l of inMemoryLots) {
+          if ((l.parentLotId || l.parent_lot_id) === lotId && !childIdList.includes(l.id)) {
+            childIdList.push(l.id);
+          }
+        }
+        if (Array.isArray(inMemoryBatchRelations)) {
+          for (const rel of inMemoryBatchRelations) {
+            const pId = rel.parentBatchId || rel.parent_batch_id;
+            const cId = rel.childBatchId || rel.child_batch_id;
+            if (pId === lotId && cId && !childIdList.includes(cId)) {
+              childIdList.push(cId);
+            }
           }
         }
 
-        const childLots = inMemoryLots
-          .filter((l) => (l.parentLotId || l.parent_lot_id) === lotId)
-          .map((cL) => {
-            const cProd = inMemoryProducts.find((p) => p.id === (cL.productId || cL.product_id));
-            const cInitQty = cL.initialQuantity !== undefined ? cL.initialQuantity : cL.initial_quantity;
-            const cRemQty = cL.remainingQuantity !== undefined ? cL.remainingQuantity : cL.remaining_quantity;
-            return {
-              id: cL.id,
-              name: cL.name,
-              status: cL.status,
-              organizationId: cL.organizationId || cL.organization_id,
-              organizationName: getOrgName(cL.organizationId || cL.organization_id),
-              productId: cL.productId || cL.product_id || null,
-              productName: cProd ? cProd.name : (cL.productName || null),
-              productUnit: cProd ? cProd.unit : (cL.productUnit || "kg"),
-              initialQuantity: cInitQty !== null && cInitQty !== undefined ? Number(cInitQty) : null,
-              remainingQuantity: cRemQty !== null && cRemQty !== undefined ? Number(cRemQty) : null,
-              harvestedAt: cL.harvestedAt || cL.harvested_at || null,
-              createdAt: cL.createdAt || cL.created_at || null,
-              parentLotId: lotId,
-            };
+        const childLots = childIdList
+          .map((cId) => {
+            const cL = inMemoryLots.find((l) => l.id === cId);
+            if (cL) {
+              const cProd = inMemoryProducts.find((p) => p.id === (cL.productId || cL.product_id));
+              const cInitQty = cL.initialQuantity !== undefined ? cL.initialQuantity : cL.initial_quantity;
+              const cRemQty = cL.remainingQuantity !== undefined ? cL.remainingQuantity : cL.remaining_quantity;
+              return {
+                id: cL.id,
+                name: cL.name,
+                status: cL.status,
+                organizationId: cL.organizationId || cL.organization_id,
+                organizationName: getOrgName(cL.organizationId || cL.organization_id),
+                productId: cL.productId || cL.product_id || null,
+                productName: cProd ? cProd.name : (cL.productName || null),
+                productUnit: cProd ? cProd.unit : (cL.productUnit || "kg"),
+                initialQuantity: cInitQty !== null && cInitQty !== undefined ? Number(cInitQty) : null,
+                remainingQuantity: cRemQty !== null && cRemQty !== undefined ? Number(cRemQty) : null,
+                harvestedAt: cL.harvestedAt || cL.harvested_at || null,
+                createdAt: cL.createdAt || cL.created_at || null,
+                parentLotId: cL.parentLotId || cL.parent_lot_id || null,
+              };
+            }
+            return { id: cId, name: cId };
           });
 
         const initQty = rawLot.initialQuantity !== undefined ? rawLot.initialQuantity : rawLot.initial_quantity;
@@ -1405,6 +1497,7 @@ app.get(
           createdAt: rawLot.createdAt || rawLot.created_at || null,
           parentLotId,
           parentLot,
+          parentLots,
           childLots,
           accessType: access.accessType,
           ancestors: access.ancestors,
@@ -1449,19 +1542,17 @@ app.post(
       });
     }
 
-    // Kiểm tra từng lô con hợp lệ
-    for (let i = 0; i < splitItems.length; i++) {
-      const s = splitItems[i];
-      const q = Number(s.quantity);
-      if (isNaN(q) || q <= 0) {
-        return res.status(400).json({
-          error: "INVALID_QUANTITY",
-          message: `Khối lượng của lô con thứ ${i + 1} phải là số dương lớn hơn 0.`,
-        });
-      }
+    // Kiểm tra từng lô con và tính tổng khối lượng chuẩn xác (S-18 / T-42)
+    const splitValidation = validateSplitItems(splitItems);
+    if (!splitValidation.valid) {
+      return res.status(400).json({
+        error: splitValidation.error,
+        message: splitValidation.message,
+      });
     }
 
-    const totalSplitQuantity = splitItems.reduce((acc, s) => acc + Number(s.quantity), 0);
+    const totalSplitQuantity = splitValidation.totalQuantity;
+    const totalSplitMilli = splitValidation.totalMilli;
     const userOrgId = req.auth ? (req.auth.organizationId || req.auth.organization_id) : null;
     const userId = req.auth ? (req.auth.userId || req.auth.id) : null;
     const isAdmin = req.auth && (req.auth.roleId === "admin" || req.auth.isAdmin);
@@ -1522,7 +1613,8 @@ app.post(
         }
 
         const parentRemaining = Number(parentLot.remaining_quantity);
-        if (totalSplitQuantity > parentRemaining) {
+        const parentRemainingMilli = toMilliUnits(parentRemaining, true);
+        if (totalSplitMilli > parentRemainingMilli) {
           await client.query("ROLLBACK");
           return res.status(400).json({
             error: "EXCEEDS_REMAINING_QUANTITY",
@@ -1530,13 +1622,26 @@ app.post(
           });
         }
 
-        // 1. Trừ khối lượng còn lại của lô mẹ
-        const newRemaining = parentRemaining - totalSplitQuantity;
+        // 1. Trừ khối lượng còn lại của lô mẹ bằng phép tính NUMERIC trong PostgreSQL (T-42)
+        // kèm điều kiện remaining_quantity >= $1::numeric để phòng vệ bổ sung
         const updateParentRes = await client.query(
-          "UPDATE lots SET remaining_quantity = $1 WHERE id = $2 RETURNING *",
-          [newRemaining, parentLotId]
+          `UPDATE lots
+           SET remaining_quantity = (remaining_quantity - $1::numeric)
+           WHERE id = $2 AND remaining_quantity >= $1::numeric
+           RETURNING *`,
+          [formatQuantityString(totalSplitQuantity), parentLotId]
         );
+
+        if (updateParentRes.rowCount === 0) {
+          await client.query("ROLLBACK");
+          return res.status(400).json({
+            error: "EXCEEDS_REMAINING_QUANTITY",
+            message: `Tổng khối lượng tách (${totalSplitQuantity.toFixed(3)}) vượt quá khối lượng còn lại của lô mẹ.`,
+          });
+        }
+
         const updatedParent = updateParentRes.rows[0];
+        const newRemaining = Number(updatedParent.remaining_quantity);
 
         // 2. Tạo các lô con với mã sinh ngẫu nhiên
         const createdChildLots = [];
@@ -1698,16 +1803,17 @@ app.post(
       const parentRemaining = Number(
         parentLot.remainingQuantity !== undefined ? parentLot.remainingQuantity : parentLot.remaining_quantity
       );
-      if (totalSplitQuantity > parentRemaining) {
+      const parentRemainingMilli = toMilliUnits(parentRemaining, true);
+      if (totalSplitMilli > parentRemainingMilli) {
         return res.status(400).json({
           error: "EXCEEDS_REMAINING_QUANTITY",
           message: `Tổng khối lượng tách (${totalSplitQuantity.toFixed(3)}) vượt quá khối lượng còn lại của lô mẹ (${parentRemaining.toFixed(3)}).`,
         });
       }
 
-      // Trừ khối lượng còn lại của lô mẹ
+      // Trừ khối lượng còn lại của lô mẹ chuẩn xác theo milli-units (T-42)
       const oldRemaining = parentRemaining;
-      const newRemaining = parentRemaining - totalSplitQuantity;
+      const newRemaining = fromMilliUnits(parentRemainingMilli - totalSplitMilli);
       parentLot.remainingQuantity = newRemaining;
       if (parentLot.remaining_quantity !== undefined) parentLot.remaining_quantity = newRemaining;
 
@@ -1843,6 +1949,536 @@ app.post(
 );
 
 /**
+ * Task T-45: Validation & Kiểm tra điều kiện đầu vào cho Gộp Lô (S-19)
+ * @param {Array<{ parent_batch_id?: string, parentBatchId?: string, take_quantity?: number, takeQuantity?: number, quantity?: number }>} items
+ * @param {Array<object>} fetchedLots - Danh sách thông tin các lô cha đã nạp từ DB hoặc bộ nhớ
+ * @param {string} currentOrgId - ID của tổ chức hiện tại
+ * @param {boolean} isAdmin - Quyền quản trị viên
+ */
+function validateMergeLotInput(items, fetchedLots, currentOrgId, isAdmin = false) {
+  if (!Array.isArray(items) || items.length < 2) {
+    return {
+      isValid: false,
+      status: 400,
+      error: "INVALID_MERGE_INPUT",
+      message: "Cần chọn ít nhất 2 lô hàng để thực hiện gộp lô.",
+    };
+  }
+
+  // 1. Kiểm tra từng phần tử lấy khối lượng > 0 và tối đa 3 chữ số thập phân (S-18/S-19)
+  for (let i = 0; i < items.length; i++) {
+    const item = items[i];
+    const lotId = item.parent_batch_id || item.parentBatchId || item.lotId || item.id;
+    const rawVal = item.take_quantity !== undefined ? item.take_quantity :
+      (item.takeQuantity !== undefined ? item.takeQuantity : item.quantity);
+
+    if (!lotId) {
+      return {
+        isValid: false,
+        status: 400,
+        error: "MISSING_LOT_ID",
+        message: `Lô thứ ${i + 1} thiếu mã lô hàng (parent_batch_id).`,
+      };
+    }
+
+    if (!isValidQuantity(rawVal, false)) {
+      return {
+        isValid: false,
+        status: 400,
+        error: "INVALID_QUANTITY",
+        message: `Khối lượng lấy của lô [${lotId}] phải là số dương lớn hơn 0 và có tối đa 3 chữ số thập phân.`,
+      };
+    }
+  }
+
+  // Tạo map id -> fetchedLot
+  const lotMap = new Map();
+  for (const l of fetchedLots) {
+    lotMap.set(l.id, l);
+  }
+
+  // Kiểm tra tồn tại
+  for (const item of items) {
+    const lotId = item.parent_batch_id || item.parentBatchId || item.lotId || item.id;
+    if (!lotMap.has(lotId)) {
+      return {
+        isValid: false,
+        status: 404,
+        error: "LOT_NOT_FOUND",
+        message: `Không tìm thấy lô hàng: [${lotId}].`,
+      };
+    }
+  }
+
+  // 2. Kiểm tra sản phẩm: Tất cả các lô mẹ được chọn phải có cùng product_id (Task T-45 AC1)
+  const firstLot = lotMap.get(items[0].parent_batch_id || items[0].parentBatchId || items[0].lotId || items[0].id);
+  const targetProductId = firstLot.product_id || firstLot.productId;
+
+  for (const item of items) {
+    const lotId = item.parent_batch_id || item.parentBatchId || item.lotId || item.id;
+    const lot = lotMap.get(lotId);
+    const prodId = lot.product_id || lot.productId;
+    if (prodId !== targetProductId) {
+      return {
+        isValid: false,
+        status: 400,
+        error: "DIFFERENT_PRODUCTS",
+        message: `Không thể gộp các lô khác sản phẩm: [${lotId}]`,
+      };
+    }
+  }
+
+  // 3. Kiểm tra quyền sở hữu: Tất cả các lô phải thuộc quyền quản lý của tổ chức hiện tại (Task T-45 AC2)
+  if (!isAdmin) {
+    for (const item of items) {
+      const lotId = item.parent_batch_id || item.parentBatchId || item.lotId || item.id;
+      const lot = lotMap.get(lotId);
+      const orgId = lot.organization_id || lot.organizationId;
+      if (orgId !== currentOrgId) {
+        return {
+          isValid: false,
+          status: 403,
+          error: "FORBIDDEN_ORG",
+          message: `Lô hàng không thuộc quyền quản lý của tổ chức: [${lotId}]`,
+        };
+      }
+    }
+  }
+
+  // 4. Kiểm tra khối lượng lấy không vượt quá remaining_quantity chuẩn theo milli-units (Task T-45 AC3 / S-18/S-19)
+  for (const item of items) {
+    const lotId = item.parent_batch_id || item.parentBatchId || item.lotId || item.id;
+    const lot = lotMap.get(lotId);
+    const rawVal = item.take_quantity !== undefined ? item.take_quantity :
+      (item.takeQuantity !== undefined ? item.takeQuantity : item.quantity);
+    const takeMilli = toMilliUnits(rawVal, false);
+
+    const remainingRaw = lot.remaining_quantity !== undefined ? lot.remaining_quantity : lot.remainingQuantity;
+    const parentRemainingMilli = toMilliUnits(remainingRaw, true);
+
+    if (takeMilli > parentRemainingMilli) {
+      return {
+        isValid: false,
+        status: 400,
+        error: "EXCEEDS_REMAINING_QUANTITY",
+        message: `Khối lượng lấy (${Number(rawVal)}) vượt quá khối lượng còn lại (${fromMilliUnits(parentRemainingMilli)}) của lô [${lotId}].`,
+      };
+    }
+  }
+
+  return { isValid: true };
+}
+
+/**
+ * Task T-44: API Gộp Lô Hàng [S-19]
+ * - Hỗ trợ cả 2 payload format: { items: [...] } hoặc { parents: [...] }
+ * - Deadlock Prevention: Sắp xếp parent_batch_id theo thứ tự tăng dần và SELECT ... FOR UPDATE
+ * - Độ chính xác milli-units và phép trừ NUMERIC trong PostgreSQL (đồng bộ với S-18)
+ * - Nguyên tử: Transaction PostgreSQL với Rollback an toàn; in-memory fallback với rollback logic
+ * - Tạo lô mới, ghi batch_relations ('MERGE') và ghi Batch Events bảo chứng SHA-256
+ */
+app.post(
+  "/api/lots/merge",
+  requirePermission(["producer", "cooperative", "distributor", "org_admin", "admin"]),
+  async (req, res) => {
+    const body = req.body || {};
+    const rawItems = Array.isArray(body.items) ? body.items : (Array.isArray(body.parents) ? body.parents : []);
+    const mergedName = body.name && body.name.trim() ? body.name.trim() : null;
+    const notes = body.notes || null;
+
+    // Chuẩn hóa và kiểm tra danh sách items theo chuẩn milli-units của S-18/S-19
+    const mergeValidation = validateMergeItems(rawItems);
+    if (!mergeValidation.valid) {
+      return res.status(400).json({
+        error: mergeValidation.error,
+        message: mergeValidation.message,
+      });
+    }
+
+    const normalizedItems = mergeValidation.normalizedItems;
+    const totalMergedQuantity = mergeValidation.totalQuantity;
+
+    const userOrgId = req.auth ? (req.auth.organizationId || req.auth.organization_id) : null;
+    const userId = req.auth ? (req.auth.userId || req.auth.id) : null;
+    const isAdmin = req.auth && (req.auth.roleId === "admin" || req.auth.isAdmin);
+
+    if (pool) {
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN");
+
+        // 1. Khoá dòng theo thứ tự đã sắp xếp để chống deadlock giữa các giao dịch gộp chéo (Task T-44 NFR)
+        const parentIds = normalizedItems.map((it) => it.parent_batch_id);
+        const lockRes = await client.query(
+          "SELECT * FROM lots WHERE id = ANY($1::text[]) ORDER BY id ASC FOR UPDATE",
+          [parentIds]
+        );
+
+        const fetchedLots = lockRes.rows;
+
+        // 2. Chạy Task T-45 Pre-condition Validator
+        const validation = validateMergeLotInput(normalizedItems, fetchedLots, userOrgId, isAdmin);
+        if (!validation.isValid) {
+          await client.query("ROLLBACK");
+          if (validation.error === "FORBIDDEN_ORG") {
+            logSecurityEvent("CROSS_TENANT_ACCESS_DENIED", {
+              userId,
+              userEmail: req.auth.email,
+              userOrgId,
+              userRole: req.auth.roleId,
+              resourceType: "lots",
+              action: "MERGE",
+              ip: req.ip,
+              userAgent: req.get("User-Agent"),
+            });
+          }
+          return res.status(validation.status).json({
+            error: validation.error,
+            message: validation.message,
+          });
+        }
+
+        // Kiểm tra xem có lô nào đang trong quá trình chuyển giao PENDING không
+        const pendingCheck = await client.query(
+          "SELECT lot_id FROM lot_transfers WHERE lot_id = ANY($1::text[]) AND status = 'PENDING'",
+          [parentIds]
+        );
+        if (pendingCheck.rows.length > 0) {
+          await client.query("ROLLBACK");
+          return res.status(400).json({
+            error: "PENDING_TRANSFER_EXISTS",
+            message: `Không thể gộp lô hàng đang trong trạng thái chờ bàn giao: [${pendingCheck.rows[0].lot_id}].`,
+          });
+        }
+
+        // Map lô cha theo ID
+        const lotMap = new Map();
+        for (const r of fetchedLots) {
+          lotMap.set(r.id, r);
+        }
+
+        const firstParent = fetchedLots[0];
+        const targetOrgId = firstParent.organization_id;
+        const targetProductId = firstParent.product_id;
+        const targetFarmId = firstParent.farm_id;
+
+        // 3. Trừ remaining_quantity của từng lô mẹ bằng phép tính NUMERIC trong PostgreSQL (S-18/S-19)
+        // kèm điều kiện remaining_quantity >= $1::numeric
+        for (const item of normalizedItems) {
+          const updateParentRes = await client.query(
+            `UPDATE lots
+             SET remaining_quantity = (remaining_quantity - $1::numeric)
+             WHERE id = $2 AND remaining_quantity >= $1::numeric
+             RETURNING *`,
+            [formatQuantityString(item.take_quantity), item.parent_batch_id]
+          );
+
+          if (updateParentRes.rowCount === 0) {
+            await client.query("ROLLBACK");
+            return res.status(400).json({
+              error: "EXCEEDS_REMAINING_QUANTITY",
+              message: `Khối lượng lấy (${item.take_quantity}) vượt quá khối lượng còn lại của lô [${item.parent_batch_id}].`,
+            });
+          }
+        }
+
+        // 4. Tạo bản ghi lô hàng mới
+        let newMergedLotId = null;
+        let createdMergedLot = null;
+        const newLotTitle = mergedName || `${firstParent.name} (Gộp ${normalizedItems.length} lô)`;
+
+        for (let attempt = 0; attempt < 5; attempt++) {
+          const candidateId = generateLotCode();
+          try {
+            const insertRes = await client.query(
+              `INSERT INTO lots (
+                id, name, status, organization_id, farm_id, product_id,
+                initial_quantity, remaining_quantity, harvested_at, parent_lot_id
+              ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+              RETURNING *`,
+              [
+                candidateId,
+                newLotTitle,
+                firstParent.status || "Đã thu hoạch",
+                targetOrgId,
+                targetFarmId,
+                targetProductId,
+                formatQuantityString(totalMergedQuantity),
+                formatQuantityString(totalMergedQuantity),
+                firstParent.harvested_at,
+                firstParent.id, // Lưu 1 parent đại diện vào parent_lot_id để tương thích
+              ]
+            );
+            newMergedLotId = candidateId;
+            createdMergedLot = insertRes.rows[0];
+            break;
+          } catch (insErr) {
+            if (insErr.code === "23505" && attempt < 4) continue;
+            throw insErr;
+          }
+        }
+
+        if (!newMergedLotId) {
+          throw new Error("Không thể sinh mã duy nhất cho lô gộp mới.");
+        }
+
+        // 5. Ghi các bản ghi liên kết phả hệ vào batch_relations (relation_type = 'MERGE') (Task T-44)
+        for (const item of normalizedItems) {
+          await client.query(
+            `INSERT INTO batch_relations (
+              parent_batch_id, child_batch_id, relation_type, quantity, organization_id
+            ) VALUES ($1, $2, 'MERGE', $3, $4)`,
+            [item.parent_batch_id, newMergedLotId, formatQuantityString(item.take_quantity), targetOrgId]
+          );
+
+          // Ghi sự kiện LOT_MERGED_FROM vào từng lô mẹ
+          await appendBatchEvent(client, {
+            batchId: item.parent_batch_id,
+            eventType: "LOT_MERGED_FROM",
+            payload: {
+              targetLotId: newMergedLotId,
+              takeQuantity: item.take_quantity,
+              notes,
+              step: `Gộp ${item.take_quantity} vào lô mới ${newMergedLotId}`,
+            },
+            organizationId: targetOrgId,
+            actorUserId: userId,
+            occurredAt: new Date(),
+          });
+        }
+
+        // 6. Ghi sự kiện CREATED_FROM_MERGE vào lô mới tạo
+        const mergeEvent = await appendBatchEvent(client, {
+          batchId: newMergedLotId,
+          eventType: "CREATED_FROM_MERGE",
+          payload: {
+            mergedLotId: newMergedLotId,
+            totalQuantity: totalMergedQuantity,
+            parentLots: normalizedItems.map((it) => ({
+              parentBatchId: it.parent_batch_id,
+              quantity: it.take_quantity,
+            })),
+            notes,
+            step: `Tạo mới từ sáp nhập ${normalizedItems.length} lô nhỏ`,
+          },
+          organizationId: targetOrgId,
+          actorUserId: userId,
+          occurredAt: new Date(),
+        });
+
+        await client.query("COMMIT");
+
+        return res.status(201).json({
+          message: "Gộp các lô hàng thành công.",
+          lot: {
+            id: createdMergedLot.id,
+            name: createdMergedLot.name,
+            status: createdMergedLot.status,
+            initialQuantity: Number(createdMergedLot.initial_quantity),
+            remainingQuantity: Number(createdMergedLot.remaining_quantity),
+            organizationId: createdMergedLot.organization_id,
+            productId: createdMergedLot.product_id,
+            createdAt: createdMergedLot.created_at,
+          },
+          event: mergeEvent,
+        });
+      } catch (err) {
+        await client.query("ROLLBACK");
+        return res.status(500).json({ message: err.message });
+      } finally {
+        client.release();
+      }
+    } else {
+      // In-Memory Mode (Hỗ trợ kiểm thử và phát triển không cần PostgreSQL)
+      const parentIds = normalizedItems.map((it) => it.parent_batch_id);
+      const fetchedLots = inMemoryLots.filter((l) => parentIds.includes(l.id));
+
+      const validation = validateMergeLotInput(normalizedItems, fetchedLots, userOrgId, isAdmin);
+      if (!validation.isValid) {
+        if (validation.error === "FORBIDDEN_ORG") {
+          logSecurityEvent("CROSS_TENANT_ACCESS_DENIED", {
+            userId,
+            userEmail: req.auth.email,
+            userOrgId,
+            userRole: req.auth.roleId,
+            resourceType: "lots",
+            action: "MERGE",
+            ip: req.ip,
+            userAgent: req.get("User-Agent"),
+          });
+        }
+        return res.status(validation.status).json({
+          error: validation.error,
+          message: validation.message,
+        });
+      }
+
+      // Kiểm tra chuyển giao đang chờ
+      const pendingTransfer = inMemoryTransfers.find((t) => parentIds.includes(t.lotId) && t.status === "PENDING");
+      if (pendingTransfer) {
+        return res.status(400).json({
+          error: "PENDING_TRANSFER_EXISTS",
+          message: `Không thể gộp lô hàng đang trong trạng thái chờ bàn giao: [${pendingTransfer.lotId}].`,
+        });
+      }
+
+      // Lưu snapshot trạng thái ban đầu của các lô mẹ để rollback nếu lỗi
+      const originalSnapshots = [];
+      for (const item of normalizedItems) {
+        const p = inMemoryLots.find((l) => l.id === item.parent_batch_id);
+        originalSnapshots.push({
+          lot: p,
+          remainingQuantity: p.remainingQuantity !== undefined ? p.remainingQuantity : p.remaining_quantity,
+        });
+      }
+
+      let createdMergedLot = null;
+      const initialRelationsCount = inMemoryBatchRelations.length;
+      const initialEventsCount = inMemoryBatchEvents.length;
+
+      try {
+        const firstParent = fetchedLots[0];
+        const pOrg = firstParent.organizationId || firstParent.organization_id;
+        const pProduct = firstParent.productId || firstParent.product_id;
+        const pFarm = firstParent.farmId || firstParent.farm_id;
+
+        // Trừ remaining_quantity của các lô mẹ chuẩn xác theo milli-units
+        for (const item of normalizedItems) {
+          const p = inMemoryLots.find((l) => l.id === item.parent_batch_id);
+          const currentRem = p.remainingQuantity !== undefined ? p.remainingQuantity : p.remaining_quantity;
+          const currentRemMilli = toMilliUnits(currentRem, true);
+          const takeMilli = item.take_milli !== undefined ? item.take_milli : toMilliUnits(item.take_quantity, false);
+
+          if (takeMilli > currentRemMilli) {
+            for (const snap of originalSnapshots) {
+              snap.lot.remainingQuantity = snap.remainingQuantity;
+              if (snap.lot.remaining_quantity !== undefined) {
+                snap.lot.remaining_quantity = snap.remainingQuantity;
+              }
+            }
+            return res.status(400).json({
+              error: "EXCEEDS_REMAINING_QUANTITY",
+              message: `Khối lượng lấy (${item.take_quantity}) vượt quá khối lượng còn lại (${fromMilliUnits(currentRemMilli)}) của lô [${item.parent_batch_id}].`,
+            });
+          }
+
+          const newRem = fromMilliUnits(currentRemMilli - takeMilli);
+          p.remainingQuantity = newRem;
+          if (p.remaining_quantity !== undefined) p.remaining_quantity = newRem;
+        }
+
+        // Tạo mã lô mới
+        let newMergedLotId = generateLotCode();
+        while (inMemoryLots.some((l) => l.id === newMergedLotId)) {
+          newMergedLotId = generateLotCode();
+        }
+
+        const nowIso = new Date().toISOString();
+        const newLotTitle = mergedName || `${firstParent.name} (Gộp ${normalizedItems.length} lô)`;
+
+        createdMergedLot = {
+          id: newMergedLotId,
+          name: newLotTitle,
+          status: firstParent.status || "Đã thu hoạch",
+          organizationId: pOrg,
+          farmId: pFarm || null,
+          productId: pProduct || null,
+          initialQuantity: totalMergedQuantity,
+          remainingQuantity: totalMergedQuantity,
+          harvestedAt: firstParent.harvestedAt || firstParent.harvested_at || null,
+          parentLotId: firstParent.id,
+          createdAt: nowIso,
+        };
+
+        inMemoryLots.push(createdMergedLot);
+
+        // Ghi batch_relations
+        for (const item of normalizedItems) {
+          if (inMemoryBatchRelations.some((r) => r.parentBatchId === item.parent_batch_id && r.childBatchId === newMergedLotId)) {
+            const dupErr = new Error('duplicate key value violates unique constraint "uq_batch_relations_parent_child"');
+            dupErr.code = "23505";
+            throw dupErr;
+          }
+
+          inMemoryBatchRelations.push({
+            id: `rel-${crypto.randomUUID().slice(0, 12)}`,
+            parentBatchId: item.parent_batch_id,
+            childBatchId: newMergedLotId,
+            relationType: "MERGE",
+            quantity: item.take_quantity,
+            organizationId: pOrg,
+            createdAt: nowIso,
+          });
+
+          await appendBatchEvent(null, {
+            batchId: item.parent_batch_id,
+            eventType: "LOT_MERGED_FROM",
+            payload: {
+              targetLotId: newMergedLotId,
+              takeQuantity: item.take_quantity,
+              notes,
+              step: `Gộp ${item.take_quantity} vào lô mới ${newMergedLotId}`,
+            },
+            organizationId: pOrg,
+            actorUserId: userId,
+            occurredAt: new Date(),
+          });
+        }
+
+        const mergeEvent = await appendBatchEvent(null, {
+          batchId: newMergedLotId,
+          eventType: "CREATED_FROM_MERGE",
+          payload: {
+            mergedLotId: newMergedLotId,
+            totalQuantity: totalMergedQuantity,
+            parentLots: normalizedItems.map((it) => ({
+              parentBatchId: it.parent_batch_id,
+              quantity: it.take_quantity,
+            })),
+            notes,
+            step: `Tạo mới từ sáp nhập ${normalizedItems.length} lô nhỏ`,
+          },
+          organizationId: pOrg,
+          actorUserId: userId,
+          occurredAt: new Date(),
+        });
+
+        return res.status(201).json({
+          message: "Gộp các lô hàng thành công.",
+          lot: {
+            id: createdMergedLot.id,
+            name: createdMergedLot.name,
+            status: createdMergedLot.status,
+            initialQuantity: createdMergedLot.initialQuantity,
+            remainingQuantity: createdMergedLot.remainingQuantity,
+            organizationId: createdMergedLot.organizationId,
+            productId: createdMergedLot.productId,
+            createdAt: createdMergedLot.createdAt,
+          },
+          event: mergeEvent,
+        });
+      } catch (memErr) {
+        // Rollback hoàn toàn trạng thái các lô mẹ và xóa các bản ghi vừa chèn
+        for (const snap of originalSnapshots) {
+          snap.lot.remainingQuantity = snap.remainingQuantity;
+          if (snap.lot.remaining_quantity !== undefined) snap.lot.remaining_quantity = snap.remainingQuantity;
+        }
+
+        if (createdMergedLot) {
+          const lIdx = inMemoryLots.findIndex((l) => l.id === createdMergedLot.id);
+          if (lIdx !== -1) inMemoryLots.splice(lIdx, 1);
+        }
+
+        inMemoryBatchRelations.length = initialRelationsCount;
+        inMemoryBatchEvents.length = initialEventsCount;
+
+        return res.status(500).json({ message: memErr.message });
+      }
+    }
+  }
+);
+
+/**
  * Lấy chuỗi sự kiện hash-chain và lịch sử nguồn gốc của lô hàng (S-10, S-11, S-21, S-23)
  */
 app.get(
@@ -1893,6 +2529,123 @@ app.get(
         isIntegrityValid: integrityCheck.valid,
         integrityError: integrityCheck.error || null,
         integrityDetails: integrityCheck,
+      });
+    } catch (err) {
+      return res.status(500).json({ message: err.message });
+    }
+  }
+);
+
+/**
+ * API Truy xuất phả hệ toàn diện (S-21 Truy ngược, S-22 Đối chiếu độc lập, S-26 Truy xuôi, S-27 Hậu duệ, S-28 Đồ thị phả hệ)
+ */
+app.get(
+  ["/api/lots/:id/genealogy", "/api/lots/:id/descendants"],
+  requirePermission(["producer", "cooperative", "transporter", "distributor", "org_admin", "admin", "inspector"]),
+  async (req, res) => {
+    const lotId = req.params.id;
+    try {
+      const access = await evaluateLotAccess({
+        pool,
+        authContext: req.auth,
+        lotId,
+        inMemoryLots,
+      });
+
+      if (access.status === "NOT_FOUND") {
+        return res.status(404).json({ message: "Không tìm thấy lô hàng." });
+      }
+
+      if (!access.allowed) {
+        return res.status(403).json({
+          message: "Truy cập bị từ chối: bạn không có quyền xem dữ liệu của tổ chức khác.",
+        });
+      }
+
+      const rawLots = await fetchAllLotsRaw(pool, inMemoryLots);
+      const lotsMap = new Map();
+      for (const l of rawLots) {
+        lotsMap.set(l.id, l);
+      }
+
+      const ancestorSet = await collectAncestorLotIds(pool, lotId, lotsMap, inMemoryBatchRelations);
+      const descendantSet = await collectDescendantLotIds(pool, lotId, lotsMap, inMemoryBatchRelations);
+
+      const ancestors = Array.from(ancestorSet).map((id) => {
+        const l = lotsMap.get(id);
+        return l
+          ? { id: l.id, name: l.name, status: l.status, organizationId: l.organizationId || l.organization_id }
+          : { id };
+      });
+
+      const descendants = Array.from(descendantSet).map((id) => {
+        const l = lotsMap.get(id);
+        return l
+          ? { id: l.id, name: l.name, status: l.status, organizationId: l.organizationId || l.organization_id }
+          : { id };
+      });
+
+      const allNodeIds = new Set([lotId, ...ancestorSet, ...descendantSet]);
+      const nodes = Array.from(allNodeIds).map((id) => {
+        const l = lotsMap.get(id);
+        return {
+          id,
+          name: l ? l.name : id,
+          status: l ? l.status : "Đã thu hoạch",
+          isCurrent: id === lotId,
+          isAncestor: ancestorSet.has(id),
+          isDescendant: descendantSet.has(id),
+        };
+      });
+
+      const edges = [];
+      if (Array.isArray(inMemoryBatchRelations)) {
+        for (const rel of inMemoryBatchRelations) {
+          const pId = rel.parentBatchId || rel.parent_batch_id;
+          const cId = rel.childBatchId || rel.child_batch_id;
+          if (allNodeIds.has(pId) && allNodeIds.has(cId)) {
+            edges.push({
+              source: pId,
+              target: cId,
+              relationType: rel.relationType || rel.relation_type || "MERGE",
+              quantity: rel.quantity,
+            });
+          }
+        }
+      }
+      if (pool && typeof pool.query === "function") {
+        try {
+          const edgeRes = await pool.query(
+            "SELECT parent_batch_id, child_batch_id, relation_type, quantity FROM batch_relations WHERE parent_batch_id = ANY($1::text[]) AND child_batch_id = ANY($1::text[])",
+            [Array.from(allNodeIds)]
+          );
+          for (const r of edgeRes.rows) {
+            if (!edges.some((e) => e.source === r.parent_batch_id && e.target === r.child_batch_id)) {
+              edges.push({
+                source: r.parent_batch_id,
+                target: r.child_batch_id,
+                relationType: r.relation_type,
+                quantity: Number(r.quantity),
+              });
+            }
+          }
+        } catch {
+          // ignore
+        }
+      }
+
+      return res.status(200).json({
+        lotId,
+        ancestorIds: Array.from(ancestorSet),
+        descendantIds: Array.from(descendantSet),
+        ancestors,
+        descendants,
+        ancestorCount: ancestorSet.size,
+        descendantCount: descendantSet.size,
+        graph: {
+          nodes,
+          edges,
+        },
       });
     } catch (err) {
       return res.status(500).json({ message: err.message });
@@ -4034,5 +4787,17 @@ module.exports = {
   setAppendHookForTesting,
   markOverdueTransfers,
   startTransferOverdueJob,
+  validateMergeLotInput,
+  collectAncestorLotIds,
+  collectDescendantLotIds,
+  seedS22Data: () =>
+    seedS22InMemory({
+      inMemoryLots,
+      inMemoryBatchRelations,
+      inMemoryBatchEvents,
+      inMemoryOrgs,
+      inMemoryProducts,
+      inMemoryFarms,
+    }),
 };
 

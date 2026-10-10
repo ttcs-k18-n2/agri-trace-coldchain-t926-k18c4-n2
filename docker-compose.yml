@@ -38,6 +38,7 @@ services:
       COOKIE_SECURE: ${COOKIE_SECURE:-true}
     volumes:
       - ./db/migrations:/app/db/migrations:ro
+      - ./db/seed_s22.sql:/db/seed_s22.sql:ro
     ports:
       - "${BACKEND_PORT:-3000}:3000"
     depends_on:

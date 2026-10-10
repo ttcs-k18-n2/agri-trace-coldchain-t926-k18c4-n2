@@ -34,6 +34,16 @@ function extractParentLotIdsFromEvent(ev) {
   if (p.fromLotId) ids.push(p.fromLotId);
   if (Array.isArray(p.parentLotIds)) ids.push(...p.parentLotIds);
   if (Array.isArray(p.sourceLotIds)) ids.push(...p.sourceLotIds);
+  if (Array.isArray(p.parentLots)) {
+    for (const item of p.parentLots) {
+      if (typeof item === "string") ids.push(item);
+      else if (item && (item.parentBatchId || item.parent_batch_id)) {
+        ids.push(item.parentBatchId || item.parent_batch_id);
+      } else if (item && item.id) {
+        ids.push(item.id);
+      }
+    }
+  }
   return ids.filter(Boolean);
 }
 
@@ -44,6 +54,12 @@ function extractParentLotIdsFromLot(lot) {
   if (parentId) ids.push(parentId);
   if (Array.isArray(lot.parentLotIds)) ids.push(...lot.parentLotIds);
   if (Array.isArray(lot.sourceLotIds)) ids.push(...lot.sourceLotIds);
+  if (Array.isArray(lot.parentLots)) {
+    for (const pl of lot.parentLots) {
+      const plId = pl ? (pl.id || pl.parent_batch_id || pl.parentBatchId) : null;
+      if (plId) ids.push(plId);
+    }
+  }
   return ids.filter(Boolean);
 }
 
@@ -65,7 +81,7 @@ async function fetchAllLotsRaw(pool, inMemoryLots = []) {
   }));
 }
 
-async function collectAncestorLotIds(pool, startLotId, lotsMap) {
+async function collectAncestorLotIds(pool, startLotId, lotsMap, inMemoryBatchRelations = []) {
   const visited = new Set();
   const queue = [startLotId];
 
@@ -74,15 +90,101 @@ async function collectAncestorLotIds(pool, startLotId, lotsMap) {
     if (!currentId || visited.has(currentId)) continue;
     visited.add(currentId);
 
-    const lotObj = lotsMap.get(currentId);
+    const lotObj = lotsMap ? lotsMap.get(currentId) : null;
     for (const pid of extractParentLotIdsFromLot(lotObj)) {
       if (!visited.has(pid)) queue.push(pid);
+    }
+
+    if (pool && typeof pool.query === "function") {
+      try {
+        const brRes = await pool.query(
+          "SELECT parent_batch_id FROM batch_relations WHERE child_batch_id = $1",
+          [currentId]
+        );
+        for (const row of brRes.rows) {
+          if (!visited.has(row.parent_batch_id)) queue.push(row.parent_batch_id);
+        }
+      } catch {
+        // ignore if batch_relations table not present
+      }
+    }
+
+    if (Array.isArray(inMemoryBatchRelations)) {
+      for (const rel of inMemoryBatchRelations) {
+        const cId = rel.childBatchId || rel.child_batch_id;
+        const pId = rel.parentBatchId || rel.parent_batch_id;
+        if (cId === currentId && pId && !visited.has(pId)) {
+          queue.push(pId);
+        }
+      }
     }
 
     const events = await getBatchEvents(pool, currentId);
     for (const ev of events) {
       for (const pid of extractParentLotIdsFromEvent(ev)) {
         if (!visited.has(pid)) queue.push(pid);
+      }
+    }
+  }
+
+  visited.delete(startLotId);
+  return visited;
+}
+
+async function collectDescendantLotIds(pool, startLotId, lotsMap, inMemoryBatchRelations = []) {
+  const visited = new Set();
+  const queue = [startLotId];
+
+  while (queue.length > 0) {
+    const currentId = queue.shift();
+    if (!currentId || visited.has(currentId)) continue;
+    visited.add(currentId);
+
+    if (lotsMap) {
+      for (const [id, lot] of lotsMap.entries()) {
+        const pId = lot.parentLotId || lot.parent_lot_id;
+        if (pId === currentId && !visited.has(id)) {
+          queue.push(id);
+        }
+      }
+    }
+
+    if (Array.isArray(inMemoryBatchRelations)) {
+      for (const rel of inMemoryBatchRelations) {
+        const pId = rel.parentBatchId || rel.parent_batch_id;
+        const cId = rel.childBatchId || rel.child_batch_id;
+        if (pId === currentId && cId && !visited.has(cId)) {
+          queue.push(cId);
+        }
+      }
+    }
+
+    if (pool && typeof pool.query === "function") {
+      try {
+        const brRes = await pool.query(
+          "SELECT child_batch_id FROM batch_relations WHERE parent_batch_id = $1 UNION SELECT id AS child_batch_id FROM lots WHERE parent_lot_id = $1",
+          [currentId]
+        );
+        for (const row of brRes.rows) {
+          if (!visited.has(row.child_batch_id)) {
+            queue.push(row.child_batch_id);
+          }
+        }
+      } catch {
+        // ignore
+      }
+    }
+
+    const events = await getBatchEvents(pool, currentId);
+    for (const ev of events) {
+      const p = (ev && ev.payload) || {};
+      const targetIds = [
+        p.targetLotId,
+        p.childLotId,
+        ...(Array.isArray(p.childLotIds) ? p.childLotIds : []),
+      ].filter(Boolean);
+      for (const tid of targetIds) {
+        if (!visited.has(tid)) queue.push(tid);
       }
     }
   }
@@ -264,4 +366,7 @@ async function evaluateLotAccess({ pool, authContext, lotId, inMemoryLots = [], 
 
 module.exports = {
   evaluateLotAccess,
+  collectAncestorLotIds,
+  collectDescendantLotIds,
+  fetchAllLotsRaw,
 };
