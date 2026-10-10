@@ -993,7 +993,8 @@
       const farmDisplay = lot.farmName || lot.farmId || "Thửa chưa gán";
 
       const isInspectorOrAdmin = currentUser && ["inspector", "admin"].includes(currentUser.roleId);
-      const canTransfer = currentUser && (
+      const isConsumed = lot.status === "Đã bán hết" || lot.status === "Đã tiêu thụ";
+      const canTransfer = currentUser && !isConsumed && (
         currentUser.roleId === "admin" ||
         (currentUser.organizationId === (lot.organizationId || lot.organization_id) && !["inspector"].includes(currentUser.roleId))
       );
@@ -1033,12 +1034,17 @@
                   </span>
                 ` : ""}
               </div>
+            ` : (isConsumed ? `
+              <span class="status-pill" style="background: rgba(100, 116, 139, 0.12); color: #475569; border: 1px solid rgba(100, 116, 139, 0.25);" title="Lô đã bán hết cho người tiêu dùng (S-29)">
+                <span class="status-dot" style="background: #64748b;"></span>
+                <span>${lot.status}</span>
+              </span>
             ` : `
               <span class="status-pill success">
                 <span class="status-dot"></span>
                 <span>${lot.status || "Đã thu hoạch"}</span>
               </span>
-            `}
+            `)}
           </div>
           <h3 class="lot-title">
             <a href="/lot-detail.html?id=${encodeURIComponent(lot.id)}">

@@ -118,6 +118,8 @@ const inMemoryLots = [
   { id: "LOT-002", name: "Lô chè Tân Cương", status: "Đã thu hoạch", organizationId: "org-001", farmId: "FARM-001", productId: "PROD-TEA", initialQuantity: 120, remainingQuantity: 120, harvestedAt: "2026-09-26", parentLotId: null },
   { id: "LOT-101", name: "Lô rau cải Bắc Giang", status: "Đã thu hoạch", organizationId: "org-002", farmId: "FARM-101", productId: "PROD-VEGETABLE", initialQuantity: 300, remainingQuantity: 300, harvestedAt: "2026-09-27", parentLotId: null },
   { id: "LOT-102", name: "Lô dưa chuột Hiệp Hòa", status: "Đã thu hoạch", organizationId: "org-002", farmId: null, productId: null, initialQuantity: 250, remainingQuantity: 250, harvestedAt: "2026-09-28", parentLotId: null },
+  { id: "LOT-DIST-01", name: "Lô cà chua phân phối siêu thị", status: "Đã nhập kho", organizationId: "org-dist", farmId: null, productId: "PROD-TOMATO", initialQuantity: 200, remainingQuantity: 200, harvestedAt: "2026-10-01", parentLotId: null },
+  { id: "LOT-DIST-02", name: "Lô rau cải sạch cửa hàng bán lẻ", status: "Đang lưu kho", organizationId: "org-dist", farmId: null, productId: "PROD-VEGETABLE", initialQuantity: 150, remainingQuantity: 150, harvestedAt: "2026-10-02", parentLotId: null },
 ];
 
 const inMemoryIntegrityChecks = [];
@@ -909,6 +911,7 @@ app.get(
 
     const search = typeof req.query.search === "string" ? req.query.search.trim() : "";
     const productId = typeof req.query.productId === "string" ? req.query.productId.trim() : "";
+    const status = typeof req.query.status === "string" ? req.query.status.trim() : "";
     const limit = Math.min(Math.max(Number(req.query.limit) || 20, 1), 50);
     const cursor = req.query.cursor ? String(req.query.cursor).trim() : null;
 
@@ -958,6 +961,12 @@ app.get(
         if (productId) {
           params.push(productId);
           conditions.push(`l.product_id = $${params.length}`);
+        }
+
+        // 3b. Lọc theo trạng thái (S-29: Hỗ trợ phân biệt nhanh lô còn trên kệ và lô đã tiêu thụ)
+        if (status) {
+          params.push(status);
+          conditions.push(`l.status = $${params.length}`);
         }
 
         // 4. Cursor pagination (T-33): (harvested_at, created_at, id) < (cursorHarvest, cursorCreated, cursorId)
@@ -1049,6 +1058,10 @@ app.get(
 
     if (productId) {
       filtered = filtered.filter((l) => l.productId === productId);
+    }
+
+    if (status) {
+      filtered = filtered.filter((l) => l.status === status);
     }
 
     // Sort newest first: harvestedAt DESC, createdAt DESC, id DESC
@@ -1613,6 +1626,14 @@ app.post(
           });
         }
 
+        if (parentLot.status === "Đã bán hết" || parentLot.status === "Đã tiêu thụ") {
+          await client.query("ROLLBACK");
+          return res.status(400).json({
+            error: "LOT_ALREADY_CONSUMED",
+            message: "Không thể tách lô hàng đã bán hết cho người tiêu dùng.",
+          });
+        }
+
         const parentRemaining = Number(parentLot.remaining_quantity);
         const parentRemainingMilli = toMilliUnits(parentRemaining, true);
         if (totalSplitMilli > parentRemainingMilli) {
@@ -1798,6 +1819,13 @@ app.post(
         return res.status(400).json({
           error: "PENDING_TRANSFER_EXISTS",
           message: "Không thể tách lô hàng đang trong trạng thái chờ xác nhận bàn giao.",
+        });
+      }
+
+      if (parentLot.status === "Đã bán hết" || parentLot.status === "Đã tiêu thụ") {
+        return res.status(400).json({
+          error: "LOT_ALREADY_CONSUMED",
+          message: "Không thể tách lô hàng đã bán hết cho người tiêu dùng.",
         });
       }
 
@@ -2474,6 +2502,230 @@ app.post(
         inMemoryBatchEvents.length = initialEventsCount;
 
         return res.status(500).json({ message: memErr.message });
+      }
+    }
+  }
+);
+
+/**
+ * API Nhà phân phối ghi nhận lô đã bán hết cho người tiêu dùng [S-29]
+ * - Cho phép Nhà phân phối (distributor, org_admin, admin) ghi nhận lô đã bán hết.
+ * - Kiểm tra quyền sở hữu (multi-tenant): chỉ bên đang nắm giữ lô mới có quyền ghi nhận.
+ * - Chặn ghi nhận nếu lô đang có yêu cầu bàn giao PENDING.
+ * - Chặn ghi nhận lại nếu lô đã ở trạng thái "Đã bán hết".
+ * - Cập nhật status = 'Đã bán hết', remaining_quantity = 0.
+ * - Ghi sự kiện LOT_CONSUMED vào chuỗi hash-chain bất biến SHA-256 (batch_events).
+ */
+app.post(
+  "/api/lots/:id/consume",
+  requirePermission(["distributor", "org_admin", "admin"]),
+  async (req, res) => {
+    const lotId = req.params.id;
+    const { notes } = req.body || {};
+    const userId = req.auth ? (req.auth.userId || req.auth.id || req.auth.email) : null;
+    const userOrgId = req.auth ? (req.auth.organizationId || req.auth.organization_id) : null;
+    const isAdmin = req.auth && (req.auth.roleId === "admin" || req.auth.isAdmin);
+
+    if (pool) {
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN");
+
+        const lotRes = await client.query(
+          "SELECT * FROM lots WHERE id = $1 FOR UPDATE",
+          [lotId]
+        );
+
+        if (lotRes.rows.length === 0) {
+          await client.query("ROLLBACK");
+          return res.status(404).json({
+            error: "LOT_NOT_FOUND",
+            message: "Không tìm thấy lô hàng.",
+          });
+        }
+
+        const lot = lotRes.rows[0];
+
+        // Kiểm tra quyền nắm giữ (multi-tenant)
+        if (!isAdmin && lot.organization_id !== userOrgId) {
+          await client.query("ROLLBACK");
+          logSecurityEvent("CROSS_TENANT_ACCESS_DENIED", {
+            userId,
+            userEmail: req.auth.email,
+            userOrgId,
+            userRole: req.auth.roleId,
+            resourceType: "lots",
+            resourceId: lotId,
+            targetOrgId: lot.organization_id,
+            action: "CONSUME_LOT",
+            ip: req.ip,
+            userAgent: req.get("User-Agent"),
+          });
+          return res.status(403).json({
+            error: "FORBIDDEN",
+            message: "Truy cập bị từ chối: bạn không có quyền ghi nhận tiêu thụ cho lô hàng của tổ chức khác.",
+          });
+        }
+
+        // Kiểm tra bàn giao đang chờ
+        const pendingCheck = await client.query(
+          "SELECT id FROM lot_transfers WHERE lot_id = $1 AND status = 'PENDING'",
+          [lotId]
+        );
+        if (pendingCheck.rows.length > 0) {
+          await client.query("ROLLBACK");
+          return res.status(400).json({
+            error: "PENDING_TRANSFER_EXISTS",
+            message: "Không thể ghi nhận bán hết cho lô hàng đang trong trạng thái chờ bàn giao.",
+          });
+        }
+
+        if (lot.status === "Đã bán hết" || lot.status === "Đã tiêu thụ") {
+          await client.query("ROLLBACK");
+          return res.status(400).json({
+            error: "ALREADY_CONSUMED",
+            message: "Lô hàng này đã được ghi nhận bán hết trước đó.",
+          });
+        }
+
+        const prevRemaining = Number(lot.remaining_quantity !== null && lot.remaining_quantity !== undefined ? lot.remaining_quantity : lot.initial_quantity);
+
+        // Cập nhật trạng thái lô
+        const updateRes = await client.query(
+          "UPDATE lots SET status = 'Đã bán hết', remaining_quantity = 0 WHERE id = $1 RETURNING *",
+          [lotId]
+        );
+        const updatedLot = updateRes.rows[0];
+
+        // Ghi sự kiện LOT_CONSUMED vào sổ cái SHA-256
+        const event = await appendBatchEvent(client, {
+          batchId: lotId,
+          eventType: "LOT_CONSUMED",
+          payload: {
+            lotId,
+            previousStatus: lot.status,
+            previousRemainingQuantity: prevRemaining,
+            consumedQuantity: prevRemaining,
+            status: "Đã bán hết",
+            notes: notes ? String(notes).trim() : "Đã bán hết cho người tiêu dùng",
+            step: "Đã bán hết cho người tiêu dùng",
+          },
+          organizationId: lot.organization_id,
+          actorUserId: userId,
+          occurredAt: new Date(),
+        });
+
+        await client.query("COMMIT");
+
+        return res.status(200).json({
+          message: "Ghi nhận lô hàng đã bán hết cho người tiêu dùng thành công.",
+          lot: {
+            id: updatedLot.id,
+            name: updatedLot.name,
+            status: updatedLot.status,
+            initialQuantity: Number(updatedLot.initial_quantity),
+            remainingQuantity: Number(updatedLot.remaining_quantity),
+            organizationId: updatedLot.organization_id,
+          },
+          event,
+        });
+      } catch (err) {
+        await client.query("ROLLBACK");
+        return res.status(500).json({ message: err.message });
+      } finally {
+        client.release();
+      }
+    } else {
+      // In-Memory Mode
+      const lot = inMemoryLots.find((l) => l.id === lotId);
+      if (!lot) {
+        return res.status(404).json({
+          error: "LOT_NOT_FOUND",
+          message: "Không tìm thấy lô hàng.",
+        });
+      }
+
+      const lOrg = lot.organizationId || lot.organization_id;
+      if (!isAdmin && lOrg !== userOrgId) {
+        logSecurityEvent("CROSS_TENANT_ACCESS_DENIED", {
+          userId,
+          userEmail: req.auth.email,
+          userOrgId,
+          userRole: req.auth.roleId,
+          resourceType: "lots",
+          resourceId: lotId,
+          targetOrgId: lOrg,
+          action: "CONSUME_LOT",
+          ip: req.ip,
+          userAgent: req.get("User-Agent"),
+        });
+        return res.status(403).json({
+          error: "FORBIDDEN",
+          message: "Truy cập bị từ chối: bạn không có quyền ghi nhận tiêu thụ cho lô hàng của tổ chức khác.",
+        });
+      }
+
+      const pendingTransfer = inMemoryTransfers.find((t) => t.lotId === lotId && t.status === "PENDING");
+      if (pendingTransfer) {
+        return res.status(400).json({
+          error: "PENDING_TRANSFER_EXISTS",
+          message: "Không thể ghi nhận bán hết cho lô hàng đang trong trạng thái chờ bàn giao.",
+        });
+      }
+
+      if (lot.status === "Đã bán hết" || lot.status === "Đã tiêu thụ") {
+        return res.status(400).json({
+          error: "ALREADY_CONSUMED",
+          message: "Lô hàng này đã được ghi nhận bán hết trước đó.",
+        });
+      }
+
+      const prevStatus = lot.status;
+      const prevRemaining = Number(
+        lot.remainingQuantity !== undefined
+          ? lot.remainingQuantity
+          : (lot.remaining_quantity !== undefined ? lot.remaining_quantity : lot.initialQuantity)
+      );
+
+      lot.status = "Đã bán hết";
+      lot.remainingQuantity = 0;
+      if (lot.remaining_quantity !== undefined) lot.remaining_quantity = 0;
+
+      try {
+        const event = await appendBatchEvent(null, {
+          batchId: lotId,
+          eventType: "LOT_CONSUMED",
+          payload: {
+            lotId,
+            previousStatus: prevStatus,
+            previousRemainingQuantity: prevRemaining,
+            consumedQuantity: prevRemaining,
+            status: "Đã bán hết",
+            notes: notes ? String(notes).trim() : "Đã bán hết cho người tiêu dùng",
+            step: "Đã bán hết cho người tiêu dùng",
+          },
+          organizationId: lOrg,
+          actorUserId: userId,
+          occurredAt: new Date(),
+        });
+
+        return res.status(200).json({
+          message: "Ghi nhận lô hàng đã bán hết cho người tiêu dùng thành công.",
+          lot: {
+            id: lot.id,
+            name: lot.name,
+            status: lot.status,
+            initialQuantity: lot.initialQuantity !== undefined ? lot.initialQuantity : lot.initial_quantity,
+            remainingQuantity: lot.remainingQuantity !== undefined ? lot.remainingQuantity : lot.remaining_quantity,
+            organizationId: lOrg,
+          },
+          event,
+        });
+      } catch (err) {
+        lot.status = prevStatus;
+        lot.remainingQuantity = prevRemaining;
+        if (lot.remaining_quantity !== undefined) lot.remaining_quantity = prevRemaining;
+        return res.status(500).json({ message: err.message });
       }
     }
   }
@@ -3659,6 +3911,13 @@ app.post(
 
       if (!lot) {
         return res.status(404).json({ message: "Không tìm thấy lô hàng." });
+      }
+
+      if (lot.status === "Đã bán hết" || lot.status === "Đã tiêu thụ") {
+        return res.status(400).json({
+          error: "LOT_ALREADY_CONSUMED",
+          message: "Lô hàng đã được bán hết cho người tiêu dùng, không thể tạo yêu cầu bàn giao.",
+        });
       }
 
       const fromOrgId = lot.organizationId;
