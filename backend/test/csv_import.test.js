@@ -14,7 +14,10 @@ function request(server, options, body) {
         let parsed = data;
         try {
           parsed = JSON.parse(data);
-        } catch {}
+        } catch {
+          // Bỏ qua lỗi parse JSON khi body là plain text
+          parsed = data;
+        }
         resolve({ status: res.statusCode, headers: res.headers, body: parsed });
       });
     });
