@@ -989,7 +989,7 @@
         ? `${remainingVal.toFixed(3)} ${unit}`
         : "N/A";
       const harvestDateFormatted = formatDate(lot.harvestedAt || lot.createdAt);
-      const displayName = lot.productName || lot.name || "Nông sản";
+      const displayName = lot.name || lot.productName || "Nông sản";
       const farmDisplay = lot.farmName || lot.farmId || "Thửa chưa gán";
 
       const isInspectorOrAdmin = currentUser && ["inspector", "admin"].includes(currentUser.roleId);
@@ -1041,11 +1041,14 @@
             `}
           </div>
           <h3 class="lot-title">
-            <a href="/lot-detail.html?id=${encodeURIComponent(lot.id)}" style="color: inherit; text-decoration: none;">
-              ${displayName}
+            <a href="/lot-detail.html?id=${encodeURIComponent(lot.id)}">
+              ${escapeHtml(displayName)}
             </a>
           </h3>
-          ${qtyDisplay ? `<div class="lot-quantity-sub">${qtyDisplay}</div>` : ""}
+          <div style="font-size: 12px; color: var(--color-text-muted); margin-top: 2px;">
+            Loại nông sản: <strong>${escapeHtml(lot.productName || "Nông sản")}</strong>
+          </div>
+          ${qtyDisplay ? `<div class="lot-quantity-sub" style="margin-top: 4px;">${qtyDisplay}</div>` : ""}
         </div>
 
         <div class="lot-meta-list" onclick="window.location.href='/lot-detail.html?id=${encodeURIComponent(lot.id)}'" style="cursor: pointer;" title="Bấm để xem chi tiết lô ${lot.id}">
@@ -2143,7 +2146,7 @@
       // Render từng dòng lô với ô input khối lượng lấy (mặc định điền sẵn toàn bộ số lượng còn lại)
       tableBody.innerHTML = selectedLots.map((lot) => {
         const remaining = Number(lot.remainingQuantity !== undefined ? lot.remainingQuantity : lot.remaining_quantity) || 0;
-        const displayName = lot.productName || lot.name || lot.id;
+        const displayName = lot.name || lot.productName || lot.id;
         return `
           <tr class="merge-item-row" data-lot-id="${escapeHtml(lot.id)}" data-max="${remaining}">
             <td>
