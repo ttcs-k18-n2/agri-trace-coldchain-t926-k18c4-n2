@@ -219,4 +219,35 @@ test("S-22: Bộ dữ liệu mẫu phân hệ ba tầng có đáp án đếm tay
     const childIdsL03 = resL03.body.lot.childLots.map((c) => c.id);
     assert.ok(childIdsL03.includes("L07"), "L03 childLots phải chứa L07");
   });
+
+  // Kiểm tra API trả về HTTP 422 khi phát hiện chu trình dữ liệu phả hệ
+  await t.test("API GET /api/lots/:id/genealogy trả về HTTP 422 khi phát hiện chu trình quan hệ", async () => {
+    const adminAgent = await loginAs("admin_s22@agri.vn");
+    const { inMemoryBatchRelations } = require("../src/server");
+
+    // Tạo giả lập quan hệ chu trình L10 -> L02 (trong khi L02 là cụ của L10)
+    inMemoryBatchRelations.push({
+      id: "rel-cycle-test",
+      parentBatchId: "L10",
+      childBatchId: "L02",
+      relationType: "MERGE",
+      quantity: 50,
+      organizationId: "ORG-C",
+    });
+
+    try {
+      const res = await adminAgent.get("/api/lots/L02/genealogy");
+      assert.equal(res.status, 422);
+      assert.equal(res.body.error, "CYCLE_DETECTED");
+      assert.equal(
+        res.body.message,
+        "Phát hiện chu trình phả hệ tại lô L02. Dữ liệu quan hệ cha-con bị lặp vòng."
+      );
+      assert.equal(res.body.cycleLotId, "L02");
+    } finally {
+      // Dọn dẹp quan hệ chu trình giả lập
+      const idx = inMemoryBatchRelations.findIndex((r) => r.id === "rel-cycle-test");
+      if (idx >= 0) inMemoryBatchRelations.splice(idx, 1);
+    }
+  });
 });

@@ -1062,3 +1062,275 @@ button, input, select, textarea {
   }
 }
 
+/* ==============================================================================
+   Trace Forward (Truy xuôi hậu duệ & Khoanh vùng sự cố) & Recall Quarantine Table
+   ============================================================================== */
+.trace-forward-card {
+  background: var(--liquid-glass-bg);
+  border: var(--liquid-glass-border);
+  border-radius: var(--radius-xl);
+  padding: 24px 28px;
+  margin-top: 24px;
+  backdrop-filter: var(--liquid-glass-blur);
+  -webkit-backdrop-filter: var(--liquid-glass-blur);
+  box-shadow: var(--liquid-glass-shadow);
+}
+
+.trace-forward-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 14px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+.trace-forward-title-group {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.trace-forward-badge {
+  font-size: 11.5px;
+  font-weight: 700;
+  padding: 3px 10px;
+  border-radius: var(--radius-full);
+  background: rgba(14, 165, 233, 0.12);
+  color: #0284c7;
+  border: 1px solid rgba(14, 165, 233, 0.25);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.trace-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 14px;
+  margin: 18px 0;
+}
+
+.trace-stat-box {
+  background: #ffffff;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  box-shadow: var(--shadow-xs);
+  transition: var(--transition-fast);
+}
+
+.trace-stat-box:hover {
+  border-color: rgba(36, 138, 61, 0.3);
+  box-shadow: var(--shadow-sm);
+}
+
+.trace-stat-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.trace-stat-value {
+  font-size: 20px;
+  font-weight: 800;
+  color: var(--color-text-main);
+  line-height: 1.2;
+}
+
+.trace-stat-value.highlight-green {
+  color: var(--color-primary);
+}
+
+.trace-stat-value.highlight-amber {
+  color: #d97706;
+}
+
+.trace-stat-value.highlight-blue {
+  color: #2563eb;
+}
+
+/* Multi-tier Tree Layout */
+.lineage-tree-container {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  margin: 20px 0;
+}
+
+.tree-level-wrapper {
+  background: #ffffff;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: 18px 20px;
+  box-shadow: var(--shadow-xs);
+  position: relative;
+}
+
+.tree-level-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+  padding-bottom: 10px;
+  border-bottom: 1px dashed rgba(0, 0, 0, 0.08);
+}
+
+.tree-level-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--color-primary);
+}
+
+.tree-level-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 14px;
+}
+
+.tree-lot-card {
+  background: var(--color-surface-subtle);
+  border: 1px solid rgba(0, 0, 0, 0.07);
+  border-radius: var(--radius-md);
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 10px;
+  transition: var(--transition-fast);
+}
+
+.tree-lot-card:hover {
+  background: #ffffff;
+  border-color: var(--color-primary);
+  box-shadow: var(--shadow-sm);
+  transform: translateY(-2px);
+}
+
+.tree-lot-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.tree-badge-split {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: var(--radius-full);
+  background: rgba(36, 138, 61, 0.12);
+  color: var(--color-primary);
+  border: 1px solid rgba(36, 138, 61, 0.25);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.tree-badge-merge {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: var(--radius-full);
+  background: rgba(124, 58, 237, 0.12);
+  color: #7c3aed;
+  border: 1px solid rgba(124, 58, 237, 0.25);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* Recall Quarantine Table */
+.recall-table-card {
+  background: #ffffff;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  box-shadow: var(--shadow-sm);
+  margin-top: 20px;
+}
+
+.recall-table-header {
+  padding: 16px 20px;
+  background: rgba(239, 68, 68, 0.04);
+  border-bottom: 1px solid rgba(239, 68, 68, 0.15);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.recall-table-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14.5px;
+  font-weight: 700;
+  color: #b91c1c;
+}
+
+.recall-table-wrap {
+  width: 100%;
+  overflow-x: auto;
+}
+
+.recall-table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+  font-size: 13px;
+}
+
+.recall-table th {
+  background: #f9fafb;
+  color: var(--color-text-muted);
+  font-weight: 700;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--color-border);
+  white-space: nowrap;
+}
+
+.recall-table td {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--color-border-subtle);
+  color: var(--color-text-main);
+  vertical-align: middle;
+}
+
+.recall-table tbody tr:hover {
+  background: rgba(0, 0, 0, 0.015);
+}
+
+.recall-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+/* Cycle Detection Alert Banner */
+.cycle-danger-banner {
+  background: #fef2f2;
+  border: 1.5px solid #ef4444;
+  border-radius: var(--radius-md);
+  padding: 16px 20px;
+  margin-bottom: 20px;
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  color: #991b1b;
+  box-shadow: 0 4px 14px rgba(239, 68, 68, 0.1);
+  animation: dropdownFadeIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+
