@@ -33,6 +33,8 @@ function setDatabasePool(customPool) {
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
+const auditMiddleware = require('./audit_middleware');
+app.use(auditMiddleware);
 
 const crypto = require("node:crypto");
 const sessionSecret =
@@ -58,8 +60,8 @@ app.use(
         process.env.NODE_ENV === "test"
           ? false
           : process.env.COOKIE_SECURE === "true" || process.env.COOKIE_SECURE === "auto"
-          ? "auto"
-          : false,
+            ? "auto"
+            : false,
       maxAge: 60 * 60 * 1000,
     },
   })
@@ -489,7 +491,7 @@ app.get("/api/me", async (req, res) => {
   const user = await getUserById(req.session.userId);
 
   if (!user) {
-    req.session.destroy(() => {});
+    req.session.destroy(() => { });
     return res.status(401).json({
       message: "Phiên không hợp lệ.",
     });
@@ -1347,7 +1349,7 @@ app.post(
 
         return res.status(201).json(successResponse);
       } catch (err) {
-        await client.query("ROLLBACK").catch(() => {});
+        await client.query("ROLLBACK").catch(() => { });
         return res.status(500).json({ message: err.message });
       } finally {
         client.release();
