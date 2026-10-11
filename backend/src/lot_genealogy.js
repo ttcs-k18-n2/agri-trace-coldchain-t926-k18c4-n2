@@ -409,6 +409,11 @@ function extractChildLotIdsFromEvents(events = []) {
     if (p.targetLotId) targetIds.push(p.targetLotId);
     if (p.childLotId) targetIds.push(p.childLotId);
     if (Array.isArray(p.childLotIds)) targetIds.push(...p.childLotIds);
+    if (Array.isArray(p.splits)) {
+      for (const s of p.splits) {
+        if (s && s.childLotId) targetIds.push(s.childLotId);
+      }
+    }
   }
   return targetIds.filter(Boolean);
 }
@@ -608,27 +613,80 @@ async function traceLotDescendants({
       }
     }
 
-    // C. Hỗ trợ quan hệ từ Event Logs nếu có
-    for (const pId of parentIdsInLevel) {
-      let events = [];
+    // C. Hỗ trợ quan hệ từ Event Logs nếu có (Tối ưu batch query trên PostgreSQL)
+    if (pool && typeof pool.query === "function") {
       try {
-        events = await getBatchEvents(pool, pId);
-      } catch {
-        events = [];
-      }
-      const childIdsFromEvents = extractChildLotIdsFromEvents(events);
-      for (const cId of childIdsFromEvents) {
-        const alreadyInRel = rawRelationsFromParents.some(
-          (r) => r.parentBatchId === pId && r.childBatchId === cId
+        const evRes = await pool.query(
+          `SELECT batch_id, event_type, payload 
+           FROM batch_events 
+           WHERE batch_id = ANY($1::text[])`,
+          [parentIdsInLevel]
         );
-        if (!alreadyInRel) {
-          rawRelationsFromParents.push({
-            parentBatchId: pId,
-            childBatchId: cId,
-            relationType: "SPLIT",
-            quantity: null,
+        for (const row of evRes.rows) {
+          const pId = row.batch_id;
+          const childIdsFromEvents = extractChildLotIdsFromEvents([row]);
+          for (const cId of childIdsFromEvents) {
+            const alreadyInRel = rawRelationsFromParents.some(
+              (r) => r.parentBatchId === pId && r.childBatchId === cId
+            );
+            if (!alreadyInRel) {
+              rawRelationsFromParents.push({
+                parentBatchId: pId,
+                childBatchId: cId,
+                relationType: "SPLIT",
+                quantity: null,
+              });
+            }
+          }
+        }
+      } catch {
+        // ignore
+      }
+    } else {
+      for (const pId of parentIdsInLevel) {
+        let events = [];
+        try {
+          events = await getBatchEvents(pool, pId);
+        } catch {
+          events = [];
+        }
+        const childIdsFromEvents = extractChildLotIdsFromEvents(events);
+        for (const cId of childIdsFromEvents) {
+          const alreadyInRel = rawRelationsFromParents.some(
+            (r) => r.parentBatchId === pId && r.childBatchId === cId
+          );
+          if (!alreadyInRel) {
+            rawRelationsFromParents.push({
+              parentBatchId: pId,
+              childBatchId: cId,
+              relationType: "SPLIT",
+              quantity: null,
+            });
+          }
+        }
+      }
+    }
+
+    // Đảm bảo nạp đầy đủ thông tin các lô con chưa có trong lotsMap (tránh bỏ sót lô khi CSDL lớn)
+    const discoveredChildIds = rawRelationsFromParents
+      .map((r) => r.childBatchId)
+      .filter((cid) => cid && !lotsMap.has(cid));
+    if (discoveredChildIds.length > 0 && pool && typeof pool.query === "function") {
+      try {
+        const missingRes = await pool.query(
+          `SELECT * FROM lots WHERE id = ANY($1::text[])`,
+          [Array.from(new Set(discoveredChildIds))]
+        );
+        for (const row of missingRes.rows) {
+          lotsMap.set(row.id, {
+            ...row,
+            id: row.id,
+            organizationId: row.organization_id || row.organizationId,
+            parentLotId: row.parent_lot_id || row.parentLotId || null,
           });
         }
+      } catch {
+        // ignore
       }
     }
 

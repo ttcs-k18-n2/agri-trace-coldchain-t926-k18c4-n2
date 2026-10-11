@@ -3,89 +3,355 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>S-28 — Minh họa sơ đồ phả hệ lô</title>
+<title>S-28 — Sơ đồ phả hệ lô dạng cây (Đa nguồn & Đa thế hệ)</title>
 <style>
 :root{font-family:system-ui,-apple-system,"Segoe UI",sans-serif;color:#172033;background:#f4f7fb}
 *{box-sizing:border-box}body{margin:0;padding:24px}h1{margin:0 0 8px;font-size:clamp(1.35rem,3vw,2rem)}
 p{line-height:1.55}.note{background:#fff7df;border:1px solid #f0d78c;padding:12px 14px;border-radius:10px}
-.layout{display:grid;grid-template-columns:minmax(0,1fr) 280px;gap:16px;margin-top:16px}
+.layout{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:16px;margin-top:16px}
 .panel{background:white;border:1px solid #dce3ee;border-radius:14px;padding:16px;min-width:0}
-.scroller{overflow:auto;min-height:370px;border:1px dashed #ccd5e3;border-radius:10px;padding:18px}
-.tree{display:flex;align-items:center;gap:30px;min-width:max-content;min-height:320px}
+.scroller{overflow:auto;min-height:420px;border:1px dashed #ccd5e3;border-radius:10px;padding:18px}
+.tree{display:flex;align-items:center;gap:36px;min-width:max-content;min-height:360px}
+.side-group{display:flex;align-items:center;gap:24px}
 .side{display:flex;flex-direction:column;align-items:center;gap:14px}
-.node{border:2px solid #b7c7dc;background:#fff;border-radius:10px;padding:12px;min-width:145px;text-align:center;box-shadow:0 2px 5px #13294b0b}
-.node.current{border-color:#2876d2;background:#eaf3ff}.node button{margin-top:8px}
+.column-title{font-size:12px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px}
+.node{border:2px solid #b7c7dc;background:#fff;border-radius:10px;padding:12px;min-width:155px;text-align:center;box-shadow:0 2px 5px #13294b0b;transition:all .2s ease}
+.node.current{border-color:#2876d2;background:#eaf3ff;box-shadow:0 4px 12px rgba(40,118,210,.18)}
+.node.selected{outline:2.5px solid #2876d2}
+.node button{margin-top:8px}
+.badge-rel{display:inline-block;font-size:10.5px;font-weight:700;padding:2px 6px;border-radius:4px;margin-top:4px}
+.badge-merge{background:#ede9fe;color:#6d28d9}
+.badge-split{background:#dcfce7;color:#15803d}
 .children{display:flex;flex-direction:column;gap:12px;padding-left:16px;border-left:2px solid #c5d2e2}
-button{font:inherit;cursor:pointer;border:1px solid #b8c6d9;background:#fff;border-radius:7px;padding:6px 9px}
-button:hover{background:#edf4ff}.selected{outline:2px solid #2876d2}
-small{display:block;color:#56647a;margin-top:4px}
-dl{display:grid;grid-template-columns:auto 1fr;gap:8px;font-size:.95rem}dt{font-weight:650}dd{margin:0;overflow-wrap:anywhere}
-@media(max-width:760px){body{padding:12px}.layout{grid-template-columns:1fr}.tree{gap:18px}.panel{padding:12px}}
+.parents-group{display:flex;flex-direction:column;gap:12px;padding-right:16px;border-right:2px solid #c5d2e2}
+button{font:inherit;cursor:pointer;border:1px solid #b8c6d9;background:#fff;border-radius:7px;padding:5px 9px;font-size:12px}
+button:hover{background:#edf4ff}
+small{display:block;color:#56647a;margin-top:3px}
+dl{display:grid;grid-template-columns:auto 1fr;gap:8px;font-size:.92rem;margin:12px 0}dt{font-weight:650;color:#475569}dd{margin:0;overflow-wrap:anywhere}
+.tag-list{display:flex;flex-wrap:wrap;gap:4px;margin-top:2px}
+.tag-lot{background:#f1f5f9;border:1px solid #cbd5e1;border-radius:4px;padding:2px 6px;font-size:11.5px;font-family:monospace;cursor:pointer}
+.tag-lot:hover{background:#e2e8f0;color:#2876d2}
+@media(max-width:820px){body{padding:12px}.layout{grid-template-columns:1fr}.tree{gap:18px}.panel{padding:12px}}
 </style>
 </head>
 <body>
-<h1>S-28 — Sơ đồ phả hệ dạng cây</h1>
-<p>Lô hiện tại ở giữa, tổ tiên bên trái và hậu duệ bên phải. Chọn một nút để xem chi tiết; dùng nút thu gọn/mở rộng để ẩn hoặc hiện nhánh.</p>
-<div class="note"><strong>Bản minh họa dùng dữ liệu mẫu.</strong> Chưa kết nối API hoặc cơ sở dữ liệu của dự án.</div>
+<h1>S-28 — Sơ đồ phả hệ dạng cây (Hỗ trợ Đa cha & Đa con)</h1>
+<p>Lô hiện tại ở giữa, các lô tổ tiên (cha/mẹ đa nguồn) ở bên trái và các lô hậu duệ (tách/phân phối) ở bên phải. Chọn một nút để xem chi tiết hoặc chuyển trang.</p>
+<div class="note"><strong>Bản minh họa dữ liệu mẫu & API trực tiếp:</strong> Hỗ trợ quan hệ nhiều cha (gộp lô đa nguồn - MERGE) và nhiều con (tách lô - SPLIT).</div>
 <div class="layout">
 <section class="panel">
-<h2>Sơ đồ lô</h2>
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+  <h2 style="margin: 0;">Sơ đồ phả hệ</h2>
+  <span style="font-size: 12px; color: #64748b;">⬅ Tổ tiên (Ancestors) | 🌿 Lô trung tâm | Hậu duệ (Descendants) ➡</span>
+</div>
 <div class="scroller"><div class="tree" id="tree" aria-label="Sơ đồ phả hệ lô"></div></div>
 </section>
 <aside class="panel">
-<h2>Chi tiết lô</h2>
+<h2 style="margin-top: 0;">Chi tiết lô</h2>
 <div id="detail" aria-live="polite">Chọn một lô trong sơ đồ để xem chi tiết.</div>
 </aside>
 </div>
+
 <script>
-const lots = {
-  "LOT-100": {name:"Lô nguyên liệu A",status:"Đã tiếp nhận",date:"2026-09-01",side:"ancestor",children:["LOT-110"]},
-  "LOT-110": {name:"Lô sơ chế B",status:"Đã sơ chế",date:"2026-09-03",side:"ancestor",children:["LOT-120"]},
-  "LOT-120": {name:"Lô đang xem C",status:"Đang theo dõi",date:"2026-09-05",side:"current",children:["LOT-130","LOT-140"]},
-  "LOT-130": {name:"Lô đóng gói D",status:"Đã đóng gói",date:"2026-09-06",side:"descendant",children:["LOT-150"]},
-  "LOT-140": {name:"Lô đóng gói E",status:"Chờ vận chuyển",date:"2026-09-06",side:"descendant",children:[]},
-  "LOT-150": {name:"Lô phân phối F",status:"Đang vận chuyển",date:"2026-09-07",side:"descendant",children:[]}
+// Dữ liệu mẫu minh họa có đầy đủ trường hợp Đa cha (MERGE) và Đa con (SPLIT)
+let lots = {
+  "LOT-100": { name: "Lô thu hoạch gốc A", status: "Đã thu hoạch", date: "2026-09-01", side: "ancestor", parents: [], children: ["LOT-110"] },
+  "LOT-101": { name: "Lô thu hoạch gốc B", status: "Đã thu hoạch", date: "2026-09-02", side: "ancestor", parents: [], children: ["LOT-110"] },
+  "LOT-110": { name: "Lô sơ chế gộp C (Đa cha)", status: "Đã sơ chế", date: "2026-09-03", side: "ancestor", parents: ["LOT-100", "LOT-101"], children: ["LOT-120"] },
+  "LOT-120": { name: "Lô đang xem trung tâm", status: "Đang theo dõi", date: "2026-09-05", side: "current", parents: ["LOT-110"], children: ["LOT-130", "LOT-140"] },
+  "LOT-130": { name: "Lô đóng gói D", status: "Đã đóng gói", date: "2026-09-06", side: "descendant", parents: ["LOT-120"], children: ["LOT-150"] },
+  "LOT-140": { name: "Lô đóng gói E", status: "Chờ vận chuyển", date: "2026-09-06", side: "descendant", parents: ["LOT-120"], children: [] },
+  "LOT-150": { name: "Lô phân phối F", status: "Đang vận chuyển", date: "2026-09-07", side: "descendant", parents: ["LOT-130"], children: [] }
 };
-const parent = {"LOT-110":"LOT-100","LOT-120":"LOT-110","LOT-130":"LOT-120","LOT-140":"LOT-120","LOT-150":"LOT-130"};
+
 const collapsed = new Set();
+let rootLotId = "LOT-120";
 let selected = "LOT-120";
-function ancestors(id){const out=[];while(parent[id]){id=parent[id];out.unshift(id)}return out}
-function makeNode(id){
- const d=lots[id], el=document.createElement("div");el.className="node"+(d.side==="current"?" current":"")+(selected===id?" selected":"");
- const title=document.createElement("strong");title.textContent=id;el.appendChild(title);
- const name=document.createElement("small");name.textContent=d.name;el.appendChild(name);
- const choose=document.createElement("button");choose.textContent="Xem chi tiết";choose.onclick=()=>{selected=id;render()};el.appendChild(choose);
- if(d.children.length){const toggle=document.createElement("button");toggle.textContent=collapsed.has(id)?"Mở nhánh":"Thu gọn";toggle.style.marginLeft="5px";toggle.onclick=()=>{collapsed.has(id)?collapsed.delete(id):collapsed.add(id);render()};el.appendChild(toggle)}
- return el;
+
+function makeNode(id) {
+  const d = lots[id] || { name: id, status: "--", date: "--", side: "unknown", parents: [], children: [] };
+  const el = document.createElement("div");
+  el.className = "node" + (d.side === "current" ? " current" : "") + (selected === id ? " selected" : "");
+  
+  const title = document.createElement("strong");
+  title.textContent = id;
+  el.appendChild(title);
+
+  const name = document.createElement("small");
+  name.textContent = d.name || id;
+  el.appendChild(name);
+
+  if (d.parents && d.parents.length > 1) {
+    const badge = document.createElement("span");
+    badge.className = "badge-rel badge-merge";
+    badge.textContent = `Gộp từ ${d.parents.length} lô mẹ`;
+    el.appendChild(badge);
+  } else if (d.children && d.children.length > 1) {
+    const badge = document.createElement("span");
+    badge.className = "badge-rel badge-split";
+    badge.textContent = `Tách ${d.children.length} lô con`;
+    el.appendChild(badge);
+  }
+
+  const btnGroup = document.createElement("div");
+  btnGroup.style.display = "flex";
+  btnGroup.style.justifyContent = "center";
+  btnGroup.style.gap = "4px";
+  btnGroup.style.marginTop = "8px";
+
+  const choose = document.createElement("button");
+  choose.textContent = "Chi tiết";
+  choose.onclick = () => { selected = id; render(); };
+  btnGroup.appendChild(choose);
+
+  const totalBranches = (d.children ? d.children.length : 0) + (d.parents ? d.parents.length : 0);
+  if (totalBranches > 0) {
+    const toggle = document.createElement("button");
+    toggle.textContent = collapsed.has(id) ? "Mở" : "Thu gọn";
+    toggle.onclick = () => {
+      collapsed.has(id) ? collapsed.delete(id) : collapsed.add(id);
+      render();
+    };
+    btnGroup.appendChild(toggle);
+  }
+
+  el.appendChild(btnGroup);
+  return el;
 }
-function branch(id){
- const wrap=document.createElement("div");wrap.className="side";wrap.appendChild(makeNode(id));
- if(lots[id].children.length&&!collapsed.has(id)){
-   const kids=document.createElement("div");kids.className="children";
-   lots[id].children.forEach(child=>kids.appendChild(branch(child)));
-   wrap.appendChild(kids);
- }
- return wrap;
+
+// Duyệt cây tổ tiên ngược lên hỗ trợ ĐA CHA (nhiều lô mẹ cùng lúc)
+function renderAncestorsTree(lotId, visited = new Set()) {
+  if (visited.has(lotId)) return null;
+  visited.add(lotId);
+
+  const d = lots[lotId];
+  if (!d || !d.parents || d.parents.length === 0) return null;
+
+  const wrap = document.createElement("div");
+  wrap.className = "side";
+
+  if (!collapsed.has(lotId)) {
+    const pGroup = document.createElement("div");
+    pGroup.className = "parents-group";
+    d.parents.forEach((pId) => {
+      const pBranch = document.createElement("div");
+      pBranch.className = "side";
+      const upper = renderAncestorsTree(pId, new Set(visited));
+      if (upper) pBranch.appendChild(upper);
+      pBranch.appendChild(makeNode(pId));
+      pGroup.appendChild(pBranch);
+    });
+    wrap.appendChild(pGroup);
+  }
+
+  return wrap;
 }
-function render(){
- const tree=document.getElementById("tree");tree.replaceChildren();
- const left=document.createElement("div");left.className="side";
- const chain=ancestors("LOT-120");
- if(chain.length) chain.forEach(id=>left.appendChild(makeNode(id)));
- else left.textContent="Không có tổ tiên";
- const center=branch("LOT-120");
- const right=document.createElement("div");right.className="side";
- lots["LOT-120"].children.forEach(id=>right.appendChild(branch(id)));
- tree.append(left,center,right);
- const d=lots[selected];
- document.getElementById("detail").innerHTML="";
- const dl=document.createElement("dl");
- [["Mã lô",selected],["Tên lô",d.name],["Trạng thái",d.status],["Ngày",d.date],["Quan hệ",d.side==="current"?"Lô hiện tại":d.side==="ancestor"?"Tổ tiên":"Hậu duệ"]].forEach(([k,v])=>{
-  const dt=document.createElement("dt");dt.textContent=k;const dd=document.createElement("dd");dd.textContent=v;dl.append(dt,dd);
- });
- document.getElementById("detail").appendChild(dl);
+
+// Duyệt cây hậu duệ xuôi xuống hỗ trợ ĐA CON (phân tách nhiều nhánh)
+function renderDescendantsTree(lotId, visited = new Set()) {
+  if (visited.has(lotId)) return null;
+  visited.add(lotId);
+
+  const d = lots[lotId];
+  if (!d || !d.children || d.children.length === 0) return null;
+
+  const wrap = document.createElement("div");
+  wrap.className = "side";
+
+  if (!collapsed.has(lotId)) {
+    const cGroup = document.createElement("div");
+    cGroup.className = "children";
+    d.children.forEach((cId) => {
+      const cBranch = document.createElement("div");
+      cBranch.className = "side";
+      cBranch.appendChild(makeNode(cId));
+      const lower = renderDescendantsTree(cId, new Set(visited));
+      if (lower) cBranch.appendChild(lower);
+      cGroup.appendChild(cBranch);
+    });
+    wrap.appendChild(cGroup);
+  }
+
+  return wrap;
 }
-render();
+
+function render() {
+  const tree = document.getElementById("tree");
+  tree.replaceChildren();
+
+  // 1. Phía Trái: Cây Tổ tiên (Hỗ trợ Đa cha / Merge)
+  const left = document.createElement("div");
+  left.className = "side";
+  const ancestorsElem = renderAncestorsTree(rootLotId);
+  if (ancestorsElem) {
+    left.appendChild(ancestorsElem);
+  } else {
+    const emptyNotice = document.createElement("div");
+    emptyNotice.style.cssText = "color: #94a3b8; font-size: 13px; font-style: italic;";
+    emptyNotice.textContent = "Không có tổ tiên (Lô gốc F0)";
+    left.appendChild(emptyNotice);
+  }
+
+  // 2. Trung Tâm: Lô Đang Xem
+  const center = document.createElement("div");
+  center.className = "side";
+  center.appendChild(makeNode(rootLotId));
+
+  // 3. Phía Phải: Cây Hậu duệ (Hỗ trợ Đa con / Split)
+  const right = document.createElement("div");
+  right.className = "side";
+  const descendantsElem = renderDescendantsTree(rootLotId);
+  if (descendantsElem) {
+    right.appendChild(descendantsElem);
+  } else {
+    const emptyNotice = document.createElement("div");
+    emptyNotice.style.cssText = "color: #94a3b8; font-size: 13px; font-style: italic;";
+    emptyNotice.textContent = "Không có hậu duệ (Lô lá)";
+    right.appendChild(emptyNotice);
+  }
+
+  tree.append(left, center, right);
+
+  // 4. Cột Chi tiết Lô được chọn
+  const d = lots[selected] || { name: selected, status: "--", date: "--", side: "--", parents: [], children: [] };
+  const detailPanel = document.getElementById("detail");
+  detailPanel.innerHTML = "";
+
+  const dl = document.createElement("dl");
+  const metaRows = [
+    ["Mã lô", selected],
+    ["Tên nông sản", d.name || selected],
+    ["Trạng thái", d.status || "--"],
+    ["Tổ chức / Ngày", d.date || "--"],
+    ["Vị trí phả hệ", d.side === "current" ? "Lô trung tâm đang xem" : d.side === "ancestor" ? "Lô tổ tiên (Nguồn)" : "Lô hậu duệ (Thành phẩm)"],
+  ];
+
+  metaRows.forEach(([k, v]) => {
+    const dt = document.createElement("dt");
+    dt.textContent = k;
+    const dd = document.createElement("dd");
+    dd.textContent = v;
+    dl.append(dt, dd);
+  });
+
+  // Hiển thị danh sách Lô cha (Parents - Đa nguồn)
+  const dtParents = document.createElement("dt");
+  dtParents.textContent = "Lô cha / Nguồn";
+  const ddParents = document.createElement("dd");
+  if (d.parents && d.parents.length > 0) {
+    const tagList = document.createElement("div");
+    tagList.className = "tag-list";
+    d.parents.forEach((pid) => {
+      const tag = document.createElement("span");
+      tag.className = "tag-lot";
+      tag.textContent = pid;
+      tag.title = "Bấm để xem thông tin lô này";
+      tag.onclick = () => { selected = pid; render(); };
+      tagList.appendChild(tag);
+    });
+    ddParents.appendChild(tagList);
+  } else {
+    ddParents.textContent = "Không có (Lô gốc)";
+  }
+  dl.append(dtParents, ddParents);
+
+  // Hiển thị danh sách Lô con (Children - Phân tách)
+  const dtKids = document.createElement("dt");
+  dtKids.textContent = "Lô con / Tách";
+  const ddKids = document.createElement("dd");
+  if (d.children && d.children.length > 0) {
+    const tagList = document.createElement("div");
+    tagList.className = "tag-list";
+    d.children.forEach((cid) => {
+      const tag = document.createElement("span");
+      tag.className = "tag-lot";
+      tag.textContent = cid;
+      tag.title = "Bấm để xem thông tin lô này";
+      tag.onclick = () => { selected = cid; render(); };
+      tagList.appendChild(tag);
+    });
+    ddKids.appendChild(tagList);
+  } else {
+    ddKids.textContent = "Không có (Lô thành phẩm)";
+  }
+  dl.append(dtKids, ddKids);
+
+  detailPanel.appendChild(dl);
+
+  const viewDetailBtn = document.createElement("a");
+  viewDetailBtn.href = `/lot-detail.html?id=${encodeURIComponent(selected)}`;
+  viewDetailBtn.style.cssText = "display: block; text-align: center; margin-top: 16px; padding: 9px 14px; background: #2876d2; color: #fff; text-decoration: none; border-radius: 8px; font-size: 13px; font-weight: 600;";
+  viewDetailBtn.textContent = "Mở trang chi tiết lô đầy đủ ➔";
+  detailPanel.appendChild(viewDetailBtn);
+}
+
+// Khởi tạo và nạp dữ liệu từ API thực tế nếu có ?id=
+async function init() {
+  const urlParams = new URLSearchParams(window.location.search);
+  const targetId = urlParams.get("id");
+  if (targetId) {
+    try {
+      const res = await fetch(`/api/lots/${encodeURIComponent(targetId)}/genealogy`, { credentials: "same-origin" });
+      if (res.ok) {
+        const data = await res.json();
+        const apiLots = {};
+
+        const graphNodes = (data.graph && Array.isArray(data.graph.nodes)) ? data.graph.nodes : [];
+        const graphEdges = (data.graph && Array.isArray(data.graph.edges)) ? data.graph.edges : [];
+
+        graphNodes.forEach((n) => {
+          apiLots[n.id] = {
+            name: n.name || n.id,
+            status: n.status || "Đã thu hoạch",
+            date: n.organizationName || n.organizationId || "--",
+            side: n.isCurrent ? "current" : (n.isAncestor ? "ancestor" : "descendant"),
+            parents: [],
+            children: [],
+          };
+        });
+
+        // Xây dựng quan hệ ĐA CHA và ĐA CON từ các cạnh edges
+        graphEdges.forEach((e) => {
+          const src = e.source; // Cha
+          const tgt = e.target; // Con
+          if (apiLots[src] && !apiLots[src].children.includes(tgt)) {
+            apiLots[src].children.push(tgt);
+          }
+          if (apiLots[tgt] && !apiLots[tgt].parents.includes(src)) {
+            apiLots[tgt].parents.push(src);
+          }
+        });
+
+        if (!apiLots[targetId]) {
+          apiLots[targetId] = {
+            name: (data.startLot && data.startLot.name) || targetId,
+            status: (data.startLot && data.startLot.status) || "--",
+            date: "--",
+            side: "current",
+            parents: [],
+            children: [],
+          };
+        }
+
+        lots = apiLots;
+        rootLotId = targetId;
+        selected = targetId;
+
+        const noteEl = document.querySelector(".note");
+        if (noteEl) {
+          noteEl.innerHTML = `<strong>Dữ liệu trực tiếp từ API:</strong> Đang hiển thị cây phả hệ đầy đủ của lô <code>${targetId}</code>.`;
+          noteEl.style.background = "#e6f4ea";
+          noteEl.style.borderColor = "#34a853";
+        }
+      }
+    } catch (e) {
+      console.warn("Không thể tải API thật, sử dụng dữ liệu mẫu:", e);
+    }
+  }
+  render();
+}
+
+init();
 </script>
 </body>
 </html>

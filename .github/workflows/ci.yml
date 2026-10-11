@@ -9,8 +9,11 @@ on:
       - "fix-*"
       - "docs/**"
       - "s18**"
+      - "s26**"
       - "s-**"
       - "S-**"
+      - "s**"
+      - "kết-hợp**"
   pull_request:
     branches:
       - main
