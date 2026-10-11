@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>S-28 — Minh họa sơ đồ phả hệ lô</title>
+<style>
+:root{font-family:system-ui,-apple-system,"Segoe UI",sans-serif;color:#172033;background:#f4f7fb}
+*{box-sizing:border-box}body{margin:0;padding:24px}h1{margin:0 0 8px;font-size:clamp(1.35rem,3vw,2rem)}
+p{line-height:1.55}.note{background:#fff7df;border:1px solid #f0d78c;padding:12px 14px;border-radius:10px}
+.layout{display:grid;grid-template-columns:minmax(0,1fr) 280px;gap:16px;margin-top:16px}
+.panel{background:white;border:1px solid #dce3ee;border-radius:14px;padding:16px;min-width:0}
+.scroller{overflow:auto;min-height:370px;border:1px dashed #ccd5e3;border-radius:10px;padding:18px}
+.tree{display:flex;align-items:center;gap:30px;min-width:max-content;min-height:320px}
+.side{display:flex;flex-direction:column;align-items:center;gap:14px}
+.node{border:2px solid #b7c7dc;background:#fff;border-radius:10px;padding:12px;min-width:145px;text-align:center;box-shadow:0 2px 5px #13294b0b}
+.node.current{border-color:#2876d2;background:#eaf3ff}.node button{margin-top:8px}
+.children{display:flex;flex-direction:column;gap:12px;padding-left:16px;border-left:2px solid #c5d2e2}
+button{font:inherit;cursor:pointer;border:1px solid #b8c6d9;background:#fff;border-radius:7px;padding:6px 9px}
+button:hover{background:#edf4ff}.selected{outline:2px solid #2876d2}
+small{display:block;color:#56647a;margin-top:4px}
+dl{display:grid;grid-template-columns:auto 1fr;gap:8px;font-size:.95rem}dt{font-weight:650}dd{margin:0;overflow-wrap:anywhere}
+@media(max-width:760px){body{padding:12px}.layout{grid-template-columns:1fr}.tree{gap:18px}.panel{padding:12px}}
+</style>
+</head>
+<body>
+<h1>S-28 — Sơ đồ phả hệ dạng cây</h1>
+<p>Lô hiện tại ở giữa, tổ tiên bên trái và hậu duệ bên phải. Chọn một nút để xem chi tiết; dùng nút thu gọn/mở rộng để ẩn hoặc hiện nhánh.</p>
+<div class="note"><strong>Bản minh họa dùng dữ liệu mẫu.</strong> Chưa kết nối API hoặc cơ sở dữ liệu của dự án.</div>
+<div class="layout">
+<section class="panel">
+<h2>Sơ đồ lô</h2>
+<div class="scroller"><div class="tree" id="tree" aria-label="Sơ đồ phả hệ lô"></div></div>
+</section>
+<aside class="panel">
+<h2>Chi tiết lô</h2>
+<div id="detail" aria-live="polite">Chọn một lô trong sơ đồ để xem chi tiết.</div>
+</aside>
+</div>
+<script>
+const lots = {
+  "LOT-100": {name:"Lô nguyên liệu A",status:"Đã tiếp nhận",date:"2026-09-01",side:"ancestor",children:["LOT-110"]},
+  "LOT-110": {name:"Lô sơ chế B",status:"Đã sơ chế",date:"2026-09-03",side:"ancestor",children:["LOT-120"]},
+  "LOT-120": {name:"Lô đang xem C",status:"Đang theo dõi",date:"2026-09-05",side:"current",children:["LOT-130","LOT-140"]},
+  "LOT-130": {name:"Lô đóng gói D",status:"Đã đóng gói",date:"2026-09-06",side:"descendant",children:["LOT-150"]},
+  "LOT-140": {name:"Lô đóng gói E",status:"Chờ vận chuyển",date:"2026-09-06",side:"descendant",children:[]},
+  "LOT-150": {name:"Lô phân phối F",status:"Đang vận chuyển",date:"2026-09-07",side:"descendant",children:[]}
+};
+const parent = {"LOT-110":"LOT-100","LOT-120":"LOT-110","LOT-130":"LOT-120","LOT-140":"LOT-120","LOT-150":"LOT-130"};
+const collapsed = new Set();
+let selected = "LOT-120";
+function ancestors(id){const out=[];while(parent[id]){id=parent[id];out.unshift(id)}return out}
+function makeNode(id){
+ const d=lots[id], el=document.createElement("div");el.className="node"+(d.side==="current"?" current":"")+(selected===id?" selected":"");
+ const title=document.createElement("strong");title.textContent=id;el.appendChild(title);
+ const name=document.createElement("small");name.textContent=d.name;el.appendChild(name);
+ const choose=document.createElement("button");choose.textContent="Xem chi tiết";choose.onclick=()=>{selected=id;render()};el.appendChild(choose);
+ if(d.children.length){const toggle=document.createElement("button");toggle.textContent=collapsed.has(id)?"Mở nhánh":"Thu gọn";toggle.style.marginLeft="5px";toggle.onclick=()=>{collapsed.has(id)?collapsed.delete(id):collapsed.add(id);render()};el.appendChild(toggle)}
+ return el;
+}
+function branch(id){
+ const wrap=document.createElement("div");wrap.className="side";wrap.appendChild(makeNode(id));
+ if(lots[id].children.length&&!collapsed.has(id)){
+   const kids=document.createElement("div");kids.className="children";
+   lots[id].children.forEach(child=>kids.appendChild(branch(child)));
+   wrap.appendChild(kids);
+ }
+ return wrap;
+}
+function render(){
+ const tree=document.getElementById("tree");tree.replaceChildren();
+ const left=document.createElement("div");left.className="side";
+ const chain=ancestors("LOT-120");
+ if(chain.length) chain.forEach(id=>left.appendChild(makeNode(id)));
+ else left.textContent="Không có tổ tiên";
+ const center=branch("LOT-120");
+ const right=document.createElement("div");right.className="side";
+ lots["LOT-120"].children.forEach(id=>right.appendChild(branch(id)));
+ tree.append(left,center,right);
+ const d=lots[selected];
+ document.getElementById("detail").innerHTML="";
+ const dl=document.createElement("dl");
+ [["Mã lô",selected],["Tên lô",d.name],["Trạng thái",d.status],["Ngày",d.date],["Quan hệ",d.side==="current"?"Lô hiện tại":d.side==="ancestor"?"Tổ tiên":"Hậu duệ"]].forEach(([k,v])=>{
+  const dt=document.createElement("dt");dt.textContent=k;const dd=document.createElement("dd");dd.textContent=v;dl.append(dt,dd);
+ });
+ document.getElementById("detail").appendChild(dl);
+}
+render();
+</script>
+</body>
+</html>
