@@ -1923,7 +1923,49 @@ if (fs.existsSync(path.join(__dirname, "../../frontend"))) {
       },
     })
   );
-}
+}// ==========================================
+// [API] N2-259: Tra cứu nhật ký (Audit Logs)
+// ==========================================
+app.get('/api/audit-logs', async (req, res) => {
+  try {
+    const pool = require('./query');
+
+    const { userId, orgId, startDate, endDate } = req.query;
+
+    let queryStr = 'SELECT * FROM audit_logs WHERE 1=1';
+    const queryParams = [];
+    let paramIndex = 1;
+
+    if (userId) {
+      queryStr += ` AND user_id = $${paramIndex}`;
+      queryParams.push(userId);
+      paramIndex++;
+    }
+    if (orgId) {
+      queryStr += ` AND user_org_id = $${paramIndex}`;
+      queryParams.push(orgId);
+      paramIndex++;
+    }
+    if (startDate) {
+      queryStr += ` AND timestamp >= $${paramIndex}`;
+      queryParams.push(startDate);
+      paramIndex++;
+    }
+    if (endDate) {
+      queryStr += ` AND timestamp <= $${paramIndex}`;
+      queryParams.push(endDate);
+      paramIndex++;
+    }
+
+    queryStr += ' ORDER BY timestamp DESC LIMIT 200';
+
+    const result = await pool.query(queryStr, queryParams);
+    res.json({ success: true, data: result.rows });
+  } catch (error) {
+    console.error('Lỗi khi tra cứu nhật ký:', error);
+    res.status(500).json({ success: false, error: 'Lỗi máy chủ nội bộ' });
+  }
+});
 
 async function start() {
   await seedDemoUser();
