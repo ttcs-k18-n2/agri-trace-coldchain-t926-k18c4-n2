@@ -472,5 +472,125 @@ test("Lot Merge API [S-19] (Tasks T-44, T-45, T-46) & Parent-Child Lineage Integ
     assert.ok(lot.parentLot, "lot.parentLot must not be null");
     assert.ok(parentIds.includes(lot.parentLot.id));
   });
+
+  await t.test("11. Sự kiện gộp ghi vào chuỗi của mọi lô liên quan: Gộp 3 lô mẹ thành 1 lô mới, kiểm tra timeline, đếm số sự kiện (1 + số lô mẹ = 4), và kiểm tra toàn vẹn mọi lô", async () => {
+    const distAgent = await loginAs("dist_merge@org3.vn");
+    const inspAgent = await loginAs("inspector_merge@gov.vn");
+
+    const mLot1 = "LOT-MERGE-3M-1";
+    const mLot2 = "LOT-MERGE-3M-2";
+    const mLot3 = "LOT-MERGE-3M-3";
+
+    inMemoryLots.push(
+      {
+        id: mLot1,
+        name: "Lô Dưa mẹ 1",
+        status: "Đã thu hoạch",
+        organizationId: "org-merge-003",
+        farmId: "FARM-001",
+        productId: "PROD-MELON",
+        initialQuantity: 100,
+        remainingQuantity: 100,
+        harvestedAt: "2026-10-06T07:00:00.000Z",
+        parentLotId: null,
+        createdAt: "2026-10-06T07:00:00.000Z",
+      },
+      {
+        id: mLot2,
+        name: "Lô Dưa mẹ 2",
+        status: "Đã thu hoạch",
+        organizationId: "org-merge-003",
+        farmId: "FARM-001",
+        productId: "PROD-MELON",
+        initialQuantity: 150,
+        remainingQuantity: 150,
+        harvestedAt: "2026-10-06T07:00:00.000Z",
+        parentLotId: null,
+        createdAt: "2026-10-06T07:00:00.000Z",
+      },
+      {
+        id: mLot3,
+        name: "Lô Dưa mẹ 3",
+        status: "Đã thu hoạch",
+        organizationId: "org-merge-003",
+        farmId: "FARM-001",
+        productId: "PROD-MELON",
+        initialQuantity: 200,
+        remainingQuantity: 200,
+        harvestedAt: "2026-10-06T07:00:00.000Z",
+        parentLotId: null,
+        createdAt: "2026-10-06T07:00:00.000Z",
+      }
+    );
+
+    const eventsCountBefore = inMemoryBatchEvents.length;
+
+    // Gộp 3 lô mẹ: mLot1 lấy 40kg, mLot2 lấy 60kg, mLot3 lấy 50kg -> Tổng 150kg
+    const mergeRes = await distAgent.post("/api/lots/merge").send({
+      name: "Lô Dưa Tổng Hợp từ 3 Nguồn",
+      items: [
+        { parent_batch_id: mLot1, take_quantity: 40 },
+        { parent_batch_id: mLot2, take_quantity: 60 },
+        { parent_batch_id: mLot3, take_quantity: 50 },
+      ],
+    });
+
+    assert.equal(mergeRes.status, 201);
+    const newLot = mergeRes.body.lot;
+    assert.ok(newLot);
+    assert.equal(newLot.initialQuantity, 150);
+    assert.equal(newLot.remainingQuantity, 150);
+
+    const newMergedId = newLot.id;
+    const parentLotIds = [mLot1, mLot2, mLot3];
+
+    // Kiểm tra số sự kiện được sinh ra trong giao dịch gộp: đúng 1 (lô mới) + 3 (lô mẹ) = 4
+    const eventsCountAfter = inMemoryBatchEvents.length;
+    assert.equal(
+      eventsCountAfter - eventsCountBefore,
+      1 + parentLotIds.length,
+      "Số sự kiện sinh ra sau gộp phải bằng 1 + số lô mẹ (1 lô mới + 3 lô mẹ = 4)"
+    );
+
+    // 1. Dòng thời gian lô mới: có sự kiện gộp CREATED_FROM_MERGE nêu cả 3 lô mẹ và khối lượng lấy từ mỗi lô
+    const mergedTimelineRes = await distAgent.get(`/api/lots/${newMergedId}/timeline`);
+    assert.equal(mergedTimelineRes.status, 200);
+    const createdFromMergeEvent = mergedTimelineRes.body.events.find(
+      (e) => e.eventType === "CREATED_FROM_MERGE"
+    );
+    assert.ok(createdFromMergeEvent, "Lô mới phải có sự kiện CREATED_FROM_MERGE trong timeline");
+    assert.equal(createdFromMergeEvent.payload.totalQuantity, 150);
+    assert.ok(Array.isArray(createdFromMergeEvent.payload.parentLots));
+    assert.equal(createdFromMergeEvent.payload.parentLots.length, 3);
+
+    const parentLotsPayload = createdFromMergeEvent.payload.parentLots;
+    const p1 = parentLotsPayload.find((p) => p.parentBatchId === mLot1);
+    const p2 = parentLotsPayload.find((p) => p.parentBatchId === mLot2);
+    const p3 = parentLotsPayload.find((p) => p.parentBatchId === mLot3);
+    assert.ok(p1 && p2 && p3, "Sự kiện gộp phải nêu đủ cả 3 lô mẹ");
+    assert.equal(p1.quantity, 40, "Khối lượng lấy từ lô mẹ 1 phải là 40");
+    assert.equal(p2.quantity, 60, "Khối lượng lấy từ lô mẹ 2 phải là 60");
+    assert.equal(p3.quantity, 50, "Khối lượng lấy từ lô mẹ 3 phải là 50");
+
+    // Dòng thời gian các lô mẹ: đều có sự kiện LOT_MERGED_FROM trỏ tới lô mới với đúng khối lượng
+    for (const pId of parentLotIds) {
+      const pTimelineRes = await distAgent.get(`/api/lots/${pId}/timeline`);
+      assert.equal(pTimelineRes.status, 200);
+      const mergedFromEvt = pTimelineRes.body.events.find((e) => e.eventType === "LOT_MERGED_FROM");
+      assert.ok(mergedFromEvt, `Lô mẹ ${pId} phải có sự kiện LOT_MERGED_FROM`);
+      assert.equal(mergedFromEvt.payload.targetLotId, newMergedId);
+    }
+
+    // 2. Chạy kiểm tra toàn vẹn mọi lô liên quan (lô mới và cả 3 lô mẹ) -> tất cả đều hợp lệ
+    const newLotIntegrityRes = await inspAgent.get(`/api/lots/${newMergedId}/integrity`);
+    assert.equal(newLotIntegrityRes.status, 200);
+    assert.equal(newLotIntegrityRes.body.integrity.valid, true, "Lô mới gộp phải có chuỗi sự kiện toàn vẹn hợp lệ");
+
+    for (const pId of parentLotIds) {
+      const pIntegrityRes = await inspAgent.get(`/api/lots/${pId}/integrity`);
+      assert.equal(pIntegrityRes.status, 200);
+      assert.equal(pIntegrityRes.body.integrity.valid, true, `Lô mẹ ${pId} phải có chuỗi sự kiện toàn vẹn hợp lệ`);
+    }
+  });
 });
 
