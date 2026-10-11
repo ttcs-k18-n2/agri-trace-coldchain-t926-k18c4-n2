@@ -886,8 +886,18 @@
             return;
           }
 
+          function escapeHtml(unsafe) {
+            if (unsafe === null || unsafe === undefined) return "";
+            return String(unsafe)
+              .replace(/&/g, "&amp;")
+              .replace(/</g, "&lt;")
+              .replace(/>/g, "&gt;")
+              .replace(/"/g, "&quot;")
+              .replace(/'/g, "&#039;");
+          }
+
           auditLogsTableBody.innerHTML = logs.map(log => {
-            const dateStr = log.createdAt ? new Date(log.createdAt).toLocaleString("vi-VN") : "--";
+            const dateStr = log.createdAt ? escapeHtml(new Date(log.createdAt).toLocaleString("vi-VN")) : "--";
             const act = log.action || "UNKNOWN";
             const badgeClass = act.includes("LOCATION") ? "action-location"
               : act.includes("TRANSFER") ? "action-transfer"
@@ -896,17 +906,19 @@
               : act.includes("CONSUMED") ? "action-consume" : "action-other";
 
             const detailsStr = log.details && typeof log.details === "object"
-              ? Object.entries(log.details).map(([k, v]) => `<strong>${k}:</strong> ${v}`).join(", ")
+              ? Object.entries(log.details)
+                  .map(([k, v]) => `<strong>${escapeHtml(k)}:</strong> ${escapeHtml(typeof v === "object" ? JSON.stringify(v) : v)}`)
+                  .join(", ")
               : "--";
 
             return `
               <tr>
                 <td style="white-space: nowrap; font-size: 12.5px; color: var(--color-text-muted);">${dateStr}</td>
-                <td style="font-weight: 600;">${log.actorEmail || log.actorUserId || "--"}</td>
-                <td><span style="font-family: monospace; font-weight: 700;">${log.organizationId || "--"}</span></td>
-                <td><span class="badge-action ${badgeClass}">${act}</span></td>
-                <td><span style="font-family: monospace;">${log.resourceType || "lot"}:${log.resourceId || "--"}</span></td>
-                <td style="font-family: monospace; font-size: 11.5px; color: var(--color-text-muted);">${log.ipAddress || "--"}</td>
+                <td style="font-weight: 600;">${escapeHtml(log.actorEmail || log.actorUserId || "--")}</td>
+                <td><span style="font-family: monospace; font-weight: 700;">${escapeHtml(log.organizationId || "--")}</span></td>
+                <td><span class="badge-action ${badgeClass}">${escapeHtml(act)}</span></td>
+                <td><span style="font-family: monospace;">${escapeHtml(log.resourceType || "lot")}:${escapeHtml(log.resourceId || "--")}</span></td>
+                <td style="font-family: monospace; font-size: 11.5px; color: var(--color-text-muted);">${escapeHtml(log.ipAddress || "--")}</td>
                 <td style="font-size: 12px; line-height: 1.4;">${detailsStr}</td>
               </tr>
             `;
@@ -915,7 +927,7 @@
           auditLogsTableBody.innerHTML = `
             <tr>
               <td colspan="7" style="text-align: center; padding: 20px; color: #dc2626;">
-                ⚠️ Lỗi tải nhật ký: ${err.message}
+                ⚠️ Lỗi tải nhật ký: ${escapeHtml(err.message)}
               </td>
             </tr>
           `;

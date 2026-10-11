@@ -178,20 +178,30 @@ async function createLocation(pool, inMemoryList = inMemoryLocations, data) {
  */
 async function updateLotLocation(pool, inMemoryLots = [], lotId, locationId, organizationId = null) {
   if (pool && typeof pool.query === "function") {
+    let result;
     if (organizationId) {
-      await pool.query(
+      result = await pool.query(
         "UPDATE lots SET location_id = $1 WHERE id = $2 AND organization_id = $3",
         [locationId, lotId, organizationId]
       );
     } else {
-      await pool.query(
+      result = await pool.query(
         "UPDATE lots SET location_id = $1 WHERE id = $2 AND ($3::text IS NULL OR organization_id = $3)",
         [locationId, lotId, organizationId]
       );
     }
+    if (!result || result.rowCount === 0) {
+      return false;
+    }
   }
+
   const lot = inMemoryLots.find((l) => l.id === lotId);
-  if (lot) {
+  if (!lot) {
+    if (!pool) return false;
+  } else {
+    if (organizationId && (lot.organizationId || lot.organization_id) !== organizationId) {
+      return false;
+    }
     lot.locationId = locationId;
   }
   return true;

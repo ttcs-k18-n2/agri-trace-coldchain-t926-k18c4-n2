@@ -139,4 +139,131 @@ test("S-26 Benchmark: Hiệu năng duyệt xuôi NFR trên 1,000 lô qua 5-10 t�
       `Cảnh báo hiệu năng: Thời gian chạy ${elapsed.toFixed(2)}ms vượt ngưỡng tối ưu 500ms`
     );
   });
+
+  await t.test("Benchmark traceLotDescendants trên CSDL PostgreSQL thật (1,000 lô, NFR < 2000ms)", async () => {
+    const { Pool } = require("pg");
+    const dbUrl = process.env.MIGRATION_DATABASE_URL || process.env.DATABASE_URL || "postgresql://agri_migration:migration_password@localhost:5432/agri_trace";
+    let pool = null;
+    try {
+      pool = new Pool({ connectionString: dbUrl, connectionTimeoutMillis: 3000 });
+      await pool.query("SELECT 1");
+    } catch {
+      console.log("[SKIP] PostgreSQL không khả dụng, bỏ qua benchmark PostgreSQL thật.");
+      return;
+    }
+
+    try {
+      await pool.query(`
+        INSERT INTO organizations (id, name, type)
+        VALUES ('ORG-BENCH-1', 'Bench Org 1', 'producer')
+        ON CONFLICT (id) DO NOTHING;
+      `);
+
+      await pool.query("DELETE FROM batch_relations WHERE parent_batch_id LIKE 'LOT-PG-BENCH-%' OR child_batch_id LIKE 'LOT-PG-BENCH-%'");
+      await pool.query("DELETE FROM lots WHERE id LIKE 'LOT-PG-BENCH-%'");
+
+      const pgGraph = generateLargeGenealogyGraph(TOTAL_LOTS, LEVELS);
+      const rootId = "LOT-PG-BENCH-ROOT";
+
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN");
+        for (let i = 0; i < pgGraph.lots.length; i += 100) {
+          const chunk = pgGraph.lots.slice(i, i + 100);
+          const values = [];
+          const params = [];
+          let idx = 1;
+          for (const l of chunk) {
+            const lotId = l.id.replace("LOT-BENCH-", "LOT-PG-BENCH-");
+            values.push(`($${idx}, $${idx + 1}, $${idx + 2}, $${idx + 3}, $${idx + 4}, $${idx + 5})`);
+            params.push(lotId, l.name, l.status, "ORG-BENCH-1", l.initialQuantity, l.remainingQuantity);
+            idx += 6;
+          }
+          await client.query(`
+            INSERT INTO lots (id, name, status, organization_id, initial_quantity, remaining_quantity)
+            VALUES ${values.join(", ")}
+          `, params);
+        }
+
+        for (let i = 0; i < pgGraph.batchRelations.length; i += 100) {
+          const chunk = pgGraph.batchRelations.slice(i, i + 100);
+          const values = [];
+          const params = [];
+          let idx = 1;
+          for (const r of chunk) {
+            const pId = r.parentBatchId.replace("LOT-BENCH-", "LOT-PG-BENCH-");
+            const cId = r.childBatchId.replace("LOT-BENCH-", "LOT-PG-BENCH-");
+            values.push(`($${idx}, $${idx + 1}, $${idx + 2}, $${idx + 3}, $${idx + 4}, $${idx + 5})`);
+            params.push(`rel-pg-${r.id}`, pId, cId, r.relationType, r.quantity, "ORG-BENCH-1");
+            idx += 6;
+          }
+          await client.query(`
+            INSERT INTO batch_relations (id, parent_batch_id, child_batch_id, relation_type, quantity, organization_id)
+            VALUES ${values.join(", ")}
+          `, params);
+        }
+        await client.query("COMMIT");
+      } finally {
+        client.release();
+      }
+
+      // ĐO THỜI GIAN TRUY VẤN POSTGRESQL THẬT
+      const t0 = performance.now();
+      const result = await traceLotDescendants({
+        pool,
+        startLotId: rootId,
+      });
+      const elapsed = performance.now() - t0;
+
+      console.log(`\n[BENCHMARK POSTGRESQL THỰC] Truy xuôi ${result.descendantCount} lô hậu duệ qua ${result.levels.length} tầng trên PostgreSQL: ${elapsed.toFixed(2)}ms`);
+
+      assert.equal(result.rootLotId, rootId);
+      assert.equal(result.descendantCount, TOTAL_LOTS - 1);
+      assert.equal(result.levels.length, LEVELS);
+      assert.ok(
+        elapsed < 2000,
+        `NFR Violation trên PostgreSQL thật: Thời gian chạy ${elapsed.toFixed(2)}ms vượt quá ngưỡng 2000ms`
+      );
+    } finally {
+      try {
+        await pool.query("DELETE FROM batch_relations WHERE parent_batch_id LIKE 'LOT-PG-BENCH-%' OR child_batch_id LIKE 'LOT-PG-BENCH-%'");
+        await pool.query("DELETE FROM lots WHERE id LIKE 'LOT-PG-BENCH-%'");
+      } catch (cleanupErr) {
+        console.warn("[CLEANUP WARN]", cleanupErr.message);
+      }
+      await pool.end();
+    }
+  });
+
+  await t.test("Kiểm tra 3-Color DFS: Phát hiện chu trình trên nhánh hội tụ kim cương (Diamond Graph)", async () => {
+    const testLots = [
+      { id: "ROOT", name: "Gốc", status: "Đã thu hoạch" },
+      { id: "A", name: "Nhánh A", status: "Đã thu hoạch" },
+      { id: "B", name: "Nhánh B", status: "Đã thu hoạch" },
+      { id: "D", name: "Hội tụ D", status: "Đã thu hoạch" },
+    ];
+    const testRelations = [
+      { parentBatchId: "ROOT", childBatchId: "A", relationType: "SPLIT" },
+      { parentBatchId: "ROOT", childBatchId: "B", relationType: "SPLIT" },
+      { parentBatchId: "A", childBatchId: "D", relationType: "SPLIT" },
+      { parentBatchId: "B", childBatchId: "D", relationType: "SPLIT" },
+      { parentBatchId: "D", childBatchId: "B", relationType: "MERGE" },
+    ];
+
+    await assert.rejects(
+      async () => {
+        await traceLotDescendants({
+          pool: null,
+          startLotId: "ROOT",
+          inMemoryLots: testLots,
+          inMemoryBatchRelations: testRelations,
+        });
+      },
+      (err) => {
+        assert.equal(err.name, "CycleDetectedError");
+        return true;
+      },
+      "Thuật toán 3-Color DFS phải phát hiện được chu trình trên nhánh hội tụ kim cương"
+    );
+  });
 });

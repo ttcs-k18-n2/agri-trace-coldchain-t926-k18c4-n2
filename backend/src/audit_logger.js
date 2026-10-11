@@ -21,6 +21,7 @@ async function recordAuditLog({
   ipAddress = "127.0.0.1",
   userAgent = null,
   details = {},
+  throwOnError = process.env.STRICT_AUDIT === "true",
 }) {
   const logEntry = {
     id: `audit-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`,
@@ -65,6 +66,9 @@ async function recordAuditLog({
       );
     } catch (err) {
       console.error("[AUDIT LOG ERROR] Không thể ghi audit log vào CSDL:", err.message);
+      if (throwOnError) {
+        throw new Error(`Audit log persistence failed: ${err.message}`);
+      }
     }
   }
 

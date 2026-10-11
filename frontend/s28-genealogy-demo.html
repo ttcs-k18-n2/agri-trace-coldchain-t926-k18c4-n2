@@ -285,6 +285,53 @@ function render() {
   detailPanel.appendChild(viewDetailBtn);
 }
 
+function escapeHtml(unsafe) {
+  if (unsafe === null || unsafe === undefined) return "";
+  return String(unsafe)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+function renderErrorState(targetId, errorTitle, errorMessage, statusCode = null) {
+  const noteEl = document.querySelector(".note");
+  if (noteEl) {
+    const codeTag = statusCode ? ` (HTTP ${statusCode})` : "";
+    noteEl.innerHTML = `⚠️ <strong>Lỗi truy xuất phả hệ:</strong> ${escapeHtml(errorMessage)}${codeTag}`;
+    noteEl.style.background = "#fee2e2";
+    noteEl.style.borderColor = "#ef4444";
+    noteEl.style.color = "#991b1b";
+  }
+
+  const treeEl = document.getElementById("tree");
+  if (treeEl) {
+    treeEl.innerHTML = `
+      <div style="text-align: center; padding: 48px 24px; color: #dc2626; max-width: 520px; margin: 40px auto; background: #fff; border-radius: 12px; box-shadow: 0 4px 14px rgba(0,0,0,0.06); border: 1px solid #fecaca;">
+        <div style="font-size: 42px; margin-bottom: 12px;">🚫</div>
+        <h3 style="margin-bottom: 8px; color: #991b1b; font-size: 17px;">${escapeHtml(errorTitle)}</h3>
+        <p style="font-size: 13.5px; color: #7f1d1d; line-height: 1.5; margin-bottom: 20px;">
+          ${escapeHtml(errorMessage)}
+        </p>
+        <div style="display: flex; gap: 10px; justify-content: center;">
+          <a href="/s28-genealogy-demo.html" style="display: inline-block; padding: 8px 16px; background: #2876d2; color: #fff; text-decoration: none; border-radius: 6px; font-size: 13px; font-weight: 600;">Xem sơ đồ mẫu Demo</a>
+          <button onclick="window.location.reload()" style="padding: 8px 16px; background: #f3f4f6; color: #374151; border: 1px solid #d1d5db; border-radius: 6px; font-size: 13px; font-weight: 600; cursor: pointer;">Thử lại</button>
+        </div>
+      </div>
+    `;
+  }
+
+  const detailPanel = document.getElementById("detailPanel");
+  if (detailPanel) {
+    detailPanel.innerHTML = `
+      <div style="padding: 16px; color: #991b1b; text-align: center; font-size: 13px;">
+        Không thể hiển thị thuộc tính chi tiết do lỗi tải dữ liệu.
+      </div>
+    `;
+  }
+}
+
 // Khởi tạo và nạp dữ liệu từ API thực tế nếu có ?id=
 async function init() {
   const urlParams = new URLSearchParams(window.location.search);
@@ -292,62 +339,84 @@ async function init() {
   if (targetId) {
     try {
       const res = await fetch(`/api/lots/${encodeURIComponent(targetId)}/genealogy`, { credentials: "same-origin" });
-      if (res.ok) {
-        const data = await res.json();
-        const apiLots = {};
+      if (!res.ok) {
+        let errorMsg = `Yêu cầu API trả về mã lỗi ${res.status} (${res.statusText})`;
+        try {
+          const errData = await res.json();
+          if (errData && errData.message) errorMsg = errData.message;
+        } catch {}
 
-        const graphNodes = (data.graph && Array.isArray(data.graph.nodes)) ? data.graph.nodes : [];
-        const graphEdges = (data.graph && Array.isArray(data.graph.edges)) ? data.graph.edges : [];
+        renderErrorState(
+          targetId,
+          `Không thể tải cây phả hệ lô [${targetId}]`,
+          errorMsg,
+          res.status
+        );
+        return; // Dừng lại, KHÔNG render dữ liệu mẫu khi API trả lỗi 403/500/404!
+      }
 
-        graphNodes.forEach((n) => {
-          apiLots[n.id] = {
-            name: n.name || n.id,
-            status: n.status || "Đã thu hoạch",
-            date: n.organizationName || n.organizationId || "--",
-            side: n.isCurrent ? "current" : (n.isAncestor ? "ancestor" : "descendant"),
-            parents: [],
-            children: [],
-          };
-        });
+      const data = await res.json();
+      const apiLots = {};
 
-        // Xây dựng quan hệ ĐA CHA và ĐA CON từ các cạnh edges
-        graphEdges.forEach((e) => {
-          const src = e.source; // Cha
-          const tgt = e.target; // Con
-          if (apiLots[src] && !apiLots[src].children.includes(tgt)) {
-            apiLots[src].children.push(tgt);
-          }
-          if (apiLots[tgt] && !apiLots[tgt].parents.includes(src)) {
-            apiLots[tgt].parents.push(src);
-          }
-        });
+      const graphNodes = (data.graph && Array.isArray(data.graph.nodes)) ? data.graph.nodes : [];
+      const graphEdges = (data.graph && Array.isArray(data.graph.edges)) ? data.graph.edges : [];
 
-        if (!apiLots[targetId]) {
-          apiLots[targetId] = {
-            name: (data.startLot && data.startLot.name) || targetId,
-            status: (data.startLot && data.startLot.status) || "--",
-            date: "--",
-            side: "current",
-            parents: [],
-            children: [],
-          };
+      graphNodes.forEach((n) => {
+        apiLots[n.id] = {
+          name: n.name || n.id,
+          status: n.status || "Đã thu hoạch",
+          date: n.organizationName || n.organizationId || "--",
+          side: n.isCurrent ? "current" : (n.isAncestor ? "ancestor" : "descendant"),
+          parents: [],
+          children: [],
+        };
+      });
+
+      // Xây dựng quan hệ ĐA CHA và ĐA CON từ các cạnh edges
+      graphEdges.forEach((e) => {
+        const src = e.source; // Cha
+        const tgt = e.target; // Con
+        if (apiLots[src] && !apiLots[src].children.includes(tgt)) {
+          apiLots[src].children.push(tgt);
         }
-
-        lots = apiLots;
-        rootLotId = targetId;
-        selected = targetId;
-
-        const noteEl = document.querySelector(".note");
-        if (noteEl) {
-          noteEl.innerHTML = `<strong>Dữ liệu trực tiếp từ API:</strong> Đang hiển thị cây phả hệ đầy đủ của lô <code>${targetId}</code>.`;
-          noteEl.style.background = "#e6f4ea";
-          noteEl.style.borderColor = "#34a853";
+        if (apiLots[tgt] && !apiLots[tgt].parents.includes(src)) {
+          apiLots[tgt].parents.push(src);
         }
+      });
+
+      if (!apiLots[targetId]) {
+        apiLots[targetId] = {
+          name: (data.startLot && data.startLot.name) || targetId,
+          status: (data.startLot && data.startLot.status) || "--",
+          date: "--",
+          side: "current",
+          parents: [],
+          children: [],
+        };
+      }
+
+      lots = apiLots;
+      rootLotId = targetId;
+      selected = targetId;
+
+      const noteEl = document.querySelector(".note");
+      if (noteEl) {
+        noteEl.innerHTML = `<strong>Dữ liệu trực tiếp từ API:</strong> Đang hiển thị cây phả hệ đầy đủ của lô <code>${escapeHtml(targetId)}</code>.`;
+        noteEl.style.background = "#e6f4ea";
+        noteEl.style.borderColor = "#34a853";
+        noteEl.style.color = "#137333";
       }
     } catch (e) {
-      console.warn("Không thể tải API thật, sử dụng dữ liệu mẫu:", e);
+      renderErrorState(
+        targetId,
+        `Lỗi kết nối máy chủ khi tải lô [${targetId}]`,
+        e.message || "Không thể kết nối đến máy chủ API hoặc phản hồi không hợp lệ."
+      );
+      return; // Dừng lại, KHÔNG render dữ liệu mẫu khi có lỗi mạng/kết nối!
     }
   }
+
+  // Chỉ render dữ liệu mẫu khi không có targetId (chế độ demo mặc định) hoặc tải thành công
   render();
 }
 

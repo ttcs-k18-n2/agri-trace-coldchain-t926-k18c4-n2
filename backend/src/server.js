@@ -619,6 +619,19 @@ app.post("/api/login", async (req, res) => {
   const user = await getUserByEmail(email);
 
   if (!user) {
+    await recordAuditLog({
+      pool,
+      inMemoryLogs: inMemoryAuditLogs,
+      actorUserId: null,
+      actorEmail: email,
+      organizationId: "system",
+      action: "LOGIN_FAILED",
+      resourceType: "auth",
+      resourceId: email,
+      ipAddress: req.ip,
+      userAgent: req.get("User-Agent"),
+      details: { reason: "USER_NOT_FOUND" },
+    });
     return loginError(res);
   }
 
@@ -648,6 +661,21 @@ app.post("/api/login", async (req, res) => {
         : null;
 
     await updateUserLock(user, nextFailedCount, lockUntil);
+
+    await recordAuditLog({
+      pool,
+      inMemoryLogs: inMemoryAuditLogs,
+      actorUserId: user.id,
+      actorEmail: user.email,
+      organizationId: user.organizationId || "system",
+      action: "LOGIN_FAILED",
+      resourceType: "auth",
+      resourceId: user.id,
+      ipAddress: req.ip,
+      userAgent: req.get("User-Agent"),
+      details: { reason: "INVALID_PASSWORD", failedCount: nextFailedCount },
+    });
+
     return loginError(res);
   }
 
@@ -658,6 +686,20 @@ app.post("/api/login", async (req, res) => {
   req.session.email = user.email;
   req.session.organizationId = user.organizationId;
   req.session.roleId = user.roleId;
+
+  await recordAuditLog({
+    pool,
+    inMemoryLogs: inMemoryAuditLogs,
+    actorUserId: user.id,
+    actorEmail: user.email,
+    organizationId: user.organizationId || "system",
+    action: "LOGIN_SUCCESS",
+    resourceType: "auth",
+    resourceId: user.id,
+    ipAddress: req.ip,
+    userAgent: req.get("User-Agent"),
+    details: { roleId: user.roleId },
+  });
 
   return res.status(200).json({
     message: "Đăng nhập thành công.",
@@ -1865,6 +1907,24 @@ app.post(
 
         await client.query("COMMIT");
 
+        await recordAuditLog({
+          pool,
+          inMemoryLogs: inMemoryAuditLogs,
+          actorUserId: userId,
+          actorEmail: req.auth ? req.auth.email : null,
+          organizationId: parentLot.organization_id,
+          action: "LOT_SPLIT",
+          resourceType: "lot",
+          resourceId: parentLotId,
+          ipAddress: req.ip,
+          userAgent: req.get("User-Agent"),
+          details: {
+            childLotIds: createdChildLots.map((c) => c.id),
+            totalSplitQuantity,
+            splitsCount: createdChildLots.length,
+          },
+        });
+
         return res.status(201).json({
           message: "Tách lô hàng thành công.",
           parentLot: {
@@ -2038,6 +2098,24 @@ app.post(
           organizationId: pOrg,
           actorUserId: userId,
           occurredAt: new Date(),
+        });
+
+        await recordAuditLog({
+          pool,
+          inMemoryLogs: inMemoryAuditLogs,
+          actorUserId: userId,
+          actorEmail: req.auth ? req.auth.email : null,
+          organizationId: pOrg,
+          action: "LOT_SPLIT",
+          resourceType: "lot",
+          resourceId: parentLotId,
+          ipAddress: req.ip,
+          userAgent: req.get("User-Agent"),
+          details: {
+            childLotIds: createdChildLots.map((c) => c.id),
+            totalSplitQuantity,
+            splitsCount: createdChildLots.length,
+          },
         });
 
         return res.status(201).json({
@@ -2403,6 +2481,24 @@ app.post(
 
         await client.query("COMMIT");
 
+        await recordAuditLog({
+          pool,
+          inMemoryLogs: inMemoryAuditLogs,
+          actorUserId: userId,
+          actorEmail: req.auth ? req.auth.email : null,
+          organizationId: targetOrgId,
+          action: "LOT_MERGED",
+          resourceType: "lot",
+          resourceId: newMergedLotId,
+          ipAddress: req.ip,
+          userAgent: req.get("User-Agent"),
+          details: {
+            parentLotIds: normalizedItems.map((it) => it.parent_batch_id),
+            totalQuantity: totalMergedQuantity,
+            parentsCount: normalizedItems.length,
+          },
+        });
+
         return res.status(201).json({
           message: "Gộp các lô hàng thành công.",
           lot: {
@@ -2578,6 +2674,24 @@ app.post(
           occurredAt: new Date(),
         });
 
+        await recordAuditLog({
+          pool,
+          inMemoryLogs: inMemoryAuditLogs,
+          actorUserId: userId,
+          actorEmail: req.auth ? req.auth.email : null,
+          organizationId: pOrg,
+          action: "LOT_MERGED",
+          resourceType: "lot",
+          resourceId: newMergedLotId,
+          ipAddress: req.ip,
+          userAgent: req.get("User-Agent"),
+          details: {
+            parentLotIds: normalizedItems.map((it) => it.parent_batch_id),
+            totalQuantity: totalMergedQuantity,
+            parentsCount: normalizedItems.length,
+          },
+        });
+
         return res.status(201).json({
           message: "Gộp các lô hàng thành công.",
           lot: {
@@ -2723,6 +2837,24 @@ app.post(
 
         await client.query("COMMIT");
 
+        await recordAuditLog({
+          pool,
+          inMemoryLogs: inMemoryAuditLogs,
+          actorUserId: userId,
+          actorEmail: req.auth ? req.auth.email : null,
+          organizationId: lot.organization_id,
+          action: "LOT_CONSUMED",
+          resourceType: "lot",
+          resourceId: lotId,
+          ipAddress: req.ip,
+          userAgent: req.get("User-Agent"),
+          details: {
+            consumedQuantity: prevRemaining,
+            status: "Đã bán hết",
+            notes: notes ? String(notes).trim() : null,
+          },
+        });
+
         return res.status(200).json({
           message: "Ghi nhận lô hàng đã bán hết cho người tiêu dùng thành công.",
           lot: {
@@ -2813,6 +2945,24 @@ app.post(
           organizationId: lOrg,
           actorUserId: userId,
           occurredAt: new Date(),
+        });
+
+        await recordAuditLog({
+          pool,
+          inMemoryLogs: inMemoryAuditLogs,
+          actorUserId: userId,
+          actorEmail: req.auth ? req.auth.email : null,
+          organizationId: lOrg,
+          action: "LOT_CONSUMED",
+          resourceType: "lot",
+          resourceId: lotId,
+          ipAddress: req.ip,
+          userAgent: req.get("User-Agent"),
+          details: {
+            consumedQuantity: prevRemaining,
+            status: "Đã bán hết",
+            notes: notes ? String(notes).trim() : null,
+          },
         });
 
         return res.status(200).json({
@@ -3106,6 +3256,56 @@ app.get(
           }
         } catch {
           // ignore
+        }
+
+        // Bổ sung quan hệ trực tiếp cha-con qua lots.parent_lot_id trên PostgreSQL
+        try {
+          const directParentRes = await pool.query(
+            "SELECT id, parent_lot_id, initial_quantity FROM lots WHERE parent_lot_id = ANY($1::text[]) AND id = ANY($1::text[])",
+            [Array.from(allNodeIds)]
+          );
+          for (const r of directParentRes.rows) {
+            if (!edges.some((e) => e.source === r.parent_lot_id && e.target === r.id)) {
+              edges.push({
+                source: r.parent_lot_id,
+                target: r.id,
+                relationType: "SPLIT",
+                quantity: r.initial_quantity !== null && r.initial_quantity !== undefined ? Number(r.initial_quantity) : null,
+              });
+            }
+          }
+        } catch {
+          // ignore
+        }
+      }
+
+      // Bổ sung quan hệ trực tiếp cha-con qua lots.parent_lot_id từ lotsMap
+      for (const [id, lot] of lotsMap.entries()) {
+        const pId = lot.parentLotId || lot.parent_lot_id;
+        if (pId && allNodeIds.has(pId) && allNodeIds.has(id)) {
+          if (!edges.some((e) => e.source === pId && e.target === id)) {
+            const initQty = lot.initialQuantity !== undefined ? lot.initialQuantity : lot.initial_quantity;
+            edges.push({
+              source: pId,
+              target: id,
+              relationType: "SPLIT",
+              quantity: initQty !== null && initQty !== undefined ? Number(initQty) : null,
+            });
+          }
+        }
+      }
+
+      // Đồng bộ các cạnh từ detailedDescendants.graph.edges (bao gồm cả quan hệ từ Event Logs)
+      if (detailedDescendants.graph && Array.isArray(detailedDescendants.graph.edges)) {
+        for (const e of detailedDescendants.graph.edges) {
+          if (!edges.some((item) => item.source === e.source && item.target === e.target)) {
+            edges.push({
+              source: e.source,
+              target: e.target,
+              relationType: e.relationType || "SPLIT",
+              quantity: e.quantity !== undefined ? e.quantity : null,
+            });
+          }
         }
       }
 
@@ -3470,6 +3670,20 @@ app.post(
 
         await client.query("COMMIT");
 
+        await recordAuditLog({
+          pool,
+          inMemoryLogs: inMemoryAuditLogs,
+          actorUserId: userId,
+          actorEmail: req.auth.email,
+          organizationId: orgId,
+          action: "LOT_CREATED",
+          resourceType: "lot",
+          resourceId: insertedLot.id,
+          ipAddress: req.ip,
+          userAgent: req.get("User-Agent"),
+          details: { farmId, productId, quantity: qty, harvestedAt: harvestDate },
+        });
+
         const successResponse = {
           message: "Ghi nhận thu hoạch thành công.",
           lot: insertedLot,
@@ -3580,6 +3794,20 @@ app.post(
       if (idx !== -1) inMemoryLots.splice(idx, 1);
       return res.status(500).json({ message: "Lỗi ghi nhận chuỗi sự kiện lô hàng: " + eventErr.message });
     }
+
+    await recordAuditLog({
+      pool,
+      inMemoryLogs: inMemoryAuditLogs,
+      actorUserId: userId,
+      actorEmail: req.auth.email,
+      organizationId: orgId,
+      action: "LOT_CREATED",
+      resourceType: "lot",
+      resourceId: insertedLot.id,
+      ipAddress: req.ip,
+      userAgent: req.get("User-Agent"),
+      details: { farmId, productId, quantity: qty, harvestedAt: harvestDate },
+    });
 
     const successResponse = {
       message: "Ghi nhận thu hoạch thành công.",
@@ -4303,6 +4531,26 @@ app.post(
 
           await client.query("COMMIT");
 
+          await recordAuditLog({
+            pool,
+            inMemoryLogs: inMemoryAuditLogs,
+            actorUserId: userId,
+            actorEmail: req.auth ? req.auth.email : null,
+            organizationId: fromOrgId,
+            action: "TRANSFER_INITIATED",
+            resourceType: "transfer",
+            resourceId: transferId,
+            ipAddress: req.ip,
+            userAgent: req.get("User-Agent"),
+            details: {
+              lotId,
+              fromOrganizationId: fromOrgId,
+              toOrganizationId: trimmedToOrgId,
+              status: "PENDING",
+              notes: cleanNotes,
+            },
+          });
+
           const r = insertRes.rows[0];
           const createdTransfer = {
             id: r.id,
@@ -4396,6 +4644,26 @@ app.post(
           if (idx >= 0) inMemoryTransfers.splice(idx, 1);
           throw memErr;
         }
+
+        await recordAuditLog({
+          pool,
+          inMemoryLogs: inMemoryAuditLogs,
+          actorUserId: userId,
+          actorEmail: req.auth ? req.auth.email : null,
+          organizationId: fromOrgId,
+          action: "TRANSFER_INITIATED",
+          resourceType: "transfer",
+          resourceId: transferId,
+          ipAddress: req.ip,
+          userAgent: req.get("User-Agent"),
+          details: {
+            lotId,
+            fromOrganizationId: fromOrgId,
+            toOrganizationId: trimmedToOrgId,
+            status: "PENDING",
+            notes: cleanNotes,
+          },
+        });
 
         return res.status(201).json({
           message: "Yêu cầu bàn giao lô hàng đã được gửi thành công ở trạng thái Chờ xác nhận (PENDING).",
@@ -4755,6 +5023,26 @@ app.post(
 
           await client.query("COMMIT");
 
+          await recordAuditLog({
+            pool,
+            inMemoryLogs: inMemoryAuditLogs,
+            actorUserId: userId,
+            actorEmail: req.auth ? req.auth.email : null,
+            organizationId: tr.to_organization_id,
+            action: "TRANSFER_CONFIRMED",
+            resourceType: "transfer",
+            resourceId: transferId,
+            ipAddress: req.ip,
+            userAgent: req.get("User-Agent"),
+            details: {
+              lotId: tr.lot_id,
+              fromOrganizationId: tr.from_organization_id,
+              toOrganizationId: tr.to_organization_id,
+              status: "CONFIRMED",
+              lateConfirmation: isLate,
+            },
+          });
+
           const updated = updateRes.rows[0];
           return res.status(200).json({
             message: "Xác nhận tiếp nhận bàn giao thành công. Quyền sở hữu lô hàng đã được chuyển giao sang tổ chức của bạn.",
@@ -4863,6 +5151,27 @@ app.post(
         }
 
         const isLate = Boolean(tr.isOverdue || tr.is_overdue);
+
+        await recordAuditLog({
+          pool,
+          inMemoryLogs: inMemoryAuditLogs,
+          actorUserId: userId,
+          actorEmail: req.auth ? req.auth.email : null,
+          organizationId: tr.toOrganizationId,
+          action: "TRANSFER_CONFIRMED",
+          resourceType: "transfer",
+          resourceId: transferId,
+          ipAddress: req.ip,
+          userAgent: req.get("User-Agent"),
+          details: {
+            lotId: tr.lotId,
+            fromOrganizationId: tr.fromOrganizationId,
+            toOrganizationId: tr.toOrganizationId,
+            status: "CONFIRMED",
+            lateConfirmation: isLate,
+          },
+        });
+
         return res.status(200).json({
           message: "Xác nhận tiếp nhận bàn giao thành công. Quyền sở hữu lô hàng đã được chuyển giao sang tổ chức của bạn.",
           transfer: {
@@ -4995,6 +5304,26 @@ app.post(
 
           await client.query("COMMIT");
 
+          await recordAuditLog({
+            pool,
+            inMemoryLogs: inMemoryAuditLogs,
+            actorUserId: userId,
+            actorEmail: req.auth ? req.auth.email : null,
+            organizationId: tr.to_organization_id,
+            action: "TRANSFER_REJECTED",
+            resourceType: "transfer",
+            resourceId: transferId,
+            ipAddress: req.ip,
+            userAgent: req.get("User-Agent"),
+            details: {
+              lotId: tr.lot_id,
+              fromOrganizationId: tr.from_organization_id,
+              toOrganizationId: tr.to_organization_id,
+              reason: cleanReason,
+              status: "REJECTED",
+            },
+          });
+
           const updated = updateRes.rows[0];
           return res.status(200).json({
             message: "Từ chối tiếp nhận bàn giao thành công. Lô hàng vẫn thuộc quyền sở hữu của bên gửi.",
@@ -5092,6 +5421,26 @@ app.post(
           tr.updatedAt = oldTrUpdatedAt;
           throw memErr;
         }
+
+        await recordAuditLog({
+          pool,
+          inMemoryLogs: inMemoryAuditLogs,
+          actorUserId: userId,
+          actorEmail: req.auth ? req.auth.email : null,
+          organizationId: tr.toOrganizationId,
+          action: "TRANSFER_REJECTED",
+          resourceType: "transfer",
+          resourceId: transferId,
+          ipAddress: req.ip,
+          userAgent: req.get("User-Agent"),
+          details: {
+            lotId: tr.lotId,
+            fromOrganizationId: tr.fromOrganizationId,
+            toOrganizationId: tr.toOrganizationId,
+            reason: cleanReason,
+            status: "REJECTED",
+          },
+        });
 
         return res.status(200).json({
           message: "Từ chối tiếp nhận bàn giao thành công. Lô hàng vẫn thuộc quyền sở hữu của bên gửi.",
@@ -5450,8 +5799,16 @@ app.patch(
       if (access.status === "NOT_FOUND") {
         return res.status(404).json({ message: "Không tìm thấy lô hàng." });
       }
-      if (!access.allowed) {
-        return res.status(403).json({ message: "Truy cập bị từ chối: bạn không có quyền cập nhật lô của tổ chức khác." });
+      const isAdmin = Boolean(req.auth && (req.auth.roleId === "admin" || req.auth.isAdmin));
+      const callerOrg = isAdmin ? null : (req.auth ? req.auth.organizationId : null);
+      const lotOrgId = access.lot.organizationId || access.lot.organization_id;
+
+      // Chỉ tổ chức đang trực tiếp sở hữu lô hàng (hoặc Admin) mới có quyền đổi kho
+      if (!isAdmin && (access.accessType !== "CURRENT_HOLDER" || lotOrgId !== callerOrg)) {
+        return res.status(403).json({
+          error: "FORBIDDEN",
+          message: "Truy cập bị từ chối: chỉ tổ chức đang trực tiếp sở hữu lô hàng mới có quyền cập nhật vị trí lưu kho.",
+        });
       }
 
       const location = await getLocationById(pool, inMemoryLocations, locationId);
@@ -5459,8 +5816,21 @@ app.patch(
         return res.status(404).json({ message: "Địa điểm chỉ định không tồn tại." });
       }
 
-      const callerOrg = req.auth && req.auth.roleId === "admin" ? null : (req.auth ? req.auth.organizationId : null);
-      await updateLotLocation(pool, inMemoryLots, lotId, locationId, callerOrg);
+      // Xác minh địa điểm thuộc quyền quản lý của cùng tổ chức sở hữu lô
+      if (!isAdmin && location.organizationId !== lotOrgId) {
+        return res.status(403).json({
+          error: "LOCATION_ORG_MISMATCH",
+          message: "Địa điểm lưu kho không thuộc quyền quản lý của tổ chức sở hữu lô hàng.",
+        });
+      }
+
+      const updated = await updateLotLocation(pool, inMemoryLots, lotId, locationId, callerOrg);
+      if (!updated) {
+        return res.status(400).json({
+          error: "UPDATE_FAILED",
+          message: "Không thể cập nhật vị trí: lô hàng không tồn tại hoặc không khớp tổ chức sở hữu.",
+        });
+      }
 
       // Ghi audit log (S-31)
       await recordAuditLog({

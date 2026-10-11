@@ -23,6 +23,38 @@ class CycleDetectedError extends Error {
   }
 }
 
+/**
+ * Thuật toán 3-Color DFS (WHITE=0, GRAY=1, BLACK=2) phát hiện chu trình trên đồ thị có hướng (Directed Graph).
+ * Tuyệt đối không bỏ sót chu trình trên các đồ thị có nhánh hội tụ (Diamond graph) hay đa đường đi song song.
+ */
+function detectCycle3Color(startNode, adjacencyMap) {
+  const color = new Map();
+  const stack = [];
+
+  function dfs(u) {
+    color.set(u, 1);
+    stack.push(u);
+
+    const neighbors = adjacencyMap.get(u) || [];
+    for (const v of neighbors) {
+      const c = color.get(v) || 0;
+      if (c === 1) {
+        const cycleStartIndex = stack.indexOf(v);
+        const cyclePath = stack.slice(cycleStartIndex).concat(v);
+        throw new CycleDetectedError(v, cyclePath);
+      }
+      if (c === 0) {
+        dfs(v);
+      }
+    }
+
+    stack.pop();
+    color.set(u, 2);
+  }
+
+  dfs(startNode);
+}
+
 
 /**
  * Module duyệt phả hệ lô hàng (Genealogy Traversal) - Triển khai T-49 (S-22).
@@ -494,8 +526,10 @@ async function traceLotDescendants({
       for (const r of prodRes.rows) {
         prodMap.set(r.id, { id: r.id, name: r.name, unit: r.unit });
       }
-    } catch {
-      // ignore
+    } catch (err) {
+      if (err.code !== "42P01") {
+        throw new Error(`Lỗi truy vấn danh mục sản phẩm (products): ${err.message}`);
+      }
     }
     try {
       const farmRes = await pool.query("SELECT id, name, area, coordinates, organization_id FROM farms");
@@ -508,8 +542,10 @@ async function traceLotDescendants({
           organizationId: r.organization_id || r.organizationId,
         });
       }
-    } catch {
-      // ignore
+    } catch (err) {
+      if (err.code !== "42P01") {
+        throw new Error(`Lỗi truy vấn danh mục vùng trồng (farms): ${err.message}`);
+      }
     }
     try {
       const locRes = await pool.query("SELECT id, name, address, location_type, organization_id FROM locations");
@@ -522,8 +558,10 @@ async function traceLotDescendants({
           organizationId: r.organization_id,
         });
       }
-    } catch {
-      // ignore if table does not exist
+    } catch (err) {
+      if (err.code !== "42P01") {
+        throw new Error(`Lỗi truy vấn danh mục địa điểm (locations): ${err.message}`);
+      }
     }
   }
 
@@ -543,6 +581,7 @@ async function traceLotDescendants({
   const allDescendantsList = [];
   const graphEdges = [];
   const edgeKeySet = new Set();
+  const fullAdjacencyMap = new Map();
 
   let distance = 0;
 
@@ -570,8 +609,10 @@ async function traceLotDescendants({
             quantity: row.quantity !== null && row.quantity !== undefined ? Number(row.quantity) : null,
           });
         }
-      } catch {
-        // ignore if table not present
+      } catch (err) {
+        if (err.code !== "42P01") {
+          throw new Error(`Lỗi truy vấn batch_relations trên PostgreSQL: ${err.message}`);
+        }
       }
     }
 
@@ -612,8 +653,10 @@ async function traceLotDescendants({
             });
           }
         }
-      } catch {
-        // ignore
+      } catch (err) {
+        if (err.code !== "42P01") {
+          throw new Error(`Lỗi truy vấn lots con trên PostgreSQL: ${err.message}`);
+        }
       }
     }
 
@@ -661,15 +704,20 @@ async function traceLotDescendants({
             }
           }
         }
-      } catch {
-        // ignore
+      } catch (err) {
+        if (err.code !== "42P01") {
+          throw new Error(`Lỗi truy vấn batch_events trên PostgreSQL: ${err.message}`);
+        }
       }
     } else {
       for (const pId of parentIdsInLevel) {
         let events = [];
         try {
           events = await getBatchEvents(pool, pId);
-        } catch {
+        } catch (err) {
+          if (err && err.code !== "42P01") {
+            throw new Error(`Lỗi đọc sự kiện lô hàng: ${err.message}`);
+          }
           events = [];
         }
         const childIdsFromEvents = extractChildLotIdsFromEvents(events);
@@ -707,10 +755,25 @@ async function traceLotDescendants({
             parentLotId: row.parent_lot_id || row.parentLotId || null,
           });
         }
-      } catch {
-        // ignore
+      } catch (err) {
+        if (err.code !== "42P01") {
+          throw new Error(`Lỗi truy vấn thông tin các lô con còn thiếu: ${err.message}`);
+        }
       }
     }
+
+    // Cập nhật danh sách kề toàn cục và chạy thuật toán 3-Color DFS phát hiện chu trình
+    // Đảm bảo không bỏ sót bất kỳ chu trình nào trên các nhánh song song hay hội tụ (Diamond Graph)
+    for (const rel of rawRelationsFromParents) {
+      if (!fullAdjacencyMap.has(rel.parentBatchId)) {
+        fullAdjacencyMap.set(rel.parentBatchId, []);
+      }
+      const targets = fullAdjacencyMap.get(rel.parentBatchId);
+      if (!targets.includes(rel.childBatchId)) {
+        targets.push(rel.childBatchId);
+      }
+    }
+    detectCycle3Color(startLotId, fullAdjacencyMap);
 
     // Duyệt từng node cha trong hàng đợi tầng hiện tại để kiểm tra chu trình và mở rộng cạnh
     const nextLevelQueue = [];
@@ -820,22 +883,29 @@ async function traceLotDescendants({
   }
 
   // Thống kê tổng hợp vị trí và khối lượng hậu duệ (Story S-27)
+  // Nhóm theo cặp (locationId, productUnit) để tránh gộp nhầm kho trùng tên và cộng sai đơn vị
   const locationSummaryMap = new Map();
   for (const d of allDescendantsList) {
-    const locKey = d.locationName || "Kho lưu trữ mặc định";
-    const existing = locationSummaryMap.get(locKey) || {
-      locationName: locKey,
+    const locIdKey = d.locationId ? String(d.locationId) : "unassigned";
+    const unitKey = (d.productUnit || "kg").trim().toLowerCase();
+    const groupKey = `${locIdKey}::${unitKey}`;
+
+    const defaultLocName = d.locationId ? `Kho #${d.locationId}` : "Chưa gán địa điểm";
+    const locName = d.locationName || defaultLocName;
+
+    const existing = locationSummaryMap.get(groupKey) || {
       locationId: d.locationId || null,
+      locationName: locName,
       locationType: d.locationType || null,
+      unit: d.productUnit || "kg",
       totalLots: 0,
       totalRemainingQuantity: 0,
-      unit: d.productUnit || "kg",
     };
     existing.totalLots += 1;
     existing.totalRemainingQuantity = Number(
       ((existing.totalRemainingQuantity) + Number(d.remainingQuantity || 0)).toFixed(3)
     );
-    locationSummaryMap.set(locKey, existing);
+    locationSummaryMap.set(groupKey, existing);
   }
 
   // 3. Xây dựng đồ thị Nodes & Edges
