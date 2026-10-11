@@ -365,8 +365,15 @@ async function evaluateLotAccess({ pool, authContext, lotId, inMemoryLots = [], 
 }
 
 module.exports = {
+  getOrganizationMap,
   evaluateLotAccess,
   collectAncestorLotIds,
   collectDescendantLotIds,
   fetchAllLotsRaw,
+  get traceLotDescendants() {
+    return require("./lot_genealogy").traceLotDescendants;
+  },
+  get CycleDetectedError() {
+    return require("./lot_genealogy").CycleDetectedError;
+  },
 };

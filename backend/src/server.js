@@ -32,7 +32,7 @@ const {
   validateSplitItems,
   validateMergeItems,
 } = require("./quantity");
-const { traceLotOrigins, CycleDetectedError } = require("./lot_genealogy");
+const { traceLotOrigins, traceLotDescendants, CycleDetectedError } = require("./lot_genealogy");
 const {
   validateProductsCsv,
   validateFarmsCsv,
@@ -2982,9 +2982,10 @@ app.get(
  * API Truy xuất phả hệ toàn diện (S-21 Truy ngược, S-22 Đối chiếu độc lập, S-26 Truy xuôi, S-27 Hậu duệ, S-28 Đồ thị phả hệ)
  */
 app.get(
-  ["/api/lots/:id/genealogy", "/api/lots/:id/descendants"],
+  ["/api/lots/:id/descendants", "/api/lots/:id/trace-forward", "/api/lots/:id/genealogy"],
   requirePermission(["producer", "cooperative", "transporter", "distributor", "org_admin", "admin", "inspector"]),
   async (req, res) => {
+    const startTime = performance.now();
     const lotId = req.params.id;
     try {
       const access = await evaluateLotAccess({
@@ -3020,12 +3021,21 @@ app.get(
           : { id };
       });
 
-      const descendants = Array.from(descendantSet).map((id) => {
-        const l = lotsMap.get(id);
-        return l
-          ? { id: l.id, name: l.name, status: l.status, organizationId: l.organizationId || l.organization_id }
-          : { id };
+      const detailedDescendants = await traceLotDescendants({
+        pool,
+        startLotId: lotId,
+        inMemoryLots,
+        inMemoryBatchRelations,
+        inMemoryBatchEvents,
+        inMemoryOrgs,
+        inMemoryProducts,
+        inMemoryFarms,
       });
+
+      // Kết hợp descendantSet (đảm bảo không sót id nào từ cả 2 nguồn)
+      for (const d of detailedDescendants.descendantIds) {
+        descendantSet.add(d);
+      }
 
       const allNodeIds = new Set([lotId, ...ancestorSet, ...descendantSet]);
       const nodes = Array.from(allNodeIds).map((id) => {
@@ -3076,20 +3086,74 @@ app.get(
         }
       }
 
+      // Chuẩn hóa cấu trúc levels theo đặc tả:
+      // { level: 1, lots: [{ id, relationType, quantity, organizationId, ... }] }
+      const standardizedLevels = detailedDescendants.levels.map((lvl) => ({
+        level: lvl.distance,
+        distance: lvl.distance,
+        label: lvl.label,
+        count: lvl.count,
+        lots: lvl.lots.map((item) => ({
+          id: item.id,
+          name: item.name,
+          relationType: item.relationType,
+          quantity: item.quantity,
+          organizationId: item.organizationId,
+          organizationName: item.organizationName,
+          status: item.status,
+          remainingQuantity: item.remainingQuantity,
+          initialQuantity: item.initialQuantity,
+          productName: item.productName,
+          productUnit: item.productUnit,
+          farmName: item.farmName,
+          parentLotId: item.parentLotId,
+          distance: item.distance,
+          path: item.path,
+        })),
+      }));
+
+      const targetLotObj = lotsMap.get(lotId) || null;
+      const startLot = {
+        id: lotId,
+        name: targetLotObj ? targetLotObj.name : lotId,
+        organizationId: targetLotObj ? (targetLotObj.organizationId || targetLotObj.organization_id) : null,
+        status: targetLotObj ? targetLotObj.status : null,
+        remainingQuantity: targetLotObj ? (targetLotObj.remainingQuantity !== undefined ? Number(targetLotObj.remainingQuantity) : Number(targetLotObj.remaining_quantity)) : null,
+      };
+
+      const finalDescendantIds = Array.from(descendantSet);
+      const isLeaf = finalDescendantIds.length === 0;
+      const totalDescendants = finalDescendantIds.length;
+      const executionTimeMs = Number((performance.now() - startTime).toFixed(2));
+
       return res.status(200).json({
         lotId,
+        startLot,
+        isLeaf,
+        levels: standardizedLevels,
+        descendants: detailedDescendants.descendants,
+        descendantsDetail: detailedDescendants.descendants,
+        descendantIds: finalDescendantIds,
+        totalDescendants,
+        descendantCount: totalDescendants,
         ancestorIds: Array.from(ancestorSet),
-        descendantIds: Array.from(descendantSet),
         ancestors,
-        descendants,
         ancestorCount: ancestorSet.size,
-        descendantCount: descendantSet.size,
         graph: {
           nodes,
           edges,
         },
+        executionTimeMs,
       });
     } catch (err) {
+      if (err instanceof CycleDetectedError || err.name === "CycleDetectedError") {
+        return res.status(422).json({
+          error: "CYCLE_DETECTED",
+          message: err.message,
+          cycleLotId: err.cycleLotId || null,
+          path: err.path || [],
+        });
+      }
       return res.status(500).json({ message: err.message });
     }
   }
@@ -5345,6 +5409,7 @@ module.exports = {
   collectDescendantLotIds,
   seedS22InMemory,
   traceLotOrigins,
+  traceLotDescendants,
   CycleDetectedError,
   lotOriginsCache,
   clearLotOriginsCache,

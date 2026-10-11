@@ -481,6 +481,157 @@
       gap: 4px;
     }
 
+    /* Vùng trồng xuất xứ ban đầu (Farm Origins Card - S-21 / T-50) */
+    .farm-origins-card {
+      background: linear-gradient(135deg, rgba(36, 138, 61, 0.04) 0%, rgba(20, 184, 166, 0.04) 100%);
+      border: 1.5px solid rgba(36, 138, 61, 0.25);
+      border-radius: var(--radius-lg);
+      padding: 20px 22px;
+      margin-bottom: 24px;
+      box-shadow: 0 4px 14px -2px rgba(36, 138, 61, 0.08);
+    }
+
+    .farm-origins-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-bottom: 16px;
+      padding-bottom: 12px;
+      border-bottom: 1px dashed rgba(36, 138, 61, 0.2);
+    }
+
+    .farm-origins-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 14px;
+    }
+
+    .farm-origin-box {
+      background: #ffffff;
+      border: 1px solid rgba(36, 138, 61, 0.2);
+      border-radius: var(--radius-md);
+      padding: 14px 16px;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.03);
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      transition: all 0.2s ease;
+    }
+
+    .farm-origin-box:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 14px rgba(36, 138, 61, 0.12);
+      border-color: var(--color-primary);
+    }
+
+    .farm-origin-title {
+      font-weight: 700;
+      color: var(--color-primary-dark);
+      font-size: 14px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .farm-origin-meta-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12.5px;
+      color: var(--color-text-muted);
+    }
+
+    /* Cây phả hệ phân tầng tổ tiên (Levels Tree Card - S-21 / T-50) */
+    .levels-tree-card {
+      background: #ffffff;
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-lg);
+      padding: 20px 22px;
+      margin-top: 24px;
+      box-shadow: var(--shadow-sm);
+    }
+
+    .level-block {
+      position: relative;
+      padding-left: 28px;
+      margin-bottom: 20px;
+    }
+
+    .level-block:last-child {
+      margin-bottom: 0;
+    }
+
+    .level-block::before {
+      content: "";
+      position: absolute;
+      left: 10px;
+      top: 24px;
+      bottom: -16px;
+      width: 2px;
+      background: #e2e8f0;
+    }
+
+    .level-block:last-child::before {
+      display: none;
+    }
+
+    .level-badge-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-weight: 700;
+      font-size: 12.5px;
+      padding: 4px 12px;
+      border-radius: 9999px;
+      background: #f1f5f9;
+      color: #334155;
+      margin-bottom: 12px;
+      border: 1px solid #cbd5e1;
+    }
+
+    .level-badge-pill.level-1 {
+      background: rgba(37, 99, 235, 0.1);
+      color: #2563eb;
+      border-color: rgba(37, 99, 235, 0.25);
+    }
+
+    .level-badge-pill.level-2 {
+      background: rgba(245, 158, 11, 0.1);
+      color: #d97706;
+      border-color: rgba(245, 158, 11, 0.25);
+    }
+
+    .level-badge-pill.level-3 {
+      background: rgba(147, 51, 234, 0.1);
+      color: #7e22ce;
+      border-color: rgba(147, 51, 234, 0.25);
+    }
+
+    .level-lots-list {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+      gap: 12px;
+    }
+
+    .level-lot-item {
+      background: #f8fafc;
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-md);
+      padding: 12px 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      transition: all 0.18s ease;
+    }
+
+    .level-lot-item:hover {
+      background: #ffffff;
+      border-color: var(--color-primary);
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+    }
+
     .child-lot-footer {
       padding-top: 10px;
       border-top: 1px solid rgba(0, 0, 0, 0.05);
@@ -1151,8 +1302,15 @@
               </div>
             </div>
 
-            <div style="margin-top: 14px; background: rgba(245,158,11,0.08); border: 1px solid rgba(245,158,11,0.25); border-radius: 8px; padding: 10px 12px; font-size: 12px; color: #b45309; line-height: 1.5;">
+            <div style="margin-top: 14px; background: rgba(245,158,11,0.08); border: 1px solid rgba(245,158,11,0.25); border-radius: 8px; padding: 10px 12px; font-size: 12px; color: #b45309; line-height: 1.5; margin-bottom: 14px;">
               <strong>Bảo chứng nguồn gốc (T-59 / S-19):</strong> Lô mới sáp nhập kế thừa đầy đủ phả hệ của tất cả các lô thành phần thông qua <code>batch_relations</code> và chuỗi sự kiện hash SHA-256 minh bạch.
+            </div>
+
+            <div class="form-group" style="margin-bottom: 14px;">
+              <label style="display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px;">
+                Tên lô hàng mới sau gộp
+              </label>
+              <input type="text" id="mergeDetailNewLotName" class="form-control" placeholder="Nhập tên lô mới (ví dụ: Chè đặc sản gộp)...">
             </div>
           </div>
 
@@ -1785,9 +1943,9 @@
           </div>
         </div>
 
-        <!-- Tab 3: Nguồn gốc (T-50 / T-59 / S-22) -->
+        <!-- Tab 3: Nguồn gốc (T-50 / T-59 / S-21 / S-22 / S-26 / S-28) -->
         <div class="lot-tab-pane" id="tabPaneLineage" role="tabpanel" aria-labelledby="tabBtnLineage">
-          <!-- 1. Khối Vùng trồng & Thửa đất xuất xứ (Farm Origins Card - T-50) -->
+          <!-- 1. Khối Vùng trồng & Thửa đất xuất xứ (Farm Origins Card - S-21 / T-50) -->
           ${(() => {
             const rootLots = (originsData && Array.isArray(originsData.rootLots)) ? originsData.rootLots : [];
             const hasRoots = rootLots.length > 0;
@@ -1872,7 +2030,8 @@
             </div>
             `;
           })()}
-          <!-- Direct Lineage: Parent & Child Lots (Phả hệ trực tiếp) -->
+
+          <!-- 2. Direct Lineage: Parent & Child Lots (Phả hệ trực tiếp) -->
           <div class="lineage-card">
             <div class="lineage-header">
               <h3 class="card-heading" style="margin-bottom: 0;">
@@ -1995,7 +2154,7 @@
             `}
           </div>
 
-          <!-- 2. Cây phả hệ phân tầng (Levels Tree - T-50) -->
+          <!-- 3. Cây phả hệ phân tầng tổ tiên (Levels Tree T-50 / S-21 / S-22) -->
           ${(() => {
             const levels = (originsData && Array.isArray(originsData.levels)) ? originsData.levels : [];
             if (levels.length === 0) {
@@ -2077,6 +2236,114 @@
             </div>
             `;
           })()}
+
+          <!-- Trace Forward & Recall Quarantine Section (S-26, S-27, S-28, S-29) -->
+          <div class="trace-forward-card" id="traceForwardSection">
+            <div class="trace-forward-header">
+              <div class="trace-forward-title-group">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="12" cy="12" r="10"/>
+                  <polyline points="12 16 16 12 12 8"/>
+                  <line x1="8" y1="12" x2="16" y2="12"/>
+                </svg>
+                <div>
+                  <h3 class="card-heading" style="margin-bottom: 2px;">Truy xuôi hậu duệ (Khoanh vùng sự cố)</h3>
+                  <div style="font-size: 12.5px; color: var(--color-text-muted);">Quét duyệt toàn bộ cây phân nhánh tách/gộp xuôi dòng qua nhiều tầng tổ chức</div>
+                </div>
+              </div>
+              <div style="display: flex; align-items: center; gap: 10px;">
+                <span id="traceExecutionBadge" class="trace-forward-badge" style="display: none;">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                  <span id="traceExecutionTime">0 ms</span>
+                </span>
+                <button type="button" class="btn btn-primary" id="btnExecuteTraceForward" style="height: 36px; padding: 0 16px; font-size: 13px; font-weight: 600; display: inline-flex; align-items: center; gap: 6px; background: #2563eb; border-color: #2563eb;">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                  <span>Truy xuôi tất cả hậu duệ</span>
+                </button>
+              </div>
+            </div>
+
+            <!-- Banner Cảnh báo Chu trình (Cycle Detected Error) -->
+            <div id="cycleDangerBanner" class="cycle-danger-banner" style="display: none;">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" style="flex-shrink: 0; margin-top: 2px;"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+              <div>
+                <div style="font-weight: 700; font-size: 14.5px;" id="cycleBannerTitle">Phát hiện chu trình phả hệ! Dữ liệu quan hệ cha-con bị lặp vòng.</div>
+                <div style="font-size: 13px; margin-top: 4px; line-height: 1.45;" id="cycleBannerDesc">--</div>
+              </div>
+            </div>
+
+            <!-- Loading Spinner State -->
+            <div id="traceLoadingState" style="display: none; padding: 36px 20px; text-align: center; color: var(--color-text-muted);">
+              <div style="width: 28px; height: 28px; border: 3px solid rgba(37, 99, 235, 0.2); border-top-color: #2563eb; border-radius: 50%; animation: spin 0.8s linear infinite; margin: 0 auto 12px auto;"></div>
+              <div style="font-size: 13.5px; font-weight: 600;">Đang duyệt phả hệ xuôi qua mạng lưới tổ chức...</div>
+            </div>
+
+            <!-- Kết quả Truy xuôi Container -->
+            <div id="traceResultContainer" style="display: none;">
+              <!-- Thống kê tóm tắt -->
+              <div class="trace-stats-grid">
+                <div class="trace-stat-box">
+                  <span class="trace-stat-label">Tổng số lô hậu duệ</span>
+                  <span class="trace-stat-value highlight-blue" id="statTotalDescendants">0</span>
+                </div>
+                <div class="trace-stat-box">
+                  <span class="trace-stat-label">Số tầng phân nhánh</span>
+                  <span class="trace-stat-value highlight-green" id="statTotalLevels">0</span>
+                </div>
+                <div class="trace-stat-box">
+                  <span class="trace-stat-label">Tổ chức đang lưu giữ</span>
+                  <span class="trace-stat-value highlight-amber" id="statTotalOrgs">0</span>
+                </div>
+                <div class="trace-stat-box">
+                  <span class="trace-stat-label">Tổng khối lượng liên đới</span>
+                  <span class="trace-stat-value" id="statTotalRemaining">0 kg</span>
+                </div>
+              </div>
+
+              <!-- Cây hiển thị đa tầng (Multi-tier Lineage Tree) -->
+              <div style="margin-top: 24px;">
+                <div class="lineage-block-title">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+                  <span>Cây phả hệ phân tầng (Multi-tier Lineage Tree)</span>
+                </div>
+                <div id="lineageTreeContainer" class="lineage-tree-container">
+                  <!-- Rendered dynamically -->
+                </div>
+              </div>
+
+              <!-- Bảng khoanh vùng thu hồi (Recall Quarantine Table) -->
+              <div class="recall-table-card">
+                <div class="recall-table-header">
+                  <div class="recall-table-title">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                    <span>Bảng khoanh vùng thu hồi khẩn cấp (Recall Quarantine Matrix)</span>
+                  </div>
+                  <div style="display: flex; align-items: center; gap: 8px;">
+                    <span style="font-size: 12px; color: #b91c1c; font-weight: 600;">Danh sách các lô cần cách ly kho</span>
+                  </div>
+                </div>
+                <div class="recall-table-wrap">
+                  <table class="recall-table">
+                    <thead>
+                      <tr>
+                        <th>Mã lô hậu duệ</th>
+                        <th>Tên sản phẩm / Lô</th>
+                        <th>Quan hệ</th>
+                        <th>Tầng</th>
+                        <th>Tổ chức đang lưu giữ</th>
+                        <th>Trạng thái</th>
+                        <th>Tồn kho hiện tại</th>
+                        <th style="text-align: right;">Hành động</th>
+                      </tr>
+                    </thead>
+                    <tbody id="recallTableBody">
+                      <!-- Rendered dynamically -->
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       `;
 
@@ -2118,6 +2385,230 @@
       const btnConsumeHero = document.getElementById("btnConsumeDirectHero");
       if (btnConsumeHero) {
         btnConsumeHero.addEventListener("click", () => openConsumeLotModal(lot));
+      }
+
+      // S-26, S-27, S-28, S-29: Xử lý nút Truy xuôi hậu duệ
+      const btnTraceForward = document.getElementById("btnExecuteTraceForward");
+      if (btnTraceForward) {
+        btnTraceForward.addEventListener("click", () => executeTraceForward(lot.id));
+      }
+    }
+
+    async function executeTraceForward(lotId) {
+      const btn = document.getElementById("btnExecuteTraceForward");
+      const loadingState = document.getElementById("traceLoadingState");
+      const resultContainer = document.getElementById("traceResultContainer");
+      const cycleBanner = document.getElementById("cycleDangerBanner");
+      const executionBadge = document.getElementById("traceExecutionBadge");
+      const executionTimeEl = document.getElementById("traceExecutionTime");
+
+      if (btn) btn.disabled = true;
+      if (loadingState) loadingState.style.display = "block";
+      if (resultContainer) resultContainer.style.display = "none";
+      if (cycleBanner) cycleBanner.style.display = "none";
+
+      const t0 = performance.now();
+
+      try {
+        const res = await fetch(`/api/lots/${encodeURIComponent(lotId)}/descendants`, {
+          credentials: "same-origin",
+        });
+
+        const elapsed = (performance.now() - t0).toFixed(2);
+        if (executionBadge && executionTimeEl) {
+          executionTimeEl.textContent = `${elapsed} ms`;
+          executionBadge.style.display = "inline-flex";
+        }
+
+        const data = await res.json();
+
+        // Trường hợp phát hiện Chu trình phả hệ (HTTP 422)
+        if (res.status === 422 || data.error === "CYCLE_DETECTED") {
+          if (cycleBanner) {
+            cycleBanner.style.display = "flex";
+            const titleEl = document.getElementById("cycleBannerTitle");
+            const descEl = document.getElementById("cycleBannerDesc");
+            if (titleEl) titleEl.textContent = `CẢNH BÁO CHU TRÌNH PHẢ HỆ: Lô ${escapeHtml(data.cycleLotId || lotId)}`;
+            if (descEl) {
+              const pathText = Array.isArray(data.path) && data.path.length > 0
+                ? `Đường dẫn lặp vòng: ${data.path.map(p => escapeHtml(p)).join(" ➔ ")}`
+                : "Hệ thống phát hiện quan hệ cha-con bị lặp vòng khép kín. Dữ liệu cần được thẩm tra lại ngay!";
+              descEl.innerHTML = `<strong>${escapeHtml(data.message || "Dữ liệu quan hệ cha-con bị lặp vòng.")}</strong><br><span style="font-family: monospace; font-size: 12px; margin-top: 4px; display: inline-block;">${pathText}</span>`;
+            }
+          }
+          return;
+        }
+
+        if (!res.ok) {
+          alert(data.message || "Không thể truy xuất hậu duệ của lô hàng.");
+          return;
+        }
+
+        // Render thống kê và giao diện
+        renderTraceForwardResults(data);
+        if (resultContainer) resultContainer.style.display = "block";
+
+      } catch (err) {
+        console.error("Lỗi truy xuôi hậu duệ:", err);
+        alert("Lỗi kết nối khi truy xuất dữ liệu phả hệ.");
+      } finally {
+        if (btn) btn.disabled = false;
+        if (loadingState) loadingState.style.display = "none";
+      }
+    }
+
+    function renderTraceForwardResults(data) {
+      const descendants = Array.isArray(data.descendants) ? data.descendants : (data.descendantsDetail || []);
+      const levels = Array.isArray(data.levels) ? data.levels : [];
+
+      // 1. Thống kê tóm tắt
+      const statTotalDescendants = document.getElementById("statTotalDescendants");
+      const statTotalLevels = document.getElementById("statTotalLevels");
+      const statTotalOrgs = document.getElementById("statTotalOrgs");
+      const statTotalRemaining = document.getElementById("statTotalRemaining");
+
+      const orgSet = new Set();
+      let totalRemainingKg = 0;
+
+      descendants.forEach((d) => {
+        if (d.organizationId) orgSet.add(d.organizationId);
+        if (d.remainingQuantity !== null && d.remainingQuantity !== undefined) {
+          totalRemainingKg += Number(d.remainingQuantity);
+        }
+      });
+
+      if (statTotalDescendants) statTotalDescendants.textContent = descendants.length;
+      if (statTotalLevels) statTotalLevels.textContent = levels.length;
+      if (statTotalOrgs) statTotalOrgs.textContent = orgSet.size;
+      if (statTotalRemaining) statTotalRemaining.textContent = `${totalRemainingKg.toFixed(2)} kg`;
+
+      // 2. Cây hiển thị đa tầng (Multi-tier Tree)
+      const treeContainer = document.getElementById("lineageTreeContainer");
+      if (treeContainer) {
+        if (levels.length === 0) {
+          treeContainer.innerHTML = `
+            <div class="lineage-empty-box">
+              <div class="lineage-empty-icon">🍃</div>
+              <div>
+                <div style="font-weight: 600; color: var(--color-text-main);">Lô lá cuối cùng (Leaf Lot)</div>
+                <div style="font-size: 12.5px; color: var(--color-text-muted);">Lô hàng này hiện tại không có bất kỳ lô con hay nhánh phân tách nào ở hạ nguồn chuỗi lạnh.</div>
+              </div>
+            </div>
+          `;
+        } else {
+          treeContainer.innerHTML = levels.map((lvl) => {
+            const distance = lvl.distance || lvl.level || 1;
+            const levelLabel = distance === 1
+              ? "Tầng 1 (Lô con trực tiếp)"
+              : distance === 2
+                ? "Tầng 2 (Lô cháu - Tách / Gộp)"
+                : `Tầng ${distance} (Hậu duệ xa)`;
+
+            return `
+              <div class="tree-level-wrapper">
+                <div class="tree-level-header">
+                  <div class="tree-level-tag">
+                    <span style="font-size: 15px;">🌿</span>
+                    <span>${escapeHtml(levelLabel)}</span>
+                  </div>
+                  <span class="count-badge">${(lvl.lots || []).length} lô</span>
+                </div>
+                <div class="tree-level-grid">
+                  ${(lvl.lots || []).map((lotItem) => {
+                    const isMerge = lotItem.relationType === "MERGE";
+                    const badgeClass = isMerge ? "tree-badge-merge" : "tree-badge-split";
+                    const badgeText = isMerge ? "Gộp (MERGE - Đa nguồn)" : "Tách (SPLIT)";
+                    const remKg = lotItem.remainingQuantity !== null && lotItem.remainingQuantity !== undefined
+                      ? `${Number(lotItem.remainingQuantity).toFixed(2)} ${escapeHtml(lotItem.productUnit || "kg")}`
+                      : "--";
+
+                    return `
+                      <div class="tree-lot-card">
+                        <div>
+                          <div class="tree-lot-top">
+                            <span class="font-mono" style="font-weight: 800; color: var(--color-primary); font-size: 14.5px;">${escapeHtml(lotItem.id)}</span>
+                            <span class="${badgeClass}">${badgeText}</span>
+                          </div>
+                          <div style="font-size: 14.5px; font-weight: 700; color: var(--color-text-main); margin-top: 6px;">
+                            ${escapeHtml(lotItem.productName || lotItem.name || "Lô hậu duệ")}
+                          </div>
+                          <div style="font-size: 12.5px; color: var(--color-text-muted); margin-top: 4px; display: flex; flex-direction: column; gap: 2px;">
+                            <div><strong>Tổ chức:</strong> ${escapeHtml(lotItem.organizationName || lotItem.organizationId || "--")}</div>
+                            <div><strong>Tồn kho:</strong> <span style="font-weight: 700; color: #b91c1c;">${remKg}</span></div>
+                            ${lotItem.quantity ? `<div><strong>Khối lượng chuyển:</strong> ${Number(lotItem.quantity).toFixed(2)} kg</div>` : ""}
+                            ${lotItem.path ? `<div style="font-size: 11px; font-family: monospace; color: #64748b; margin-top: 2px;">Nguồn: ${escapeHtml(lotItem.path.join(" ➔ "))}</div>` : ""}
+                          </div>
+                        </div>
+                        <div style="padding-top: 8px; border-top: 1px solid rgba(0,0,0,0.06);">
+                          <a href="/lot-detail.html?id=${encodeURIComponent(lotItem.id)}" class="child-lot-link" style="font-size: 12px;">
+                            <span>Chi tiết lô hậu duệ</span>
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+                          </a>
+                        </div>
+                      </div>
+                    `;
+                  }).join("")}
+                </div>
+              </div>
+            `;
+          }).join("");
+        }
+      }
+
+      // 3. Bảng khoanh vùng thu hồi (Recall Quarantine Table)
+      const recallTbody = document.getElementById("recallTableBody");
+      if (recallTbody) {
+        if (descendants.length === 0) {
+          recallTbody.innerHTML = `
+            <tr>
+              <td colspan="8" style="text-align: center; padding: 24px; color: var(--color-text-muted);">
+                Không có lô hậu duệ nào cần khoanh vùng thu hồi.
+              </td>
+            </tr>
+          `;
+        } else {
+          recallTbody.innerHTML = descendants.map((d) => {
+            const isMerge = d.relationType === "MERGE";
+            const badgeClass = isMerge ? "tree-badge-merge" : "tree-badge-split";
+            const badgeText = isMerge ? "GỘP (Đa nguồn)" : "TÁCH LÔ";
+            const remKg = d.remainingQuantity !== null && d.remainingQuantity !== undefined
+              ? `${Number(d.remainingQuantity).toFixed(2)} ${escapeHtml(d.productUnit || "kg")}`
+              : "--";
+
+            return `
+              <tr>
+                <td style="font-family: monospace; font-weight: 800; color: var(--color-primary);">
+                  ${escapeHtml(d.id)}
+                </td>
+                <td style="font-weight: 600;">
+                  ${escapeHtml(d.productName || d.name || d.id)}
+                </td>
+                <td>
+                  <span class="${badgeClass}">${badgeText}</span>
+                </td>
+                <td>
+                  <span style="font-weight: 700; color: #475569;">Tầng ${d.distance || 1}</span>
+                </td>
+                <td>
+                  <span style="font-weight: 600; color: var(--color-text-main);">${escapeHtml(d.organizationName || d.organizationId || "--")}</span>
+                </td>
+                <td>
+                  <span class="status-pill ${d.status === 'Đã thu hoạch' || d.status === 'Đã nhập kho' ? 'success' : 'warning'}" style="font-size: 11px;">
+                    ${escapeHtml(d.status || "Đang lưu kho")}
+                  </span>
+                </td>
+                <td style="font-weight: 700; color: #b91c1c;">
+                  ${remKg}
+                </td>
+                <td style="text-align: right;">
+                  <a href="/lot-detail.html?id=${encodeURIComponent(d.id)}" class="btn btn-secondary" style="font-size: 11.5px; padding: 4px 10px; height: auto;">
+                    Xem lô
+                  </a>
+                </td>
+              </tr>
+            `;
+          }).join("");
+        }
       }
     }
 
@@ -3159,7 +3650,7 @@
             }
 
             // Tải lại chi tiết lô và chuỗi sự kiện
-            await loadLotDetail();
+            await loadLotDetail(currentConsumeLot.id);
           } catch (err) {
             if (alertBox) {
               alertBox.className = "alert alert-danger";
