@@ -37,6 +37,18 @@ const {
   validateProductsCsv,
   validateFarmsCsv,
 } = require("./csv_importer");
+const {
+  inMemoryLocations,
+  fetchLocations,
+  getLocationById,
+  createLocation,
+  updateLotLocation,
+} = require("./location_service");
+const {
+  inMemoryAuditLogs,
+  recordAuditLog,
+  getAuditLogs,
+} = require("./audit_logger");
 const app = express();
 const PORT = Number(process.env.PORT || 3000);
 
@@ -1252,11 +1264,12 @@ app.get(
         // Lệnh 1: Lấy thông tin lô hàng kèm JOIN sản phẩm, thửa đất, tổ chức và lô mẹ trực tiếp (NFR: 1 query)
         const lotQuery = `
           SELECT 
-            l.id, l.name, l.status, l.organization_id, l.farm_id, l.product_id,
+            l.id, l.name, l.status, l.organization_id, l.farm_id, l.product_id, l.location_id,
             l.initial_quantity, l.remaining_quantity, l.harvested_at, l.created_at, l.parent_lot_id,
             f.name AS farm_name,
             p.name AS product_name, p.unit AS product_unit,
             o.name AS organization_name,
+            loc.name AS location_name, loc.address AS location_address, loc.type AS location_type,
             pl.id AS parent_id, pl.name AS parent_name, pl.status AS parent_status,
             pl.product_id AS parent_product_id, pl.organization_id AS parent_organization_id,
             pl.initial_quantity AS parent_initial_quantity, pl.remaining_quantity AS parent_remaining_quantity,
@@ -1290,6 +1303,7 @@ app.get(
           LEFT JOIN farms f ON l.farm_id = f.id
           LEFT JOIN products p ON l.product_id = p.id
           LEFT JOIN organizations o ON l.organization_id = o.id
+          LEFT JOIN locations loc ON l.location_id = loc.id
           LEFT JOIN lots pl ON l.parent_lot_id = pl.id
           LEFT JOIN products pp ON pl.product_id = pp.id
           LEFT JOIN organizations po ON pl.organization_id = po.id
@@ -1440,6 +1454,10 @@ app.get(
           parentLot,
           parentLots,
           childLots,
+          locationId: row.location_id || null,
+          locationName: row.location_name || null,
+          locationAddress: row.location_address || null,
+          locationType: row.location_type || null,
           accessType,
           ancestors,
         };
@@ -1597,6 +1615,10 @@ app.get(
           parentLot,
           parentLots,
           childLots,
+          locationId: rawLot.locationId || rawLot.location_id || null,
+          locationName: rawLot.locationName || (inMemoryLocations && inMemoryLocations.find(loc => loc.id === (rawLot.locationId || rawLot.location_id))?.name) || null,
+          locationAddress: rawLot.locationAddress || (inMemoryLocations && inMemoryLocations.find(loc => loc.id === (rawLot.locationId || rawLot.location_id))?.address) || null,
+          locationType: rawLot.locationType || (inMemoryLocations && inMemoryLocations.find(loc => loc.id === (rawLot.locationId || rawLot.location_id))?.type) || null,
           accessType: access.accessType,
           ancestors: access.ancestors,
         };
@@ -3030,6 +3052,7 @@ app.get(
         inMemoryOrgs,
         inMemoryProducts,
         inMemoryFarms,
+        inMemoryLocations,
       });
 
       // Kết hợp descendantSet (đảm bảo không sót id nào từ cả 2 nguồn)
@@ -3134,6 +3157,7 @@ app.get(
         descendants: detailedDescendants.descendants,
         descendantsDetail: detailedDescendants.descendants,
         descendantIds: finalDescendantIds,
+        locationSummary: detailedDescendants.locationSummary || [],
         totalDescendants,
         descendantCount: totalDescendants,
         ancestorIds: Array.from(ancestorSet),
@@ -5317,6 +5341,248 @@ async function seedDemoOverdueTransfer() {
   }
 }
 
+/**
+ * ==============================================================================
+ * API QUẢN LÝ ĐỊA ĐIỂM, KHO LẠNH & CỬA HÀNG PHÂN PHỐI (Story S-30)
+ * ==============================================================================
+ */
+
+// Lấy danh sách địa điểm theo quyền tổ chức (S-30)
+app.get(
+  "/api/locations",
+  requirePermission(["producer", "cooperative", "transporter", "distributor", "org_admin", "admin", "inspector"]),
+  async (req, res) => {
+    try {
+      const isInspectorOrAdmin = ["inspector", "admin"].includes(req.auth.roleId);
+      const userOrgId = req.auth.organizationId;
+      const orgFilter = isInspectorOrAdmin ? (req.query.organizationId || null) : userOrgId;
+      const list = await fetchLocations(pool, inMemoryLocations, orgFilter);
+      return res.status(200).json({ locations: list });
+    } catch (err) {
+      return res.status(500).json({ message: err.message });
+    }
+  }
+);
+
+// Chi tiết địa điểm (S-30)
+app.get(
+  "/api/locations/:id",
+  requirePermission(["producer", "cooperative", "transporter", "distributor", "org_admin", "admin", "inspector"]),
+  async (req, res) => {
+    try {
+      const location = await getLocationById(pool, inMemoryLocations, req.params.id);
+      if (!location) {
+        return res.status(404).json({ message: "Không tìm thấy địa điểm." });
+      }
+      const isInspectorOrAdmin = ["inspector", "admin"].includes(req.auth.roleId);
+      if (!isInspectorOrAdmin && location.organizationId !== req.auth.organizationId) {
+        return res.status(403).json({ message: "Truy cập bị từ chối: địa điểm thuộc tổ chức khác." });
+      }
+      return res.status(200).json({ location });
+    } catch (err) {
+      return res.status(500).json({ message: err.message });
+    }
+  }
+);
+
+// Tạo địa điểm mới (S-30)
+app.post(
+  "/api/locations",
+  requirePermission(["producer", "cooperative", "transporter", "distributor", "org_admin", "admin"]),
+  async (req, res) => {
+    try {
+      const { name, address, locationType, contactPerson, phone, coordinates } = req.body || {};
+      if (!name || typeof name !== "string" || !name.trim()) {
+        return res.status(400).json({ error: "INVALID_NAME", message: "Tên địa điểm/cửa hàng không được để trống." });
+      }
+
+      const organizationId = req.auth.organizationId;
+      const newLoc = await createLocation(pool, inMemoryLocations, {
+        name: name.trim(),
+        address: address ? address.trim() : null,
+        organizationId,
+        locationType: locationType || "warehouse",
+        contactPerson: contactPerson ? contactPerson.trim() : null,
+        phone: phone ? phone.trim() : null,
+        coordinates: coordinates || null,
+      });
+
+      // Ghi nhật ký thao tác nghiệp vụ (S-31)
+      await recordAuditLog({
+        pool,
+        inMemoryLogs: inMemoryAuditLogs,
+        actorUserId: req.auth.userId,
+        actorEmail: req.auth.email,
+        organizationId,
+        action: "LOCATION_CREATED",
+        resourceType: "location",
+        resourceId: newLoc.id,
+        ipAddress: req.ip,
+        userAgent: req.get("User-Agent"),
+        details: { name: newLoc.name, locationType: newLoc.locationType, address: newLoc.address },
+      });
+
+      return res.status(201).json({ message: "Tạo địa điểm thành công.", location: newLoc });
+    } catch (err) {
+      return res.status(500).json({ message: err.message });
+    }
+  }
+);
+
+// Cập nhật vị trí lưu kho của lô hàng (S-27 & S-30)
+app.patch(
+  "/api/lots/:id/location",
+  requirePermission(["producer", "cooperative", "transporter", "distributor", "org_admin", "admin"]),
+  async (req, res) => {
+    const lotId = req.params.id;
+    const { locationId } = req.body || {};
+    if (!locationId || typeof locationId !== "string") {
+      return res.status(400).json({ error: "INVALID_LOCATION_ID", message: "Mã địa điểm lưu kho không hợp lệ." });
+    }
+
+    try {
+      const access = await evaluateLotAccess({
+        pool,
+        authContext: req.auth,
+        lotId,
+        inMemoryLots,
+      });
+      if (access.status === "NOT_FOUND") {
+        return res.status(404).json({ message: "Không tìm thấy lô hàng." });
+      }
+      if (!access.allowed) {
+        return res.status(403).json({ message: "Truy cập bị từ chối: bạn không có quyền cập nhật lô của tổ chức khác." });
+      }
+
+      const location = await getLocationById(pool, inMemoryLocations, locationId);
+      if (!location) {
+        return res.status(404).json({ message: "Địa điểm chỉ định không tồn tại." });
+      }
+
+      await updateLotLocation(pool, inMemoryLots, lotId, locationId);
+
+      // Ghi audit log (S-31)
+      await recordAuditLog({
+        pool,
+        inMemoryLogs: inMemoryAuditLogs,
+        actorUserId: req.auth.userId,
+        actorEmail: req.auth.email,
+        organizationId: req.auth.organizationId,
+        action: "LOT_LOCATION_UPDATED",
+        resourceType: "lot",
+        resourceId: lotId,
+        ipAddress: req.ip,
+        userAgent: req.get("User-Agent"),
+        details: { lotId, locationId, locationName: location.name },
+      });
+
+      return res.status(200).json({
+        message: "Cập nhật vị trí lưu kho thành công.",
+        lotId,
+        locationId,
+        locationName: location.name,
+      });
+    } catch (err) {
+      return res.status(500).json({ message: err.message });
+    }
+  }
+);
+
+/**
+ * ==============================================================================
+ * BÁO CÁO TÓM TẮT VỊ TRÍ & KHỐI LƯỢNG HẬU DUỆ (Story S-27)
+ * ==============================================================================
+ */
+app.get(
+  "/api/lots/:id/descendants-summary",
+  requirePermission(["producer", "cooperative", "transporter", "distributor", "org_admin", "admin", "inspector"]),
+  async (req, res) => {
+    const lotId = req.params.id;
+    try {
+      const access = await evaluateLotAccess({
+        pool,
+        authContext: req.auth,
+        lotId,
+        inMemoryLots,
+      });
+      if (access.status === "NOT_FOUND") {
+        return res.status(404).json({ message: "Không tìm thấy lô hàng." });
+      }
+      if (!access.allowed) {
+        return res.status(403).json({ message: "Truy cập bị từ chối: bạn không có quyền xem dữ liệu của tổ chức khác." });
+      }
+
+      const result = await traceLotDescendants({
+        pool,
+        startLotId: lotId,
+        inMemoryLots,
+        inMemoryBatchRelations,
+        inMemoryBatchEvents,
+        inMemoryOrgs,
+        inMemoryProducts,
+        inMemoryFarms,
+        inMemoryLocations,
+      });
+
+      return res.status(200).json({
+        lotId,
+        rootLot: result.rootLot,
+        descendantCount: result.descendantCount,
+        locationSummary: result.locationSummary || [],
+        descendants: result.descendants.map((d) => ({
+          id: d.id,
+          name: d.name,
+          status: d.status,
+          organizationId: d.organizationId,
+          organizationName: d.organizationName,
+          locationId: d.locationId,
+          locationName: d.locationName,
+          remainingQuantity: d.remainingQuantity,
+          initialQuantity: d.initialQuantity,
+          productUnit: d.productUnit,
+          distance: d.distance,
+        })),
+      });
+    } catch (err) {
+      if (err instanceof CycleDetectedError || err.name === "CycleDetectedError") {
+        return res.status(422).json({
+          error: "CYCLE_DETECTED",
+          message: err.message,
+          cycleLotId: err.cycleLotId || null,
+        });
+      }
+      return res.status(500).json({ message: err.message });
+    }
+  }
+);
+
+/**
+ * ==============================================================================
+ * NHẬT KÝ THAO TÁC NGHIỆP VỤ RIÊNG BIỆT (Story S-31)
+ * ==============================================================================
+ */
+app.get(
+  "/api/audit-logs",
+  requirePermission(["inspector", "admin"]),
+  async (req, res) => {
+    try {
+      const { action, resourceType, organizationId, limit, offset } = req.query;
+      const result = await getAuditLogs({
+        pool,
+        inMemoryLogs: inMemoryAuditLogs,
+        organizationId,
+        action,
+        resourceType,
+        limit,
+        offset,
+      });
+      return res.status(200).json(result);
+    } catch (err) {
+      return res.status(500).json({ message: err.message });
+    }
+  }
+);
+
 async function start() {
   await seedDemoUser();
   seedDemoEvents();
@@ -5410,6 +5676,14 @@ module.exports = {
   seedS22InMemory,
   traceLotOrigins,
   traceLotDescendants,
+  inMemoryLocations,
+  fetchLocations,
+  getLocationById,
+  createLocation,
+  updateLotLocation,
+  inMemoryAuditLogs,
+  recordAuditLog,
+  getAuditLogs,
   CycleDetectedError,
   lotOriginsCache,
   clearLotOriginsCache,

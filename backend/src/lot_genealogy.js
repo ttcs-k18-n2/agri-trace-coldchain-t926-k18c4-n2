@@ -451,6 +451,7 @@ async function traceLotDescendants({
   inMemoryOrgs = [],
   inMemoryProducts = [],
   inMemoryFarms = [],
+  inMemoryLocations = [],
   maxDepth = 50,
 }) {
   if (!startLotId) {
@@ -463,7 +464,7 @@ async function traceLotDescendants({
     };
   }
 
-  // 1. Tải bản đồ tổ chức, sản phẩm, trang trại và tất cả các lô
+  // 1. Tải bản đồ tổ chức, sản phẩm, trang trại, địa điểm và tất cả các lô (S-27 / S-30)
   const orgMap = await getOrganizationMap(pool, inMemoryOrgs);
 
   const prodMap = new Map();
@@ -477,6 +478,13 @@ async function traceLotDescendants({
   if (Array.isArray(inMemoryFarms)) {
     for (const f of inMemoryFarms) {
       if (f && f.id) farmMap.set(f.id, f);
+    }
+  }
+
+  const locationMap = new Map();
+  if (Array.isArray(inMemoryLocations)) {
+    for (const loc of inMemoryLocations) {
+      if (loc && loc.id) locationMap.set(loc.id, loc);
     }
   }
 
@@ -502,6 +510,20 @@ async function traceLotDescendants({
       }
     } catch {
       // ignore
+    }
+    try {
+      const locRes = await pool.query("SELECT id, name, address, location_type, organization_id FROM locations");
+      for (const r of locRes.rows) {
+        locationMap.set(r.id, {
+          id: r.id,
+          name: r.name,
+          address: r.address,
+          locationType: r.location_type,
+          organizationId: r.organization_id,
+        });
+      }
+    } catch {
+      // ignore if table does not exist
     }
   }
 
@@ -745,6 +767,9 @@ async function traceLotDescendants({
         const farmObj = farmId ? farmMap.get(farmId) : null;
         const prodObj = productId ? prodMap.get(productId) : null;
 
+        const locationId = lotObj ? (lotObj.locationId || lotObj.location_id || null) : null;
+        const locationObj = locationId ? locationMap.get(locationId) : null;
+
         const initQty = lotObj ? (lotObj.initialQuantity !== undefined ? lotObj.initialQuantity : lotObj.initial_quantity) : null;
         const remQty = lotObj ? (lotObj.remainingQuantity !== undefined ? lotObj.remainingQuantity : lotObj.remaining_quantity) : null;
 
@@ -761,6 +786,11 @@ async function traceLotDescendants({
           farmId,
           farmName: farmObj ? farmObj.name : (lotObj ? lotObj.farmName : null),
           farm: farmObj || (farmId ? { id: farmId, name: farmId } : null),
+          locationId,
+          locationName: locationObj ? locationObj.name : (lotObj && lotObj.locationName ? lotObj.locationName : (locationId || "Kho lưu trữ mặc định")),
+          locationAddress: locationObj ? locationObj.address : null,
+          locationType: locationObj ? locationObj.locationType : null,
+          location: locationObj || (locationId ? { id: locationId, name: locationId } : null),
           initialQuantity: initQty !== null && initQty !== undefined ? Number(initQty) : null,
           remainingQuantity: remQty !== null && remQty !== undefined ? Number(remQty) : null,
           relationType: rel.relationType || "SPLIT",
@@ -789,6 +819,25 @@ async function traceLotDescendants({
     currentLevelQueue = nextLevelQueue;
   }
 
+  // Thống kê tổng hợp vị trí và khối lượng hậu duệ (Story S-27)
+  const locationSummaryMap = new Map();
+  for (const d of allDescendantsList) {
+    const locKey = d.locationName || "Kho lưu trữ mặc định";
+    const existing = locationSummaryMap.get(locKey) || {
+      locationName: locKey,
+      locationId: d.locationId || null,
+      locationType: d.locationType || null,
+      totalLots: 0,
+      totalRemainingQuantity: 0,
+      unit: d.productUnit || "kg",
+    };
+    existing.totalLots += 1;
+    existing.totalRemainingQuantity = Number(
+      ((existing.totalRemainingQuantity) + Number(d.remainingQuantity || 0)).toFixed(3)
+    );
+    locationSummaryMap.set(locKey, existing);
+  }
+
   // 3. Xây dựng đồ thị Nodes & Edges
   const allNodeIds = Array.from(globalVisited);
   const graphNodes = allNodeIds.map((id) => {
@@ -805,6 +854,8 @@ async function traceLotDescendants({
       distance: descInfo ? descInfo.distance : 0,
       organizationId: l ? (l.organizationId || l.organization_id) : null,
       organizationName: l ? orgMap[l.organizationId || l.organization_id] : null,
+      locationId: descInfo ? descInfo.locationId : (l ? (l.locationId || l.location_id) : null),
+      locationName: descInfo ? descInfo.locationName : null,
       remainingQuantity: l ? (l.remainingQuantity !== undefined ? Number(l.remainingQuantity) : Number(l.remaining_quantity)) : null,
     };
   });
@@ -825,6 +876,7 @@ async function traceLotDescendants({
     descendantCount: allDescendantsList.length,
     descendantIds: allDescendantsList.map((d) => d.id),
     descendants: allDescendantsList,
+    locationSummary: Array.from(locationSummaryMap.values()),
     levels,
     maxDistance: levels.length,
     graph: {
