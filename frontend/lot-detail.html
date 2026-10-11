@@ -1487,7 +1487,14 @@
         }
 
         if (!lotRes.ok) {
-          renderError("Lỗi kết nối", "Không thể tải thông tin lô hàng từ máy chủ.");
+          let errDetail = "Không thể tải thông tin lô hàng từ máy chủ.";
+          try {
+            const errJson = await lotRes.json();
+            if (errJson && errJson.message) {
+              errDetail = errJson.message;
+            }
+          } catch (_) {}
+          renderError(`Lỗi máy chủ (${lotRes.status})`, errDetail);
           return;
         }
 

@@ -448,5 +448,19 @@ test("Lot Detail Direct Lineage & Multi-tenant S-23 Access Control (GET /api/lot
       `Lineage request took ${elapsedLineage.toFixed(2)}ms, exceeding 1000ms NFR limit`
     );
   });
+
+  await t.test("9. GET /api/lots/:id returns 404 cleanly for non-existent lot (e.g. LOT-UEMUDCFE) and includes location fields", async () => {
+    const org1Agent = await loginAs("producer@org1.vn");
+    const resNotFound = await org1Agent.get("/api/lots/LOT-UEMUDCFE");
+    assert.equal(resNotFound.status, 404);
+    assert.equal(resNotFound.body.message, "Không tìm thấy lô hàng.");
+
+    const resRoot = await org1Agent.get("/api/lots/LOT-TEST-ROOT");
+    assert.equal(resRoot.status, 200);
+    assert.ok(resRoot.body.lot);
+    assert.ok("locationType" in resRoot.body.lot);
+    assert.ok("locationName" in resRoot.body.lot);
+    assert.ok("locationAddress" in resRoot.body.lot);
+  });
 });
 

@@ -1311,7 +1311,7 @@ app.get(
             f.name AS farm_name,
             p.name AS product_name, p.unit AS product_unit,
             o.name AS organization_name,
-            loc.name AS location_name, loc.address AS location_address, loc.type AS location_type,
+            loc.name AS location_name, loc.address AS location_address, loc.location_type AS location_type,
             pl.id AS parent_id, pl.name AS parent_name, pl.status AS parent_status,
             pl.product_id AS parent_product_id, pl.organization_id AS parent_organization_id,
             pl.initial_quantity AS parent_initial_quantity, pl.remaining_quantity AS parent_remaining_quantity,
@@ -1371,13 +1371,14 @@ app.get(
 
           const accessCheckSql = `
             WITH RECURSIVE descendants AS (
-              SELECT id FROM lots WHERE id = $1
+              SELECT CAST(id AS VARCHAR(64)) AS id FROM lots WHERE id = $1
               UNION
-              SELECT l.id FROM lots l
-              JOIN descendants d ON l.parent_lot_id = d.id
-              UNION
-              SELECT br.child_batch_id FROM batch_relations br
-              JOIN descendants d ON br.parent_batch_id = d.id
+              SELECT CAST(c.id AS VARCHAR(64)) AS id FROM (
+                SELECT l.id, l.parent_lot_id AS p_id FROM lots l WHERE l.parent_lot_id IS NOT NULL
+                UNION ALL
+                SELECT br.child_batch_id AS id, br.parent_batch_id AS p_id FROM batch_relations br
+              ) c
+              JOIN descendants d ON c.p_id = d.id
             )
             SELECT 'ANCESTOR_OF_HELD_LOT' AS access_type
             FROM descendants d
@@ -1660,7 +1661,7 @@ app.get(
           locationId: rawLot.locationId || rawLot.location_id || null,
           locationName: rawLot.locationName || (inMemoryLocations && inMemoryLocations.find(loc => loc.id === (rawLot.locationId || rawLot.location_id))?.name) || null,
           locationAddress: rawLot.locationAddress || (inMemoryLocations && inMemoryLocations.find(loc => loc.id === (rawLot.locationId || rawLot.location_id))?.address) || null,
-          locationType: rawLot.locationType || (inMemoryLocations && inMemoryLocations.find(loc => loc.id === (rawLot.locationId || rawLot.location_id))?.type) || null,
+          locationType: rawLot.locationType || (inMemoryLocations && (inMemoryLocations.find(loc => loc.id === (rawLot.locationId || rawLot.location_id))?.locationType || inMemoryLocations.find(loc => loc.id === (rawLot.locationId || rawLot.location_id))?.location_type)) || null,
           accessType: access.accessType,
           ancestors: access.ancestors,
         };
