@@ -140,15 +140,26 @@ test("S-26 Benchmark: Hiệu năng duyệt xuôi NFR trên 1,000 lô qua 5-10 t�
     );
   });
 
-  await t.test("Benchmark traceLotDescendants trên CSDL PostgreSQL thật (1,000 lô, NFR < 2000ms)", async () => {
+  await t.test("Benchmark traceLotDescendants trên CSDL PostgreSQL thật (1,000 lô, NFR < 2000ms)", async (subT) => {
     const { Pool } = require("pg");
     const dbUrl = process.env.MIGRATION_DATABASE_URL || process.env.DATABASE_URL || "postgresql://agri_migration:migration_password@localhost:5432/agri_trace";
+    const isStrict = Boolean(
+      process.env.CI === "true" ||
+      process.env.CI === "1" ||
+      process.env.STRICT_BENCHMARK === "true" ||
+      process.env.REQUIRE_POSTGRES_BENCHMARK === "true"
+    );
+
     let pool = null;
     try {
       pool = new Pool({ connectionString: dbUrl, connectionTimeoutMillis: 3000 });
       await pool.query("SELECT 1");
-    } catch {
-      console.log("[SKIP] PostgreSQL không khả dụng, bỏ qua benchmark PostgreSQL thật.");
+    } catch (connErr) {
+      if (isStrict) {
+        assert.fail(`[CI/NGHIỆM THU BẮT BUỘC] Không thể kết nối PostgreSQL để chạy Benchmark nghiệm thu S-26: ${connErr.message}`);
+      }
+      console.log(`[SKIP] PostgreSQL không khả dụng ở local (${connErr.message}), bỏ qua benchmark PostgreSQL thật.`);
+      subT.skip("PostgreSQL không khả dụng ở môi trường local.");
       return;
     }
 

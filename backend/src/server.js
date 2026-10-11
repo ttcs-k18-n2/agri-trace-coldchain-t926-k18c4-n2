@@ -1691,7 +1691,7 @@ app.get(
  */
 app.post(
   "/api/lots/:id/split",
-  requirePermission(["producer", "cooperative", "org_admin", "admin"]),
+  requirePermission(["producer", "cooperative", "distributor", "org_admin", "admin"]),
   async (req, res) => {
     const parentLotId = req.params.id;
     const { splits, subLots } = req.body || {};
@@ -1792,6 +1792,28 @@ app.post(
           });
         }
 
+        // Kiểm tra tính hợp lệ của địa điểm lưu kho cho từng lô con (S-30)
+        for (let i = 0; i < splitItems.length; i++) {
+          const item = splitItems[i];
+          if (item.locationId) {
+            const loc = await getLocationById(client, inMemoryLocations, item.locationId);
+            if (!loc) {
+              await client.query("ROLLBACK");
+              return res.status(404).json({
+                error: "LOCATION_NOT_FOUND",
+                message: `Địa điểm lưu kho chỉ định cho lô con thứ ${i + 1} không tồn tại.`,
+              });
+            }
+            if (loc.organizationId !== parentLot.organization_id) {
+              await client.query("ROLLBACK");
+              return res.status(403).json({
+                error: "LOCATION_ORG_MISMATCH",
+                message: `Địa điểm lưu kho cho lô con thứ ${i + 1} không thuộc quyền quản lý của tổ chức sở hữu lô hàng.`,
+              });
+            }
+          }
+        }
+
         // 1. Trừ khối lượng còn lại của lô mẹ bằng phép tính NUMERIC trong PostgreSQL (T-42)
         // kèm điều kiện remaining_quantity >= $1::numeric để phòng vệ bổ sung
         const updateParentRes = await client.query(
@@ -1822,6 +1844,7 @@ app.post(
             ? item.name.trim()
             : `${parentLot.name} (Tách ${i + 1})`;
           const childStatus = item.status || parentLot.status || "Đã thu hoạch";
+          const childLocationId = item.locationId || parentLot.location_id || null;
 
           let childLotId = null;
           for (let attempt = 0; attempt < 5; attempt++) {
@@ -1830,8 +1853,8 @@ app.post(
               const insertRes = await client.query(
                 `INSERT INTO lots (
                   id, name, status, organization_id, farm_id, product_id,
-                  initial_quantity, remaining_quantity, harvested_at, parent_lot_id
-                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+                  initial_quantity, remaining_quantity, harvested_at, parent_lot_id, location_id
+                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
                 RETURNING *`,
                 [
                   candidateId,
@@ -1844,6 +1867,7 @@ app.post(
                   splitQty,
                   parentLot.harvested_at,
                   parentLotId,
+                  childLocationId,
                 ]
               );
               childLotId = candidateId;
@@ -1875,6 +1899,7 @@ app.post(
               parentLotId,
               childLotId,
               quantity: splitQty,
+              locationId: childLocationId,
               notes: item.notes || null,
               step: `Tạo từ phân tách lô mẹ ${parentLotId}`,
             },
@@ -1897,6 +1922,7 @@ app.post(
               childLotId: c.id,
               name: c.name,
               quantity: Number(c.initial_quantity),
+              locationId: c.location_id || null,
             })),
             step: `Phân tách thành ${createdChildLots.length} lô con (${createdChildLots.map((c) => c.id).join(", ")})`,
           },
@@ -1905,9 +1931,9 @@ app.post(
           occurredAt: new Date(),
         });
 
-        await client.query("COMMIT");
-
+        // Ghi audit log bằng cùng transaction client trước COMMIT (S-31 Atomicity)
         await recordAuditLog({
+          client,
           pool,
           inMemoryLogs: inMemoryAuditLogs,
           actorUserId: userId,
@@ -1925,6 +1951,8 @@ app.post(
           },
         });
 
+        await client.query("COMMIT");
+
         return res.status(201).json({
           message: "Tách lô hàng thành công.",
           parentLot: {
@@ -1937,6 +1965,7 @@ app.post(
             status: c.status,
             initialQuantity: Number(c.initial_quantity),
             remainingQuantity: Number(c.remaining_quantity),
+            locationId: c.location_id || null,
             parentLotId: c.parent_lot_id,
             organizationId: c.organization_id,
             createdAt: c.created_at,
@@ -2006,6 +2035,26 @@ app.post(
         });
       }
 
+      // Kiểm tra tính hợp lệ của địa điểm lưu kho cho từng lô con (S-30)
+      for (let i = 0; i < splitItems.length; i++) {
+        const item = splitItems[i];
+        if (item.locationId) {
+          const loc = await getLocationById(null, inMemoryLocations, item.locationId);
+          if (!loc) {
+            return res.status(404).json({
+              error: "LOCATION_NOT_FOUND",
+              message: `Địa điểm lưu kho chỉ định cho lô con thứ ${i + 1} không tồn tại.`,
+            });
+          }
+          if (loc.organizationId !== pOrg) {
+            return res.status(403).json({
+              error: "LOCATION_ORG_MISMATCH",
+              message: `Địa điểm lưu kho cho lô con thứ ${i + 1} không thuộc quyền quản lý của tổ chức sở hữu lô hàng.`,
+            });
+          }
+        }
+      }
+
       // Trừ khối lượng còn lại của lô mẹ chuẩn xác theo milli-units (T-42)
       const oldRemaining = parentRemaining;
       const newRemaining = fromMilliUnits(parentRemainingMilli - totalSplitMilli);
@@ -2024,6 +2073,7 @@ app.post(
             ? item.name.trim()
             : `${parentLot.name} (Tách ${i + 1})`;
           const childStatus = item.status || parentLot.status || "Đã thu hoạch";
+          const childLocationId = item.locationId || parentLot.locationId || parentLot.location_id || null;
 
           let childLotId = generateLotCode();
           while (inMemoryLots.some((l) => l.id === childLotId)) {
@@ -2039,6 +2089,7 @@ app.post(
             productId: parentLot.productId || parentLot.product_id || null,
             initialQuantity: splitQty,
             remainingQuantity: splitQty,
+            locationId: childLocationId,
             harvestedAt: parentLot.harvestedAt || parentLot.harvested_at || null,
             parentLotId: parentLotId,
             createdAt: nowIso,
@@ -2071,6 +2122,7 @@ app.post(
               parentLotId,
               childLotId,
               quantity: splitQty,
+              locationId: childLocationId,
               notes: item.notes || null,
               step: `Tạo từ phân tách lô mẹ ${parentLotId}`,
             },
@@ -2092,6 +2144,7 @@ app.post(
               childLotId: c.id,
               name: c.name,
               quantity: c.initialQuantity,
+              locationId: c.locationId || null,
             })),
             step: `Phân tách thành ${createdChildLots.length} lô con (${createdChildLots.map((c) => c.id).join(", ")})`,
           },
@@ -2130,6 +2183,7 @@ app.post(
             status: c.status,
             initialQuantity: c.initialQuantity,
             remainingQuantity: c.remainingQuantity,
+            locationId: c.locationId || null,
             parentLotId: c.parentLotId,
             organizationId: c.organizationId,
             createdAt: c.createdAt,
@@ -2479,9 +2533,9 @@ app.post(
           occurredAt: new Date(),
         });
 
-        await client.query("COMMIT");
-
+        // Ghi audit log bằng cùng transaction client trước COMMIT (S-31 Atomicity)
         await recordAuditLog({
+          client,
           pool,
           inMemoryLogs: inMemoryAuditLogs,
           actorUserId: userId,
@@ -2498,6 +2552,8 @@ app.post(
             parentsCount: normalizedItems.length,
           },
         });
+
+        await client.query("COMMIT");
 
         return res.status(201).json({
           message: "Gộp các lô hàng thành công.",
@@ -2835,9 +2891,9 @@ app.post(
           occurredAt: new Date(),
         });
 
-        await client.query("COMMIT");
-
+        // Ghi audit log bằng cùng transaction client trước COMMIT (S-31 Atomicity)
         await recordAuditLog({
+          client,
           pool,
           inMemoryLogs: inMemoryAuditLogs,
           actorUserId: userId,
@@ -2854,6 +2910,8 @@ app.post(
             notes: notes ? String(notes).trim() : null,
           },
         });
+
+        await client.query("COMMIT");
 
         return res.status(200).json({
           message: "Ghi nhận lô hàng đã bán hết cho người tiêu dùng thành công.",
@@ -3668,9 +3726,9 @@ app.post(
           occurredAt: new Date(),
         });
 
-        await client.query("COMMIT");
-
+        // Ghi audit log bằng cùng transaction client trước COMMIT (S-31 Atomicity)
         await recordAuditLog({
+          client,
           pool,
           inMemoryLogs: inMemoryAuditLogs,
           actorUserId: userId,
@@ -3683,6 +3741,8 @@ app.post(
           userAgent: req.get("User-Agent"),
           details: { farmId, productId, quantity: qty, harvestedAt: harvestDate },
         });
+
+        await client.query("COMMIT");
 
         const successResponse = {
           message: "Ghi nhận thu hoạch thành công.",
@@ -4529,9 +4589,9 @@ app.post(
             occurredAt: now,
           });
 
-          await client.query("COMMIT");
-
+          // Ghi audit log bằng cùng transaction client trước COMMIT (S-31 Atomicity)
           await recordAuditLog({
+            client,
             pool,
             inMemoryLogs: inMemoryAuditLogs,
             actorUserId: userId,
@@ -4550,6 +4610,8 @@ app.post(
               notes: cleanNotes,
             },
           });
+
+          await client.query("COMMIT");
 
           const r = insertRes.rows[0];
           const createdTransfer = {
@@ -5021,9 +5083,9 @@ app.post(
             occurredAt: now,
           });
 
-          await client.query("COMMIT");
-
+          // Ghi audit log bằng cùng transaction client trước COMMIT (S-31 Atomicity)
           await recordAuditLog({
+            client,
             pool,
             inMemoryLogs: inMemoryAuditLogs,
             actorUserId: userId,
@@ -5042,6 +5104,8 @@ app.post(
               lateConfirmation: isLate,
             },
           });
+
+          await client.query("COMMIT");
 
           const updated = updateRes.rows[0];
           return res.status(200).json({
@@ -5302,9 +5366,9 @@ app.post(
             occurredAt: now,
           });
 
-          await client.query("COMMIT");
-
+          // Ghi audit log bằng cùng transaction client trước COMMIT (S-31 Atomicity)
           await recordAuditLog({
+            client,
             pool,
             inMemoryLogs: inMemoryAuditLogs,
             actorUserId: userId,
@@ -5323,6 +5387,8 @@ app.post(
               status: "REJECTED",
             },
           });
+
+          await client.query("COMMIT");
 
           const updated = updateRes.rows[0];
           return res.status(200).json({
@@ -5816,8 +5882,8 @@ app.patch(
         return res.status(404).json({ message: "Địa điểm chỉ định không tồn tại." });
       }
 
-      // Xác minh địa điểm thuộc quyền quản lý của cùng tổ chức sở hữu lô
-      if (!isAdmin && location.organizationId !== lotOrgId) {
+      // Xác minh địa điểm bắt buộc thuộc quyền quản lý của cùng tổ chức sở hữu lô hàng (áp dụng cho tất cả, kể cả Admin)
+      if (location.organizationId !== lotOrgId) {
         return res.status(403).json({
           error: "LOCATION_ORG_MISMATCH",
           message: "Địa điểm lưu kho không thuộc quyền quản lý của tổ chức sở hữu lô hàng.",

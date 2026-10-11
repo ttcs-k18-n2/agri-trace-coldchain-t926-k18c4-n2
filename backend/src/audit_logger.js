@@ -11,6 +11,7 @@ const MAX_IN_MEMORY_LOGS = 1000;
  */
 async function recordAuditLog({
   pool = null,
+  client = null,
   inMemoryLogs = inMemoryAuditLogs,
   actorUserId = null,
   actorEmail = null,
@@ -37,18 +38,13 @@ async function recordAuditLog({
     createdAt: new Date().toISOString(),
   };
 
-  // 1. Lưu vào RAM (In-Memory Buffer)
-  if (Array.isArray(inMemoryLogs)) {
-    inMemoryLogs.unshift(logEntry);
-    if (inMemoryLogs.length > MAX_IN_MEMORY_LOGS) {
-      inMemoryLogs.pop();
-    }
-  }
+  const shouldThrow = Boolean(throwOnError || client || process.env.STRICT_AUDIT === "true");
 
-  // 2. Ghi vĩnh viễn vào PostgreSQL nếu có kết nối
-  if (pool && typeof pool.query === "function") {
+  // 1. Ghi vĩnh viễn vào PostgreSQL nếu có kết nối (hỗ trợ client trong transaction hoặc pool)
+  const db = client || pool;
+  if (db && typeof db.query === "function") {
     try {
-      await pool.query(
+      await db.query(
         `INSERT INTO audit_logs (
           actor_user_id, actor_email, organization_id, action, resource_type, resource_id, ip_address, user_agent, details, created_at
         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())`,
@@ -66,9 +62,17 @@ async function recordAuditLog({
       );
     } catch (err) {
       console.error("[AUDIT LOG ERROR] Không thể ghi audit log vào CSDL:", err.message);
-      if (throwOnError) {
+      if (shouldThrow) {
         throw new Error(`Audit log persistence failed: ${err.message}`);
       }
+    }
+  }
+
+  // 2. Lưu vào RAM (In-Memory Buffer) sau khi ghi CSDL thành công
+  if (Array.isArray(inMemoryLogs)) {
+    inMemoryLogs.unshift(logEntry);
+    if (inMemoryLogs.length > MAX_IN_MEMORY_LOGS) {
+      inMemoryLogs.pop();
     }
   }
 

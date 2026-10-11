@@ -437,13 +437,21 @@ const { getOrganizationMap, fetchAllLotsRaw } = require("./lot_access");
 function extractChildLotIdsFromEvents(events = []) {
   const targetIds = [];
   for (const ev of events) {
+    if (ev.eventType === "CREATED_FROM_SPLIT" || ev.event_type === "CREATED_FROM_SPLIT") {
+      continue;
+    }
+    const batchId = ev.batchId || ev.batch_id;
     const p = (ev && ev.payload) || {};
-    if (p.targetLotId) targetIds.push(p.targetLotId);
-    if (p.childLotId) targetIds.push(p.childLotId);
-    if (Array.isArray(p.childLotIds)) targetIds.push(...p.childLotIds);
+    if (p.targetLotId && p.targetLotId !== batchId) targetIds.push(p.targetLotId);
+    if (p.childLotId && p.childLotId !== batchId) targetIds.push(p.childLotId);
+    if (Array.isArray(p.childLotIds)) {
+      for (const cid of p.childLotIds) {
+        if (cid && cid !== batchId) targetIds.push(cid);
+      }
+    }
     if (Array.isArray(p.splits)) {
       for (const s of p.splits) {
-        if (s && s.childLotId) targetIds.push(s.childLotId);
+        if (s && s.childLotId && s.childLotId !== batchId) targetIds.push(s.childLotId);
       }
     }
   }

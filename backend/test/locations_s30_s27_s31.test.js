@@ -52,6 +52,17 @@ test("Sprint 4: Bộ kiểm thử tích hợp Story S-30 (Địa điểm), S-27 
     organizationId: "org-001",
   });
 
+  users.set("admin_s30@agri.vn", {
+    id: "usr-s30-admin",
+    email: "admin_s30@agri.vn",
+    passwordHash,
+    failedCount: 0,
+    lockedUntil: null,
+    roleId: "admin",
+    organizationId: "org-001",
+    isAdmin: true,
+  });
+
   // Nạp seed S-22
   seedS22InMemory({
     inMemoryLots,
@@ -62,14 +73,17 @@ test("Sprint 4: Bộ kiểm thử tích hợp Story S-30 (Địa điểm), S-27 
   let distAgent;
   let inspAgent;
   let prodAgent;
+  let adminAgent;
 
   await t.test("0. Đăng nhập các tác nhân kiểm thử", async () => {
     distAgent = await loginAs("distributor_s30@agri.vn");
     inspAgent = await loginAs("inspector_s30@agri.vn");
     prodAgent = await loginAs("producer_s30@agri.vn");
+    adminAgent = await loginAs("admin_s30@agri.vn");
     assert.ok(distAgent);
     assert.ok(inspAgent);
     assert.ok(prodAgent);
+    assert.ok(adminAgent);
   });
 
   let createdLocationId = null;
@@ -186,4 +200,136 @@ test("Sprint 4: Bộ kiểm thử tích hợp Story S-30 (Địa điểm), S-27 
     const res = await prodAgent.get("/api/audit-logs");
     assert.equal(res.status, 403);
   });
+
+  // --- Story S-30: Ràng buộc tổ chức đối với Admin ---
+  await t.test("9. S-30: Quyền Admin vẫn bị chặn khi gán kho thuộc tổ chức khác vào lô hàng (403 LOCATION_ORG_MISMATCH)", async () => {
+    // Lô L05 thuộc org-dist, nhưng kho LOC-WH-TN-01 thuộc org-001
+    const res = await adminAgent
+      .patch("/api/lots/L05/location")
+      .send({ locationId: "LOC-WH-TN-01" });
+    assert.equal(res.status, 403);
+    assert.equal(res.body.error, "LOCATION_ORG_MISMATCH");
+    assert.match(res.body.message, /không thuộc quyền quản lý của tổ chức sở hữu lô hàng/);
+  });
+
+  // --- Story S-30 / S-17: Tách lô ra nhiều cửa hàng / điểm bán lẻ ---
+  await t.test("10. S-30 / S-17: Tách lô hàng và chỉ định vị trí cửa hàng cho từng lô con trong cùng 1 request", async () => {
+    // Chuẩn bị một lô mẹ thuộc org-dist
+    inMemoryLots.push({
+      id: "LOT-MULTI-STORE-01",
+      name: "Lô Rau Hỗn Hợp Bán Lẻ",
+      status: "Đang lưu kho",
+      organizationId: "org-dist",
+      productId: "PROD-VEG-01",
+      initialQuantity: 100,
+      remainingQuantity: 100,
+      createdAt: new Date().toISOString(),
+    });
+
+    const splitPayload = {
+      splits: [
+        {
+          name: "Rau sạch - Cửa hàng Cầu Giấy",
+          quantity: 40,
+          locationId: "LOC-STORE-HN-01",
+          notes: "Giao ca sáng",
+        },
+        {
+          name: "Rau sạch - Cửa hàng Thanh Xuân",
+          quantity: 35,
+          locationId: "LOC-STORE-HN-02",
+          notes: "Giao ca chiều",
+        },
+      ],
+    };
+
+    const res = await distAgent
+      .post("/api/lots/LOT-MULTI-STORE-01/split")
+      .send(splitPayload);
+
+    assert.equal(res.status, 201);
+    assert.equal(res.body.parentLot.remainingQuantity, 25);
+    assert.equal(res.body.childLots.length, 2);
+
+    // Xác nhận locationId được gán chính xác cho từng lô con
+    assert.equal(res.body.childLots[0].locationId, "LOC-STORE-HN-01");
+    assert.equal(res.body.childLots[1].locationId, "LOC-STORE-HN-02");
+
+    // Xác nhận API GET chi tiết lô con trả về đúng locationId và tên cửa hàng
+    const child1Id = res.body.childLots[0].id;
+    const child2Id = res.body.childLots[1].id;
+    const getChild1Res = await distAgent.get(`/api/lots/${child1Id}`);
+    assert.equal(getChild1Res.status, 200);
+    assert.equal(getChild1Res.body.lot.locationId, "LOC-STORE-HN-01");
+
+    const getChild2Res = await distAgent.get(`/api/lots/${child2Id}`);
+    assert.equal(getChild2Res.status, 200);
+    assert.equal(getChild2Res.body.lot.locationId, "LOC-STORE-HN-02");
+
+    // Xác nhận API truy xuôi hậu duệ (S-27) gom nhóm đúng cả 2 cửa hàng
+    const descRes = await inspAgent.get("/api/lots/LOT-MULTI-STORE-01/descendants");
+    assert.equal(descRes.status, 200);
+    assert.equal(descRes.body.descendantCount, 2);
+
+    const locIds = descRes.body.locationSummary.map((s) => s.locationId);
+    assert.ok(locIds.includes("LOC-STORE-HN-01"));
+    assert.ok(locIds.includes("LOC-STORE-HN-02"));
+  });
+
+  await t.test("11. S-30 / S-17: Chặn tách lô khi chỉ định kho không tồn tại hoặc kho khác tổ chức", async () => {
+    // Thử kho không tồn tại
+    const resNotFound = await distAgent
+      .post("/api/lots/LOT-MULTI-STORE-01/split")
+      .send({
+        splits: [
+          { name: "Lô con lỗi 1", quantity: 5, locationId: "LOC-NON-EXISTENT" },
+        ],
+      });
+    assert.equal(resNotFound.status, 404);
+    assert.equal(resNotFound.body.error, "LOCATION_NOT_FOUND");
+
+    // Thử kho của tổ chức khác (LOC-WH-TN-01 thuộc org-001, trong khi lô thuộc org-dist)
+    const resMismatch = await distAgent
+      .post("/api/lots/LOT-MULTI-STORE-01/split")
+      .send({
+        splits: [
+          { name: "Lô con lỗi 2", quantity: 5, locationId: "LOC-WH-TN-01" },
+        ],
+      });
+    assert.equal(resMismatch.status, 403);
+    assert.equal(resMismatch.body.error, "LOCATION_ORG_MISMATCH");
+  });
+
+  // --- Story S-31: Tính nguyên tử và Rollback khi Audit Log gặp sự cố ---
+  await t.test("12. S-31: Đảm bảo tính nguyên tử - Rollback hoàn toàn khi ghi audit log thất bại trong transaction", async () => {
+    const { recordAuditLog } = require("../src/audit_logger");
+
+    // Giả lập một transaction client mà lệnh insert audit log gặp lỗi
+    const fakeClient = {
+      query: async (sql) => {
+        if (typeof sql === "string" && sql.includes("INSERT INTO audit_logs")) {
+          throw new Error("Simulated Database Disk Full for Audit Log");
+        }
+        return { rows: [] };
+      },
+    };
+
+    // Khi truyền client transaction, recordAuditLog bắt buộc phải throw để kích hoạt ROLLBACK
+    await assert.rejects(
+      async () => {
+        await recordAuditLog({
+          client: fakeClient,
+          action: "TEST_ATOMIC_FAIL",
+          resourceType: "lot",
+          resourceId: "LOT-TEST",
+        });
+      },
+      (err) => {
+        assert.match(err.message, /Audit log persistence failed/);
+        return true;
+      },
+      "Phải ném lỗi khi ghi audit log thất bại trên transaction client để kích hoạt rollback"
+    );
+  });
 });
+
