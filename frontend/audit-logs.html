@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="vi">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tra cứu Nhật ký thao tác</title>
+    <link rel="stylesheet" href="styles.css">
+    <style>
+        .audit-container {
+            padding: 20px;
+            max-width: 1200px;
+            margin: auto;
+        }
+
+        .filter-bar {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+
+        .filter-bar input,
+        .filter-bar button {
+            padding: 8px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+
+        .filter-bar button {
+            background-color: #28a745;
+            color: white;
+            cursor: pointer;
+            border: none;
+            font-weight: bold;
+        }
+
+        .filter-bar button:hover {
+            background-color: #218838;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+        }
+
+        th,
+        td {
+            border: 1px solid #ddd;
+            padding: 10px;
+            text-align: left;
+            font-size: 14px;
+        }
+
+        th {
+            background-color: #f4f4f4;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="audit-container">
+        <h2>Nhật ký Thao tác (Audit Logs)</h2>
+
+        <!-- Thanh bộ lọc -->
+        <div class="filter-bar">
+            <input type="text" id="filterUserId" placeholder="User ID (VD: user_123)">
+            <input type="text" id="filterOrgId" placeholder="Mã tổ chức">
+            <input type="date" id="filterStartDate" title="Từ ngày">
+            <input type="date" id="filterEndDate" title="Đến ngày">
+            <button onclick="fetchAuditLogs()">Tra cứu</button>
+        </div>
+
+        <!-- Bảng hiển thị -->
+        <table>
+            <thead>
+                <tr>
+                    <th>Thời gian</th>
+                    <th>Sự kiện</th>
+                    <th>User ID</th>
+                    <th>Tổ chức</th>
+                    <th>IP</th>
+                    <th>Chi tiết Request</th>
+                </tr>
+            </thead>
+            <tbody id="logsTableBody">
+                <tr>
+                    <td colspan="6" style="text-align:center;">Đang tải dữ liệu...</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <script>
+        async function fetchAuditLogs() {
+            const userId = document.getElementById('filterUserId').value;
+            const orgId = document.getElementById('filterOrgId').value;
+            const startDate = document.getElementById('filterStartDate').value;
+            const endDate = document.getElementById('filterEndDate').value;
+
+            // Nối các tham số vào URL API
+            let url = '/api/audit-logs?';
+            if (userId) url += `userId=${userId}&`;
+            if (orgId) url += `orgId=${orgId}&`;
+            if (startDate) url += `startDate=${startDate}&`;
+            if (endDate) url += `endDate=${endDate}&`;
+
+            try {
+                const response = await fetch(url);
+                const result = await response.json();
+                const tbody = document.getElementById('logsTableBody');
+                tbody.innerHTML = ''; // Xóa chữ "Đang tải..."
+
+                if (result.success && result.data.length > 0) {
+                    result.data.forEach(log => {
+                        const tr = document.createElement('tr');
+                        // Format lại ngày giờ cho dễ nhìn
+                        const timeString = new Date(log.timestamp).toLocaleString('vi-VN');
+
+                        tr.innerHTML = `
+                            <td>${timeString}</td>
+                            <td><strong>${log.event}</strong><br><small>${log.action || ''}</small></td>
+                            <td>${log.user_id}</td>
+                            <td>${log.user_org_id || '-'}</td>
+                            <td>${log.ip || '-'}</td>
+                            <td>${log.message || '-'}</td>
+                        `;
+                        tbody.appendChild(tr);
+                    });
+                } else {
+                    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;">Không tìm thấy nhật ký nào phù hợp.</td></tr>';
+                }
+            } catch (error) {
+                console.error('Lỗi khi gọi API:', error);
+                document.getElementById('logsTableBody').innerHTML =
+                    '<tr><td colspan="6" style="text-align:center;color:red;">Lỗi kết nối đến máy chủ. Vui lòng thử lại.</td></tr>';
+            }
+        }
+
+        // Tự động tải dữ liệu khi vừa mở trang
+        window.onload = fetchAuditLogs;
+    </script>
+</body>
+
+</html>
