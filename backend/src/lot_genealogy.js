@@ -447,7 +447,7 @@ async function traceLotDescendants({
   startLotId,
   inMemoryLots = [],
   inMemoryBatchRelations = [],
-  inMemoryBatchEvents = [],
+  _inMemoryBatchEvents = [],
   inMemoryOrgs = [],
   inMemoryProducts = [],
   inMemoryFarms = [],

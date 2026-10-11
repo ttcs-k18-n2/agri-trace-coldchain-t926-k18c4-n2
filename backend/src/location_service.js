@@ -176,9 +176,19 @@ async function createLocation(pool, inMemoryList = inMemoryLocations, data) {
 /**
  * Gán hoặc cập nhật vị trí lưu kho/điểm bán của lô hàng (S-27 & S-30)
  */
-async function updateLotLocation(pool, inMemoryLots = [], lotId, locationId) {
+async function updateLotLocation(pool, inMemoryLots = [], lotId, locationId, organizationId = null) {
   if (pool && typeof pool.query === "function") {
-    await pool.query("UPDATE lots SET location_id = $1 WHERE id = $2", [locationId, lotId]);
+    if (organizationId) {
+      await pool.query(
+        "UPDATE lots SET location_id = $1 WHERE id = $2 AND organization_id = $3",
+        [locationId, lotId, organizationId]
+      );
+    } else {
+      await pool.query(
+        "UPDATE lots SET location_id = $1 WHERE id = $2 AND ($3::text IS NULL OR organization_id = $3)",
+        [locationId, lotId, organizationId]
+      );
+    }
   }
   const lot = inMemoryLots.find((l) => l.id === lotId);
   if (lot) {

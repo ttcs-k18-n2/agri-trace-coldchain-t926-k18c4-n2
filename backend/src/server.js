@@ -5459,7 +5459,8 @@ app.patch(
         return res.status(404).json({ message: "Địa điểm chỉ định không tồn tại." });
       }
 
-      await updateLotLocation(pool, inMemoryLots, lotId, locationId);
+      const callerOrg = req.auth && req.auth.roleId === "admin" ? null : (req.auth ? req.auth.organizationId : null);
+      await updateLotLocation(pool, inMemoryLots, lotId, locationId, callerOrg);
 
       // Ghi audit log (S-31)
       await recordAuditLog({

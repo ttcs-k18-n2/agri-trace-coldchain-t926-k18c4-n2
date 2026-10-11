@@ -8,8 +8,6 @@ const {
   inMemoryLots,
   inMemoryBatchRelations,
   inMemoryBatchEvents,
-  inMemoryLocations,
-  inMemoryAuditLogs,
 } = require("../src/server");
 const { seedS22InMemory } = require("../scripts/seed_s22");
 
@@ -147,8 +145,8 @@ test("Sprint 4: Bộ kiểm thử tích hợp Story S-30 (Địa điểm), S-27 
     // Kiểm tra cấu trúc S-27 cho từng hậu duệ
     for (const d of descendants) {
       assert.ok(d.id, "Mỗi hậu duệ phải có id");
-      assert.ok(d.hasOwnProperty("remainingQuantity"), "Mỗi hậu duệ phải có remainingQuantity");
-      assert.ok(d.hasOwnProperty("locationName"), "Mỗi hậu duệ phải có locationName");
+      assert.ok(Object.prototype.hasOwnProperty.call(d, "remainingQuantity"), "Mỗi hậu duệ phải có remainingQuantity");
+      assert.ok(Object.prototype.hasOwnProperty.call(d, "locationName"), "Mỗi hậu duệ phải có locationName");
       assert.ok(d.productUnit, "Mỗi hậu duệ phải có đơn vị tính productUnit");
     }
 
@@ -157,8 +155,8 @@ test("Sprint 4: Bộ kiểm thử tích hợp Story S-30 (Địa điểm), S-27 
     assert.ok(res.body.locationSummary.length > 0);
     const locSum = res.body.locationSummary[0];
     assert.ok(locSum.locationName);
-    assert.ok(locSum.hasOwnProperty("totalLots"));
-    assert.ok(locSum.hasOwnProperty("totalRemainingQuantity"));
+    assert.ok(Object.prototype.hasOwnProperty.call(locSum, "totalLots"));
+    assert.ok(Object.prototype.hasOwnProperty.call(locSum, "totalRemainingQuantity"));
   });
 
   await t.test("6. S-27: API Báo cáo tóm tắt hậu duệ (GET /api/lots/:id/descendants-summary)", async () => {
