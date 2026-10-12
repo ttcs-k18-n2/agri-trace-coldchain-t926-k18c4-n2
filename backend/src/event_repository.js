@@ -290,4 +290,9 @@ module.exports = {
   verifyBatchEventChain,
   inMemoryBatchEvents,
   setAppendHookForTesting,
+  GENESIS_HASH,
+  calculateEventHash,
+  computeEventHash: (data) => calculateEventHash(data.previousHash || data.previous_hash || GENESIS_HASH, data),
 };
+
+

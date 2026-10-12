@@ -419,7 +419,7 @@ test("Sprint 4: Bộ kiểm thử tích hợp Story S-30 (Địa điểm), S-27 
       await testPool.query("DELETE FROM batch_events WHERE batch_id = $1;", [testLotId]);
       await testPool.query("DELETE FROM lots WHERE id = $1;", [testLotId]);
       await testPool.query("DELETE FROM locations WHERE id IN ($1, $2, $3);", [testLoc1Id, testLoc2Id, testOtherLocId]);
-      await testPool.query("DELETE FROM users WHERE id = $1;", [testUserId]);
+      await testPool.query("DELETE FROM users WHERE id = $1 OR email = $2;", [testUserId, testUserEmail]);
       await testPool.query("DELETE FROM organizations WHERE id IN ($1, $2);", [testOrgId, testOtherOrgId]);
 
       // 2. Tạo tổ chức và người dùng
@@ -467,16 +467,20 @@ test("Sprint 4: Bộ kiểm thử tích hợp Story S-30 (Địa điểm), S-27 
       // Tạo sự kiện gốc HARVEST_CREATED để chuỗi băm có previous_hash
       const { computeEventHash } = require("../src/event_repository");
       const initPayload = { note: "Khởi tạo lô test" };
+      const initDate = new Date();
       const initHash = computeEventHash({
         batchId: testLotId,
         eventType: "HARVEST_CREATED",
         payload: initPayload,
         previousHash: "0".repeat(64),
         sequenceNo: 1,
+        organizationId: testOrgId,
+        actorUserId: testUserId,
+        occurredAt: initDate,
       });
       await testPool.query(
-        "INSERT INTO batch_events (id, batch_id, sequence_no, event_type, payload, organization_id, actor_user_id, previous_hash, event_hash) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9);",
-        [`evt-s30-init-${Date.now()}`, testLotId, 1, "HARVEST_CREATED", JSON.stringify(initPayload), testOrgId, testUserId, "0".repeat(64), initHash]
+        "INSERT INTO batch_events (id, batch_id, sequence_no, event_type, payload, organization_id, actor_user_id, occurred_at, previous_hash, event_hash) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10);",
+        [`evt-s30-init-${Date.now()}`, testLotId, 1, "HARVEST_CREATED", JSON.stringify(initPayload), testOrgId, testUserId, initDate, "0".repeat(64), initHash]
       );
 
       // 5. Đăng nhập qua session
@@ -533,7 +537,7 @@ test("Sprint 4: Bộ kiểm thử tích hợp Story S-30 (Địa điểm), S-27 
       await testPool.query("DELETE FROM batch_events WHERE batch_id = $1;", [testLotId]).catch(() => {});
       await testPool.query("DELETE FROM lots WHERE id = $1;", [testLotId]).catch(() => {});
       await testPool.query("DELETE FROM locations WHERE id IN ($1, $2, $3);", [testLoc1Id, testLoc2Id, testOtherLocId]).catch(() => {});
-      await testPool.query("DELETE FROM users WHERE id = $1;", [testUserId]).catch(() => {});
+      await testPool.query("DELETE FROM users WHERE id = $1 OR email = $2;", [testUserId, testUserEmail]).catch(() => {});
       await testPool.query("DELETE FROM organizations WHERE id IN ($1, $2);", [testOrgId, testOtherOrgId]).catch(() => {});
       setDatabasePool(null);
       await testPool.end().catch(() => {});
