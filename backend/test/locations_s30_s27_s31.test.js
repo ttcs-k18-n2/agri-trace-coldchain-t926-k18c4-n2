@@ -402,20 +402,6 @@ test("Sprint 4: Bộ kiểm thử tích hợp Story S-30 (Địa điểm), S-27 
     }
 
     // Kết nối thành công -> Chạy kiểm thử thực tế KHÔNG swallow assertion trong catch!
-    const origConnect = testPool.connect.bind(testPool);
-    let simulateAuditFail = false;
-    testPool.connect = async () => {
-      const client = await origConnect();
-      const origQuery = client.query.bind(client);
-      client.query = async (text, params) => {
-        if (simulateAuditFail && typeof text === "string" && text.includes("INSERT INTO audit_logs")) {
-          throw new Error("Simulated Database Disk Full for Audit Log");
-        }
-        return origQuery(text, params);
-      };
-      return client;
-    };
-
     setDatabasePool(testPool);
 
     const testOrgId = "org-s30-pg-test";
@@ -543,31 +529,50 @@ test("Sprint 4: Bộ kiểm thử tích hợp Story S-30 (Địa điểm), S-27 
       assert.equal(resFail.body.error, "LOCATION_ORG_MISMATCH");
 
       // --- KIỂM THỬ THỰC TẾ 4: Rollback nguyên tử khi ghi audit log thất bại trong giao dịch PostgreSQL ---
-      simulateAuditFail = true;
+      // Tạo trigger tạm thời trên PostgreSQL để mô phỏng lỗi khi ghi audit log cho lô hàng này
+      await testPool.query(`
+        CREATE OR REPLACE FUNCTION trigger_fail_audit_fn() RETURNS trigger AS $$
+        BEGIN
+          RAISE EXCEPTION 'Simulated Audit Log Database Write Failure';
+        END;
+        $$ LANGUAGE plpgsql;
+      `);
+      await testPool.query(`
+        DROP TRIGGER IF EXISTS trg_fail_audit_logs ON audit_logs;
+        CREATE TRIGGER trg_fail_audit_logs
+        BEFORE INSERT ON audit_logs
+        FOR EACH ROW
+        WHEN (NEW.action = 'LOT_LOCATION_UPDATED' AND NEW.resource_id = '${testLotId}')
+        EXECUTE FUNCTION trigger_fail_audit_fn();
+      `);
 
-      const resAuditFail = await pgUserAgent
-        .patch(`/api/lots/${testLotId}/location`)
-        .send({ locationId: testLoc1Id });
+      try {
+        const resAuditFail = await pgUserAgent
+          .patch(`/api/lots/${testLotId}/location`)
+          .send({ locationId: testLoc1Id });
 
-      assert.equal(resAuditFail.status, 500, "Khi ghi audit log thất bại trong transaction, API phải trả về HTTP 500");
-      assert.match(resAuditFail.body.message, /Audit log persistence failed/);
+        assert.equal(resAuditFail.status, 500, "Khi ghi audit log thất bại trong transaction, API phải trả về HTTP 500");
+        assert.match(resAuditFail.body.message, /Audit log persistence failed/);
 
-      // Xác minh trong PostgreSQL:
-      // 1. lots.location_id không bị đổi sang testLoc1Id (vẫn giữ nguyên testLoc2Id)
-      const dbLotAuditFailCheck = await testPool.query("SELECT location_id FROM lots WHERE id = $1;", [testLotId]);
-      assert.equal(dbLotAuditFailCheck.rows[0].location_id, testLoc2Id, "Lô hàng không bị đổi kho khi audit log thất bại (Transaction Rollback)");
+        // Xác minh trong PostgreSQL:
+        // 1. lots.location_id không bị đổi sang testLoc1Id (vẫn giữ nguyên testLoc2Id)
+        const dbLotAuditFailCheck = await testPool.query("SELECT location_id FROM lots WHERE id = $1;", [testLotId]);
+        assert.equal(dbLotAuditFailCheck.rows[0].location_id, testLoc2Id, "Lô hàng không bị đổi kho khi audit log thất bại (Transaction Rollback)");
 
-      // 2. Sự kiện LOCATION_CHANGED bổ sung bị rollback, số lượng event không tăng
-      const dbEventsCheck = await testPool.query(
-        "SELECT COUNT(*) as count FROM batch_events WHERE batch_id = $1 AND event_type = 'LOCATION_CHANGED';",
-        [testLotId]
-      );
-      assert.equal(Number(dbEventsCheck.rows[0].count), 1, "Sự kiện LOCATION_CHANGED trong transaction lỗi phải được rollback hoàn toàn");
-
-      simulateAuditFail = false;
+        // 2. Sự kiện LOCATION_CHANGED bổ sung bị rollback, số lượng event không tăng
+        const dbEventsCheck = await testPool.query(
+          "SELECT COUNT(*) as count FROM batch_events WHERE batch_id = $1 AND event_type = 'LOCATION_CHANGED';",
+          [testLotId]
+        );
+        assert.equal(Number(dbEventsCheck.rows[0].count), 1, "Sự kiện LOCATION_CHANGED trong transaction lỗi phải được rollback hoàn toàn");
+      } finally {
+        await testPool.query("DROP TRIGGER IF EXISTS trg_fail_audit_logs ON audit_logs;").catch(() => {});
+        await testPool.query("DROP FUNCTION IF EXISTS trigger_fail_audit_fn();").catch(() => {});
+      }
     } finally {
-      testPool.connect = origConnect;
       // Dọn dẹp dữ liệu test
+      await testPool.query("DROP TRIGGER IF EXISTS trg_fail_audit_logs ON audit_logs;").catch(() => {});
+      await testPool.query("DROP FUNCTION IF EXISTS trigger_fail_audit_fn();").catch(() => {});
       await testPool.query("DELETE FROM audit_logs WHERE resource_id = $1;", [testLotId]).catch(() => {});
       await testPool.query("DELETE FROM batch_events WHERE batch_id = $1;", [testLotId]).catch(() => {});
       await testPool.query("DELETE FROM lots WHERE id = $1;", [testLotId]).catch(() => {});
