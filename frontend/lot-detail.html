@@ -64,6 +64,17 @@
       -webkit-backdrop-filter: var(--liquid-glass-blur);
       box-shadow: var(--liquid-glass-shadow);
       position: relative;
+      z-index: 30;
+    }
+
+    .hero-card:has(.dropdown-popover.active),
+    .hero-card.has-dropdown-open {
+      z-index: 100 !important;
+    }
+
+    .dropdown-menu-wrapper {
+      position: relative;
+      z-index: 105;
     }
 
     .hero-top {
@@ -152,6 +163,8 @@
 
     /* 3 Tabs Navigation (T-59) */
     .lot-tabs-nav {
+      position: relative;
+      z-index: 10;
       display: flex;
       align-items: center;
       gap: 8px;
@@ -217,6 +230,8 @@
 
     .lot-tab-pane {
       display: none;
+      position: relative;
+      z-index: 5;
       animation: fadeInTab 0.25s ease-out;
     }
 
@@ -237,6 +252,8 @@
 
     /* Details Grid */
     .details-grid {
+      position: relative;
+      z-index: 5;
       display: grid;
       grid-template-columns: 1fr 1fr;
       gap: 20px;
@@ -1711,7 +1728,7 @@
 
       contentArea.innerHTML = `
         <!-- Hero Overview -->
-        <div class="hero-card">
+        <div class="hero-card" id="heroCard">
           <div class="hero-top">
             <div class="lot-id-group">
               <span class="lot-code-hero">${escapeHtml(lot.id)}</span>
@@ -3431,13 +3448,23 @@
       if (e) e.stopPropagation();
       const popover = document.getElementById("dropdown-hero-lot");
       if (popover) {
-        popover.classList.toggle("active");
+        const isActive = popover.classList.toggle("active");
+        const heroCard = popover.closest(".hero-card") || document.getElementById("heroCard");
+        if (heroCard) {
+          heroCard.classList.toggle("has-dropdown-open", isActive);
+        }
+        const btnHero = document.getElementById("btn-hero-more");
+        if (btnHero) {
+          btnHero.classList.toggle("active", isActive);
+        }
         // Bind transfer button after dropdown renders (content set via innerHTML)
         const btnTransfer = document.getElementById("btnOpenTransferFromDetail");
         if (btnTransfer && !btnTransfer._bound) {
           btnTransfer._bound = true;
           btnTransfer.addEventListener("click", () => {
             popover.classList.remove("active");
+            if (heroCard) heroCard.classList.remove("has-dropdown-open");
+            if (btnHero) btnHero.classList.remove("active");
             openDetailTransferModal(btnTransfer.dataset.lotId, btnTransfer.dataset.lotName);
           });
         }
@@ -3448,6 +3475,8 @@
           btnSplit._bound = true;
           btnSplit.addEventListener("click", () => {
             popover.classList.remove("active");
+            if (heroCard) heroCard.classList.remove("has-dropdown-open");
+            if (btnHero) btnHero.classList.remove("active");
             openSplitLotModal(lotData);
           });
         }
@@ -3458,6 +3487,8 @@
           btnMerge._bound = true;
           btnMerge.addEventListener("click", () => {
             popover.classList.remove("active");
+            if (heroCard) heroCard.classList.remove("has-dropdown-open");
+            if (btnHero) btnHero.classList.remove("active");
             openMergeLotModal(lotData);
           });
         }
@@ -3468,6 +3499,8 @@
           btnConsume._bound = true;
           btnConsume.addEventListener("click", () => {
             popover.classList.remove("active");
+            if (heroCard) heroCard.classList.remove("has-dropdown-open");
+            if (btnHero) btnHero.classList.remove("active");
             openConsumeLotModal(lotData);
           });
         }
@@ -3477,7 +3510,13 @@
     document.addEventListener("click", (e) => {
       if (!e.target.closest(".dropdown-menu-wrapper")) {
         const popover = document.getElementById("dropdown-hero-lot");
-        if (popover) popover.classList.remove("active");
+        if (popover) {
+          popover.classList.remove("active");
+          const heroCard = popover.closest(".hero-card") || document.getElementById("heroCard");
+          if (heroCard) heroCard.classList.remove("has-dropdown-open");
+          const btnHero = document.getElementById("btn-hero-more");
+          if (btnHero) btnHero.classList.remove("active");
+        }
       }
     });
 

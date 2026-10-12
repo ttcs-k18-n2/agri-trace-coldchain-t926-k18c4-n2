@@ -128,10 +128,11 @@ button, input, select, textarea {
    ============================================================================== */
 .app-header {
   position: sticky;
-  top: 14px;
-  z-index: 100;
-  max-width: 1200px;
-  margin: 14px auto 0;
+  top: 12px;
+  z-index: 1000;
+  max-width: 1400px;
+  width: calc(100% - 24px);
+  margin: 12px auto 0;
   padding: 0 16px;
   height: 54px;
   border-radius: var(--radius-full);
@@ -151,7 +152,8 @@ button, input, select, textarea {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: 8px;
+  min-width: 0;
 }
 
 /* Brand Capsule */
@@ -210,23 +212,25 @@ button, input, select, textarea {
 .nav-links {
   display: flex;
   align-items: center;
-  gap: 4px;
-  flex-shrink: 0;
+  gap: 3px;
+  flex: 1 1 auto;
+  justify-content: center;
+  min-width: 0;
 }
 
 .nav-item {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 6px 12px;
+  gap: 5px;
+  padding: 6px 10px;
   border-radius: var(--radius-full);
-  font-size: 13px;
+  font-size: 12.5px;
   font-weight: 500;
   color: var(--color-text-muted);
   transition: var(--transition-fast);
   cursor: pointer;
   text-decoration: none;
-  min-height: 34px;
+  min-height: 32px;
   white-space: nowrap;
   flex-shrink: 0;
 }
@@ -832,6 +836,12 @@ button, input, select, textarea {
 
 .nav-links {
   flex: 0 1 auto;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.nav-links::-webkit-scrollbar {
+  display: none;
 }
 
 .nav-item {
@@ -846,19 +856,20 @@ button, input, select, textarea {
   flex-wrap: wrap;
 }
 
-@media (max-width: 1180px) {
+@media (max-width: 1380px) {
   .app-header {
     height: auto;
-    padding: 10px 16px;
+    padding: 8px 14px;
     border-radius: var(--radius-xl);
     top: 8px;
-    margin: 8px 14px 0 14px;
+    margin: 8px auto 0;
+    width: calc(100% - 20px);
   }
 
   .header-container {
     height: auto;
-    min-height: 52px;
-    padding: 4px 0;
+    min-height: 50px;
+    padding: 2px 0;
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
     grid-template-areas:
@@ -882,21 +893,35 @@ button, input, select, textarea {
     grid-area: nav;
     width: 100%;
     display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(6, minmax(0, 1fr));
     gap: 4px;
     padding: 2px 0;
     margin: 0;
+    overflow-x: visible;
   }
 
   .nav-item {
     width: 100%;
     min-width: 0;
     justify-content: center;
-    padding: 6px 8px;
+    padding: 6px 6px;
     border-radius: var(--radius-full);
+    font-size: 12px;
     overflow: hidden;
-  }
     text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .nav-item span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
+@media (max-width: 1180px) {
+  .nav-links {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 }
 
@@ -987,13 +1012,11 @@ button, input, select, textarea {
   position: absolute;
   top: calc(100% + 6px);
   right: 0;
-  min-width: 200px;
-  background: var(--liquid-glass-bg);
-  backdrop-filter: var(--liquid-glass-blur);
-  -webkit-backdrop-filter: var(--liquid-glass-blur);
-  border: var(--liquid-glass-border);
+  min-width: 210px;
+  background: #ffffff;
+  border: 1px solid rgba(0, 0, 0, 0.12);
   border-radius: var(--radius-md);
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.12), inset 0 1px 1px rgba(255, 255, 255, 0.9);
+  box-shadow: 0 16px 42px rgba(0, 0, 0, 0.18), 0 2px 8px rgba(0, 0, 0, 0.08);
   padding: 6px;
   z-index: 1050;
   display: none;
@@ -1003,7 +1026,17 @@ button, input, select, textarea {
 }
 
 .dropdown-popover.active {
-  display: flex;
+  display: flex !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+}
+
+/* Ensure any card with an open popover elevates above sibling cards and tabs */
+.hero-card:has(.dropdown-popover.active),
+.hero-card.has-dropdown-open,
+.lot-card:has(.dropdown-popover.active),
+.lot-card.has-dropdown-open {
+  z-index: 100 !important;
 }
 
 @keyframes dropdownFadeIn {
@@ -1195,6 +1228,7 @@ button, input, select, textarea {
   border-radius: 4px;
   font-size: 11px;
   font-family: monospace;
+}
 /* ==============================================================================
    Trace Forward (Truy xuôi hậu duệ & Khoanh vùng sự cố) & Recall Quarantine Table
    ============================================================================== */

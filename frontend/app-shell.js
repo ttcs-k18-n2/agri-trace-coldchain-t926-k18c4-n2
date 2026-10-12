@@ -197,6 +197,7 @@
       if (!e.target.closest(".dropdown-menu-wrapper")) {
         document.querySelectorAll(".dropdown-popover.active").forEach((p) => p.classList.remove("active"));
         document.querySelectorAll(".btn-icon-kebab.active").forEach((b) => b.classList.remove("active"));
+        document.querySelectorAll(".has-dropdown-open").forEach((el) => el.classList.remove("has-dropdown-open"));
       }
     });
   }
