@@ -8,6 +8,7 @@ const {
   inMemoryLots,
   inMemoryBatchRelations,
   inMemoryBatchEvents,
+  setDatabasePool,
 } = require("../src/server");
 const { seedS22InMemory } = require("../scripts/seed_s22");
 
@@ -377,26 +378,164 @@ test("Sprint 4: Bộ kiểm thử tích hợp Story S-30 (Địa điểm), S-27 
     assert.ok(resPatch.status === 404 || resPatch.status === 405);
   });
 
-  await t.test("15. S-30: Kiểm thử tích hợp PostgreSQL cho luồng đổi kho và ghi chuỗi hash batch_events", async (ctx) => {
-    const dbUrl = process.env.DATABASE_URL;
+  await t.test("15. S-30 & S-31: Kiểm thử thực tế trên PostgreSQL: luồng đổi kho, hash-chain và tìm kiếm audit log", async (ctx) => {
+    const dbUrl = process.env.MIGRATION_DATABASE_URL || process.env.DATABASE_URL;
     if (!dbUrl) {
       ctx.skip("Bỏ qua do không có DATABASE_URL trên môi trường hiện tại");
       return;
     }
+
     const { Pool } = require("pg");
-    const testPool = new Pool({ connectionString: dbUrl });
+    const testPool = new Pool({ connectionString: dbUrl, connectionTimeoutMillis: 3000 });
+    let isConnected = false;
     try {
-      await testPool.query("SELECT 1");
-      // Truy vấn kiểm tra bảng batch_events có cột event_hash và previous_hash
-      const colRes = await testPool.query(
-        "SELECT column_name FROM information_schema.columns WHERE table_name = 'batch_events'"
+      await testPool.query("SELECT 1;");
+      isConnected = true;
+    } catch {
+      isConnected = false;
+    }
+
+    if (!isConnected) {
+      ctx.skip("PostgreSQL không khả dụng hoặc không kết nối được trên môi trường cục bộ");
+      await testPool.end().catch(() => {});
+      return;
+    }
+
+    // Kết nối thành công -> Chạy kiểm thử thực tế KHÔNG swallow assertion trong catch!
+    setDatabasePool(testPool);
+
+    const testOrgId = "org-s30-pg-test";
+    const testOtherOrgId = "org-s30-other-test";
+    const testUserId = "usr-s30-pg-user";
+    const testUserEmail = "s30_pg_user@agri.vn";
+    const testLotId = "LOT-S30-PG-TEST";
+    const testLoc1Id = "LOC-S30-PG-1";
+    const testLoc2Id = "LOC-S30-PG-2";
+    const testOtherLocId = "LOC-S30-DIFF-ORG";
+
+    try {
+      // 1. Dọn dẹp dữ liệu cũ nếu có
+      await testPool.query("DELETE FROM audit_logs WHERE resource_id = $1;", [testLotId]);
+      await testPool.query("DELETE FROM batch_events WHERE batch_id = $1;", [testLotId]);
+      await testPool.query("DELETE FROM lots WHERE id = $1;", [testLotId]);
+      await testPool.query("DELETE FROM locations WHERE id IN ($1, $2, $3);", [testLoc1Id, testLoc2Id, testOtherLocId]);
+      await testPool.query("DELETE FROM users WHERE id = $1;", [testUserId]);
+      await testPool.query("DELETE FROM organizations WHERE id IN ($1, $2);", [testOrgId, testOtherOrgId]);
+
+      // 2. Tạo tổ chức và người dùng
+      await testPool.query(
+        "INSERT INTO organizations (id, name, type) VALUES ($1, $2, $3), ($4, $5, $6) ON CONFLICT (id) DO NOTHING;",
+        [testOrgId, "Hợp tác xã S30 PG Test", "distributor", testOtherOrgId, "Tổ chức khác Test", "distributor"]
       );
-      const cols = colRes.rows.map((r) => r.column_name);
-      assert.ok(cols.includes("event_hash"), "batch_events phải có cột event_hash");
-      assert.ok(cols.includes("previous_hash"), "batch_events phải có cột previous_hash");
-    } catch (err) {
-      ctx.skip("Không thể kết nối hoặc truy vấn PostgreSQL: " + err.message);
+
+      const passHash = await hashPassword("Password123!");
+      await testPool.query(
+        "INSERT INTO users (id, email, password_hash, organization_id, role_id) VALUES ($1, $2, $3, $4, $5) ON CONFLICT (id) DO NOTHING;",
+        [testUserId, testUserEmail, passHash, testOrgId, "distributor"]
+      );
+
+      // Cập nhật users in-memory map để middleware xác thực tìm thấy user
+      users.set(testUserEmail, {
+        id: testUserId,
+        email: testUserEmail,
+        passwordHash: passHash,
+        failedCount: 0,
+        lockedUntil: null,
+        roleId: "distributor",
+        organizationId: testOrgId,
+      });
+
+      // 3. Tạo các địa điểm lưu kho
+      await testPool.query(
+        "INSERT INTO locations (id, name, organization_id, location_type, address) VALUES ($1, $2, $3, $4, $5), ($6, $7, $8, $9, $10), ($11, $12, $13, $14, $15);",
+        [
+          testLoc1Id, "Kho Khởi Đầu PG", testOrgId, "warehouse", "123 Đường A",
+          testLoc2Id, "Cửa Hàng Bán Lẻ PG", testOrgId, "retail_store", "456 Đường B",
+          testOtherLocId, "Kho Tổ Chức Khác", testOtherOrgId, "warehouse", "789 Đường C"
+        ]
+      );
+
+      // 4. Tạo sản phẩm mẫu và lô hàng ban đầu
+      await testPool.query(
+        "INSERT INTO products (id, name, unit) VALUES ('PROD-S30-TEST', 'Sản phẩm Test S30', 'kg') ON CONFLICT (id) DO NOTHING;"
+      );
+      await testPool.query(
+        "INSERT INTO lots (id, name, product_id, organization_id, initial_quantity, remaining_quantity, status, location_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8);",
+        [testLotId, "Lô Nông Sản PG S30", "PROD-S30-TEST", testOrgId, 100, 100, "Đang lưu kho", testLoc1Id]
+      );
+
+      // Tạo sự kiện gốc HARVEST_CREATED để chuỗi băm có previous_hash
+      const { computeEventHash } = require("../src/event_repository");
+      const initPayload = { note: "Khởi tạo lô test" };
+      const initHash = computeEventHash({
+        batchId: testLotId,
+        eventType: "HARVEST_CREATED",
+        payload: initPayload,
+        previousHash: "0".repeat(64),
+        sequenceNo: 1,
+      });
+      await testPool.query(
+        "INSERT INTO batch_events (id, batch_id, sequence_no, event_type, payload, organization_id, actor_user_id, previous_hash, event_hash) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9);",
+        [`evt-s30-init-${Date.now()}`, testLotId, 1, "HARVEST_CREATED", JSON.stringify(initPayload), testOrgId, testUserId, "0".repeat(64), initHash]
+      );
+
+      // 5. Đăng nhập qua session
+      const pgUserAgent = await loginAs(testUserEmail);
+
+      // --- KIỂM THỬ THỰC TẾ 1: Đổi kho thành công, ghi hash-chain xuống PostgreSQL ---
+      const resUpdate = await pgUserAgent
+        .patch(`/api/lots/${testLotId}/location`)
+        .send({ locationId: testLoc2Id });
+
+      assert.equal(resUpdate.status, 200, "Đổi kho phải thành công với mã HTTP 200");
+      assert.equal(resUpdate.body.locationId, testLoc2Id);
+      assert.ok(resUpdate.body.event, "API phải trả về sự kiện LOCATION_CHANGED");
+      assert.equal(resUpdate.body.event.eventType, "LOCATION_CHANGED");
+      assert.match(resUpdate.body.event.eventHash, /^[0-9a-f]{64}$/i, "eventHash phải là SHA-256 hợp lệ");
+      assert.equal(resUpdate.body.event.previousHash, initHash, "previousHash phải nối chuỗi từ sự kiện liền trước");
+
+      // Đối chiếu trực tiếp bảng lots trong PostgreSQL
+      const dbLotRes = await testPool.query("SELECT location_id FROM lots WHERE id = $1;", [testLotId]);
+      assert.equal(dbLotRes.rows[0].location_id, testLoc2Id, "lots.location_id trong PostgreSQL phải được cập nhật");
+
+      // Đối chiếu trực tiếp bảng batch_events trong PostgreSQL
+      const dbEventRes = await testPool.query(
+        "SELECT event_type, payload, event_hash, previous_hash FROM batch_events WHERE batch_id = $1 AND event_type = 'LOCATION_CHANGED' ORDER BY created_at DESC LIMIT 1;",
+        [testLotId]
+      );
+      assert.equal(dbEventRes.rowCount, 1, "batch_events trong PostgreSQL phải có đúng sự kiện LOCATION_CHANGED");
+      assert.equal(dbEventRes.rows[0].payload.newLocationId, testLoc2Id);
+      assert.equal(dbEventRes.rows[0].previous_hash, initHash);
+      assert.equal(dbEventRes.rows[0].event_hash, resUpdate.body.event.eventHash);
+
+      // --- KIỂM THỬ THỰC TẾ 2: S-31 Tìm kiếm nhật ký kiểm toán trên PostgreSQL (xác minh fix LOWER(id::text)) ---
+      const resSearch = await inspAgent.get(`/api/audit-logs?search=${testLotId}`);
+      assert.equal(resSearch.status, 200, "Truy vấn tìm kiếm nhật ký trên PostgreSQL phải trả về HTTP 200 mà không ném lỗi cú pháp UUID");
+      assert.ok(Array.isArray(resSearch.body.logs));
+      const foundAudit = resSearch.body.logs.find((l) => l.resourceId === testLotId);
+      assert.ok(foundAudit, "Phải tìm thấy audit log vừa tạo cho lô hàng test trên PostgreSQL");
+      assert.equal(foundAudit.action, "LOT_LOCATION_UPDATED");
+
+      // --- KIỂM THỬ THỰC TẾ 3: Rollback nguyên tử khi cập nhật địa điểm khác tổ chức ---
+      const resFail = await pgUserAgent
+        .patch(`/api/lots/${testLotId}/location`)
+        .send({ locationId: testOtherLocId });
+
+      assert.equal(resFail.status, 403, "Cập nhật kho khác tổ chức phải bị từ chối HTTP 403");
+      assert.equal(resFail.body.error, "LOCATION_ORG_MISMATCH");
+
+      // Xác minh trong PostgreSQL: location_id vẫn là testLoc2Id, không bị thay đổi (atomic rollback)
+      const dbLotCheck = await testPool.query("SELECT location_id FROM lots WHERE id = $1;", [testLotId]);
+      assert.equal(dbLotCheck.rows[0].location_id, testLoc2Id, "Giao dịch phải được rollback toàn bộ khi thất bại");
     } finally {
+      // Dọn dẹp dữ liệu test
+      await testPool.query("DELETE FROM audit_logs WHERE resource_id = $1;", [testLotId]).catch(() => {});
+      await testPool.query("DELETE FROM batch_events WHERE batch_id = $1;", [testLotId]).catch(() => {});
+      await testPool.query("DELETE FROM lots WHERE id = $1;", [testLotId]).catch(() => {});
+      await testPool.query("DELETE FROM locations WHERE id IN ($1, $2, $3);", [testLoc1Id, testLoc2Id, testOtherLocId]).catch(() => {});
+      await testPool.query("DELETE FROM users WHERE id = $1;", [testUserId]).catch(() => {});
+      await testPool.query("DELETE FROM organizations WHERE id IN ($1, $2);", [testOrgId, testOtherOrgId]).catch(() => {});
+      setDatabasePool(null);
       await testPool.end().catch(() => {});
     }
   });

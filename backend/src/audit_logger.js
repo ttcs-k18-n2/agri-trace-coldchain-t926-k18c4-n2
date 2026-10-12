@@ -119,7 +119,7 @@ async function getAuditLogs({
       }
       if (search && typeof search === "string" && search.trim()) {
         values.push(`%${search.trim().toLowerCase()}%`);
-        conditions.push(`(LOWER(actor_email) LIKE $${values.length} OR LOWER(actor_user_id) LIKE $${values.length} OR LOWER(resource_id) LIKE $${values.length} OR LOWER(id) LIKE $${values.length})`);
+        conditions.push(`(LOWER(actor_email) LIKE $${values.length} OR LOWER(actor_user_id) LIKE $${values.length} OR LOWER(resource_id) LIKE $${values.length} OR LOWER(id::text) LIKE $${values.length})`);
       }
 
       const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
