@@ -492,7 +492,7 @@ async function traceLotDescendants({
   inMemoryProducts = [],
   inMemoryFarms = [],
   inMemoryLocations = [],
-  maxDepth = 50,
+  maxDepth = null,
 }) {
   if (!startLotId) {
     return {
@@ -592,8 +592,14 @@ async function traceLotDescendants({
   const fullAdjacencyMap = new Map();
 
   let distance = 0;
+  const effectiveMaxDepth = (typeof maxDepth === "number" && maxDepth > 0) ? maxDepth : Infinity;
+  let isTruncated = false;
 
-  while (currentLevelQueue.length > 0 && distance < maxDepth) {
+  while (currentLevelQueue.length > 0) {
+    if (distance >= effectiveMaxDepth) {
+      isTruncated = true;
+      break;
+    }
     distance += 1;
     const parentIdsInLevel = currentLevelQueue.map((item) => item.lotId);
 
@@ -905,11 +911,14 @@ async function traceLotDescendants({
       locationId: d.locationId || null,
       locationName: locName,
       locationType: d.locationType || null,
+      locationAddress: d.locationAddress || null,
       unit: d.productUnit || "kg",
       totalLots: 0,
+      lotsCount: 0,
       totalRemainingQuantity: 0,
     };
     existing.totalLots += 1;
+    existing.lotsCount += 1;
     existing.totalRemainingQuantity = Number(
       ((existing.totalRemainingQuantity) + Number(d.remainingQuantity || 0)).toFixed(3)
     );
@@ -957,6 +966,11 @@ async function traceLotDescendants({
     locationSummary: Array.from(locationSummaryMap.values()),
     levels,
     maxDistance: levels.length,
+    truncated: isTruncated,
+    truncationReason: isTruncated ? "MAX_DEPTH_REACHED" : null,
+    warning: isTruncated
+      ? `Kết quả truy vết bị giới hạn ở độ sâu tối đa (${effectiveMaxDepth} tầng). Có thể còn các lô hậu duệ sâu hơn chưa được liệt kê.`
+      : null,
     graph: {
       nodes: graphNodes,
       edges: graphEdges,

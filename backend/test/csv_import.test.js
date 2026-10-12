@@ -298,4 +298,40 @@ test("CSV Import - Products & Farms validation and atomic import", async (t) => 
     assert.equal(errRow4.column, "name");
     assert.match(errRow4.message, /trùng lặp/);
   });
+
+  await t.test("8. CSV file size limit (> 5MB) is rejected", async () => {
+    // Generate a payload exceeding 5MB
+    const bigCsv = "name,unit\n" + "A".repeat(5.2 * 1024 * 1024);
+    const res = await request(
+      server,
+      {
+        hostname: "127.0.0.1",
+        port,
+        path: "/api/products/import-csv",
+        method: "POST",
+        headers: { "Content-Type": "application/json", Cookie: adminCookie },
+      },
+      { csvContent: bigCsv }
+    );
+
+    // Express body-parser returns 413 (Payload Too Large) or application validation returns 400
+    assert.ok(res.status === 413 || res.status === 400, `Expected 413 or 400, got ${res.status}`);
+  });
+
+  await t.test("9. Empty CSV content is rejected with 400", async () => {
+    const res = await request(
+      server,
+      {
+        hostname: "127.0.0.1",
+        port,
+        path: "/api/products/import-csv",
+        method: "POST",
+        headers: { "Content-Type": "application/json", Cookie: adminCookie },
+      },
+      { csvContent: "   \n\t  " }
+    );
+
+    assert.equal(res.status, 400);
+    assert.match(res.body.message, /không được để trống/);
+  });
 });

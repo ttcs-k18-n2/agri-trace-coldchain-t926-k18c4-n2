@@ -140,6 +140,19 @@ test("Sprint 4: Bộ kiểm thử tích hợp Story S-30 (Địa điểm), S-27 
     assert.equal(res.status, 200);
     assert.equal(res.body.locationId, createdLocationId);
 
+    // Xác nhận sự kiện LOCATION_CHANGED được ghi vào chuỗi hash-chain batch_events (S-30 P0)
+    assert.ok(res.body.event, "Phải trả về đối tượng sự kiện hash-chain");
+    assert.equal(res.body.event.eventType, "LOCATION_CHANGED");
+    assert.equal(res.body.event.batchId, "L05");
+    assert.equal(res.body.event.payload.newLocationId, createdLocationId);
+    assert.match(res.body.event.eventHash, /^[0-9a-f]{64}$/i, "eventHash phải là chuỗi SHA-256 hợp lệ");
+    assert.ok(res.body.event.previousHash, "previousHash phải tồn tại");
+
+    const eventInStore = inMemoryBatchEvents.find(
+      (e) => (e.batch_id === "L05" || e.batchId === "L05") && (e.event_type === "LOCATION_CHANGED" || e.eventType === "LOCATION_CHANGED")
+    );
+    assert.ok(eventInStore, "Sự kiện LOCATION_CHANGED phải được lưu vào sổ cái batch_events");
+
     // Xác nhận GET /api/lots/:id trả về đầy đủ vị trí lưu kho
     const getLotRes = await distAgent.get("/api/lots/L05");
     assert.equal(getLotRes.status, 200);
@@ -330,6 +343,33 @@ test("Sprint 4: Bộ kiểm thử tích hợp Story S-30 (Địa điểm), S-27 
       },
       "Phải ném lỗi khi ghi audit log thất bại trên transaction client để kích hoạt rollback"
     );
+  });
+
+  await t.test("13. S-31: Bộ lọc đa tiêu chí và phân trang nhật ký kiểm toán (GET /api/audit-logs)", async () => {
+    // Truy vấn với bộ lọc action
+    const resFiltered = await inspAgent.get("/api/audit-logs?action=LOT_LOCATION_UPDATED");
+    assert.equal(resFiltered.status, 200);
+    assert.ok(Array.isArray(resFiltered.body.logs));
+    for (const log of resFiltered.body.logs) {
+      assert.equal(log.action, "LOT_LOCATION_UPDATED");
+    }
+
+    // Truy vấn với limit và offset
+    const resPaged = await inspAgent.get("/api/audit-logs?limit=2&offset=0");
+    assert.equal(resPaged.status, 200);
+    assert.equal(resPaged.body.limit, 2);
+    assert.equal(resPaged.body.offset, 0);
+    assert.ok(resPaged.body.logs.length <= 2);
+  });
+
+  await t.test("14. S-31: Đảm bảo tính chỉ-thêm (Append-Only) - Không cho phép chỉnh sửa hoặc xóa audit logs qua API", async () => {
+    // Không có endpoint DELETE /api/audit-logs
+    const resDelete = await inspAgent.delete("/api/audit-logs");
+    assert.ok(resDelete.status === 404 || resDelete.status === 405);
+
+    // Không có endpoint PUT/PATCH /api/audit-logs/:id
+    const resPatch = await inspAgent.patch("/api/audit-logs/audit-123").send({ action: "ALTERED" });
+    assert.ok(resPatch.status === 404 || resPatch.status === 405);
   });
 });
 

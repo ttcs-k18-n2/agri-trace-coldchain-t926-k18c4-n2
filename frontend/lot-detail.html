@@ -939,10 +939,121 @@
       transition: all 0.18s ease;
     }
 
-    .level-lot-item:hover {
-      background: #ffffff;
-      border-color: var(--color-primary);
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+    /* S-28: Sơ đồ phả hệ dạng cây tương tác */
+    .s28-scroller {
+      overflow: auto;
+      min-height: 420px;
+      border: 1px dashed #ccd5e3;
+      border-radius: 10px;
+      padding: 18px;
+    }
+    .s28-tree {
+      display: flex;
+      align-items: center;
+      gap: 36px;
+      min-width: max-content;
+      min-height: 360px;
+    }
+    .s28-side-group {
+      display: flex;
+      align-items: center;
+      gap: 24px;
+    }
+    .s28-side {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 14px;
+    }
+    .s28-column-title {
+      font-size: 12px;
+      font-weight: 700;
+      color: #64748b;
+      text-transform: uppercase;
+      letter-spacing: .05em;
+      margin-bottom: 6px;
+    }
+    .s28-node {
+      border: 2px solid #b7c7dc;
+      background: #fff;
+      border-radius: 10px;
+      padding: 12px;
+      min-width: 155px;
+      text-align: center;
+      box-shadow: 0 2px 5px rgba(19, 41, 75, 0.05);
+      transition: all .2s ease;
+    }
+    .s28-node.current {
+      border-color: #2876d2;
+      background: #eaf3ff;
+      box-shadow: 0 4px 12px rgba(40,118,210,.18);
+    }
+    .s28-node.selected {
+      outline: 2.5px solid #2876d2;
+    }
+    .s28-node button {
+      margin-top: 8px;
+    }
+    .s28-badge-rel {
+      display: inline-block;
+      font-size: 10.5px;
+      font-weight: 700;
+      padding: 2px 6px;
+      border-radius: 4px;
+      margin-top: 4px;
+    }
+    .s28-badge-merge {
+      background: #ede9fe;
+      color: #6d28d9;
+    }
+    .s28-badge-split {
+      background: #dcfce7;
+      color: #15803d;
+    }
+    .s28-children {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      padding-left: 16px;
+      border-left: 2px solid #c5d2e2;
+    }
+    .s28-parents-group {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      padding-right: 16px;
+      border-right: 2px solid #c5d2e2;
+    }
+    .s28-node-btn {
+      font: inherit;
+      cursor: pointer;
+      border: 1px solid #b8c6d9;
+      background: #fff;
+      border-radius: 7px;
+      padding: 4px 8px;
+      font-size: 11.5px;
+    }
+    .s28-node-btn:hover {
+      background: #edf4ff;
+    }
+    .s28-tag-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+      margin-top: 2px;
+    }
+    .s28-tag-lot {
+      background: #f1f5f9;
+      border: 1px solid #cbd5e1;
+      border-radius: 4px;
+      padding: 2px 6px;
+      font-size: 11.5px;
+      font-family: monospace;
+      cursor: pointer;
+    }
+    .s28-tag-lot:hover {
+      background: #e2e8f0;
+      color: #2876d2;
     }
   </style>
 </head>
@@ -1806,6 +1917,12 @@
             <span>Nguồn gốc</span>
             <span class="tab-badge">${((Array.isArray(lot.parentLots) && lot.parentLots.length > 0) ? lot.parentLots.length : (lot.parentLot ? 1 : 0)) + (lot.childLots ? lot.childLots.length : 0)}</span>
           </button>
+          <button type="button" class="lot-tab-btn" id="tabBtnGenealogy" role="tab" aria-selected="false" aria-controls="tabPaneGenealogy" onclick="switchLotTab('genealogy')">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="5" r="3"/><circle cx="5" cy="19" r="3"/><circle cx="19" cy="19" r="3"/><line x1="12" y1="8" x2="5" y2="16"/><line x1="12" y1="8" x2="19" y2="16"/>
+            </svg>
+            <span>Phả hệ (S-28)</span>
+          </button>
         </div>
 
         <!-- Tab 1: Tổng quan (T-59) -->
@@ -2357,10 +2474,10 @@
                   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
                   <span>Truy xuôi tất cả hậu duệ (S-26)</span>
                 </button>
-                <a href="/s28-genealogy-demo.html?id=${encodeURIComponent(lot.id)}" target="_blank" class="btn btn-secondary" style="height: 36px; padding: 0 14px; font-size: 13px; font-weight: 600; display: inline-flex; align-items: center; gap: 6px; text-decoration: none;">
+                <button type="button" class="btn btn-secondary" onclick="switchLotTab('genealogy')" style="height: 36px; padding: 0 14px; font-size: 13px; font-weight: 600; display: inline-flex; align-items: center; gap: 6px; cursor: pointer;">
                   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="5" r="3"/><circle cx="5" cy="19" r="3"/><circle cx="19" cy="19" r="3"/><line x1="12" y1="8" x2="5" y2="16"/><line x1="12" y1="8" x2="19" y2="16"/></svg>
                   <span>Sơ đồ cây tương tác (S-28)</span>
-                </a>
+                </button>
               </div>
             </div>
 
@@ -2457,6 +2574,60 @@
                       <!-- Rendered dynamically -->
                     </tbody>
                   </table>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tab 4: Sơ đồ phả hệ dạng cây tương tác (Story S-28) -->
+        <div class="lot-tab-pane" id="tabPaneGenealogy" role="tabpanel" aria-labelledby="tabBtnGenealogy">
+          <div class="card" style="margin-bottom: 24px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 16px;">
+              <div>
+                <h3 class="card-heading" style="margin-bottom: 4px;">Sơ đồ phả hệ dạng cây (Hỗ trợ Đa cha & Đa con)</h3>
+                <div style="font-size: 13px; color: var(--color-text-muted);">
+                  Cây tương tác trực quan: Lô hiện tại ở giữa, các lô tổ tiên (cha/mẹ đa nguồn) ở bên trái và các lô hậu duệ ở bên phải.
+                </div>
+              </div>
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <button type="button" class="btn btn-secondary" onclick="expandAllGenealogyNodes()" style="font-size: 12px; height: 32px; padding: 0 10px;">
+                  Mở rộng tất cả
+                </button>
+                <button type="button" class="btn btn-secondary" onclick="collapseAllGenealogyNodes()" style="font-size: 12px; height: 32px; padding: 0 10px;">
+                  Thu gọn
+                </button>
+                <button type="button" class="btn btn-secondary" onclick="loadGenealogyTree(lotData ? lotData.id : '')" style="font-size: 12px; height: 32px; padding: 0 10px;">
+                  Tải lại cây
+                </button>
+                <a href="/s28-genealogy-demo.html?id=${encodeURIComponent(lot.id)}" target="_blank" class="btn btn-secondary" style="font-size: 12px; height: 32px; padding: 0 10px; display: inline-flex; align-items: center; gap: 4px; text-decoration: none;">
+                  Mở tab demo riêng
+                </a>
+              </div>
+            </div>
+
+            <div id="genealogyStatusNote" style="background: #e6f4ea; border: 1px solid #34a853; color: #137333; padding: 10px 14px; border-radius: 8px; font-size: 13px; margin-bottom: 16px;">
+              <strong>Dữ liệu trực tiếp từ API:</strong> Đang nạp cây phả hệ đầy đủ của lô <code>${escapeHtml(lot.id)}</code>.
+            </div>
+
+            <div class="s28-layout" style="display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 16px;">
+              <div style="background: #ffffff; border: 1px solid var(--color-border); border-radius: 12px; padding: 16px; min-width: 0;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                  <span style="font-size: 13px; font-weight: 700; color: #475569;">Cây phân nhánh</span>
+                  <span style="font-size: 11.5px; color: #64748b;">⬅ Tổ tiên (Ancestors) | 🌿 Lô trung tâm | Hậu duệ (Descendants) ➡</span>
+                </div>
+                <div id="genealogyTreeScroller" class="s28-scroller">
+                  <div class="s28-tree" id="genealogyTreeContainer" aria-label="Sơ đồ phả hệ lô">
+                    <div style="text-align: center; width: 100%; padding: 40px; color: var(--color-text-muted);">
+                      Đang tải sơ đồ phả hệ...
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div style="background: #ffffff; border: 1px solid var(--color-border); border-radius: 12px; padding: 16px;">
+                <h4 style="margin: 0 0 12px; font-size: 14.5px; font-weight: 700;">Chi tiết lô trong cây</h4>
+                <div id="genealogyDetailPanel" style="font-size: 13px; color: var(--color-text-muted);">
+                  Chọn một lô trong sơ đồ để xem chi tiết.
                 </div>
               </div>
             </div>
@@ -2612,7 +2783,7 @@
             <div style="background: rgba(37, 99, 235, 0.06); border: 1px solid rgba(37, 99, 235, 0.2); border-radius: 8px; padding: 6px 12px; font-size: 12.5px; display: inline-flex; align-items: center; gap: 8px;">
               <span style="font-weight: 700; color: #1e40af;">📍 ${escapeHtml(item.locationName)}</span>
               <span style="background: #ffffff; padding: 2px 6px; border-radius: 4px; font-weight: 600; color: #059669; border: 1px solid rgba(5, 150, 105, 0.2);">
-                ${item.lotsCount} lô (${Number(item.totalRemainingQuantity).toFixed(2)} kg)
+                ${(item.lotsCount !== undefined ? item.lotsCount : item.totalLots) || 0} lô (${Number(item.totalRemainingQuantity).toFixed(2)} ${escapeHtml(item.unit || "kg")})
               </span>
               ${item.locationAddress ? `<span style="color: #64748b; font-size: 11px;">(${escapeHtml(item.locationAddress)})</span>` : ""}
             </div>
@@ -2757,11 +2928,18 @@
       }
     }
 
+    let genealogyLots = {};
+    let genealogyRootId = null;
+    let genealogySelectedId = null;
+    const genealogyCollapsed = new Set();
+    let genealogyLoadedId = null;
+
     function switchLotTab(tabKey) {
       const tabs = [
         { key: "overview", btnId: "tabBtnOverview", paneId: "tabPaneOverview" },
         { key: "timeline", btnId: "tabBtnTimeline", paneId: "tabPaneTimeline" },
         { key: "lineage", btnId: "tabBtnLineage", paneId: "tabPaneLineage" },
+        { key: "genealogy", btnId: "tabBtnGenealogy", paneId: "tabPaneGenealogy" },
       ];
 
       tabs.forEach((t) => {
@@ -2776,8 +2954,357 @@
           pane.classList.toggle("active", t.key === tabKey);
         }
       });
+
+      if (tabKey === "genealogy" && lotData && lotData.id) {
+        if (genealogyLoadedId !== lotData.id) {
+          loadGenealogyTree(lotData.id);
+        }
+      }
     }
     window.switchLotTab = switchLotTab;
+
+    async function loadGenealogyTree(targetId) {
+      if (!targetId) return;
+      genealogyRootId = targetId;
+      genealogySelectedId = targetId;
+      const statusEl = document.getElementById("genealogyStatusNote");
+      const treeEl = document.getElementById("genealogyTreeContainer");
+
+      if (treeEl) {
+        treeEl.innerHTML = `<div style="text-align: center; width: 100%; padding: 40px; color: var(--color-text-muted);">Đang tải phả hệ từ API...</div>`;
+      }
+
+      try {
+        const res = await fetch(`/api/lots/${encodeURIComponent(targetId)}/genealogy`, { credentials: "same-origin" });
+        if (!res.ok) {
+          let errText = `Yêu cầu API trả về mã lỗi ${res.status} (${res.statusText})`;
+          try {
+            const errObj = await res.json();
+            if (errObj && errObj.message) errText = errObj.message;
+          } catch (_) {}
+          if (statusEl) {
+            statusEl.style.background = "#fee2e2";
+            statusEl.style.borderColor = "#ef4444";
+            statusEl.style.color = "#991b1b";
+            statusEl.innerHTML = `⚠️ <strong>Không thể nạp sơ đồ:</strong> ${escapeHtml(errText)}`;
+          }
+          if (treeEl) {
+            treeEl.innerHTML = `<div style="text-align: center; width: 100%; padding: 30px; color: #dc2626;">Không thể tải dữ liệu phả hệ của lô hàng.</div>`;
+          }
+          return;
+        }
+
+        const data = await res.json();
+        const apiLots = {};
+        const graphNodes = (data.graph && Array.isArray(data.graph.nodes)) ? data.graph.nodes : [];
+        const graphEdges = (data.graph && Array.isArray(data.graph.edges)) ? data.graph.edges : [];
+
+        graphNodes.forEach((n) => {
+          apiLots[n.id] = {
+            id: n.id,
+            name: n.name || n.id,
+            status: n.status || "Đã thu hoạch",
+            date: n.organizationName || n.organizationId || "--",
+            side: n.isCurrent ? "current" : (n.isAncestor ? "ancestor" : "descendant"),
+            parents: [],
+            children: [],
+          };
+        });
+
+        graphEdges.forEach((e) => {
+          const src = e.source;
+          const tgt = e.target;
+          if (apiLots[src] && !apiLots[src].children.includes(tgt)) {
+            apiLots[src].children.push(tgt);
+          }
+          if (apiLots[tgt] && !apiLots[tgt].parents.includes(src)) {
+            apiLots[tgt].parents.push(src);
+          }
+        });
+
+        if (!apiLots[targetId]) {
+          apiLots[targetId] = {
+            id: targetId,
+            name: (data.startLot && data.startLot.name) || targetId,
+            status: (data.startLot && data.startLot.status) || "--",
+            date: "--",
+            side: "current",
+            parents: [],
+            children: [],
+          };
+        }
+
+        genealogyLots = apiLots;
+        genealogyLoadedId = targetId;
+
+        if (statusEl) {
+          statusEl.style.background = "#e6f4ea";
+          statusEl.style.borderColor = "#34a853";
+          statusEl.style.color = "#137333";
+          statusEl.innerHTML = `<strong>Dữ liệu phả hệ trực tiếp từ API:</strong> Đang hiển thị cây phả hệ đầy đủ của lô <code>${escapeHtml(targetId)}</code> (${Object.keys(genealogyLots).length} nút liên đới).`;
+        }
+
+        renderGenealogyTree();
+      } catch (e) {
+        if (statusEl) {
+          statusEl.style.background = "#fee2e2";
+          statusEl.style.borderColor = "#ef4444";
+          statusEl.style.color = "#991b1b";
+          statusEl.innerHTML = `⚠️ <strong>Lỗi kết nối:</strong> ${escapeHtml(e.message || "Không thể kết nối đến máy chủ API")}`;
+        }
+      }
+    }
+    window.loadGenealogyTree = loadGenealogyTree;
+
+    function makeGenealogyNode(id) {
+      const d = genealogyLots[id] || { name: id, status: "--", date: "--", side: "unknown", parents: [], children: [] };
+      const el = document.createElement("div");
+      el.className = "s28-node" + (d.side === "current" ? " current" : "") + (genealogySelectedId === id ? " selected" : "");
+
+      const title = document.createElement("strong");
+      title.textContent = id;
+      el.appendChild(title);
+
+      const name = document.createElement("small");
+      name.textContent = d.name || id;
+      el.appendChild(name);
+
+      if (d.parents && d.parents.length > 1) {
+        const badge = document.createElement("span");
+        badge.className = "s28-badge-rel s28-badge-merge";
+        badge.textContent = `Gộp từ ${d.parents.length} lô mẹ`;
+        el.appendChild(badge);
+      } else if (d.children && d.children.length > 1) {
+        const badge = document.createElement("span");
+        badge.className = "s28-badge-rel s28-badge-split";
+        badge.textContent = `Tách ${d.children.length} lô con`;
+        el.appendChild(badge);
+      }
+
+      const btnGroup = document.createElement("div");
+      btnGroup.style.display = "flex";
+      btnGroup.style.justifyContent = "center";
+      btnGroup.style.gap = "4px";
+      btnGroup.style.marginTop = "8px";
+
+      const choose = document.createElement("button");
+      choose.className = "s28-node-btn";
+      choose.textContent = "Chi tiết";
+      choose.onclick = () => {
+        genealogySelectedId = id;
+        renderGenealogyTree();
+      };
+      btnGroup.appendChild(choose);
+
+      const totalBranches = (d.children ? d.children.length : 0) + (d.parents ? d.parents.length : 0);
+      if (totalBranches > 0) {
+        const toggle = document.createElement("button");
+        toggle.className = "s28-node-btn";
+        toggle.textContent = genealogyCollapsed.has(id) ? "Mở" : "Thu gọn";
+        toggle.onclick = () => {
+          if (genealogyCollapsed.has(id)) {
+            genealogyCollapsed.delete(id);
+          } else {
+            genealogyCollapsed.add(id);
+          }
+          renderGenealogyTree();
+        };
+        btnGroup.appendChild(toggle);
+      }
+
+      el.appendChild(btnGroup);
+      return el;
+    }
+
+    function renderGenealogyAncestors(lotId, visited = new Set()) {
+      if (visited.has(lotId)) return null;
+      visited.add(lotId);
+
+      const d = genealogyLots[lotId];
+      if (!d || !d.parents || d.parents.length === 0) return null;
+
+      const wrap = document.createElement("div");
+      wrap.className = "s28-side";
+
+      if (!genealogyCollapsed.has(lotId)) {
+        const pGroup = document.createElement("div");
+        pGroup.className = "s28-parents-group";
+        d.parents.forEach((pId) => {
+          const pBranch = document.createElement("div");
+          pBranch.className = "s28-side";
+          const upper = renderGenealogyAncestors(pId, new Set(visited));
+          if (upper) pBranch.appendChild(upper);
+          pBranch.appendChild(makeGenealogyNode(pId));
+          pGroup.appendChild(pBranch);
+        });
+        wrap.appendChild(pGroup);
+      }
+
+      return wrap;
+    }
+
+    function renderGenealogyDescendants(lotId, visited = new Set()) {
+      if (visited.has(lotId)) return null;
+      visited.add(lotId);
+
+      const d = genealogyLots[lotId];
+      if (!d || !d.children || d.children.length === 0) return null;
+
+      const wrap = document.createElement("div");
+      wrap.className = "s28-side";
+
+      if (!genealogyCollapsed.has(lotId)) {
+        const cGroup = document.createElement("div");
+        cGroup.className = "s28-children";
+        d.children.forEach((cId) => {
+          const cBranch = document.createElement("div");
+          cBranch.className = "s28-side";
+          cBranch.appendChild(makeGenealogyNode(cId));
+          const lower = renderGenealogyDescendants(cId, new Set(visited));
+          if (lower) cBranch.appendChild(lower);
+          cGroup.appendChild(cBranch);
+        });
+        wrap.appendChild(cGroup);
+      }
+
+      return wrap;
+    }
+
+    function renderGenealogyTree() {
+      const tree = document.getElementById("genealogyTreeContainer");
+      if (!tree) return;
+      tree.replaceChildren();
+
+      if (!genealogyRootId || !genealogyLots[genealogyRootId]) {
+        tree.innerHTML = `<div style="text-align: center; width: 100%; padding: 40px; color: var(--color-text-muted);">Không có dữ liệu phả hệ để hiển thị.</div>`;
+        return;
+      }
+
+      // 1. Bên trái: Tổ tiên
+      const left = document.createElement("div");
+      left.className = "s28-side";
+      const ancestorsElem = renderGenealogyAncestors(genealogyRootId);
+      if (ancestorsElem) {
+        left.appendChild(ancestorsElem);
+      } else {
+        const emptyNotice = document.createElement("div");
+        emptyNotice.style.cssText = "color: #94a3b8; font-size: 13px; font-style: italic;";
+        emptyNotice.textContent = "Không có tổ tiên (Lô gốc F0)";
+        left.appendChild(emptyNotice);
+      }
+
+      // 2. Trung tâm: Lô trung tâm
+      const center = document.createElement("div");
+      center.className = "s28-side";
+      center.appendChild(makeGenealogyNode(genealogyRootId));
+
+      // 3. Bên phải: Hậu duệ
+      const right = document.createElement("div");
+      right.className = "s28-side";
+      const descendantsElem = renderGenealogyDescendants(genealogyRootId);
+      if (descendantsElem) {
+        right.appendChild(descendantsElem);
+      } else {
+        const emptyNotice = document.createElement("div");
+        emptyNotice.style.cssText = "color: #94a3b8; font-size: 13px; font-style: italic;";
+        emptyNotice.textContent = "Không có hậu duệ (Lô lá)";
+        right.appendChild(emptyNotice);
+      }
+
+      tree.append(left, center, right);
+
+      // 4. Bảng chi tiết lô được chọn
+      const selectedId = genealogySelectedId || genealogyRootId;
+      const d = genealogyLots[selectedId] || { name: selectedId, status: "--", date: "--", side: "--", parents: [], children: [] };
+      const detailPanel = document.getElementById("genealogyDetailPanel");
+      if (detailPanel) {
+        detailPanel.innerHTML = `
+          <div style="display: flex; flex-direction: column; gap: 8px;">
+            <div style="font-size: 15px; font-weight: 800; color: #2563eb; font-family: monospace;">${escapeHtml(selectedId)}</div>
+            <div style="font-weight: 600; font-size: 13.5px;">${escapeHtml(d.name || selectedId)}</div>
+            <div style="display: flex; justify-content: space-between; border-bottom: 1px solid #f1f5f9; padding-bottom: 6px;">
+              <span style="color: #64748b;">Trạng thái:</span>
+              <span class="status-pill success" style="font-size: 11px;">${escapeHtml(d.status || "--")}</span>
+            </div>
+            <div style="display: flex; justify-content: space-between; border-bottom: 1px solid #f1f5f9; padding-bottom: 6px;">
+              <span style="color: #64748b;">Tổ chức:</span>
+              <span style="font-weight: 600;">${escapeHtml(d.date || "--")}</span>
+            </div>
+            <div style="display: flex; justify-content: space-between; border-bottom: 1px solid #f1f5f9; padding-bottom: 6px;">
+              <span style="color: #64748b;">Vị trí phả hệ:</span>
+              <span style="font-size: 12px; font-weight: 600; color: #475569;">
+                ${d.side === "current" ? "Lô trung tâm đang xem" : d.side === "ancestor" ? "Lô tổ tiên (Nguồn)" : "Lô hậu duệ (Thành phẩm)"}
+              </span>
+            </div>
+            <div style="margin-top: 6px;">
+              <div style="font-size: 12px; font-weight: 600; color: #64748b; margin-bottom: 4px;">Lô cha / nguồn (${d.parents ? d.parents.length : 0}):</div>
+              <div class="s28-tag-list" id="detailParentsTags"></div>
+            </div>
+            <div style="margin-top: 6px;">
+              <div style="font-size: 12px; font-weight: 600; color: #64748b; margin-bottom: 4px;">Lô con / nhánh (${d.children ? d.children.length : 0}):</div>
+              <div class="s28-tag-list" id="detailChildrenTags"></div>
+            </div>
+            <div style="margin-top: 14px; border-top: 1px solid #e2e8f0; padding-top: 12px; display: flex; gap: 8px;">
+              <a href="/lot-detail.html?id=${encodeURIComponent(selectedId)}" class="btn btn-primary" style="font-size: 12px; height: 32px; padding: 0 12px; text-decoration: none; display: inline-flex; align-items: center; justify-content: center; width: 100%;">
+                Mở chi tiết lô này &rarr;
+              </a>
+            </div>
+          </div>
+        `;
+
+        const pTags = document.getElementById("detailParentsTags");
+        if (pTags && d.parents && d.parents.length > 0) {
+          d.parents.forEach((pid) => {
+            const span = document.createElement("span");
+            span.className = "s28-tag-lot";
+            span.textContent = pid;
+            span.title = "Bấm để xem chi tiết nút này";
+            span.onclick = () => {
+              genealogySelectedId = pid;
+              renderGenealogyTree();
+            };
+            pTags.appendChild(span);
+          });
+        } else if (pTags) {
+          pTags.innerHTML = `<span style="font-size: 11.5px; color: #94a3b8; font-style: italic;">Không có</span>`;
+        }
+
+        const cTags = document.getElementById("detailChildrenTags");
+        if (cTags && d.children && d.children.length > 0) {
+          d.children.forEach((cid) => {
+            const span = document.createElement("span");
+            span.className = "s28-tag-lot";
+            span.textContent = cid;
+            span.title = "Bấm để xem chi tiết nút này";
+            span.onclick = () => {
+              genealogySelectedId = cid;
+              renderGenealogyTree();
+            };
+            cTags.appendChild(span);
+          });
+        } else if (cTags) {
+          cTags.innerHTML = `<span style="font-size: 11.5px; color: #94a3b8; font-style: italic;">Không có</span>`;
+        }
+      }
+    }
+    window.renderGenealogyTree = renderGenealogyTree;
+
+    function expandAllGenealogyNodes() {
+      genealogyCollapsed.clear();
+      renderGenealogyTree();
+    }
+    window.expandAllGenealogyNodes = expandAllGenealogyNodes;
+
+    function collapseAllGenealogyNodes() {
+      Object.keys(genealogyLots).forEach((id) => {
+        const d = genealogyLots[id];
+        if ((d.parents && d.parents.length > 0) || (d.children && d.children.length > 0)) {
+          genealogyCollapsed.add(id);
+        }
+      });
+      renderGenealogyTree();
+    }
+    window.collapseAllGenealogyNodes = collapseAllGenealogyNodes;
 
     function renderError(title, desc) {
       const contentArea = document.getElementById("contentArea");
@@ -3204,9 +3731,23 @@
       });
     }
 
-    // ===== Split Lot Modal Logic (S-17 / S-18) =====
+    // ===== Split Lot Modal Logic (S-17 / S-18 / S-30) =====
     let splitRows = [];
     let currentSplitLot = null;
+    let availableLocations = [];
+
+    async function loadAvailableLocationsForSplit() {
+      try {
+        const res = await fetch("/api/locations", { credentials: "same-origin" });
+        if (res.ok) {
+          const data = await res.json();
+          availableLocations = Array.isArray(data.locations) ? data.locations : [];
+          renderSplitRows();
+        }
+      } catch (err) {
+        console.warn("Could not fetch locations for split modal:", err);
+      }
+    }
 
     function openSplitLotModal(lot) {
       if (!lot) return;
@@ -3237,10 +3778,11 @@
       const halfQty = Number((remaining / 2).toFixed(3));
       const otherQty = Number((remaining - halfQty).toFixed(3));
       splitRows = [
-        { name: `${displayName} (Phần 1)`, quantity: halfQty > 0 ? halfQty : remaining, notes: "" },
-        { name: `${displayName} (Phần 2)`, quantity: otherQty > 0 ? otherQty : 0, notes: "" }
+        { name: `${displayName} (Phần 1)`, quantity: halfQty > 0 ? halfQty : remaining, notes: "", locationId: "" },
+        { name: `${displayName} (Phần 2)`, quantity: otherQty > 0 ? otherQty : 0, notes: "", locationId: "" }
       ];
 
+      loadAvailableLocationsForSplit();
       renderSplitRows();
       updateSplitCalculations();
 
@@ -3282,6 +3824,19 @@
               <input type="number" step="0.001" min="0.001" class="split-qty-input" data-idx="${idx}" value="${row.quantity !== null && row.quantity !== undefined ? row.quantity : ''}" placeholder="0.000" style="width: 100%; height: 36px; padding: 0 10px; border-radius: 6px; border: 1px solid var(--color-border); font-size: 13px; box-sizing: border-box; font-weight: 600;">
             </div>
           </div>
+          <div style="margin-bottom: 8px;">
+            <label style="display: block; font-size: 12px; font-weight: 600; margin-bottom: 4px; color: var(--color-text-muted);">
+              🏪 Điểm bán / Kho phân phối chỉ định (S-30)
+            </label>
+            <select class="split-location-select" data-idx="${idx}" style="width: 100%; height: 36px; padding: 0 10px; border-radius: 6px; border: 1px solid var(--color-border); font-size: 12.5px; box-sizing: border-box; background: #ffffff;">
+              <option value="">-- Mặc định (Theo kho lưu trữ của lô mẹ) --</option>
+              ${availableLocations.map((loc) => `
+                <option value="${escapeHtml(loc.id)}" ${row.locationId === loc.id ? "selected" : ""}>
+                  ${escapeHtml(loc.name)} (${loc.locationType === 'store' ? 'Cửa hàng bán lẻ' : (loc.locationType === 'cold_storage' ? 'Kho lạnh' : 'Kho trung chuyển')})
+                </option>
+              `).join("")}
+            </select>
+          </div>
           <div>
             <input type="text" class="split-notes-input" data-idx="${idx}" value="${escapeHtml(row.notes || '')}" placeholder="Ghi chú phân tách / quy cách sơ chế (tùy chọn)..." style="width: 100%; height: 32px; padding: 0 10px; border-radius: 6px; border: 1px solid var(--color-border); font-size: 12px; box-sizing: border-box;">
           </div>
@@ -3303,6 +3858,13 @@
         });
       });
 
+      container.querySelectorAll(".split-location-select").forEach((select) => {
+        select.addEventListener("change", (e) => {
+          const i = parseInt(e.target.dataset.idx, 10);
+          splitRows[i].locationId = e.target.value;
+        });
+      });
+
       container.querySelectorAll(".split-notes-input").forEach((input) => {
         input.addEventListener("input", (e) => {
           const i = parseInt(e.target.dataset.idx, 10);
@@ -3317,8 +3879,12 @@
       splitRows.push({
         name: `${displayName} (Phần ${splitRows.length + 1})`,
         quantity: 0,
-        notes: ""
+        notes: "",
+        locationId: "",
       });
+      renderSplitRows();
+      updateSplitCalculations();
+    }
       renderSplitRows();
       updateSplitCalculations();
     }
@@ -3415,6 +3981,7 @@
             name: r.name ? r.name.trim() : "",
             quantity: Number(r.quantity),
             notes: r.notes ? r.notes.trim() : undefined,
+            locationId: r.locationId ? r.locationId : undefined,
           }));
 
           submitBtn.disabled = true;
@@ -3451,6 +4018,10 @@
                 const qtyFormatted = (c.initialQuantity !== null && c.initialQuantity !== undefined)
                   ? `${Number(c.initialQuantity).toFixed(3)} ${unit}`
                   : "--";
+                const assignedLoc = availableLocations.find((l) => l.id === c.locationId);
+                const locName = assignedLoc
+                  ? `${assignedLoc.name} (${assignedLoc.locationType === 'store' ? 'Cửa hàng' : 'Kho'})`
+                  : (c.locationId ? `Kho #${c.locationId}` : "Kho mặc định của lô mẹ");
                 return `
                   <div style="background: #ffffff; border: 1.5px solid var(--color-border); border-radius: 12px; padding: 14px 16px; box-shadow: var(--shadow-xs);">
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; flex-wrap: wrap; gap: 8px;">
@@ -3469,6 +4040,7 @@
                     </div>
                     <div style="margin-top: 6px; font-size: 12.5px; color: var(--color-text-muted); display: flex; gap: 16px; flex-wrap: wrap;">
                       <div><strong>Khối lượng:</strong> <span style="color: var(--color-primary); font-weight: 700;">${qtyFormatted}</span></div>
+                      <div><strong>Điểm bán / Kho:</strong> <span style="color: #2563eb; font-weight: 600;">📍 ${escapeHtml(locName)}</span></div>
                       <div><strong>Lô mẹ:</strong> <span class="font-mono">${escapeHtml(parentLotId)}</span></div>
                     </div>
                   </div>

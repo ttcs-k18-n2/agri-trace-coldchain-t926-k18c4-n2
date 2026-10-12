@@ -13,7 +13,6 @@ const {
   inMemoryFarms,
 } = require("../src/server");
 const { seedS22InMemory } = require("../scripts/seed_s22");
-const { traceLotDescendants, CycleDetectedError } = require("../src/lot_genealogy");
 
 async function loginAs(email, password = "Password123!") {
   const agent = request.agent(app);
@@ -269,5 +268,138 @@ test("S-26 (Subtask Bước 5): Bộ Test Suite toàn diện Truy xuôi hậu du
     const resUnrelated = await unrelatedAgent.get("/api/lots/L02/descendants");
     assert.equal(resUnrelated.status, 403);
     assert.match(resUnrelated.body.message, /bị từ chối/i);
+  });
+
+  // ==========================================
+  // 4. KIỂM THỬ ĐỘ SÂU > 50 TẦNG & CẢNH BÁO CẮT TẦNG (S-26 P0)
+  // ==========================================
+  await t.test("11. S-26: Chuỗi phả hệ sâu 55 tầng (> 50 tầng): Truy xuôi đầy đủ không bị cắt xén (truncated: false)", async () => {
+    const DEEP_LEVELS = 55;
+    const deepLots = [];
+    const deepRelations = [];
+
+    // Tạo lô gốc
+    deepLots.push({
+      id: "LOT-DEEP-ROOT",
+      name: "Lô Gốc Chuỗi Sâu 55",
+      organizationId: "ORG-A",
+      status: "Đã thu hoạch",
+      initialQuantity: 1000,
+      remainingQuantity: 100,
+      createdAt: new Date().toISOString(),
+    });
+
+    let prevId = "LOT-DEEP-ROOT";
+    for (let i = 1; i <= DEEP_LEVELS; i++) {
+      const currentId = `LOT-DEEP-LVL-${i}`;
+      deepLots.push({
+        id: currentId,
+        name: `Lô Hậu Duệ Tầng ${i}`,
+        organizationId: "ORG-A",
+        status: i === DEEP_LEVELS ? "Đang lưu kho" : "Đã chế biến",
+        initialQuantity: 10,
+        remainingQuantity: 5,
+        parentLotId: prevId,
+        createdAt: new Date().toISOString(),
+      });
+      deepRelations.push({
+        id: `rel-deep-${i}`,
+        parentBatchId: prevId,
+        childBatchId: currentId,
+        relationType: "SPLIT",
+        quantity: 10,
+        organizationId: "ORG-A",
+      });
+      prevId = currentId;
+    }
+
+    inMemoryLots.push(...deepLots);
+    inMemoryBatchRelations.push(...deepRelations);
+
+    try {
+      const res = await inspectorAgent.get("/api/lots/LOT-DEEP-ROOT/descendants");
+      assert.equal(res.status, 200);
+      assert.equal(res.body.lotId, "LOT-DEEP-ROOT");
+      assert.equal(res.body.totalDescendants, DEEP_LEVELS, `Phải truy xuôi được đúng ${DEEP_LEVELS} lô`);
+      assert.equal(res.body.levels.length, DEEP_LEVELS, `Phải có đủ ${DEEP_LEVELS} tầng`);
+      assert.equal(res.body.truncated, false, "Không được đánh dấu bị cắt khi không vượt maxDepth");
+      assert.equal(res.body.truncationReason, null);
+
+      // Lô tầng 51, 52, 55 đều phải xuất hiện trong kết quả thu hồi
+      assert.ok(res.body.descendantIds.includes("LOT-DEEP-LVL-51"), "Phải chứa lô tầng 51");
+      assert.ok(res.body.descendantIds.includes("LOT-DEEP-LVL-55"), "Phải chứa lô tầng 55 cuối cùng");
+    } finally {
+      // Dọn dẹp
+      const deepLotIds = new Set(deepLots.map((l) => l.id));
+      for (let i = inMemoryLots.length - 1; i >= 0; i--) {
+        if (deepLotIds.has(inMemoryLots[i].id)) inMemoryLots.splice(i, 1);
+      }
+      const deepRelIds = new Set(deepRelations.map((r) => r.id));
+      for (let i = inMemoryBatchRelations.length - 1; i >= 0; i--) {
+        if (deepRelIds.has(inMemoryBatchRelations[i].id)) inMemoryBatchRelations.splice(i, 1);
+      }
+    }
+  });
+
+  await t.test("12. S-26: Khi truyền maxDepth giới hạn (ví dụ 20 tầng): Trả về 20 tầng và cảnh báo truncated: true", async () => {
+    const DEEP_LEVELS = 30;
+    const deepLots = [];
+    const deepRelations = [];
+
+    deepLots.push({
+      id: "LOT-LIMIT-ROOT",
+      name: "Lô Gốc Test Giới Hạn Tầng",
+      organizationId: "ORG-A",
+      status: "Đã thu hoạch",
+      initialQuantity: 500,
+      remainingQuantity: 50,
+      createdAt: new Date().toISOString(),
+    });
+
+    let prevId = "LOT-LIMIT-ROOT";
+    for (let i = 1; i <= DEEP_LEVELS; i++) {
+      const currentId = `LOT-LIMIT-LVL-${i}`;
+      deepLots.push({
+        id: currentId,
+        name: `Lô Giới Hạn Tầng ${i}`,
+        organizationId: "ORG-A",
+        status: "Đang lưu kho",
+        initialQuantity: 10,
+        remainingQuantity: 5,
+        parentLotId: prevId,
+        createdAt: new Date().toISOString(),
+      });
+      deepRelations.push({
+        id: `rel-limit-${i}`,
+        parentBatchId: prevId,
+        childBatchId: currentId,
+        relationType: "SPLIT",
+        quantity: 10,
+        organizationId: "ORG-A",
+      });
+      prevId = currentId;
+    }
+
+    inMemoryLots.push(...deepLots);
+    inMemoryBatchRelations.push(...deepRelations);
+
+    try {
+      const res = await inspectorAgent.get("/api/lots/LOT-LIMIT-ROOT/descendants?maxDepth=20");
+      assert.equal(res.status, 200);
+      assert.equal(res.body.levels.length, 20);
+      assert.equal(res.body.totalDescendants, 20);
+      assert.equal(res.body.truncated, true);
+      assert.equal(res.body.truncationReason, "MAX_DEPTH_REACHED");
+      assert.match(res.body.warning, /độ sâu tối đa/);
+    } finally {
+      const deepLotIds = new Set(deepLots.map((l) => l.id));
+      for (let i = inMemoryLots.length - 1; i >= 0; i--) {
+        if (deepLotIds.has(inMemoryLots[i].id)) inMemoryLots.splice(i, 1);
+      }
+      const deepRelIds = new Set(deepRelations.map((r) => r.id));
+      for (let i = inMemoryBatchRelations.length - 1; i >= 0; i--) {
+        if (deepRelIds.has(inMemoryBatchRelations[i].id)) inMemoryBatchRelations.splice(i, 1);
+      }
+    }
   });
 });

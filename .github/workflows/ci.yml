@@ -11,9 +11,10 @@ on:
       - "s18**"
       - "s26**"
       - "s-**"
-      - "S-**"
       - "s**"
       - "kết-hợp**"
+      - "Hợp-thể**"
+      - "hợp-thể**"
   pull_request:
     branches:
       - main
