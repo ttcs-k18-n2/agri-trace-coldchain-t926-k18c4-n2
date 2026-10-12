@@ -89,6 +89,7 @@ async function getAuditLogs({
   action = null,
   resourceType = null,
   resourceId = null,
+  search = null,
   limit = 50,
   offset = 0,
 }) {
@@ -115,6 +116,10 @@ async function getAuditLogs({
       if (resourceId) {
         values.push(resourceId);
         conditions.push(`resource_id = $${values.length}`);
+      }
+      if (search && typeof search === "string" && search.trim()) {
+        values.push(`%${search.trim().toLowerCase()}%`);
+        conditions.push(`(LOWER(actor_email) LIKE $${values.length} OR LOWER(actor_user_id) LIKE $${values.length} OR LOWER(resource_id) LIKE $${values.length} OR LOWER(id) LIKE $${values.length})`);
       }
 
       const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
@@ -165,6 +170,16 @@ async function getAuditLogs({
   if (action) filtered = filtered.filter((l) => l.action === action);
   if (resourceType) filtered = filtered.filter((l) => l.resourceType === resourceType);
   if (resourceId) filtered = filtered.filter((l) => l.resourceId === resourceId);
+  if (search && typeof search === "string" && search.trim()) {
+    const s = search.trim().toLowerCase();
+    filtered = filtered.filter(
+      (l) =>
+        (l.actorEmail && l.actorEmail.toLowerCase().includes(s)) ||
+        (l.actorUserId && l.actorUserId.toLowerCase().includes(s)) ||
+        (l.resourceId && l.resourceId.toLowerCase().includes(s)) ||
+        (l.id && l.id.toLowerCase().includes(s))
+    );
+  }
 
   const total = filtered.length;
   const paged = filtered.slice(safeOffset, safeOffset + safeLimit);

@@ -7,13 +7,14 @@
     "start": "node src/server.js",
     "check": "node --check src/server.js && node --check src/index.js && node --check src/migrate.js",
     "test": "node --test --experimental-test-coverage",
-    "lint": "eslint src test && node scripts/check_tenant_queries.js",
+    "lint": "eslint src test && node scripts/check_tenant_queries.js && node scripts/check_frontend_syntax.js",
     "audit": "npm audit --audit-level=high",
     "migrate": "node src/migrate.js",
     "migrate:up": "node src/migrate.js up",
     "migrate:down": "node src/migrate.js down",
     "seed:s22": "node scripts/seed_s22.js",
-    "check:tenant": "node scripts/check_tenant_queries.js"
+    "check:tenant": "node scripts/check_tenant_queries.js",
+    "check:frontend": "node scripts/check_frontend_syntax.js"
   },
   "dependencies": {
     "@node-rs/argon2": "^2.2.1",

@@ -6148,13 +6148,14 @@ app.get(
   requirePermission(["inspector", "admin"]),
   async (req, res) => {
     try {
-      const { action, resourceType, organizationId, limit, offset } = req.query;
+      const { action, resourceType, organizationId, search, limit, offset } = req.query;
       const result = await getAuditLogs({
         pool,
         inMemoryLogs: inMemoryAuditLogs,
         organizationId,
         action,
         resourceType,
+        search,
         limit,
         offset,
       });

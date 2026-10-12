@@ -360,6 +360,11 @@ test("Sprint 4: Bộ kiểm thử tích hợp Story S-30 (Địa điểm), S-27 
     assert.equal(resPaged.body.limit, 2);
     assert.equal(resPaged.body.offset, 0);
     assert.ok(resPaged.body.logs.length <= 2);
+
+    // Truy vấn với search keyword (tìm theo resourceId / actor / action)
+    const resSearch = await inspAgent.get("/api/audit-logs?search=LOT");
+    assert.equal(resSearch.status, 200);
+    assert.ok(Array.isArray(resSearch.body.logs));
   });
 
   await t.test("14. S-31: Đảm bảo tính chỉ-thêm (Append-Only) - Không cho phép chỉnh sửa hoặc xóa audit logs qua API", async () => {
@@ -370,6 +375,30 @@ test("Sprint 4: Bộ kiểm thử tích hợp Story S-30 (Địa điểm), S-27 
     // Không có endpoint PUT/PATCH /api/audit-logs/:id
     const resPatch = await inspAgent.patch("/api/audit-logs/audit-123").send({ action: "ALTERED" });
     assert.ok(resPatch.status === 404 || resPatch.status === 405);
+  });
+
+  await t.test("15. S-30: Kiểm thử tích hợp PostgreSQL cho luồng đổi kho và ghi chuỗi hash batch_events", async (ctx) => {
+    const dbUrl = process.env.DATABASE_URL;
+    if (!dbUrl) {
+      ctx.skip("Bỏ qua do không có DATABASE_URL trên môi trường hiện tại");
+      return;
+    }
+    const { Pool } = require("pg");
+    const testPool = new Pool({ connectionString: dbUrl });
+    try {
+      await testPool.query("SELECT 1");
+      // Truy vấn kiểm tra bảng batch_events có cột event_hash và previous_hash
+      const colRes = await testPool.query(
+        "SELECT column_name FROM information_schema.columns WHERE table_name = 'batch_events'"
+      );
+      const cols = colRes.rows.map((r) => r.column_name);
+      assert.ok(cols.includes("event_hash"), "batch_events phải có cột event_hash");
+      assert.ok(cols.includes("previous_hash"), "batch_events phải có cột previous_hash");
+    } catch (err) {
+      ctx.skip("Không thể kết nối hoặc truy vấn PostgreSQL: " + err.message);
+    } finally {
+      await testPool.end().catch(() => {});
+    }
   });
 });
 

@@ -417,6 +417,7 @@
           if (filterAction.value) params.set("action", filterAction.value);
           if (filterResourceType.value) params.set("resourceType", filterResourceType.value);
           if (filterOrgId.value.trim()) params.set("organizationId", filterOrgId.value.trim());
+          if (filterKeyword.value.trim()) params.set("search", filterKeyword.value.trim());
           params.set("limit", String(limit));
           params.set("offset", String(currentOffset));
 
@@ -427,22 +428,16 @@
           totalLogs = Number(data.total || 0);
           const logs = Array.isArray(data.logs) ? data.logs : [];
 
-          // Local keyword filter for email/ID if specified
-          const kw = (filterKeyword.value || "").trim().toLowerCase();
-          const filteredLogs = kw
-            ? logs.filter((l) =>
-                (l.actorEmail && l.actorEmail.toLowerCase().includes(kw)) ||
-                (l.actorUserId && l.actorUserId.toLowerCase().includes(kw)) ||
-                (l.resourceId && l.resourceId.toLowerCase().includes(kw))
-              )
-            : logs;
-
           document.getElementById("statTotalLogs").textContent = totalLogs;
-          document.getElementById("statFilteredCount").textContent = filteredLogs.length;
-          document.getElementById("paginationInfo").textContent = `Hiển thị ${currentOffset + 1} - ${Math.min(currentOffset + logs.length, totalLogs)} trên tổng số ${totalLogs} bản ghi`;
+          document.getElementById("statFilteredCount").textContent = logs.length;
+          document.getElementById("paginationInfo").textContent = totalLogs > 0
+            ? `Hiển thị ${currentOffset + 1} - ${Math.min(currentOffset + logs.length, totalLogs)} trên tổng số ${totalLogs} bản ghi`
+            : "Không có bản ghi phù hợp";
 
           btnPrevPage.disabled = currentOffset <= 0;
           btnNextPage.disabled = currentOffset + limit >= totalLogs;
+
+          const filteredLogs = logs;
 
           if (filteredLogs.length === 0) {
             tableBody.innerHTML = `
