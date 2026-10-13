@@ -230,4 +230,43 @@ test("S-29: Nhà phân phối ghi nhận lô đã bán hết cho người tiêu 
     assert.ok(res.body.lots.some((l) => l.id === testLot1 && l.status === "Đã bán hết"));
     assert.ok(res.body.lots.every((l) => l.status === "Đã bán hết"));
   });
+
+  await t.test("10. Reject merging lots when one of the lots is already consumed (400 LOT_ALREADY_CONSUMED)", async () => {
+    const distAgent = await loginAs("distributor_s29@dist.vn");
+    const res = await distAgent.post("/api/lots/merge").send({
+      name: "Lô gộp thử nghiệm",
+      items: [
+        { parent_batch_id: testLot1, take_quantity: 10 },
+        { parent_batch_id: testLot2, take_quantity: 20 },
+      ],
+    });
+    assert.equal(res.status, 400);
+    assert.equal(res.body.error, "LOT_ALREADY_CONSUMED");
+  });
+
+  await t.test("11. Distributor can split an available lot with remaining quantity", async () => {
+    const distAgent = await loginAs("distributor_s29@dist.vn");
+    // Tạo 1 lô còn hàng cho distributor
+    const freshLotId = "LOT-CONSUME-FRESH-04";
+    inMemoryLots.push({
+      id: freshLotId,
+      name: "Lô Dưa lưới Chuẩn",
+      status: "Đang lưu kho",
+      organizationId: "org-dist-001",
+      productId: "PROD-MELON",
+      initialQuantity: 100,
+      remainingQuantity: 100,
+      createdAt: new Date().toISOString(),
+    });
+
+    const res = await distAgent.post(`/api/lots/${freshLotId}/split`).send({
+      splits: [
+        { name: "Lô con Cửa hàng 1", quantity: 40 },
+        { name: "Lô con Cửa hàng 2", quantity: 60 },
+      ],
+    });
+    assert.equal(res.status, 201);
+    assert.equal(res.body.childLots.length, 2);
+    assert.equal(res.body.parentLot.remainingQuantity, 0);
+  });
 });

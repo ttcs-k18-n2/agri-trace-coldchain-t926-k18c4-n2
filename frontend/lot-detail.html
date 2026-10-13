@@ -1503,6 +1503,8 @@
           </div>
         </form>
       </div>
+    </div>
+
     <!-- Modal Cập nhật Vị trí lưu kho & Cửa hàng bán lẻ (Story S-30) -->
     <div id="updateLocationModal" class="modal-backdrop" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 2000; align-items: center; justify-content: center; padding: 20px;">
       <div class="modal-content" style="background: #fff; border-radius: 16px; width: 100%; max-width: 520px; overflow: hidden; box-shadow: 0 20px 40px rgba(0,0,0,0.2); display: flex; flex-direction: column;">
@@ -1661,8 +1663,8 @@
       const lotRemainingVal = (lot.remainingQuantity !== null && lot.remainingQuantity !== undefined)
         ? Number(lot.remainingQuantity)
         : ((lot.remaining_quantity !== null && lot.remaining_quantity !== undefined) ? Number(lot.remaining_quantity) : null);
-      const canTransfer = currentUser && !isInspector && (isAdmin || userOrgId === lotOrgId) && lot.status !== "Đã bán hết" && lot.status !== "Đã tiêu thụ";
-      const canSplit = currentUser && !isInspector && (isAdmin || userOrgId === lotOrgId) && ["producer", "cooperative", "org_admin", "admin"].includes(role) && (lotRemainingVal !== null && lotRemainingVal > 0) && !lot.pendingTransfer && lot.status !== "Đã bán hết" && lot.status !== "Đã tiêu thụ";
+      const canTransfer = currentUser && !isInspector && (isAdmin || userOrgId === lotOrgId) && lot.status !== "Đã bán hết" && lot.status !== "Đã tiêu thụ" && (lotRemainingVal !== null && lotRemainingVal > 0);
+      const canSplit = currentUser && !isInspector && (isAdmin || userOrgId === lotOrgId) && ["producer", "cooperative", "distributor", "org_admin", "admin"].includes(role) && (lotRemainingVal !== null && lotRemainingVal > 0) && !lot.pendingTransfer && lot.status !== "Đã bán hết" && lot.status !== "Đã tiêu thụ";
       const canMerge = currentUser && !isInspector && (isAdmin || userOrgId === lotOrgId) && ["producer", "cooperative", "org_admin", "admin"].includes(role) && (lotRemainingVal !== null && lotRemainingVal > 0) && !lot.pendingTransfer && lot.status !== "Đã bán hết" && lot.status !== "Đã tiêu thụ";
       const canConsume = currentUser && !isInspector && (isAdmin || userOrgId === lotOrgId) && ["distributor", "org_admin", "admin"].includes(role) && (lotRemainingVal !== null && lotRemainingVal > 0) && !lot.pendingTransfer && lot.status !== "Đã bán hết" && lot.status !== "Đã tiêu thụ";
       const canManageLocation = currentUser && !isInspector && (isAdmin || userOrgId === lotOrgId);
@@ -1982,7 +1984,7 @@
                     <span style="font-weight: 700; color: #1e40af;">📍 ${escapeHtml(lot.locationName)}</span>
                   ` : `<span style="color: var(--color-text-muted); font-style: italic;">Chưa gán địa điểm</span>`}
                   ${canManageLocation ? `
-                    <button type="button" class="btn btn-secondary" onclick="openLocationModal('${escapeHtml(lot.id)}', '${escapeHtml(lot.locationId || '')}')" style="height: 24px; padding: 0 8px; font-size: 11.5px; border-radius: 4px;">
+                    <button type="button" class="btn btn-secondary" id="btnOpenChangeLocation" onclick="openLocationModal('${escapeHtml(lot.id)}', '${escapeHtml(lot.locationId || '')}')" style="height: 24px; padding: 0 8px; font-size: 11.5px; border-radius: 4px;">
                       Đổi kho
                     </button>
                   ` : ""}
@@ -3791,13 +3793,21 @@
 
     function openSplitLotModal(lot) {
       if (!lot) return;
+      const remaining = Number(lot.remainingQuantity !== undefined ? lot.remainingQuantity : lot.remaining_quantity) || 0;
+      if (lot.status === "Đã bán hết" || lot.status === "Đã tiêu thụ" || remaining <= 0) {
+        if (typeof window.showToast === "function") {
+          window.showToast("Lô hàng đã bán hết cho người tiêu dùng, không thể tách lô.", "error");
+        } else {
+          alert("Lô hàng đã bán hết cho người tiêu dùng, không thể tách lô.");
+        }
+        return;
+      }
       currentSplitLot = lot;
       const modal = document.getElementById("splitLotModal");
       const alertBox = document.getElementById("splitModalAlert");
       if (!modal) return;
 
       const unit = lot.productUnit || "kg";
-      const remaining = Number(lot.remainingQuantity !== undefined ? lot.remainingQuantity : lot.remaining_quantity) || 0;
       const displayName = lot.productName || lot.name || "Nông sản";
 
       document.getElementById("splitParentTitle").textContent = displayName;
@@ -4013,6 +4023,11 @@
           const alertBox = document.getElementById("splitModalAlert");
           const submitBtn = document.getElementById("btnSubmitSplit");
           if (!currentSplitLot) return;
+          const parentRemainingCheck = Number(currentSplitLot.remainingQuantity !== undefined ? currentSplitLot.remainingQuantity : currentSplitLot.remaining_quantity) || 0;
+          if (currentSplitLot.status === "Đã bán hết" || currentSplitLot.status === "Đã tiêu thụ" || parentRemainingCheck <= 0) {
+            alert("Lô hàng đã bán hết cho người tiêu dùng, không thể thực hiện tách lô.");
+            return;
+          }
 
           const splitsPayload = splitRows.map((r) => ({
             name: r.name ? r.name.trim() : "",
@@ -4381,7 +4396,8 @@
           }
 
           try {
-            const res = await fetch(`/api/lots/${encodeURIComponent(currentConsumeLot.id)}/consume`, {
+            const lotId = currentConsumeLot.id;
+            const res = await fetch(`/api/lots/${encodeURIComponent(lotId)}/consume`, {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               credentials: "same-origin",
@@ -4404,7 +4420,7 @@
             }
 
             // Tải lại chi tiết lô và chuỗi sự kiện
-            await loadLotDetail(currentConsumeLot.id);
+            await loadLotDetail(lotId);
           } catch (err) {
             if (alertBox) {
               alertBox.className = "alert alert-danger";
@@ -4542,8 +4558,13 @@
               throw new Error("Vui lòng chọn địa điểm có sẵn hoặc nhập tên địa điểm mới.");
             }
 
+            const lotId = targetLocationLotId;
+            if (!lotId) {
+              throw new Error("Không xác định được mã lô hàng cần cập nhật kho.");
+            }
+
             // Gán location cho lô hàng (S-30)
-            const patchRes = await fetch(`/api/lots/${encodeURIComponent(targetLocationLotId)}/location`, {
+            const patchRes = await fetch(`/api/lots/${encodeURIComponent(lotId)}/location`, {
               method: "PATCH",
               headers: { "Content-Type": "application/json" },
               credentials: "same-origin",
@@ -4563,7 +4584,7 @@
               alert("Thành công: Đã cập nhật vị trí lưu kho!");
             }
 
-            await loadLotDetail(targetLocationLotId);
+            await loadLotDetail(lotId);
           } catch (err) {
             if (alertBox) {
               alertBox.className = "alert alert-danger";

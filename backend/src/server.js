@@ -2285,7 +2285,21 @@ function validateMergeLotInput(items, fetchedLots, currentOrgId, isAdmin = false
     }
   }
 
-  // 2. Kiểm tra sản phẩm: Tất cả các lô mẹ được chọn phải có cùng product_id (Task T-45 AC1)
+  // 2. Kiểm tra trạng thái: Không được gộp lô đã bán hết hoặc tiêu thụ (S-29)
+  for (const item of items) {
+    const lotId = item.parent_batch_id || item.parentBatchId || item.lotId || item.id;
+    const lot = lotMap.get(lotId);
+    if (lot.status === "Đã bán hết" || lot.status === "Đã tiêu thụ") {
+      return {
+        isValid: false,
+        status: 400,
+        error: "LOT_ALREADY_CONSUMED",
+        message: `Không thể gộp lô hàng đã bán hết cho người tiêu dùng: [${lotId}].`,
+      };
+    }
+  }
+
+  // 3. Kiểm tra sản phẩm: Tất cả các lô mẹ được chọn phải có cùng product_id (Task T-45 AC1)
   const firstLot = lotMap.get(items[0].parent_batch_id || items[0].parentBatchId || items[0].lotId || items[0].id);
   const targetProductId = firstLot.product_id || firstLot.productId;
 
@@ -4493,7 +4507,8 @@ app.post(
         return res.status(404).json({ message: "Không tìm thấy lô hàng." });
       }
 
-      if (lot.status === "Đã bán hết" || lot.status === "Đã tiêu thụ") {
+      const lotRemainingVal = Number(lot.remainingQuantity !== undefined ? lot.remainingQuantity : (lot.remaining_quantity !== undefined ? lot.remaining_quantity : (lot.initialQuantity || lot.initial_quantity || 0)));
+      if (lot.status === "Đã bán hết" || lot.status === "Đã tiêu thụ" || lotRemainingVal <= 0) {
         return res.status(400).json({
           error: "LOT_ALREADY_CONSUMED",
           message: "Lô hàng đã được bán hết cho người tiêu dùng, không thể tạo yêu cầu bàn giao.",
@@ -6020,8 +6035,10 @@ app.patch(
         const prevLocationId = (lot && (lot.locationId || lot.location_id)) || access.lot.locationId || null;
         if (lot) {
           lot.locationId = locationId;
+          lot.location_id = locationId;
         }
         access.lot.locationId = locationId;
+        access.lot.location_id = locationId;
 
         // Ghi nhận sự kiện LOCATION_CHANGED vào chuỗi hash-chain batch_events (S-30)
         const locationEvent = await appendBatchEvent(null, {

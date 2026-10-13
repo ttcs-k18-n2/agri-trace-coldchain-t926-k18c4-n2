@@ -66,34 +66,30 @@ const inMemoryLocations = [
  */
 async function fetchLocations(pool, inMemoryList = inMemoryLocations, organizationId = null) {
   if (pool && typeof pool.query === "function") {
-    try {
-      let query = `
-        SELECT id, name, address, organization_id, location_type, contact_person, phone, coordinates, created_at, updated_at
-        FROM locations
-      `;
-      const values = [];
-      if (organizationId) {
-        query += " WHERE organization_id = $1";
-        values.push(organizationId);
-      }
-      query += " ORDER BY created_at DESC";
-
-      const res = await pool.query(query, values);
-      return res.rows.map((r) => ({
-        id: r.id,
-        name: r.name,
-        address: r.address,
-        organizationId: r.organization_id,
-        locationType: r.location_type,
-        contactPerson: r.contact_person,
-        phone: r.phone,
-        coordinates: r.coordinates,
-        createdAt: r.created_at,
-        updatedAt: r.updated_at,
-      }));
-    } catch {
-      // fallback in-memory
+    let query = `
+      SELECT id, name, address, organization_id, location_type, contact_person, phone, coordinates, created_at, updated_at
+      FROM locations
+    `;
+    const values = [];
+    if (organizationId) {
+      query += " WHERE organization_id = $1";
+      values.push(organizationId);
     }
+    query += " ORDER BY created_at DESC";
+
+    const res = await pool.query(query, values);
+    return res.rows.map((r) => ({
+      id: r.id,
+      name: r.name,
+      address: r.address,
+      organizationId: r.organization_id,
+      locationType: r.location_type,
+      contactPerson: r.contact_person,
+      phone: r.phone,
+      coordinates: r.coordinates,
+      createdAt: r.created_at,
+      updatedAt: r.updated_at,
+    }));
   }
 
   if (organizationId) {
@@ -108,28 +104,25 @@ async function fetchLocations(pool, inMemoryList = inMemoryLocations, organizati
 async function getLocationById(pool, inMemoryList = inMemoryLocations, id) {
   if (!id) return null;
   if (pool && typeof pool.query === "function") {
-    try {
-      const res = await pool.query(
-        "SELECT id, name, address, organization_id, location_type, contact_person, phone, coordinates, created_at FROM locations WHERE id = $1",
-        [id]
-      );
-      if (res.rows.length > 0) {
-        const r = res.rows[0];
-        return {
-          id: r.id,
-          name: r.name,
-          address: r.address,
-          organizationId: r.organization_id,
-          locationType: r.location_type,
-          contactPerson: r.contact_person,
-          phone: r.phone,
-          coordinates: r.coordinates,
-          createdAt: r.created_at,
-        };
-      }
-    } catch {
-      // ignore
+    const res = await pool.query(
+      "SELECT id, name, address, organization_id, location_type, contact_person, phone, coordinates, created_at FROM locations WHERE id = $1",
+      [id]
+    );
+    if (res.rows.length > 0) {
+      const r = res.rows[0];
+      return {
+        id: r.id,
+        name: r.name,
+        address: r.address,
+        organizationId: r.organization_id,
+        locationType: r.location_type,
+        contactPerson: r.contact_person,
+        phone: r.phone,
+        coordinates: r.coordinates,
+        createdAt: r.created_at,
+      };
     }
+    return null;
   }
   return inMemoryList.find((loc) => loc.id === id) || null;
 }
