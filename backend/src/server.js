@@ -32,6 +32,23 @@ const {
   validateSplitItems,
   validateMergeItems,
 } = require("./quantity");
+const { traceLotOrigins, traceLotDescendants, CycleDetectedError } = require("./lot_genealogy");
+const {
+  validateProductsCsv,
+  validateFarmsCsv,
+} = require("./csv_importer");
+const {
+  inMemoryLocations,
+  fetchLocations,
+  getLocationById,
+  createLocation,
+  updateLotLocation,
+} = require("./location_service");
+const {
+  inMemoryAuditLogs,
+  recordAuditLog,
+  getAuditLogs,
+} = require("./audit_logger");
 const app = express();
 const PORT = Number(process.env.PORT || 3000);
 
@@ -46,8 +63,8 @@ function setDatabasePool(customPool) {
   pool = customPool;
 }
 
-app.use(express.json());
-app.use(express.urlencoded({ extended: false }));
+app.use(express.json({ limit: "5mb" }));
+app.use(express.urlencoded({ extended: false, limit: "5mb" }));
 
 const crypto = require("node:crypto");
 const sessionSecret =
@@ -117,6 +134,8 @@ const inMemoryLots = [
   { id: "LOT-002", name: "Lô chè Tân Cương", status: "Đã thu hoạch", organizationId: "org-001", farmId: "FARM-001", productId: "PROD-TEA", initialQuantity: 120, remainingQuantity: 120, harvestedAt: "2026-09-26", parentLotId: null },
   { id: "LOT-101", name: "Lô rau cải Bắc Giang", status: "Đã thu hoạch", organizationId: "org-002", farmId: "FARM-101", productId: "PROD-VEGETABLE", initialQuantity: 300, remainingQuantity: 300, harvestedAt: "2026-09-27", parentLotId: null },
   { id: "LOT-102", name: "Lô dưa chuột Hiệp Hòa", status: "Đã thu hoạch", organizationId: "org-002", farmId: null, productId: null, initialQuantity: 250, remainingQuantity: 250, harvestedAt: "2026-09-28", parentLotId: null },
+  { id: "LOT-DIST-01", name: "Lô cà chua phân phối siêu thị", status: "Đã nhập kho", organizationId: "org-dist", farmId: null, productId: "PROD-TOMATO", initialQuantity: 200, remainingQuantity: 200, harvestedAt: "2026-10-01", parentLotId: null },
+  { id: "LOT-DIST-02", name: "Lô rau cải sạch cửa hàng bán lẻ", status: "Đang lưu kho", organizationId: "org-dist", farmId: null, productId: "PROD-VEGETABLE", initialQuantity: 150, remainingQuantity: 150, harvestedAt: "2026-10-02", parentLotId: null },
 ];
 
 const inMemoryIntegrityChecks = [];
@@ -600,6 +619,19 @@ app.post("/api/login", async (req, res) => {
   const user = await getUserByEmail(email);
 
   if (!user) {
+    await recordAuditLog({
+      pool,
+      inMemoryLogs: inMemoryAuditLogs,
+      actorUserId: null,
+      actorEmail: email,
+      organizationId: "system",
+      action: "LOGIN_FAILED",
+      resourceType: "auth",
+      resourceId: email,
+      ipAddress: req.ip,
+      userAgent: req.get("User-Agent"),
+      details: { reason: "USER_NOT_FOUND" },
+    });
     return loginError(res);
   }
 
@@ -629,6 +661,21 @@ app.post("/api/login", async (req, res) => {
         : null;
 
     await updateUserLock(user, nextFailedCount, lockUntil);
+
+    await recordAuditLog({
+      pool,
+      inMemoryLogs: inMemoryAuditLogs,
+      actorUserId: user.id,
+      actorEmail: user.email,
+      organizationId: user.organizationId || "system",
+      action: "LOGIN_FAILED",
+      resourceType: "auth",
+      resourceId: user.id,
+      ipAddress: req.ip,
+      userAgent: req.get("User-Agent"),
+      details: { reason: "INVALID_PASSWORD", failedCount: nextFailedCount },
+    });
+
     return loginError(res);
   }
 
@@ -639,6 +686,20 @@ app.post("/api/login", async (req, res) => {
   req.session.email = user.email;
   req.session.organizationId = user.organizationId;
   req.session.roleId = user.roleId;
+
+  await recordAuditLog({
+    pool,
+    inMemoryLogs: inMemoryAuditLogs,
+    actorUserId: user.id,
+    actorEmail: user.email,
+    organizationId: user.organizationId || "system",
+    action: "LOGIN_SUCCESS",
+    resourceType: "auth",
+    resourceId: user.id,
+    ipAddress: req.ip,
+    userAgent: req.get("User-Agent"),
+    details: { roleId: user.roleId },
+  });
 
   return res.status(200).json({
     message: "Đăng nhập thành công.",
@@ -819,6 +880,93 @@ app.post(
 );
 
 /**
+ * Nhập danh mục sản phẩm từ CSV (All-or-Nothing)
+ * Chỉ admin hệ thống mới có quyền nhập danh mục sản phẩm
+ */
+app.post(
+  "/api/products/import-csv",
+  requirePermission(["admin"]),
+  async (req, res) => {
+    const csvContent = typeof req.body === "string" ? req.body : req.body.csvContent;
+    if (!csvContent || typeof csvContent !== "string" || !csvContent.trim()) {
+      return res.status(400).json({
+        message: "Nội dung tệp CSV không được để trống.",
+        errors: [{ row: 1, column: "file", message: "Nội dung tệp CSV không được để trống." }],
+      });
+    }
+
+    if (Buffer.byteLength(csvContent, "utf8") > 5 * 1024 * 1024) {
+      return res.status(400).json({
+        message: "Kích thước tệp CSV vượt quá giới hạn tối đa 5MB.",
+        errors: [{ row: 1, column: "file", message: "Tệp CSV vượt quá dung lượng cho phép (tối đa 5MB)." }],
+      });
+    }
+
+    // Lấy danh sách tên sản phẩm hiện tại để đối chiếu trùng
+    let existingNamesLower = new Set();
+    if (pool) {
+      try {
+        const existRes = await pool.query("SELECT LOWER(name) AS name_lower FROM products");
+        existingNamesLower = new Set(existRes.rows.map((r) => r.name_lower));
+      } catch (err) {
+        return res.status(500).json({ message: err.message });
+      }
+    } else {
+      existingNamesLower = new Set(inMemoryProducts.map((p) => p.name.toLowerCase()));
+    }
+
+    const validation = validateProductsCsv(csvContent, existingNamesLower);
+    if (!validation.valid) {
+      return res.status(400).json({
+        message: "Dữ liệu CSV chứa lỗi, không có dòng nào được tạo.",
+        errors: validation.errors,
+      });
+    }
+
+    const createdProducts = [];
+    if (pool) {
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN");
+        for (const item of validation.rows) {
+          const prodId = `PROD-${crypto.randomBytes(4).toString("hex").toUpperCase()}`;
+          const insertRes = await client.query(
+            "INSERT INTO products (id, name, unit) VALUES ($1, $2, $3) RETURNING id, name, unit, created_at",
+            [prodId, item.name, item.unit]
+          );
+          createdProducts.push(insertRes.rows[0]);
+        }
+        await client.query("COMMIT");
+      } catch (err) {
+        await client.query("ROLLBACK");
+        return res.status(500).json({ message: "Lỗi trong quá trình nhập dữ liệu: " + err.message });
+      } finally {
+        client.release();
+      }
+    } else {
+      for (const item of validation.rows) {
+        const prodId = `PROD-${crypto.randomBytes(4).toString("hex").toUpperCase()}`;
+        const newProd = {
+          id: prodId,
+          name: item.name,
+          unit: item.unit,
+          created_at: new Date().toISOString(),
+        };
+        inMemoryProducts.push(newProd);
+        createdProducts.push(newProd);
+      }
+    }
+
+    return res.status(201).json({
+      message: `Nhập danh mục sản phẩm thành công (${createdProducts.length} dòng).`,
+      importedCount: createdProducts.length,
+      products: createdProducts,
+    });
+  }
+);
+
+
+/**
  * Chỉnh sửa sản phẩm (T-17, S-07)
  * Chỉ tài khoản Admin mới có quyền cập nhật tên hoặc đơn vị tính.
  */
@@ -908,6 +1056,7 @@ app.get(
 
     const search = typeof req.query.search === "string" ? req.query.search.trim() : "";
     const productId = typeof req.query.productId === "string" ? req.query.productId.trim() : "";
+    const status = typeof req.query.status === "string" ? req.query.status.trim() : "";
     const limit = Math.min(Math.max(Number(req.query.limit) || 20, 1), 50);
     const cursor = req.query.cursor ? String(req.query.cursor).trim() : null;
 
@@ -957,6 +1106,12 @@ app.get(
         if (productId) {
           params.push(productId);
           conditions.push(`l.product_id = $${params.length}`);
+        }
+
+        // 3b. Lọc theo trạng thái (S-29: Hỗ trợ phân biệt nhanh lô còn trên kệ và lô đã tiêu thụ)
+        if (status) {
+          params.push(status);
+          conditions.push(`l.status = $${params.length}`);
         }
 
         // 4. Cursor pagination (T-33): (harvested_at, created_at, id) < (cursorHarvest, cursorCreated, cursorId)
@@ -1048,6 +1203,10 @@ app.get(
 
     if (productId) {
       filtered = filtered.filter((l) => l.productId === productId);
+    }
+
+    if (status) {
+      filtered = filtered.filter((l) => l.status === status);
     }
 
     // Sort newest first: harvestedAt DESC, createdAt DESC, id DESC
@@ -1154,11 +1313,12 @@ app.get(
         // Lệnh 1: Lấy thông tin lô hàng kèm JOIN sản phẩm, thửa đất, tổ chức và lô mẹ trực tiếp (NFR: 1 query)
         const lotQuery = `
           SELECT 
-            l.id, l.name, l.status, l.organization_id, l.farm_id, l.product_id,
+            l.id, l.name, l.status, l.organization_id, l.farm_id, l.product_id, l.location_id,
             l.initial_quantity, l.remaining_quantity, l.harvested_at, l.created_at, l.parent_lot_id,
             f.name AS farm_name,
             p.name AS product_name, p.unit AS product_unit,
             o.name AS organization_name,
+            loc.name AS location_name, loc.address AS location_address, loc.location_type AS location_type,
             pl.id AS parent_id, pl.name AS parent_name, pl.status AS parent_status,
             pl.product_id AS parent_product_id, pl.organization_id AS parent_organization_id,
             pl.initial_quantity AS parent_initial_quantity, pl.remaining_quantity AS parent_remaining_quantity,
@@ -1192,6 +1352,7 @@ app.get(
           LEFT JOIN farms f ON l.farm_id = f.id
           LEFT JOIN products p ON l.product_id = p.id
           LEFT JOIN organizations o ON l.organization_id = o.id
+          LEFT JOIN locations loc ON l.location_id = loc.id
           LEFT JOIN lots pl ON l.parent_lot_id = pl.id
           LEFT JOIN products pp ON pl.product_id = pp.id
           LEFT JOIN organizations po ON pl.organization_id = po.id
@@ -1217,13 +1378,14 @@ app.get(
 
           const accessCheckSql = `
             WITH RECURSIVE descendants AS (
-              SELECT id FROM lots WHERE id = $1
+              SELECT CAST(id AS VARCHAR(64)) AS id FROM lots WHERE id = $1
               UNION
-              SELECT l.id FROM lots l
-              JOIN descendants d ON l.parent_lot_id = d.id
-              UNION
-              SELECT br.child_batch_id FROM batch_relations br
-              JOIN descendants d ON br.parent_batch_id = d.id
+              SELECT CAST(c.id AS VARCHAR(64)) AS id FROM (
+                SELECT l.id, l.parent_lot_id AS p_id FROM lots l WHERE l.parent_lot_id IS NOT NULL
+                UNION ALL
+                SELECT br.child_batch_id AS id, br.parent_batch_id AS p_id FROM batch_relations br
+              ) c
+              JOIN descendants d ON c.p_id = d.id
             )
             SELECT 'ANCESTOR_OF_HELD_LOT' AS access_type
             FROM descendants d
@@ -1342,6 +1504,10 @@ app.get(
           parentLot,
           parentLots,
           childLots,
+          locationId: row.location_id || null,
+          locationName: row.location_name || null,
+          locationAddress: row.location_address || null,
+          locationType: row.location_type || null,
           accessType,
           ancestors,
         };
@@ -1499,6 +1665,10 @@ app.get(
           parentLot,
           parentLots,
           childLots,
+          locationId: rawLot.locationId || rawLot.location_id || null,
+          locationName: rawLot.locationName || (inMemoryLocations && inMemoryLocations.find(loc => loc.id === (rawLot.locationId || rawLot.location_id))?.name) || null,
+          locationAddress: rawLot.locationAddress || (inMemoryLocations && inMemoryLocations.find(loc => loc.id === (rawLot.locationId || rawLot.location_id))?.address) || null,
+          locationType: rawLot.locationType || (inMemoryLocations && (inMemoryLocations.find(loc => loc.id === (rawLot.locationId || rawLot.location_id))?.locationType || inMemoryLocations.find(loc => loc.id === (rawLot.locationId || rawLot.location_id))?.location_type)) || null,
           accessType: access.accessType,
           ancestors: access.ancestors,
         };
@@ -1529,7 +1699,7 @@ app.get(
  */
 app.post(
   "/api/lots/:id/split",
-  requirePermission(["producer", "cooperative", "org_admin", "admin"]),
+  requirePermission(["producer", "cooperative", "distributor", "org_admin", "admin"]),
   async (req, res) => {
     const parentLotId = req.params.id;
     const { splits, subLots } = req.body || {};
@@ -1612,6 +1782,14 @@ app.post(
           });
         }
 
+        if (parentLot.status === "Đã bán hết" || parentLot.status === "Đã tiêu thụ") {
+          await client.query("ROLLBACK");
+          return res.status(400).json({
+            error: "LOT_ALREADY_CONSUMED",
+            message: "Không thể tách lô hàng đã bán hết cho người tiêu dùng.",
+          });
+        }
+
         const parentRemaining = Number(parentLot.remaining_quantity);
         const parentRemainingMilli = toMilliUnits(parentRemaining, true);
         if (totalSplitMilli > parentRemainingMilli) {
@@ -1620,6 +1798,28 @@ app.post(
             error: "EXCEEDS_REMAINING_QUANTITY",
             message: `Tổng khối lượng tách (${totalSplitQuantity.toFixed(3)}) vượt quá khối lượng còn lại của lô mẹ (${parentRemaining.toFixed(3)}).`,
           });
+        }
+
+        // Kiểm tra tính hợp lệ của địa điểm lưu kho cho từng lô con (S-30)
+        for (let i = 0; i < splitItems.length; i++) {
+          const item = splitItems[i];
+          if (item.locationId) {
+            const loc = await getLocationById(client, inMemoryLocations, item.locationId);
+            if (!loc) {
+              await client.query("ROLLBACK");
+              return res.status(404).json({
+                error: "LOCATION_NOT_FOUND",
+                message: `Địa điểm lưu kho chỉ định cho lô con thứ ${i + 1} không tồn tại.`,
+              });
+            }
+            if (loc.organizationId !== parentLot.organization_id) {
+              await client.query("ROLLBACK");
+              return res.status(403).json({
+                error: "LOCATION_ORG_MISMATCH",
+                message: `Địa điểm lưu kho cho lô con thứ ${i + 1} không thuộc quyền quản lý của tổ chức sở hữu lô hàng.`,
+              });
+            }
+          }
         }
 
         // 1. Trừ khối lượng còn lại của lô mẹ bằng phép tính NUMERIC trong PostgreSQL (T-42)
@@ -1652,6 +1852,7 @@ app.post(
             ? item.name.trim()
             : `${parentLot.name} (Tách ${i + 1})`;
           const childStatus = item.status || parentLot.status || "Đã thu hoạch";
+          const childLocationId = item.locationId || parentLot.location_id || null;
 
           let childLotId = null;
           for (let attempt = 0; attempt < 5; attempt++) {
@@ -1660,8 +1861,8 @@ app.post(
               const insertRes = await client.query(
                 `INSERT INTO lots (
                   id, name, status, organization_id, farm_id, product_id,
-                  initial_quantity, remaining_quantity, harvested_at, parent_lot_id
-                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+                  initial_quantity, remaining_quantity, harvested_at, parent_lot_id, location_id
+                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
                 RETURNING *`,
                 [
                   candidateId,
@@ -1674,6 +1875,7 @@ app.post(
                   splitQty,
                   parentLot.harvested_at,
                   parentLotId,
+                  childLocationId,
                 ]
               );
               childLotId = candidateId;
@@ -1705,6 +1907,7 @@ app.post(
               parentLotId,
               childLotId,
               quantity: splitQty,
+              locationId: childLocationId,
               notes: item.notes || null,
               step: `Tạo từ phân tách lô mẹ ${parentLotId}`,
             },
@@ -1727,12 +1930,33 @@ app.post(
               childLotId: c.id,
               name: c.name,
               quantity: Number(c.initial_quantity),
+              locationId: c.location_id || null,
             })),
             step: `Phân tách thành ${createdChildLots.length} lô con (${createdChildLots.map((c) => c.id).join(", ")})`,
           },
           organizationId: parentLot.organization_id,
           actorUserId: userId,
           occurredAt: new Date(),
+        });
+
+        // Ghi audit log bằng cùng transaction client trước COMMIT (S-31 Atomicity)
+        await recordAuditLog({
+          client,
+          pool,
+          inMemoryLogs: inMemoryAuditLogs,
+          actorUserId: userId,
+          actorEmail: req.auth ? req.auth.email : null,
+          organizationId: parentLot.organization_id,
+          action: "LOT_SPLIT",
+          resourceType: "lot",
+          resourceId: parentLotId,
+          ipAddress: req.ip,
+          userAgent: req.get("User-Agent"),
+          details: {
+            childLotIds: createdChildLots.map((c) => c.id),
+            totalSplitQuantity,
+            splitsCount: createdChildLots.length,
+          },
         });
 
         await client.query("COMMIT");
@@ -1749,6 +1973,7 @@ app.post(
             status: c.status,
             initialQuantity: Number(c.initial_quantity),
             remainingQuantity: Number(c.remaining_quantity),
+            locationId: c.location_id || null,
             parentLotId: c.parent_lot_id,
             organizationId: c.organization_id,
             createdAt: c.created_at,
@@ -1800,6 +2025,13 @@ app.post(
         });
       }
 
+      if (parentLot.status === "Đã bán hết" || parentLot.status === "Đã tiêu thụ") {
+        return res.status(400).json({
+          error: "LOT_ALREADY_CONSUMED",
+          message: "Không thể tách lô hàng đã bán hết cho người tiêu dùng.",
+        });
+      }
+
       const parentRemaining = Number(
         parentLot.remainingQuantity !== undefined ? parentLot.remainingQuantity : parentLot.remaining_quantity
       );
@@ -1809,6 +2041,26 @@ app.post(
           error: "EXCEEDS_REMAINING_QUANTITY",
           message: `Tổng khối lượng tách (${totalSplitQuantity.toFixed(3)}) vượt quá khối lượng còn lại của lô mẹ (${parentRemaining.toFixed(3)}).`,
         });
+      }
+
+      // Kiểm tra tính hợp lệ của địa điểm lưu kho cho từng lô con (S-30)
+      for (let i = 0; i < splitItems.length; i++) {
+        const item = splitItems[i];
+        if (item.locationId) {
+          const loc = await getLocationById(null, inMemoryLocations, item.locationId);
+          if (!loc) {
+            return res.status(404).json({
+              error: "LOCATION_NOT_FOUND",
+              message: `Địa điểm lưu kho chỉ định cho lô con thứ ${i + 1} không tồn tại.`,
+            });
+          }
+          if (loc.organizationId !== pOrg) {
+            return res.status(403).json({
+              error: "LOCATION_ORG_MISMATCH",
+              message: `Địa điểm lưu kho cho lô con thứ ${i + 1} không thuộc quyền quản lý của tổ chức sở hữu lô hàng.`,
+            });
+          }
+        }
       }
 
       // Trừ khối lượng còn lại của lô mẹ chuẩn xác theo milli-units (T-42)
@@ -1829,6 +2081,7 @@ app.post(
             ? item.name.trim()
             : `${parentLot.name} (Tách ${i + 1})`;
           const childStatus = item.status || parentLot.status || "Đã thu hoạch";
+          const childLocationId = item.locationId || parentLot.locationId || parentLot.location_id || null;
 
           let childLotId = generateLotCode();
           while (inMemoryLots.some((l) => l.id === childLotId)) {
@@ -1844,6 +2097,7 @@ app.post(
             productId: parentLot.productId || parentLot.product_id || null,
             initialQuantity: splitQty,
             remainingQuantity: splitQty,
+            locationId: childLocationId,
             harvestedAt: parentLot.harvestedAt || parentLot.harvested_at || null,
             parentLotId: parentLotId,
             createdAt: nowIso,
@@ -1876,6 +2130,7 @@ app.post(
               parentLotId,
               childLotId,
               quantity: splitQty,
+              locationId: childLocationId,
               notes: item.notes || null,
               step: `Tạo từ phân tách lô mẹ ${parentLotId}`,
             },
@@ -1897,12 +2152,31 @@ app.post(
               childLotId: c.id,
               name: c.name,
               quantity: c.initialQuantity,
+              locationId: c.locationId || null,
             })),
             step: `Phân tách thành ${createdChildLots.length} lô con (${createdChildLots.map((c) => c.id).join(", ")})`,
           },
           organizationId: pOrg,
           actorUserId: userId,
           occurredAt: new Date(),
+        });
+
+        await recordAuditLog({
+          pool,
+          inMemoryLogs: inMemoryAuditLogs,
+          actorUserId: userId,
+          actorEmail: req.auth ? req.auth.email : null,
+          organizationId: pOrg,
+          action: "LOT_SPLIT",
+          resourceType: "lot",
+          resourceId: parentLotId,
+          ipAddress: req.ip,
+          userAgent: req.get("User-Agent"),
+          details: {
+            childLotIds: createdChildLots.map((c) => c.id),
+            totalSplitQuantity,
+            splitsCount: createdChildLots.length,
+          },
         });
 
         return res.status(201).json({
@@ -1917,6 +2191,7 @@ app.post(
             status: c.status,
             initialQuantity: c.initialQuantity,
             remainingQuantity: c.remainingQuantity,
+            locationId: c.locationId || null,
             parentLotId: c.parentLotId,
             organizationId: c.organizationId,
             createdAt: c.createdAt,
@@ -2010,7 +2285,21 @@ function validateMergeLotInput(items, fetchedLots, currentOrgId, isAdmin = false
     }
   }
 
-  // 2. Kiểm tra sản phẩm: Tất cả các lô mẹ được chọn phải có cùng product_id (Task T-45 AC1)
+  // 2. Kiểm tra trạng thái: Không được gộp lô đã bán hết hoặc tiêu thụ (S-29)
+  for (const item of items) {
+    const lotId = item.parent_batch_id || item.parentBatchId || item.lotId || item.id;
+    const lot = lotMap.get(lotId);
+    if (lot.status === "Đã bán hết" || lot.status === "Đã tiêu thụ") {
+      return {
+        isValid: false,
+        status: 400,
+        error: "LOT_ALREADY_CONSUMED",
+        message: `Không thể gộp lô hàng đã bán hết cho người tiêu dùng: [${lotId}].`,
+      };
+    }
+  }
+
+  // 3. Kiểm tra sản phẩm: Tất cả các lô mẹ được chọn phải có cùng product_id (Task T-45 AC1)
   const firstLot = lotMap.get(items[0].parent_batch_id || items[0].parentBatchId || items[0].lotId || items[0].id);
   const targetProductId = firstLot.product_id || firstLot.productId;
 
@@ -2185,7 +2474,7 @@ app.post(
         // 4. Tạo bản ghi lô hàng mới
         let newMergedLotId = null;
         let createdMergedLot = null;
-        const newLotTitle = mergedName || `${firstParent.name} (Gộp ${normalizedItems.length} lô)`;
+        const newLotTitle = mergedName || `${firstParent.name || firstParent.productName} (Gộp ${normalizedItems.length} lô)`;
 
         for (let attempt = 0; attempt < 5; attempt++) {
           const candidateId = generateLotCode();
@@ -2264,6 +2553,26 @@ app.post(
           organizationId: targetOrgId,
           actorUserId: userId,
           occurredAt: new Date(),
+        });
+
+        // Ghi audit log bằng cùng transaction client trước COMMIT (S-31 Atomicity)
+        await recordAuditLog({
+          client,
+          pool,
+          inMemoryLogs: inMemoryAuditLogs,
+          actorUserId: userId,
+          actorEmail: req.auth ? req.auth.email : null,
+          organizationId: targetOrgId,
+          action: "LOT_MERGED",
+          resourceType: "lot",
+          resourceId: newMergedLotId,
+          ipAddress: req.ip,
+          userAgent: req.get("User-Agent"),
+          details: {
+            parentLotIds: normalizedItems.map((it) => it.parent_batch_id),
+            totalQuantity: totalMergedQuantity,
+            parentsCount: normalizedItems.length,
+          },
         });
 
         await client.query("COMMIT");
@@ -2374,7 +2683,7 @@ app.post(
         }
 
         const nowIso = new Date().toISOString();
-        const newLotTitle = mergedName || `${firstParent.name} (Gộp ${normalizedItems.length} lô)`;
+        const newLotTitle = mergedName || `${firstParent.name || firstParent.productName} (Gộp ${normalizedItems.length} lô)`;
 
         createdMergedLot = {
           id: newMergedLotId,
@@ -2443,6 +2752,24 @@ app.post(
           occurredAt: new Date(),
         });
 
+        await recordAuditLog({
+          pool,
+          inMemoryLogs: inMemoryAuditLogs,
+          actorUserId: userId,
+          actorEmail: req.auth ? req.auth.email : null,
+          organizationId: pOrg,
+          action: "LOT_MERGED",
+          resourceType: "lot",
+          resourceId: newMergedLotId,
+          ipAddress: req.ip,
+          userAgent: req.get("User-Agent"),
+          details: {
+            parentLotIds: normalizedItems.map((it) => it.parent_batch_id),
+            totalQuantity: totalMergedQuantity,
+            parentsCount: normalizedItems.length,
+          },
+        });
+
         return res.status(201).json({
           message: "Gộp các lô hàng thành công.",
           lot: {
@@ -2479,10 +2806,272 @@ app.post(
 );
 
 /**
+ * API Nhà phân phối ghi nhận lô đã bán hết cho người tiêu dùng [S-29]
+ * - Cho phép Nhà phân phối (distributor, org_admin, admin) ghi nhận lô đã bán hết.
+ * - Kiểm tra quyền sở hữu (multi-tenant): chỉ bên đang nắm giữ lô mới có quyền ghi nhận.
+ * - Chặn ghi nhận nếu lô đang có yêu cầu bàn giao PENDING.
+ * - Chặn ghi nhận lại nếu lô đã ở trạng thái "Đã bán hết".
+ * - Cập nhật status = 'Đã bán hết', remaining_quantity = 0.
+ * - Ghi sự kiện LOT_CONSUMED vào chuỗi hash-chain bất biến SHA-256 (batch_events).
+ */
+app.post(
+  "/api/lots/:id/consume",
+  requirePermission(["distributor", "org_admin", "admin"]),
+  async (req, res) => {
+    const lotId = req.params.id;
+    const { notes } = req.body || {};
+    const userId = req.auth ? (req.auth.userId || req.auth.id || req.auth.email) : null;
+    const userOrgId = req.auth ? (req.auth.organizationId || req.auth.organization_id) : null;
+    const isAdmin = req.auth && (req.auth.roleId === "admin" || req.auth.isAdmin);
+
+    if (pool) {
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN");
+
+        const lotRes = await client.query(
+          "SELECT * FROM lots WHERE id = $1 FOR UPDATE",
+          [lotId]
+        );
+
+        if (lotRes.rows.length === 0) {
+          await client.query("ROLLBACK");
+          return res.status(404).json({
+            error: "LOT_NOT_FOUND",
+            message: "Không tìm thấy lô hàng.",
+          });
+        }
+
+        const lot = lotRes.rows[0];
+
+        // Kiểm tra quyền nắm giữ (multi-tenant)
+        if (!isAdmin && lot.organization_id !== userOrgId) {
+          await client.query("ROLLBACK");
+          logSecurityEvent("CROSS_TENANT_ACCESS_DENIED", {
+            userId,
+            userEmail: req.auth.email,
+            userOrgId,
+            userRole: req.auth.roleId,
+            resourceType: "lots",
+            resourceId: lotId,
+            targetOrgId: lot.organization_id,
+            action: "CONSUME_LOT",
+            ip: req.ip,
+            userAgent: req.get("User-Agent"),
+          });
+          return res.status(403).json({
+            error: "FORBIDDEN",
+            message: "Truy cập bị từ chối: bạn không có quyền ghi nhận tiêu thụ cho lô hàng của tổ chức khác.",
+          });
+        }
+
+        // Kiểm tra bàn giao đang chờ
+        const pendingCheck = await client.query(
+          "SELECT id FROM lot_transfers WHERE lot_id = $1 AND status = 'PENDING'",
+          [lotId]
+        );
+        if (pendingCheck.rows.length > 0) {
+          await client.query("ROLLBACK");
+          return res.status(400).json({
+            error: "PENDING_TRANSFER_EXISTS",
+            message: "Không thể ghi nhận bán hết cho lô hàng đang trong trạng thái chờ bàn giao.",
+          });
+        }
+
+        if (lot.status === "Đã bán hết" || lot.status === "Đã tiêu thụ") {
+          await client.query("ROLLBACK");
+          return res.status(400).json({
+            error: "ALREADY_CONSUMED",
+            message: "Lô hàng này đã được ghi nhận bán hết trước đó.",
+          });
+        }
+
+        const prevRemaining = Number(lot.remaining_quantity !== null && lot.remaining_quantity !== undefined ? lot.remaining_quantity : lot.initial_quantity);
+
+        // Cập nhật trạng thái lô
+        const updateRes = await client.query(
+          "UPDATE lots SET status = 'Đã bán hết', remaining_quantity = 0 WHERE id = $1 RETURNING *",
+          [lotId]
+        );
+        const updatedLot = updateRes.rows[0];
+
+        // Ghi sự kiện LOT_CONSUMED vào sổ cái SHA-256
+        const event = await appendBatchEvent(client, {
+          batchId: lotId,
+          eventType: "LOT_CONSUMED",
+          payload: {
+            lotId,
+            previousStatus: lot.status,
+            previousRemainingQuantity: prevRemaining,
+            consumedQuantity: prevRemaining,
+            status: "Đã bán hết",
+            notes: notes ? String(notes).trim() : "Đã bán hết cho người tiêu dùng",
+            step: "Đã bán hết cho người tiêu dùng",
+          },
+          organizationId: lot.organization_id,
+          actorUserId: userId,
+          occurredAt: new Date(),
+        });
+
+        // Ghi audit log bằng cùng transaction client trước COMMIT (S-31 Atomicity)
+        await recordAuditLog({
+          client,
+          pool,
+          inMemoryLogs: inMemoryAuditLogs,
+          actorUserId: userId,
+          actorEmail: req.auth ? req.auth.email : null,
+          organizationId: lot.organization_id,
+          action: "LOT_CONSUMED",
+          resourceType: "lot",
+          resourceId: lotId,
+          ipAddress: req.ip,
+          userAgent: req.get("User-Agent"),
+          details: {
+            consumedQuantity: prevRemaining,
+            status: "Đã bán hết",
+            notes: notes ? String(notes).trim() : null,
+          },
+        });
+
+        await client.query("COMMIT");
+
+        return res.status(200).json({
+          message: "Ghi nhận lô hàng đã bán hết cho người tiêu dùng thành công.",
+          lot: {
+            id: updatedLot.id,
+            name: updatedLot.name,
+            status: updatedLot.status,
+            initialQuantity: Number(updatedLot.initial_quantity),
+            remainingQuantity: Number(updatedLot.remaining_quantity),
+            organizationId: updatedLot.organization_id,
+          },
+          event,
+        });
+      } catch (err) {
+        await client.query("ROLLBACK");
+        return res.status(500).json({ message: err.message });
+      } finally {
+        client.release();
+      }
+    } else {
+      // In-Memory Mode
+      const lot = inMemoryLots.find((l) => l.id === lotId);
+      if (!lot) {
+        return res.status(404).json({
+          error: "LOT_NOT_FOUND",
+          message: "Không tìm thấy lô hàng.",
+        });
+      }
+
+      const lOrg = lot.organizationId || lot.organization_id;
+      if (!isAdmin && lOrg !== userOrgId) {
+        logSecurityEvent("CROSS_TENANT_ACCESS_DENIED", {
+          userId,
+          userEmail: req.auth.email,
+          userOrgId,
+          userRole: req.auth.roleId,
+          resourceType: "lots",
+          resourceId: lotId,
+          targetOrgId: lOrg,
+          action: "CONSUME_LOT",
+          ip: req.ip,
+          userAgent: req.get("User-Agent"),
+        });
+        return res.status(403).json({
+          error: "FORBIDDEN",
+          message: "Truy cập bị từ chối: bạn không có quyền ghi nhận tiêu thụ cho lô hàng của tổ chức khác.",
+        });
+      }
+
+      const pendingTransfer = inMemoryTransfers.find((t) => t.lotId === lotId && t.status === "PENDING");
+      if (pendingTransfer) {
+        return res.status(400).json({
+          error: "PENDING_TRANSFER_EXISTS",
+          message: "Không thể ghi nhận bán hết cho lô hàng đang trong trạng thái chờ bàn giao.",
+        });
+      }
+
+      if (lot.status === "Đã bán hết" || lot.status === "Đã tiêu thụ") {
+        return res.status(400).json({
+          error: "ALREADY_CONSUMED",
+          message: "Lô hàng này đã được ghi nhận bán hết trước đó.",
+        });
+      }
+
+      const prevStatus = lot.status;
+      const prevRemaining = Number(
+        lot.remainingQuantity !== undefined
+          ? lot.remainingQuantity
+          : (lot.remaining_quantity !== undefined ? lot.remaining_quantity : lot.initialQuantity)
+      );
+
+      lot.status = "Đã bán hết";
+      lot.remainingQuantity = 0;
+      if (lot.remaining_quantity !== undefined) lot.remaining_quantity = 0;
+
+      try {
+        const event = await appendBatchEvent(null, {
+          batchId: lotId,
+          eventType: "LOT_CONSUMED",
+          payload: {
+            lotId,
+            previousStatus: prevStatus,
+            previousRemainingQuantity: prevRemaining,
+            consumedQuantity: prevRemaining,
+            status: "Đã bán hết",
+            notes: notes ? String(notes).trim() : "Đã bán hết cho người tiêu dùng",
+            step: "Đã bán hết cho người tiêu dùng",
+          },
+          organizationId: lOrg,
+          actorUserId: userId,
+          occurredAt: new Date(),
+        });
+
+        await recordAuditLog({
+          pool,
+          inMemoryLogs: inMemoryAuditLogs,
+          actorUserId: userId,
+          actorEmail: req.auth ? req.auth.email : null,
+          organizationId: lOrg,
+          action: "LOT_CONSUMED",
+          resourceType: "lot",
+          resourceId: lotId,
+          ipAddress: req.ip,
+          userAgent: req.get("User-Agent"),
+          details: {
+            consumedQuantity: prevRemaining,
+            status: "Đã bán hết",
+            notes: notes ? String(notes).trim() : null,
+          },
+        });
+
+        return res.status(200).json({
+          message: "Ghi nhận lô hàng đã bán hết cho người tiêu dùng thành công.",
+          lot: {
+            id: lot.id,
+            name: lot.name,
+            status: lot.status,
+            initialQuantity: lot.initialQuantity !== undefined ? lot.initialQuantity : lot.initial_quantity,
+            remainingQuantity: lot.remainingQuantity !== undefined ? lot.remainingQuantity : lot.remaining_quantity,
+            organizationId: lOrg,
+          },
+          event,
+        });
+      } catch (err) {
+        lot.status = prevStatus;
+        lot.remainingQuantity = prevRemaining;
+        if (lot.remaining_quantity !== undefined) lot.remaining_quantity = prevRemaining;
+        return res.status(500).json({ message: err.message });
+      }
+    }
+  }
+);
+
+/**
  * Lấy chuỗi sự kiện hash-chain và lịch sử nguồn gốc của lô hàng (S-10, S-11, S-21, S-23)
  */
 app.get(
-  ["/api/lots/:id/events", "/api/lots/:id/timeline", "/api/lots/:id/lineage", "/api/lots/:id/origins"],
+  ["/api/lots/:id/events", "/api/lots/:id/timeline", "/api/lots/:id/lineage"],
   requirePermission(["producer", "cooperative", "transporter", "distributor", "org_admin", "admin", "inspector"]),
   async (req, res) => {
     const lotId = req.params.id;
@@ -2536,13 +3125,119 @@ app.get(
   }
 );
 
+// In-memory cache cho truy xuất nguồn gốc (T-50 NFR: TTL = 60s)
+const lotOriginsCache = new Map();
+const LOT_ORIGINS_CACHE_TTL_MS = 60 * 1000;
+
+function clearLotOriginsCache(lotId) {
+  if (lotId) {
+    lotOriginsCache.delete(lotId);
+  } else {
+    lotOriginsCache.clear();
+  }
+}
+
+/**
+ * T-50: API Endpoint truy xuất nguồn gốc và phả hệ đa tầng kèm thông tin vùng trồng (Farms)
+ * Hỗ trợ cache in-memory 60 giây và kiểm soát quyền truy cập S-23 (T-54).
+ */
+app.get(
+  ["/api/lots/:id/origins", "/api/lineage/origins/:id"],
+  requirePermission(["producer", "cooperative", "transporter", "distributor", "org_admin", "admin", "inspector"]),
+  async (req, res) => {
+    const lotId = req.params.id;
+    try {
+      // 1. Kiểm soát quyền truy cập S-23 / T-54 qua evaluateLotAccess
+      const access = await evaluateLotAccess({
+        pool,
+        authContext: req.auth,
+        lotId,
+        inMemoryLots,
+      });
+
+      if (access.status === "NOT_FOUND") {
+        return res.status(404).json({ message: "Không tìm thấy lô hàng." });
+      }
+
+      if (!access.allowed) {
+        logSecurityEvent("CROSS_TENANT_ACCESS_DENIED", {
+          userId: req.auth.userId || req.auth.id,
+          userEmail: req.auth.email,
+          userOrgId: req.auth.organizationId,
+          userRole: req.auth.roleId,
+          resourceType: "lots",
+          resourceId: lotId,
+          targetOrgId: access.targetOrgId,
+          action: "READ_ORIGINS",
+          ip: req.ip,
+          userAgent: req.get("User-Agent"),
+        });
+        return res.status(403).json({
+          message: "Truy cập bị từ chối: bạn không có quyền xem nguồn gốc của lô hàng thuộc tổ chức khác.",
+        });
+      }
+
+      // 2. NFR Cache 60 giây (T-50 NFR)
+      const now = Date.now();
+      const cached = lotOriginsCache.get(lotId);
+      if (cached && now - cached.timestamp < LOT_ORIGINS_CACHE_TTL_MS) {
+        return res.status(200).json({
+          ...cached.data,
+          cached: true,
+          cachedAt: cached.cachedAt,
+        });
+      }
+
+      // 3. Gọi thuật toán traceLotOrigins duyệt ngược BFS
+      const result = await traceLotOrigins(pool, lotId, {
+        inMemoryLots,
+        inMemoryBatchRelations,
+        inMemoryFarms,
+      });
+
+      const responsePayload = {
+        lotId: result.lotId,
+        isRoot: result.isRoot,
+        rootLots: result.rootLots,
+        levels: result.levels,
+        allAncestors: result.allAncestors,
+        ancestorIds: result.ancestorIds,
+        totalAncestors: result.totalAncestors,
+        accessType: access.accessType,
+      };
+
+      // Lưu cache 60s
+      lotOriginsCache.set(lotId, {
+        timestamp: now,
+        cachedAt: new Date(now).toISOString(),
+        data: responsePayload,
+      });
+
+      return res.status(200).json({
+        ...responsePayload,
+        cached: false,
+      });
+    } catch (err) {
+      if (err.name === "CycleDetectedError") {
+        return res.status(400).json({
+          error: "CycleDetectedError",
+          message: err.message,
+          cycleLotId: err.cycleLotId,
+        });
+      }
+      return res.status(err.statusCode || 500).json({ message: err.message });
+    }
+  }
+);
+
 /**
  * API Truy xuất phả hệ toàn diện (S-21 Truy ngược, S-22 Đối chiếu độc lập, S-26 Truy xuôi, S-27 Hậu duệ, S-28 Đồ thị phả hệ)
  */
 app.get(
-  ["/api/lots/:id/genealogy", "/api/lots/:id/descendants"],
+  ["/api/lots/:id/descendants", "/api/lots/:id/trace-forward", "/api/lots/:id/genealogy"],
   requirePermission(["producer", "cooperative", "transporter", "distributor", "org_admin", "admin", "inspector"]),
   async (req, res) => {
+    const startTime = performance.now();
     const lotId = req.params.id;
     try {
       const access = await evaluateLotAccess({
@@ -2569,16 +3264,33 @@ app.get(
       }
 
       const ancestorSet = await collectAncestorLotIds(pool, lotId, lotsMap, inMemoryBatchRelations);
-      const descendantSet = await collectDescendantLotIds(pool, lotId, lotsMap, inMemoryBatchRelations);
+      const requestedMaxDepth = req.query.maxDepth ? Number(req.query.maxDepth) : null;
 
-      const ancestors = Array.from(ancestorSet).map((id) => {
-        const l = lotsMap.get(id);
-        return l
-          ? { id: l.id, name: l.name, status: l.status, organizationId: l.organizationId || l.organization_id }
-          : { id };
+      const detailedDescendants = await traceLotDescendants({
+        pool,
+        startLotId: lotId,
+        inMemoryLots,
+        inMemoryBatchRelations,
+        inMemoryBatchEvents,
+        inMemoryOrgs,
+        inMemoryProducts,
+        inMemoryFarms,
+        inMemoryLocations,
+        maxDepth: requestedMaxDepth,
       });
 
-      const descendants = Array.from(descendantSet).map((id) => {
+      const descendantSet = requestedMaxDepth
+        ? new Set(detailedDescendants.descendantIds)
+        : await collectDescendantLotIds(pool, lotId, lotsMap, inMemoryBatchRelations);
+
+      if (!requestedMaxDepth) {
+        // Kết hợp descendantSet (đảm bảo không sót id nào từ cả 2 nguồn)
+        for (const d of detailedDescendants.descendantIds) {
+          descendantSet.add(d);
+        }
+      }
+
+      const ancestors = Array.from(ancestorSet).map((id) => {
         const l = lotsMap.get(id);
         return l
           ? { id: l.id, name: l.name, status: l.status, organizationId: l.organizationId || l.organization_id }
@@ -2632,22 +3344,130 @@ app.get(
         } catch {
           // ignore
         }
+
+        // Bổ sung quan hệ trực tiếp cha-con qua lots.parent_lot_id trên PostgreSQL
+        try {
+          const directParentRes = await pool.query(
+            "SELECT id, parent_lot_id, initial_quantity FROM lots WHERE parent_lot_id = ANY($1::text[]) AND id = ANY($1::text[])",
+            [Array.from(allNodeIds)]
+          );
+          for (const r of directParentRes.rows) {
+            if (!edges.some((e) => e.source === r.parent_lot_id && e.target === r.id)) {
+              edges.push({
+                source: r.parent_lot_id,
+                target: r.id,
+                relationType: "SPLIT",
+                quantity: r.initial_quantity !== null && r.initial_quantity !== undefined ? Number(r.initial_quantity) : null,
+              });
+            }
+          }
+        } catch {
+          // ignore
+        }
       }
+
+      // Bổ sung quan hệ trực tiếp cha-con qua lots.parent_lot_id từ lotsMap
+      for (const [id, lot] of lotsMap.entries()) {
+        const pId = lot.parentLotId || lot.parent_lot_id;
+        if (pId && allNodeIds.has(pId) && allNodeIds.has(id)) {
+          if (!edges.some((e) => e.source === pId && e.target === id)) {
+            const initQty = lot.initialQuantity !== undefined ? lot.initialQuantity : lot.initial_quantity;
+            edges.push({
+              source: pId,
+              target: id,
+              relationType: "SPLIT",
+              quantity: initQty !== null && initQty !== undefined ? Number(initQty) : null,
+            });
+          }
+        }
+      }
+
+      // Đồng bộ các cạnh từ detailedDescendants.graph.edges (bao gồm cả quan hệ từ Event Logs)
+      if (detailedDescendants.graph && Array.isArray(detailedDescendants.graph.edges)) {
+        for (const e of detailedDescendants.graph.edges) {
+          if (!edges.some((item) => item.source === e.source && item.target === e.target)) {
+            edges.push({
+              source: e.source,
+              target: e.target,
+              relationType: e.relationType || "SPLIT",
+              quantity: e.quantity !== undefined ? e.quantity : null,
+            });
+          }
+        }
+      }
+
+      // Chuẩn hóa cấu trúc levels theo đặc tả:
+      // { level: 1, lots: [{ id, relationType, quantity, organizationId, ... }] }
+      const standardizedLevels = detailedDescendants.levels.map((lvl) => ({
+        level: lvl.distance,
+        distance: lvl.distance,
+        label: lvl.label,
+        count: lvl.count,
+        lots: lvl.lots.map((item) => ({
+          id: item.id,
+          name: item.name,
+          relationType: item.relationType,
+          quantity: item.quantity,
+          organizationId: item.organizationId,
+          organizationName: item.organizationName,
+          status: item.status,
+          remainingQuantity: item.remainingQuantity,
+          initialQuantity: item.initialQuantity,
+          productName: item.productName,
+          productUnit: item.productUnit,
+          farmName: item.farmName,
+          parentLotId: item.parentLotId,
+          distance: item.distance,
+          path: item.path,
+        })),
+      }));
+
+      const targetLotObj = lotsMap.get(lotId) || null;
+      const startLot = {
+        id: lotId,
+        name: targetLotObj ? targetLotObj.name : lotId,
+        organizationId: targetLotObj ? (targetLotObj.organizationId || targetLotObj.organization_id) : null,
+        status: targetLotObj ? targetLotObj.status : null,
+        remainingQuantity: targetLotObj ? (targetLotObj.remainingQuantity !== undefined ? Number(targetLotObj.remainingQuantity) : Number(targetLotObj.remaining_quantity)) : null,
+      };
+
+      const finalDescendantIds = Array.from(descendantSet);
+      const isLeaf = finalDescendantIds.length === 0;
+      const totalDescendants = finalDescendantIds.length;
+      const executionTimeMs = Number((performance.now() - startTime).toFixed(2));
 
       return res.status(200).json({
         lotId,
+        startLot,
+        isLeaf,
+        levels: standardizedLevels,
+        descendants: detailedDescendants.descendants,
+        descendantsDetail: detailedDescendants.descendants,
+        descendantIds: finalDescendantIds,
+        locationSummary: detailedDescendants.locationSummary || [],
+        totalDescendants,
+        descendantCount: totalDescendants,
         ancestorIds: Array.from(ancestorSet),
-        descendantIds: Array.from(descendantSet),
         ancestors,
-        descendants,
         ancestorCount: ancestorSet.size,
-        descendantCount: descendantSet.size,
         graph: {
           nodes,
           edges,
         },
+        truncated: Boolean(detailedDescendants.truncated),
+        truncationReason: detailedDescendants.truncationReason || null,
+        warning: detailedDescendants.warning || null,
+        executionTimeMs,
       });
     } catch (err) {
+      if (err instanceof CycleDetectedError || err.name === "CycleDetectedError") {
+        return res.status(422).json({
+          error: "CYCLE_DETECTED",
+          message: err.message,
+          cycleLotId: err.cycleLotId || null,
+          path: err.path || [],
+        });
+      }
       return res.status(500).json({ message: err.message });
     }
   }
@@ -2938,6 +3758,22 @@ app.post(
           occurredAt: new Date(),
         });
 
+        // Ghi audit log bằng cùng transaction client trước COMMIT (S-31 Atomicity)
+        await recordAuditLog({
+          client,
+          pool,
+          inMemoryLogs: inMemoryAuditLogs,
+          actorUserId: userId,
+          actorEmail: req.auth.email,
+          organizationId: orgId,
+          action: "LOT_CREATED",
+          resourceType: "lot",
+          resourceId: insertedLot.id,
+          ipAddress: req.ip,
+          userAgent: req.get("User-Agent"),
+          details: { farmId, productId, quantity: qty, harvestedAt: harvestDate },
+        });
+
         await client.query("COMMIT");
 
         const successResponse = {
@@ -3050,6 +3886,20 @@ app.post(
       if (idx !== -1) inMemoryLots.splice(idx, 1);
       return res.status(500).json({ message: "Lỗi ghi nhận chuỗi sự kiện lô hàng: " + eventErr.message });
     }
+
+    await recordAuditLog({
+      pool,
+      inMemoryLogs: inMemoryAuditLogs,
+      actorUserId: userId,
+      actorEmail: req.auth.email,
+      organizationId: orgId,
+      action: "LOT_CREATED",
+      resourceType: "lot",
+      resourceId: insertedLot.id,
+      ipAddress: req.ip,
+      userAgent: req.get("User-Agent"),
+      details: { farmId, productId, quantity: qty, harvestedAt: harvestDate },
+    });
 
     const successResponse = {
       message: "Ghi nhận thu hoạch thành công.",
@@ -3336,6 +4186,108 @@ app.post(
 );
 
 /**
+ * Nhập danh mục thửa đất từ CSV (All-or-Nothing)
+ * Hỗ trợ producer, cooperative, org_admin, admin
+ */
+app.post(
+  "/api/farms/import-csv",
+  requirePermission(["producer", "cooperative", "org_admin", "admin"]),
+  async (req, res) => {
+    const orgId = req.auth.organizationId;
+    const csvContent = typeof req.body === "string" ? req.body : req.body.csvContent;
+    if (!csvContent || typeof csvContent !== "string" || !csvContent.trim()) {
+      return res.status(400).json({
+        message: "Nội dung tệp CSV không được để trống.",
+        errors: [{ row: 1, column: "file", message: "Nội dung tệp CSV không được để trống." }],
+      });
+    }
+
+    if (Buffer.byteLength(csvContent, "utf8") > 5 * 1024 * 1024) {
+      return res.status(400).json({
+        message: "Kích thước tệp CSV vượt quá giới hạn tối đa 5MB.",
+        errors: [{ row: 1, column: "file", message: "Tệp CSV vượt quá dung lượng cho phép (tối đa 5MB)." }],
+      });
+    }
+
+    let existingFarmNamesLower = new Set();
+    if (pool) {
+      try {
+        const existRes = await pool.query(
+          "SELECT LOWER(name) AS name_lower FROM farms WHERE organization_id = $1",
+          [orgId]
+        );
+        existingFarmNamesLower = new Set(existRes.rows.map((r) => r.name_lower));
+      } catch (err) {
+        return res.status(500).json({ message: err.message });
+      }
+    } else {
+      existingFarmNamesLower = new Set(
+        inMemoryFarms
+          .filter((f) => f.organizationId === orgId)
+          .map((f) => f.name.toLowerCase())
+      );
+    }
+
+    const validation = validateFarmsCsv(csvContent, existingFarmNamesLower);
+    if (!validation.valid) {
+      return res.status(400).json({
+        message: "Dữ liệu CSV chứa lỗi, không có dòng nào được tạo.",
+        errors: validation.errors,
+      });
+    }
+
+    const createdFarms = [];
+    if (pool) {
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN");
+        for (const item of validation.rows) {
+          const farmId = "FARM-" + crypto.randomBytes(3).toString("hex").toUpperCase();
+          const insertRes = await client.query(
+            "INSERT INTO farms (id, name, area, coordinates, organization_id) VALUES ($1, $2, $3, $4, $5) RETURNING id, name, area, coordinates, organization_id",
+            [farmId, item.name, item.area, item.coordinates || null, orgId]
+          );
+          const r = insertRes.rows[0];
+          createdFarms.push({
+            id: r.id,
+            name: r.name,
+            area: parseFloat(r.area),
+            coordinates: r.coordinates,
+            organizationId: r.organization_id,
+          });
+        }
+        await client.query("COMMIT");
+      } catch (err) {
+        await client.query("ROLLBACK");
+        return res.status(500).json({ message: "Lỗi trong quá trình nhập dữ liệu: " + err.message });
+      } finally {
+        client.release();
+      }
+    } else {
+      for (const item of validation.rows) {
+        const farmId = "FARM-" + crypto.randomBytes(3).toString("hex").toUpperCase();
+        const newFarm = {
+          id: farmId,
+          name: item.name,
+          area: item.area,
+          coordinates: item.coordinates || "",
+          organizationId: orgId,
+        };
+        inMemoryFarms.push(newFarm);
+        createdFarms.push(newFarm);
+      }
+    }
+
+    return res.status(201).json({
+      message: `Nhập danh mục thửa đất thành công (${createdFarms.length} dòng).`,
+      importedCount: createdFarms.length,
+      farms: createdFarms,
+    });
+  }
+);
+
+
+/**
  * Chỉnh sửa thửa đất - Đổi tên không làm hỏng liên kết với lô (T-15)
  */
 app.put(
@@ -3555,6 +4507,14 @@ app.post(
         return res.status(404).json({ message: "Không tìm thấy lô hàng." });
       }
 
+      const lotRemainingVal = Number(lot.remainingQuantity !== undefined ? lot.remainingQuantity : (lot.remaining_quantity !== undefined ? lot.remaining_quantity : (lot.initialQuantity || lot.initial_quantity || 0)));
+      if (lot.status === "Đã bán hết" || lot.status === "Đã tiêu thụ" || lotRemainingVal <= 0) {
+        return res.status(400).json({
+          error: "LOT_ALREADY_CONSUMED",
+          message: "Lô hàng đã được bán hết cho người tiêu dùng, không thể tạo yêu cầu bàn giao.",
+        });
+      }
+
       const fromOrgId = lot.organizationId;
 
       // 2. Kiểm tra quyền sở hữu lô: Phải thuộc tổ chức hiện tại của user (trừ admin)
@@ -3669,6 +4629,28 @@ app.post(
             occurredAt: now,
           });
 
+          // Ghi audit log bằng cùng transaction client trước COMMIT (S-31 Atomicity)
+          await recordAuditLog({
+            client,
+            pool,
+            inMemoryLogs: inMemoryAuditLogs,
+            actorUserId: userId,
+            actorEmail: req.auth ? req.auth.email : null,
+            organizationId: fromOrgId,
+            action: "TRANSFER_INITIATED",
+            resourceType: "transfer",
+            resourceId: transferId,
+            ipAddress: req.ip,
+            userAgent: req.get("User-Agent"),
+            details: {
+              lotId,
+              fromOrganizationId: fromOrgId,
+              toOrganizationId: trimmedToOrgId,
+              status: "PENDING",
+              notes: cleanNotes,
+            },
+          });
+
           await client.query("COMMIT");
 
           const r = insertRes.rows[0];
@@ -3764,6 +4746,26 @@ app.post(
           if (idx >= 0) inMemoryTransfers.splice(idx, 1);
           throw memErr;
         }
+
+        await recordAuditLog({
+          pool,
+          inMemoryLogs: inMemoryAuditLogs,
+          actorUserId: userId,
+          actorEmail: req.auth ? req.auth.email : null,
+          organizationId: fromOrgId,
+          action: "TRANSFER_INITIATED",
+          resourceType: "transfer",
+          resourceId: transferId,
+          ipAddress: req.ip,
+          userAgent: req.get("User-Agent"),
+          details: {
+            lotId,
+            fromOrganizationId: fromOrgId,
+            toOrganizationId: trimmedToOrgId,
+            status: "PENDING",
+            notes: cleanNotes,
+          },
+        });
 
         return res.status(201).json({
           message: "Yêu cầu bàn giao lô hàng đã được gửi thành công ở trạng thái Chờ xác nhận (PENDING).",
@@ -4121,6 +5123,28 @@ app.post(
             occurredAt: now,
           });
 
+          // Ghi audit log bằng cùng transaction client trước COMMIT (S-31 Atomicity)
+          await recordAuditLog({
+            client,
+            pool,
+            inMemoryLogs: inMemoryAuditLogs,
+            actorUserId: userId,
+            actorEmail: req.auth ? req.auth.email : null,
+            organizationId: tr.to_organization_id,
+            action: "TRANSFER_CONFIRMED",
+            resourceType: "transfer",
+            resourceId: transferId,
+            ipAddress: req.ip,
+            userAgent: req.get("User-Agent"),
+            details: {
+              lotId: tr.lot_id,
+              fromOrganizationId: tr.from_organization_id,
+              toOrganizationId: tr.to_organization_id,
+              status: "CONFIRMED",
+              lateConfirmation: isLate,
+            },
+          });
+
           await client.query("COMMIT");
 
           const updated = updateRes.rows[0];
@@ -4231,6 +5255,27 @@ app.post(
         }
 
         const isLate = Boolean(tr.isOverdue || tr.is_overdue);
+
+        await recordAuditLog({
+          pool,
+          inMemoryLogs: inMemoryAuditLogs,
+          actorUserId: userId,
+          actorEmail: req.auth ? req.auth.email : null,
+          organizationId: tr.toOrganizationId,
+          action: "TRANSFER_CONFIRMED",
+          resourceType: "transfer",
+          resourceId: transferId,
+          ipAddress: req.ip,
+          userAgent: req.get("User-Agent"),
+          details: {
+            lotId: tr.lotId,
+            fromOrganizationId: tr.fromOrganizationId,
+            toOrganizationId: tr.toOrganizationId,
+            status: "CONFIRMED",
+            lateConfirmation: isLate,
+          },
+        });
+
         return res.status(200).json({
           message: "Xác nhận tiếp nhận bàn giao thành công. Quyền sở hữu lô hàng đã được chuyển giao sang tổ chức của bạn.",
           transfer: {
@@ -4361,6 +5406,28 @@ app.post(
             occurredAt: now,
           });
 
+          // Ghi audit log bằng cùng transaction client trước COMMIT (S-31 Atomicity)
+          await recordAuditLog({
+            client,
+            pool,
+            inMemoryLogs: inMemoryAuditLogs,
+            actorUserId: userId,
+            actorEmail: req.auth ? req.auth.email : null,
+            organizationId: tr.to_organization_id,
+            action: "TRANSFER_REJECTED",
+            resourceType: "transfer",
+            resourceId: transferId,
+            ipAddress: req.ip,
+            userAgent: req.get("User-Agent"),
+            details: {
+              lotId: tr.lot_id,
+              fromOrganizationId: tr.from_organization_id,
+              toOrganizationId: tr.to_organization_id,
+              reason: cleanReason,
+              status: "REJECTED",
+            },
+          });
+
           await client.query("COMMIT");
 
           const updated = updateRes.rows[0];
@@ -4460,6 +5527,26 @@ app.post(
           tr.updatedAt = oldTrUpdatedAt;
           throw memErr;
         }
+
+        await recordAuditLog({
+          pool,
+          inMemoryLogs: inMemoryAuditLogs,
+          actorUserId: userId,
+          actorEmail: req.auth ? req.auth.email : null,
+          organizationId: tr.toOrganizationId,
+          action: "TRANSFER_REJECTED",
+          resourceType: "transfer",
+          resourceId: transferId,
+          ipAddress: req.ip,
+          userAgent: req.get("User-Agent"),
+          details: {
+            lotId: tr.lotId,
+            fromOrganizationId: tr.fromOrganizationId,
+            toOrganizationId: tr.toOrganizationId,
+            reason: cleanReason,
+            status: "REJECTED",
+          },
+        });
 
         return res.status(200).json({
           message: "Từ chối tiếp nhận bàn giao thành công. Lô hàng vẫn thuộc quyền sở hữu của bên gửi.",
@@ -4709,6 +5796,393 @@ async function seedDemoOverdueTransfer() {
   }
 }
 
+/**
+ * ==============================================================================
+ * API QUẢN LÝ ĐỊA ĐIỂM, KHO LẠNH & CỬA HÀNG PHÂN PHỐI (Story S-30)
+ * ==============================================================================
+ */
+
+// Lấy danh sách địa điểm theo quyền tổ chức (S-30)
+app.get(
+  "/api/locations",
+  requirePermission(["producer", "cooperative", "transporter", "distributor", "org_admin", "admin", "inspector"]),
+  async (req, res) => {
+    try {
+      const isInspectorOrAdmin = ["inspector", "admin"].includes(req.auth.roleId);
+      const userOrgId = req.auth.organizationId;
+      const orgFilter = isInspectorOrAdmin ? (req.query.organizationId || null) : userOrgId;
+      const list = await fetchLocations(pool, inMemoryLocations, orgFilter);
+      return res.status(200).json({ locations: list });
+    } catch (err) {
+      return res.status(500).json({ message: err.message });
+    }
+  }
+);
+
+// Chi tiết địa điểm (S-30)
+app.get(
+  "/api/locations/:id",
+  requirePermission(["producer", "cooperative", "transporter", "distributor", "org_admin", "admin", "inspector"]),
+  async (req, res) => {
+    try {
+      const location = await getLocationById(pool, inMemoryLocations, req.params.id);
+      if (!location) {
+        return res.status(404).json({ message: "Không tìm thấy địa điểm." });
+      }
+      const isInspectorOrAdmin = ["inspector", "admin"].includes(req.auth.roleId);
+      if (!isInspectorOrAdmin && location.organizationId !== req.auth.organizationId) {
+        return res.status(403).json({ message: "Truy cập bị từ chối: địa điểm thuộc tổ chức khác." });
+      }
+      return res.status(200).json({ location });
+    } catch (err) {
+      return res.status(500).json({ message: err.message });
+    }
+  }
+);
+
+// Tạo địa điểm mới (S-30)
+app.post(
+  "/api/locations",
+  requirePermission(["producer", "cooperative", "transporter", "distributor", "org_admin", "admin"]),
+  async (req, res) => {
+    try {
+      const { name, address, locationType, contactPerson, phone, coordinates } = req.body || {};
+      if (!name || typeof name !== "string" || !name.trim()) {
+        return res.status(400).json({ error: "INVALID_NAME", message: "Tên địa điểm/cửa hàng không được để trống." });
+      }
+
+      const organizationId = req.auth.organizationId;
+      const newLoc = await createLocation(pool, inMemoryLocations, {
+        name: name.trim(),
+        address: address ? address.trim() : null,
+        organizationId,
+        locationType: locationType || "warehouse",
+        contactPerson: contactPerson ? contactPerson.trim() : null,
+        phone: phone ? phone.trim() : null,
+        coordinates: coordinates || null,
+      });
+
+      // Ghi nhật ký thao tác nghiệp vụ (S-31)
+      await recordAuditLog({
+        pool,
+        inMemoryLogs: inMemoryAuditLogs,
+        actorUserId: req.auth.userId,
+        actorEmail: req.auth.email,
+        organizationId,
+        action: "LOCATION_CREATED",
+        resourceType: "location",
+        resourceId: newLoc.id,
+        ipAddress: req.ip,
+        userAgent: req.get("User-Agent"),
+        details: { name: newLoc.name, locationType: newLoc.locationType, address: newLoc.address },
+      });
+
+      return res.status(201).json({ message: "Tạo địa điểm thành công.", location: newLoc });
+    } catch (err) {
+      return res.status(500).json({ message: err.message });
+    }
+  }
+);
+
+// Cập nhật vị trí lưu kho của lô hàng (S-27 & S-30)
+app.patch(
+  "/api/lots/:id/location",
+  requirePermission(["producer", "cooperative", "transporter", "distributor", "org_admin", "admin"]),
+  async (req, res) => {
+    const lotId = req.params.id;
+    const { locationId } = req.body || {};
+    if (!locationId || typeof locationId !== "string") {
+      return res.status(400).json({ error: "INVALID_LOCATION_ID", message: "Mã địa điểm lưu kho không hợp lệ." });
+    }
+
+    if (pool) {
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN");
+
+        const lotRes = await client.query("SELECT * FROM lots WHERE id = $1 FOR UPDATE", [lotId]);
+        if (lotRes.rows.length === 0) {
+          await client.query("ROLLBACK");
+          return res.status(404).json({ message: "Không tìm thấy lô hàng." });
+        }
+        const lot = lotRes.rows[0];
+        const isAdmin = Boolean(req.auth && (req.auth.roleId === "admin" || req.auth.isAdmin));
+        const callerOrg = isAdmin ? null : (req.auth ? req.auth.organizationId : null);
+        const lotOrgId = lot.organization_id;
+
+        if (!isAdmin && lotOrgId !== callerOrg) {
+          await client.query("ROLLBACK");
+          logSecurityEvent("CROSS_TENANT_ACCESS_DENIED", {
+            userId: req.auth.userId,
+            userEmail: req.auth.email,
+            userOrgId: callerOrg,
+            userRole: req.auth.roleId,
+            resourceType: "lots",
+            resourceId: lotId,
+            targetOrgId: lotOrgId,
+            action: "UPDATE_LOCATION",
+            ip: req.ip,
+            userAgent: req.get("User-Agent"),
+          });
+          return res.status(403).json({
+            error: "FORBIDDEN",
+            message: "Truy cập bị từ chối: chỉ tổ chức đang trực tiếp sở hữu lô hàng mới có quyền cập nhật vị trí lưu kho.",
+          });
+        }
+
+        const location = await getLocationById(client, inMemoryLocations, locationId);
+        if (!location) {
+          await client.query("ROLLBACK");
+          return res.status(404).json({ message: "Địa điểm chỉ định không tồn tại." });
+        }
+
+        if (location.organizationId !== lotOrgId) {
+          await client.query("ROLLBACK");
+          return res.status(403).json({
+            error: "LOCATION_ORG_MISMATCH",
+            message: "Địa điểm lưu kho không thuộc quyền quản lý của tổ chức sở hữu lô hàng.",
+          });
+        }
+
+        const prevLocationId = lot.location_id || null;
+        await client.query("UPDATE lots SET location_id = $1 WHERE id = $2 AND organization_id = $3", [locationId, lotId, lotOrgId]);
+
+        // Ghi nhận sự kiện LOCATION_CHANGED vào chuỗi hash-chain batch_events (S-30)
+        const locationEvent = await appendBatchEvent(client, {
+          batchId: lotId,
+          eventType: "LOCATION_CHANGED",
+          payload: {
+            lotId,
+            previousLocationId: prevLocationId,
+            newLocationId: locationId,
+            locationName: location.name,
+            locationType: location.locationType,
+            address: location.address,
+            step: `Cập nhật vị trí lưu kho: ${location.name}`,
+          },
+          organizationId: lotOrgId,
+          actorUserId: req.auth.userId,
+          occurredAt: new Date(),
+        });
+
+        // Ghi audit log bằng cùng transaction client trước COMMIT (S-31 Atomicity)
+        await recordAuditLog({
+          client,
+          pool,
+          inMemoryLogs: inMemoryAuditLogs,
+          actorUserId: req.auth.userId,
+          actorEmail: req.auth.email,
+          organizationId: lotOrgId,
+          action: "LOT_LOCATION_UPDATED",
+          resourceType: "lot",
+          resourceId: lotId,
+          ipAddress: req.ip,
+          userAgent: req.get("User-Agent"),
+          details: { lotId, previousLocationId: prevLocationId, locationId, locationName: location.name },
+        });
+
+        await client.query("COMMIT");
+
+        return res.status(200).json({
+          message: "Cập nhật vị trí lưu kho thành công.",
+          lotId,
+          locationId,
+          locationName: location.name,
+          event: locationEvent,
+        });
+      } catch (err) {
+        await client.query("ROLLBACK");
+        return res.status(500).json({ message: err.message });
+      } finally {
+        client.release();
+      }
+    } else {
+      // In-Memory Mode
+      try {
+        const access = await evaluateLotAccess({
+          pool: null,
+          authContext: req.auth,
+          lotId,
+          inMemoryLots,
+        });
+        if (access.status === "NOT_FOUND") {
+          return res.status(404).json({ message: "Không tìm thấy lô hàng." });
+        }
+        const isAdmin = Boolean(req.auth && (req.auth.roleId === "admin" || req.auth.isAdmin));
+        const callerOrg = isAdmin ? null : (req.auth ? req.auth.organizationId : null);
+        const lotOrgId = access.lot.organizationId || access.lot.organization_id;
+
+        if (!isAdmin && (access.accessType !== "CURRENT_HOLDER" || lotOrgId !== callerOrg)) {
+          return res.status(403).json({
+            error: "FORBIDDEN",
+            message: "Truy cập bị từ chối: chỉ tổ chức đang trực tiếp sở hữu lô hàng mới có quyền cập nhật vị trí lưu kho.",
+          });
+        }
+
+        const location = await getLocationById(null, inMemoryLocations, locationId);
+        if (!location) {
+          return res.status(404).json({ message: "Địa điểm chỉ định không tồn tại." });
+        }
+
+        if (location.organizationId !== lotOrgId) {
+          return res.status(403).json({
+            error: "LOCATION_ORG_MISMATCH",
+            message: "Địa điểm lưu kho không thuộc quyền quản lý của tổ chức sở hữu lô hàng.",
+          });
+        }
+
+        const lot = inMemoryLots.find((l) => l.id === lotId);
+        const prevLocationId = (lot && (lot.locationId || lot.location_id)) || access.lot.locationId || null;
+        if (lot) {
+          lot.locationId = locationId;
+          lot.location_id = locationId;
+        }
+        access.lot.locationId = locationId;
+        access.lot.location_id = locationId;
+
+        // Ghi nhận sự kiện LOCATION_CHANGED vào chuỗi hash-chain batch_events (S-30)
+        const locationEvent = await appendBatchEvent(null, {
+          batchId: lotId,
+          eventType: "LOCATION_CHANGED",
+          payload: {
+            lotId,
+            previousLocationId: prevLocationId,
+            newLocationId: locationId,
+            locationName: location.name,
+            locationType: location.locationType,
+            address: location.address,
+            step: `Cập nhật vị trí lưu kho: ${location.name}`,
+          },
+          organizationId: lotOrgId,
+          actorUserId: req.auth.userId,
+          occurredAt: new Date(),
+        });
+
+        // Ghi audit log (S-31)
+        await recordAuditLog({
+          pool: null,
+          inMemoryLogs: inMemoryAuditLogs,
+          actorUserId: req.auth.userId,
+          actorEmail: req.auth.email,
+          organizationId: lotOrgId,
+          action: "LOT_LOCATION_UPDATED",
+          resourceType: "lot",
+          resourceId: lotId,
+          ipAddress: req.ip,
+          userAgent: req.get("User-Agent"),
+          details: { lotId, previousLocationId: prevLocationId, locationId, locationName: location.name },
+        });
+
+        return res.status(200).json({
+          message: "Cập nhật vị trí lưu kho thành công.",
+          lotId,
+          locationId,
+          locationName: location.name,
+          event: locationEvent,
+        });
+      } catch (err) {
+        return res.status(500).json({ message: err.message });
+      }
+    }
+  }
+);
+
+/**
+ * ==============================================================================
+ * BÁO CÁO TÓM TẮT VỊ TRÍ & KHỐI LƯỢNG HẬU DUỆ (Story S-27)
+ * ==============================================================================
+ */
+app.get(
+  "/api/lots/:id/descendants-summary",
+  requirePermission(["producer", "cooperative", "transporter", "distributor", "org_admin", "admin", "inspector"]),
+  async (req, res) => {
+    const lotId = req.params.id;
+    try {
+      const access = await evaluateLotAccess({
+        pool,
+        authContext: req.auth,
+        lotId,
+        inMemoryLots,
+      });
+      if (access.status === "NOT_FOUND") {
+        return res.status(404).json({ message: "Không tìm thấy lô hàng." });
+      }
+      if (!access.allowed) {
+        return res.status(403).json({ message: "Truy cập bị từ chối: bạn không có quyền xem dữ liệu của tổ chức khác." });
+      }
+
+      const result = await traceLotDescendants({
+        pool,
+        startLotId: lotId,
+        inMemoryLots,
+        inMemoryBatchRelations,
+        inMemoryBatchEvents,
+        inMemoryOrgs,
+        inMemoryProducts,
+        inMemoryFarms,
+        inMemoryLocations,
+      });
+
+      return res.status(200).json({
+        lotId,
+        rootLot: result.rootLot,
+        descendantCount: result.descendantCount,
+        locationSummary: result.locationSummary || [],
+        descendants: result.descendants.map((d) => ({
+          id: d.id,
+          name: d.name,
+          status: d.status,
+          organizationId: d.organizationId,
+          organizationName: d.organizationName,
+          locationId: d.locationId,
+          locationName: d.locationName,
+          remainingQuantity: d.remainingQuantity,
+          initialQuantity: d.initialQuantity,
+          productUnit: d.productUnit,
+          distance: d.distance,
+        })),
+      });
+    } catch (err) {
+      if (err instanceof CycleDetectedError || err.name === "CycleDetectedError") {
+        return res.status(422).json({
+          error: "CYCLE_DETECTED",
+          message: err.message,
+          cycleLotId: err.cycleLotId || null,
+        });
+      }
+      return res.status(500).json({ message: err.message });
+    }
+  }
+);
+
+/**
+ * ==============================================================================
+ * NHẬT KÝ THAO TÁC NGHIỆP VỤ RIÊNG BIỆT (Story S-31)
+ * ==============================================================================
+ */
+app.get(
+  "/api/audit-logs",
+  requirePermission(["inspector", "admin"]),
+  async (req, res) => {
+    try {
+      const { action, resourceType, organizationId, search, limit, offset } = req.query;
+      const result = await getAuditLogs({
+        pool,
+        inMemoryLogs: inMemoryAuditLogs,
+        organizationId,
+        action,
+        resourceType,
+        search,
+        limit,
+        offset,
+      });
+      return res.status(200).json(result);
+    } catch (err) {
+      return res.status(500).json({ message: err.message });
+    }
+  }
+);
+
 async function start() {
   await seedDemoUser();
   seedDemoEvents();
@@ -4730,6 +6204,15 @@ async function start() {
   }
 
   await seedDemoOverdueTransfer();
+  // Nạp bộ dữ liệu phả hệ 3 tầng mẫu S-22 vào in-memory khi khởi động
+  seedS22InMemory({
+    inMemoryLots,
+    inMemoryBatchRelations,
+    inMemoryBatchEvents,
+    inMemoryOrgs,
+    inMemoryProducts,
+    inMemoryFarms,
+  });
 
   // Khởi động job rà soát bàn giao quá hạn định kỳ (S-24 / T-56)
   startTransferOverdueJob({ pool, inMemoryTransfers });
@@ -4790,6 +6273,20 @@ module.exports = {
   validateMergeLotInput,
   collectAncestorLotIds,
   collectDescendantLotIds,
+  seedS22InMemory,
+  traceLotOrigins,
+  traceLotDescendants,
+  inMemoryLocations,
+  fetchLocations,
+  getLocationById,
+  createLocation,
+  updateLotLocation,
+  inMemoryAuditLogs,
+  recordAuditLog,
+  getAuditLogs,
+  CycleDetectedError,
+  lotOriginsCache,
+  clearLotOriginsCache,
   seedS22Data: () =>
     seedS22InMemory({
       inMemoryLots,

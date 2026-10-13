@@ -25,6 +25,8 @@
     navProducts: ["producer", "cooperative", "transporter", "distributor", "inspector", "org_admin", "admin", "warehouse", "processing", "retailer"],
     navHarvest: ["producer", "cooperative", "org_admin", "admin"],
     navIntegrity: ["inspector", "admin"],
+    navAuditLogs: ["inspector", "admin"],
+    navAudit: ["inspector", "admin"],
   };
 
   function hasPermission(roleId, action) {
@@ -164,6 +166,8 @@
       products: "navProducts",
       harvest: "navHarvest",
       integrity: "navIntegrity",
+      audit: "navAuditLogs",
+      auditLogs: "navAuditLogs",
     };
 
     let targetId = navMap[activeKey];
@@ -173,6 +177,7 @@
       else if (path.includes("products")) targetId = "navProducts";
       else if (path.includes("harvest")) targetId = "navHarvest";
       else if (path.includes("integrity")) targetId = "navIntegrity";
+      else if (path.includes("audit")) targetId = "navAuditLogs";
     }
 
     if (targetId) {
@@ -192,6 +197,7 @@
       if (!e.target.closest(".dropdown-menu-wrapper")) {
         document.querySelectorAll(".dropdown-popover.active").forEach((p) => p.classList.remove("active"));
         document.querySelectorAll(".btn-icon-kebab.active").forEach((b) => b.classList.remove("active"));
+        document.querySelectorAll(".has-dropdown-open").forEach((el) => el.classList.remove("has-dropdown-open"));
       }
     });
   }

@@ -400,6 +400,10 @@
           <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg>
           <span>Kiểm tra toàn vẹn</span>
         </a>
+        <a href="/audit-logs.html" class="nav-item" id="navAuditLogs">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+          <span>Nhật ký thao tác</span>
+        </a>
       </nav>
 
       <div class="user-controls">
@@ -989,11 +993,12 @@
         ? `${remainingVal.toFixed(3)} ${unit}`
         : "N/A";
       const harvestDateFormatted = formatDate(lot.harvestedAt || lot.createdAt);
-      const displayName = lot.productName || lot.name || "Nông sản";
+      const displayName = lot.name || lot.productName || "Nông sản";
       const farmDisplay = lot.farmName || lot.farmId || "Thửa chưa gán";
 
       const isInspectorOrAdmin = currentUser && ["inspector", "admin"].includes(currentUser.roleId);
-      const canTransfer = currentUser && (
+      const isConsumed = lot.status === "Đã bán hết" || lot.status === "Đã tiêu thụ";
+      const canTransfer = currentUser && !isConsumed && (
         currentUser.roleId === "admin" ||
         (currentUser.organizationId === (lot.organizationId || lot.organization_id) && !["inspector"].includes(currentUser.roleId))
       );
@@ -1033,19 +1038,27 @@
                   </span>
                 ` : ""}
               </div>
+            ` : (isConsumed ? `
+              <span class="status-pill" style="background: rgba(100, 116, 139, 0.12); color: #475569; border: 1px solid rgba(100, 116, 139, 0.25);" title="Lô đã bán hết cho người tiêu dùng (S-29)">
+                <span class="status-dot" style="background: #64748b;"></span>
+                <span>${lot.status}</span>
+              </span>
             ` : `
               <span class="status-pill success">
                 <span class="status-dot"></span>
                 <span>${lot.status || "Đã thu hoạch"}</span>
               </span>
-            `}
+            `)}
           </div>
           <h3 class="lot-title">
             <a href="/lot-detail.html?id=${encodeURIComponent(lot.id)}" style="color: inherit; text-decoration: none;">
-              ${displayName}
+              ${escapeHtml(displayName)}
             </a>
           </h3>
-          ${qtyDisplay ? `<div class="lot-quantity-sub">${qtyDisplay}</div>` : ""}
+          <div style="font-size: 12px; color: var(--color-text-muted); margin-top: 2px;">
+            Loại nông sản: <strong>${escapeHtml(lot.productName || "Nông sản")}</strong>
+          </div>
+          ${qtyDisplay ? `<div class="lot-quantity-sub" style="margin-top: 4px;">${qtyDisplay}</div>` : ""}
         </div>
 
         <div class="lot-meta-list" onclick="window.location.href='/lot-detail.html?id=${encodeURIComponent(lot.id)}'" style="cursor: pointer;" title="Bấm để xem chi tiết lô ${lot.id}">
@@ -2143,7 +2156,7 @@
       // Render từng dòng lô với ô input khối lượng lấy (mặc định điền sẵn toàn bộ số lượng còn lại)
       tableBody.innerHTML = selectedLots.map((lot) => {
         const remaining = Number(lot.remainingQuantity !== undefined ? lot.remainingQuantity : lot.remaining_quantity) || 0;
-        const displayName = lot.productName || lot.name || lot.id;
+        const displayName = lot.name || lot.productName || lot.id;
         return `
           <tr class="merge-item-row" data-lot-id="${escapeHtml(lot.id)}" data-max="${remaining}">
             <td>

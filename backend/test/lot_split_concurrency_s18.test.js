@@ -148,6 +148,14 @@ test("S-18 Concurrency & Safe Quantity Integration Tests trên PostgreSQL", asyn
 
   // Khởi tạo các lô kiểm thử trên PostgreSQL
   async function seedTestLots() {
+    await pool.query("UPDATE users SET failed_count = 0, locked_until = NULL WHERE email = 'user@example.com'");
+    const { users } = require("../src/server");
+    if (users && users.has("user@example.com")) {
+      const u = users.get("user@example.com");
+      u.failedCount = 0;
+      u.lockedUntil = null;
+    }
+
     await pool.query(
       `INSERT INTO lots (
         id, name, status, organization_id, product_id,

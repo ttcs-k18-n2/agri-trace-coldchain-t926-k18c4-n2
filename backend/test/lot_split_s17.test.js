@@ -347,5 +347,87 @@ test("Lot Split API [S-17 / S-18] & Direct Lineage Integration Test", async (t) 
       "Must throw unique constraint violation for duplicate (parent_batch_id, child_batch_id)"
     );
   });
+
+  await t.test("12. Sự kiện tách ghi vào chuỗi của mọi lô liên quan: 1 lô mẹ tách 3 lô con, kiểm tra timeline, đếm số sự kiện (1 + số lô con = 4), và kiểm tra toàn vẹn mọi lô", async () => {
+    const coopAgent = await loginAs("coop_split@org2.vn");
+    const inspAgent = await loginAs("inspector_split@gov.vn");
+
+    const splitParentLotId = "LOT-SPLIT-3CHILDREN-PARENT";
+    inMemoryLots.push({
+      id: splitParentLotId,
+      name: "Lô Dưa lưới Mẹ 300kg",
+      status: "Đã thu hoạch",
+      organizationId: "org-split-002",
+      farmId: "FARM-001",
+      productId: "PROD-MELON",
+      initialQuantity: 300,
+      remainingQuantity: 300,
+      harvestedAt: "2026-10-05T07:00:00.000Z",
+      parentLotId: null,
+      createdAt: "2026-10-05T07:00:00.000Z",
+    });
+
+    const eventsCountBefore = inMemoryBatchEvents.length;
+
+    // Tách 1 lô mẹ thành 3 lô con
+    const splitRes = await coopAgent
+      .post(`/api/lots/${splitParentLotId}/split`)
+      .send({
+        splits: [
+          { name: "Lô con 1 (100kg)", quantity: 100 },
+          { name: "Lô con 2 (80kg)", quantity: 80 },
+          { name: "Lô con 3 (70kg)", quantity: 70 },
+        ],
+      });
+
+    assert.equal(splitRes.status, 201);
+    assert.equal(splitRes.body.childLots.length, 3);
+    assert.equal(splitRes.body.parentLot.remainingQuantity, 50); // 300 - 250 = 50
+
+    const childLots = splitRes.body.childLots;
+    const childLotIds = childLots.map((c) => c.id);
+
+    // Kiểm tra số sự kiện được sinh ra trong giao dịch tách: đúng 1 (lô mẹ) + 3 (lô con) = 4
+    const eventsCountAfter = inMemoryBatchEvents.length;
+    assert.equal(
+      eventsCountAfter - eventsCountBefore,
+      1 + childLots.length,
+      "Số sự kiện sinh ra sau tách phải bằng 1 + số lô con (1 mẹ + 3 con = 4)"
+    );
+
+    // 1. Dòng thời gian lô mẹ: có sự kiện LOT_SPLIT nêu 3 mã lô con
+    const parentTimelineRes = await coopAgent.get(`/api/lots/${splitParentLotId}/timeline`);
+    assert.equal(parentTimelineRes.status, 200);
+    const parentSplitEvent = parentTimelineRes.body.events.find((e) => e.eventType === "LOT_SPLIT");
+    assert.ok(parentSplitEvent, "Lô mẹ phải có sự kiện LOT_SPLIT");
+    assert.equal(parentSplitEvent.payload.childLotIds.length, 3);
+    for (const cId of childLotIds) {
+      assert.ok(parentSplitEvent.payload.childLotIds.includes(cId), `Sự kiện tách lô mẹ phải nêu mã lô con ${cId}`);
+    }
+
+    // 2. Dòng thời gian từng lô con: có sự kiện khai sinh CREATED_FROM_SPLIT nêu mã lô mẹ
+    for (const childId of childLotIds) {
+      const childTimelineRes = await coopAgent.get(`/api/lots/${childId}/timeline`);
+      assert.equal(childTimelineRes.status, 200);
+      const childCreatedEvent = childTimelineRes.body.events.find((e) => e.eventType === "CREATED_FROM_SPLIT");
+      assert.ok(childCreatedEvent, `Lô con ${childId} phải có sự kiện khai sinh CREATED_FROM_SPLIT`);
+      assert.equal(
+        childCreatedEvent.payload.parentLotId,
+        splitParentLotId,
+        `Sự kiện khai sinh của ${childId} phải nêu đúng mã lô mẹ`
+      );
+    }
+
+    // 3. Kiểm tra toàn vẹn mọi lô liên quan (lô mẹ và cả 3 lô con)
+    const parentIntegrityRes = await inspAgent.get(`/api/lots/${splitParentLotId}/integrity`);
+    assert.equal(parentIntegrityRes.status, 200);
+    assert.equal(parentIntegrityRes.body.integrity.valid, true, "Lô mẹ phải có chuỗi sự kiện toàn vẹn hợp lệ");
+
+    for (const childId of childLotIds) {
+      const childIntegrityRes = await inspAgent.get(`/api/lots/${childId}/integrity`);
+      assert.equal(childIntegrityRes.status, 200);
+      assert.equal(childIntegrityRes.body.integrity.valid, true, `Lô con ${childId} phải có chuỗi sự kiện toàn vẹn hợp lệ`);
+    }
+  });
 });
 

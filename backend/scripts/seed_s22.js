@@ -68,8 +68,8 @@ function seedS22InMemory(target = {}) {
 
   // Farms
   const s22Farms = [
-    { id: "FARM-ORG-A", name: "Thửa canh tác Hợp tác xã A", area: 3.5, organization_id: "ORG-A" },
-    { id: "FARM-ORG-B", name: "Thửa sơ chế Nhà máy B", area: 2.0, organization_id: "ORG-B" },
+    { id: "FARM-ORG-A", name: "Thửa canh tác Hợp tác xã A", area: 3.5, coordinates: "21.5645, 105.6789", organization_id: "ORG-A" },
+    { id: "FARM-ORG-B", name: "Thửa sơ chế Nhà máy B", area: 2.0, coordinates: "21.5712, 105.6841", organization_id: "ORG-B" }
   ];
   for (const f of s22Farms) {
     const idx = farms.findIndex((x) => x.id === f.id);

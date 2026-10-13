@@ -281,6 +281,96 @@
       border-radius: var(--radius-xl);
       margin-top: 20px;
     }
+
+    /* Integrity & Audit Navigation Tabs (Story S-31) */
+    .integrity-nav-tabs {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 24px;
+      border-bottom: 2px solid var(--color-border);
+      padding-bottom: 4px;
+    }
+
+    .integrity-tab-btn {
+      padding: 10px 18px;
+      font-size: 14.5px;
+      font-weight: 600;
+      color: var(--color-text-muted);
+      background: transparent;
+      border: none;
+      border-radius: var(--radius-md) var(--radius-md) 0 0;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+      border-bottom: 3px solid transparent;
+      margin-bottom: -6px;
+    }
+
+    .integrity-tab-btn:hover {
+      color: var(--color-text-main);
+      background: rgba(0, 0, 0, 0.03);
+    }
+
+    .integrity-tab-btn.active {
+      color: var(--color-primary);
+      border-bottom-color: var(--color-primary);
+      background: rgba(36, 138, 61, 0.06);
+    }
+
+    /* Audit Logs Table (S-31) */
+    .audit-logs-card {
+      background: var(--liquid-glass-bg);
+      backdrop-filter: var(--liquid-glass-blur);
+      -webkit-backdrop-filter: var(--liquid-glass-blur);
+      border: var(--liquid-glass-border);
+      border-radius: var(--radius-xl);
+      padding: 24px;
+      box-shadow: var(--liquid-glass-shadow);
+    }
+
+    .audit-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+
+    .audit-table th {
+      text-align: left;
+      padding: 10px 12px;
+      background: rgba(0, 0, 0, 0.03);
+      border-bottom: 1px solid var(--color-border);
+      font-size: 11.5px;
+      color: var(--color-text-muted);
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+    }
+
+    .audit-table td {
+      padding: 12px;
+      border-bottom: 1px solid var(--color-border-subtle);
+      color: var(--color-text-main);
+      vertical-align: middle;
+    }
+
+    .badge-action {
+      display: inline-block;
+      padding: 3px 8px;
+      font-size: 11px;
+      font-weight: 700;
+      border-radius: 4px;
+      font-family: monospace;
+      letter-spacing: 0.02em;
+    }
+
+    .action-location { background: #e0f2fe; color: #0284c7; }
+    .action-transfer { background: #fef3c7; color: #d97706; }
+    .action-split { background: #f3e8ff; color: #7c3aed; }
+    .action-merge { background: #fae8ff; color: #a21caf; }
+    .action-consume { background: #dcfce7; color: #15803d; }
+    .action-other { background: #f1f5f9; color: #475569; }
   </style>
 </head>
 
@@ -324,6 +414,10 @@
           <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg>
           <span>Kiểm tra toàn vẹn</span>
         </a>
+        <a href="/audit-logs.html" class="nav-item" id="navAuditLogs">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+          <span>Nhật ký thao tác</span>
+        </a>
       </nav>
 
       <div class="user-controls">
@@ -353,9 +447,21 @@
     <div class="page-header">
       <h1 class="page-title">
         <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--color-primary)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg>
-        Kiểm tra toàn vẹn dữ liệu
+        Kiểm tra toàn vẹn & Kiểm toán hệ thống
       </h1>
-      <p class="page-subtitle">Kiểm toán mật mã học chuỗi sự kiện hash-chain (S-12 / K-01) dành riêng cho Cán bộ kiểm tra và Quản trị viên.</p>
+      <p class="page-subtitle">Kiểm toán mật mã học chuỗi sự kiện hash-chain và nhật ký thao tác người dùng (S-12 / S-31 / K-01) dành riêng cho Cán bộ kiểm tra và Quản trị viên.</p>
+    </div>
+
+    <!-- Navigation Tabs (S-31) -->
+    <div class="integrity-nav-tabs">
+      <button type="button" class="integrity-tab-btn active" id="tabBtnHash">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><polyline points="9 12 11 14 15 10"/></svg>
+        <span>Toàn vẹn sự kiện lô (Hash-Chain)</span>
+      </button>
+      <button type="button" class="integrity-tab-btn" id="tabBtnAuditLogs">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+        <span>Nhật ký thao tác hệ thống (Audit Logs - S-31)</span>
+      </button>
     </div>
 
     <!-- Restricted Box if Unauthorized -->
@@ -365,8 +471,10 @@
       <a href="/lots.html" class="btn btn-outline" style="margin-top: 16px;">Quay lại danh sách lô hàng</a>
     </div>
 
-    <!-- Audit Tool Card -->
-    <div id="auditSection" class="audit-card">
+    <!-- Panel 1: Hash Chain Integrity -->
+    <div id="panelHashSection">
+      <!-- Audit Tool Card -->
+      <div id="auditSection" class="audit-card">
       <form id="integrityForm">
         <label for="lotIdInput" style="display: block; font-size: 13.5px; font-weight: 600; margin-bottom: 8px; color: var(--color-text-main);">
           Mã lô hàng (Lot ID):
@@ -461,6 +569,62 @@
               </tbody>
             </table>
           </div>
+        </div>
+      </div>
+    </div>
+    <!-- End Panel 1 -->
+
+    <!-- Panel 2: Audit Logs (Story S-31) -->
+    <div id="panelAuditLogsSection" style="display: none;">
+      <div class="audit-logs-card">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 12px;">
+          <div>
+            <h3 style="font-size: 18px; font-weight: 700; color: var(--color-text-main); margin: 0 0 4px 0;">
+              Nhật ký thao tác nghiệp vụ (Story S-31)
+            </h3>
+            <div style="font-size: 13px; color: var(--color-text-muted);">
+              Theo dõi lịch sử toàn bộ thao tác nghiệp vụ: cập nhật vị trí kho, tách/gộp lô, bàn giao, tiêu thụ sản phẩm
+            </div>
+          </div>
+          <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+            <select id="filterAuditAction" class="audit-input" style="height: 38px; padding: 0 12px; font-size: 13px; width: auto; min-width: 200px;">
+              <option value="">-- Tất cả hành động --</option>
+              <option value="LOT_LOCATION_UPDATED">LOT_LOCATION_UPDATED (Đổi vị trí kho)</option>
+              <option value="LOT_SPLIT">LOT_SPLIT (Tách lô)</option>
+              <option value="LOT_MERGED">LOT_MERGED (Gộp lô)</option>
+              <option value="LOT_CONSUMED">LOT_CONSUMED (Tiêu thụ)</option>
+              <option value="TRANSFER_INITIATED">TRANSFER_INITIATED (Khởi tạo bàn giao)</option>
+              <option value="TRANSFER_CONFIRMED">TRANSFER_CONFIRMED (Xác nhận bàn giao)</option>
+              <option value="TRANSFER_REJECTED">TRANSFER_REJECTED (Từ chối bàn giao)</option>
+            </select>
+            <button type="button" class="btn btn-primary" id="btnRefreshAuditLogs" style="height: 38px; padding: 0 16px; font-size: 13px; display: inline-flex; align-items: center; gap: 6px;">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+              <span>Làm mới nhật ký</span>
+            </button>
+          </div>
+        </div>
+
+        <div style="overflow-x: auto; border: 1px solid var(--color-border); border-radius: 8px;">
+          <table class="audit-table">
+            <thead>
+              <tr>
+                <th>Thời điểm</th>
+                <th>Người thực hiện</th>
+                <th>Tổ chức</th>
+                <th>Hành động</th>
+                <th>Tài nguyên</th>
+                <th>IP</th>
+                <th>Chi tiết nghiệp vụ</th>
+              </tr>
+            </thead>
+            <tbody id="auditLogsTableBody">
+              <tr>
+                <td colspan="7" style="text-align: center; padding: 24px; color: var(--color-text-muted);">
+                  Đang tải nhật ký kiểm toán...
+                </td>
+              </tr>
+            </tbody>
+          </table>
         </div>
       </div>
     </div>
@@ -662,6 +826,116 @@
           `;
           eventsTableBody.appendChild(tr);
         });
+      }
+
+      // --- Story S-31: Tab Switching & Audit Logs Controller ---
+      const tabBtnHash = document.getElementById("tabBtnHash");
+      const tabBtnAuditLogs = document.getElementById("tabBtnAuditLogs");
+      const panelHashSection = document.getElementById("panelHashSection");
+      const panelAuditLogsSection = document.getElementById("panelAuditLogsSection");
+      const filterAuditAction = document.getElementById("filterAuditAction");
+      const btnRefreshAuditLogs = document.getElementById("btnRefreshAuditLogs");
+      const auditLogsTableBody = document.getElementById("auditLogsTableBody");
+
+      function switchIntegrityTab(tabName) {
+        if (tabName === "hash") {
+          tabBtnHash.classList.add("active");
+          tabBtnAuditLogs.classList.remove("active");
+          panelHashSection.style.display = "block";
+          panelAuditLogsSection.style.display = "none";
+        } else {
+          tabBtnHash.classList.remove("active");
+          tabBtnAuditLogs.classList.add("active");
+          panelHashSection.style.display = "none";
+          panelAuditLogsSection.style.display = "block";
+          loadAuditLogs();
+        }
+      }
+
+      if (tabBtnHash) tabBtnHash.addEventListener("click", () => switchIntegrityTab("hash"));
+      if (tabBtnAuditLogs) tabBtnAuditLogs.addEventListener("click", () => switchIntegrityTab("audit"));
+      if (filterAuditAction) filterAuditAction.addEventListener("change", () => loadAuditLogs());
+      if (btnRefreshAuditLogs) btnRefreshAuditLogs.addEventListener("click", () => loadAuditLogs());
+
+      async function loadAuditLogs() {
+        if (!auditLogsTableBody) return;
+        auditLogsTableBody.innerHTML = `
+          <tr>
+            <td colspan="7" style="text-align: center; padding: 24px; color: var(--color-text-muted);">
+              <div class="spinner-small" style="width:16px;height:16px;border:2px solid var(--color-primary);border-top-color:transparent;border-radius:50%;animation:spin 0.6s linear infinite;display:inline-block;margin-right:8px;vertical-align:middle;"></div>
+              Đang tải nhật ký kiểm toán...
+            </td>
+          </tr>
+        `;
+
+        try {
+          const action = filterAuditAction ? filterAuditAction.value : "";
+          const query = action ? `?action=${encodeURIComponent(action)}` : "";
+          const res = await fetch(`/api/audit-logs${query}`, { credentials: "same-origin" });
+          const data = await res.json();
+
+          if (!res.ok) {
+            throw new Error(data.message || data.error || "Không thể tải nhật ký kiểm toán.");
+          }
+
+          const logs = Array.isArray(data.logs) ? data.logs : [];
+          if (logs.length === 0) {
+            auditLogsTableBody.innerHTML = `
+              <tr>
+                <td colspan="7" style="text-align: center; padding: 24px; color: var(--color-text-muted);">
+                  Chưa có bản ghi nhật ký kiểm toán nào được ghi nhận.
+                </td>
+              </tr>
+            `;
+            return;
+          }
+
+          function escapeHtml(unsafe) {
+            if (unsafe === null || unsafe === undefined) return "";
+            return String(unsafe)
+              .replace(/&/g, "&amp;")
+              .replace(/</g, "&lt;")
+              .replace(/>/g, "&gt;")
+              .replace(/"/g, "&quot;")
+              .replace(/'/g, "&#039;");
+          }
+
+          auditLogsTableBody.innerHTML = logs.map(log => {
+            const dateStr = log.createdAt ? escapeHtml(new Date(log.createdAt).toLocaleString("vi-VN")) : "--";
+            const act = log.action || "UNKNOWN";
+            const badgeClass = act.includes("LOCATION") ? "action-location"
+              : act.includes("TRANSFER") ? "action-transfer"
+              : act.includes("SPLIT") ? "action-split"
+              : act.includes("MERGE") ? "action-merge"
+              : act.includes("CONSUMED") ? "action-consume" : "action-other";
+
+            const detailsStr = log.details && typeof log.details === "object"
+              ? Object.entries(log.details)
+                  .map(([k, v]) => `<strong>${escapeHtml(k)}:</strong> ${escapeHtml(typeof v === "object" ? JSON.stringify(v) : v)}`)
+                  .join(", ")
+              : "--";
+
+            return `
+              <tr>
+                <td style="white-space: nowrap; font-size: 12.5px; color: var(--color-text-muted);">${dateStr}</td>
+                <td style="font-weight: 600;">${escapeHtml(log.actorEmail || log.actorUserId || "--")}</td>
+                <td><span style="font-family: monospace; font-weight: 700;">${escapeHtml(log.organizationId || "--")}</span></td>
+                <td><span class="badge-action ${badgeClass}">${escapeHtml(act)}</span></td>
+                <td><span style="font-family: monospace;">${escapeHtml(log.resourceType || "lot")}:${escapeHtml(log.resourceId || "--")}</span></td>
+                <td style="font-family: monospace; font-size: 11.5px; color: var(--color-text-muted);">${escapeHtml(log.ipAddress || "--")}</td>
+                <td style="font-size: 12px; line-height: 1.4;">${detailsStr}</td>
+              </tr>
+            `;
+          }).join("");
+        } catch (err) {
+          auditLogsTableBody.innerHTML = `
+            <tr>
+              <td colspan="7" style="text-align: center; padding: 20px; color: #dc2626;">
+                ⚠️ Lỗi tải nhật ký: ${escapeHtml(err.message)}
+              </td>
+            </tr>
+          `;
+        }
       }
     });
   </script>
