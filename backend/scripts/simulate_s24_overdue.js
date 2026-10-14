@@ -15,43 +15,64 @@ const { Pool } = require("pg");
 async function run() {
   console.log("=== [S-24 Simulator] Khởi tạo dữ liệu giả lập bàn giao quá hạn 49 giờ ===");
 
-  // 1. Thử gọi API nếu server đang chạy
-  const apiSuccess = await new Promise((resolve) => {
-    const postData = JSON.stringify({ hours: 49 });
-    const req = http.request(
-      {
-        hostname: "127.0.0.1",
-        port: Number(process.env.PORT || 3000),
-        path: "/api/transfers/simulate-overdue",
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Content-Length": Buffer.byteLength(postData),
-        },
-        timeout: 2000,
-      },
-      (res) => {
-        let data = "";
-        res.on("data", (chunk) => (data += chunk));
-        res.on("end", () => {
-          if (res.statusCode >= 200 && res.statusCode < 300) {
-            console.log("✔ Đã gọi API server thành công:");
-            console.log(data);
-            resolve(true);
-          } else {
-            console.log(`Server phản hồi status ${res.statusCode}: ${data}`);
-            resolve(false);
-          }
+  // 1. Thử đăng nhập quyền admin và gọi API nếu server đang chạy
+  const apiSuccess = await (async () => {
+    try {
+      const port = Number(process.env.PORT || 3000);
+      const loginPayload = JSON.stringify({ email: "admin@example.com", password: "Password@123" });
+      const cookie = await new Promise((resolve) => {
+        const req = http.request({
+          hostname: "127.0.0.1",
+          port,
+          path: "/api/login",
+          method: "POST",
+          headers: { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(loginPayload) },
+          timeout: 2000,
+        }, (res) => {
+          resolve(res.headers["set-cookie"] ? res.headers["set-cookie"][0].split(";")[0] : null);
         });
-      }
-    );
+        req.on("error", () => resolve(null));
+        req.write(loginPayload);
+        req.end();
+      });
 
-    req.on("error", () => {
-      resolve(false);
-    });
-    req.write(postData);
-    req.end();
-  });
+      if (!cookie) return false;
+
+      return await new Promise((resolve) => {
+        const postData = JSON.stringify({ lotId: "LOT-002", hours: 49 });
+        const req = http.request({
+          hostname: "127.0.0.1",
+          port,
+          path: "/api/transfers/simulate-overdue",
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Content-Length": Buffer.byteLength(postData),
+            Cookie: cookie,
+          },
+          timeout: 2000,
+        }, (res) => {
+          let data = "";
+          res.on("data", (chunk) => (data += chunk));
+          res.on("end", () => {
+            if (res.statusCode >= 200 && res.statusCode < 300) {
+              console.log("✔ Đã gọi API server thành công:");
+              console.log(data);
+              resolve(true);
+            } else {
+              console.log(`Server phản hồi status ${res.statusCode}: ${data}`);
+              resolve(false);
+            }
+          });
+        });
+        req.on("error", () => resolve(false));
+        req.write(postData);
+        req.end();
+      });
+    } catch {
+      return false;
+    }
+  })();
 
   if (apiSuccess) {
     console.log("\n Hoàn tất! Bạn có thể mở trình duyệt xem nhãn QUÁ HẠN ngay bây giờ.");

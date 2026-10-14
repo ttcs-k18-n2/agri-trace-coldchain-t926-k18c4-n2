@@ -70,6 +70,26 @@ test("S-31: Kiểm thử tích hợp Audit Logs trên PostgreSQL thực tế", a
     const loginRes = await agent.post("/api/login").send({ email: testUserEmail, password: testPassword });
     assert.equal(loginRes.status, 200, "Đăng nhập Inspector thành công");
 
+    const adminUserId = "usr-audit-pg-admin";
+    const adminUserEmail = "admin_audit_pg@agri.vn";
+    await pool.query("DELETE FROM users WHERE id = $1 OR email = $2;", [adminUserId, adminUserEmail]);
+    await pool.query(
+      "INSERT INTO users (id, email, password_hash, organization_id, role_id) VALUES ($1, $2, $3, $4, $5) ON CONFLICT (id) DO NOTHING;",
+      [adminUserId, adminUserEmail, passHash, testOrgId, "admin"]
+    );
+    users.set(adminUserEmail, {
+      id: adminUserId,
+      email: adminUserEmail,
+      passwordHash: passHash,
+      failedCount: 0,
+      lockedUntil: null,
+      roleId: "admin",
+      organizationId: testOrgId,
+    });
+    const adminAgent = request.agent(app);
+    const adminLoginRes = await adminAgent.post("/api/login").send({ email: adminUserEmail, password: testPassword });
+    assert.equal(adminLoginRes.status, 200, "Đăng nhập Admin thành công");
+
     // Test 1: Ghi audit log qua pool và xác nhận lưu trực tiếp vào PostgreSQL
     await t.test("1. recordAuditLog ghi vĩnh viễn vào PostgreSQL và gán id từ RETURNING id", async () => {
       const createdLog = await recordAuditLog({
@@ -295,11 +315,66 @@ test("S-31: Kiểm thử tích hợp Audit Logs trên PostgreSQL thực tế", a
       await pool.query("DELETE FROM lots WHERE id = $1;", [testLotId]);
       await pool.query("DELETE FROM organizations WHERE id = $1;", [otherOrgId]);
     });
+
+    // Test 9: Kiểm thử nhập CSV sản phẩm và thửa đất ghi nhận Audit Log trên PostgreSQL
+    await t.test("9. Nhập CSV sản phẩm và thửa đất ghi nhận Audit Log (PRODUCTS_CSV_IMPORTED & FARMS_CSV_IMPORTED) trên PostgreSQL", async () => {
+      const prodCsv = "name,unit\nSP Test PG CSV 1,kg\nSP Test PG CSV 2,tan";
+      const prodImportRes = await adminAgent.post("/api/products/import-csv").send({ csvContent: prodCsv });
+      assert.equal(prodImportRes.status, 201, "Nhập sản phẩm CSV thành công");
+
+      // Kiểm tra trong PostgreSQL audit_logs có bản ghi PRODUCTS_CSV_IMPORTED
+      const prodAudit = await pool.query(
+        "SELECT * FROM audit_logs WHERE action = 'PRODUCTS_CSV_IMPORTED' AND organization_id = $1 ORDER BY created_at DESC LIMIT 1;",
+        [testOrgId]
+      );
+      assert.equal(prodAudit.rows.length, 1, "Phải ghi nhận 1 bản ghi PRODUCTS_CSV_IMPORTED trong CSDL");
+      assert.equal(prodAudit.rows[0].resource_type, "products");
+
+      const farmCsv = "name,area,coordinates\nThửa Test PG CSV 1,1.5,\nThửa Test PG CSV 2,3.0,21.5 105.8";
+      const farmImportRes = await adminAgent.post("/api/farms/import-csv").send({ csvContent: farmCsv });
+      assert.equal(farmImportRes.status, 201, "Nhập thửa đất CSV thành công");
+
+      // Kiểm tra trong PostgreSQL audit_logs có bản ghi FARMS_CSV_IMPORTED
+      const farmAudit = await pool.query(
+        "SELECT * FROM audit_logs WHERE action = 'FARMS_CSV_IMPORTED' AND organization_id = $1 ORDER BY created_at DESC LIMIT 1;",
+        [testOrgId]
+      );
+      assert.equal(farmAudit.rows.length, 1, "Phải ghi nhận 1 bản ghi FARMS_CSV_IMPORTED trong CSDL");
+      assert.equal(farmAudit.rows[0].resource_type, "farms");
+
+      // Dọn dẹp sản phẩm và thửa đất vừa tạo
+      await pool.query("DELETE FROM products WHERE name IN ('SP Test PG CSV 1', 'SP Test PG CSV 2');");
+      await pool.query("DELETE FROM farms WHERE name IN ('Thửa Test PG CSV 1', 'Thửa Test PG CSV 2');");
+    });
+
+    // Test 10: Kiểm thử tính nguyên tử khi tạo địa điểm (POST /api/locations) và ghi audit log trên PostgreSQL
+    await t.test("10. Tạo địa điểm và ghi audit log LOCATION_CREATED nguyên tử trên PostgreSQL", async () => {
+      const locPayload = {
+        name: "Kho Lạnh Test PG Atomicity",
+        address: "123 Đường Test PG",
+        locationType: "cold_storage",
+      };
+
+      const locRes = await adminAgent.post("/api/locations").send(locPayload);
+      assert.equal(locRes.status, 201, "Tạo địa điểm thành công");
+      const createdLocId = locRes.body.location.id;
+
+      // Kiểm tra địa điểm và audit log trong CSDL
+      const locDb = await pool.query("SELECT * FROM locations WHERE id = $1;", [createdLocId]);
+      assert.equal(locDb.rows.length, 1, "Địa điểm phải tồn tại trong CSDL");
+
+      const auditDb = await pool.query("SELECT * FROM audit_logs WHERE resource_id = $1 AND action = 'LOCATION_CREATED';", [createdLocId]);
+      assert.equal(auditDb.rows.length, 1, "Audit log LOCATION_CREATED phải được lưu vào CSDL");
+
+      // Dọn dẹp
+      await pool.query("DELETE FROM locations WHERE id = $1;", [createdLocId]);
+      await pool.query("DELETE FROM audit_logs WHERE resource_id = $1;", [createdLocId]);
+    });
   } finally {
     // Dọn dẹp dữ liệu kiểm thử
     if (pool) {
       await pool.query("DELETE FROM audit_logs WHERE organization_id = $1 OR actor_email = $2;", [testOrgId, testUserEmail]).catch(() => {});
-      await pool.query("DELETE FROM users WHERE id = $1 OR email = $2;", [testUserId, testUserEmail]).catch(() => {});
+      await pool.query("DELETE FROM users WHERE id IN ($1, $2) OR email IN ($3, $4);", [testUserId, "usr-audit-pg-admin", testUserEmail, "admin_audit_pg@agri.vn"]).catch(() => {});
       await pool.query("DELETE FROM organizations WHERE id = $1;", [testOrgId]).catch(() => {});
       setDatabasePool(null);
       await pool.end().catch(() => {});

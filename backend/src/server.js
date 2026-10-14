@@ -936,6 +936,23 @@ app.post(
           );
           createdProducts.push(insertRes.rows[0]);
         }
+        await recordAuditLog({
+          client,
+          pool,
+          inMemoryLogs: inMemoryAuditLogs,
+          actorUserId: req.auth ? (req.auth.userId || req.auth.id) : null,
+          actorEmail: req.auth ? req.auth.email : null,
+          organizationId: req.auth ? req.auth.organizationId : null,
+          action: "PRODUCTS_CSV_IMPORTED",
+          resourceType: "products",
+          resourceId: `BATCH-${createdProducts.length}`,
+          ipAddress: req.ip,
+          userAgent: req.get("User-Agent"),
+          details: {
+            importedCount: createdProducts.length,
+            productIds: createdProducts.map((p) => p.id),
+          },
+        });
         await client.query("COMMIT");
       } catch (err) {
         await client.query("ROLLBACK");
@@ -955,6 +972,21 @@ app.post(
         inMemoryProducts.push(newProd);
         createdProducts.push(newProd);
       }
+      await recordAuditLog({
+        inMemoryLogs: inMemoryAuditLogs,
+        actorUserId: req.auth ? (req.auth.userId || req.auth.id) : null,
+        actorEmail: req.auth ? req.auth.email : null,
+        organizationId: req.auth ? req.auth.organizationId : null,
+        action: "PRODUCTS_CSV_IMPORTED",
+        resourceType: "products",
+        resourceId: `BATCH-${createdProducts.length}`,
+        ipAddress: req.ip,
+        userAgent: req.get("User-Agent"),
+        details: {
+          importedCount: createdProducts.length,
+          productIds: createdProducts.map((p) => p.id),
+        },
+      });
     }
 
     return res.status(201).json({
@@ -3590,11 +3622,8 @@ app.get(
  * Chuỗi sự kiện có mã băm bảo vệ tính toàn vẹn (S-10):
  * - INSERT lot + appendBatchEvent(HARVEST_CREATED) nằm trong cùng transaction nguyên tử (nếu event lỗi -> rollback lot).
  */
-app.post(
-  "/api/lots",
-  requirePermission(["producer", "cooperative", "org_admin", "admin"]),
-  async (req, res) => {
-    const { farmId, productId, quantity, harvestedAt } = req.body;
+async function handleCreateHarvestLot(req, res) {
+  const { farmId, productId, quantity, harvestedAt } = req.body;
     const orgId = req.auth.organizationId;
     const userId = req.auth.userId || req.auth.id || req.auth.email || "user";
 
@@ -3922,7 +3951,12 @@ app.post(
     cleanupHarvestIdempotency();
 
     return res.status(201).json(successResponse);
-  }
+}
+
+app.post(
+  "/api/lots",
+  requirePermission(["producer", "cooperative", "org_admin", "admin"]),
+  handleCreateHarvestLot
 );
 
 /**
@@ -3934,7 +3968,7 @@ app.post(
   async (req, res) => {
     // Nếu request truyền farmId và productId, chuyển tiếp xử lý theo nghiệp vụ thu hoạch mới (T-20)
     if (req.body.farmId && req.body.productId) {
-      return app._router.handle({ ...req, url: "/api/lots", method: "POST" }, res);
+      return handleCreateHarvestLot(req, res);
     }
 
     const { id, name, status } = req.body;
@@ -4256,6 +4290,23 @@ app.post(
             organizationId: r.organization_id,
           });
         }
+        await recordAuditLog({
+          client,
+          pool,
+          inMemoryLogs: inMemoryAuditLogs,
+          actorUserId: req.auth ? (req.auth.userId || req.auth.id) : null,
+          actorEmail: req.auth ? req.auth.email : null,
+          organizationId: orgId,
+          action: "FARMS_CSV_IMPORTED",
+          resourceType: "farms",
+          resourceId: `BATCH-${createdFarms.length}`,
+          ipAddress: req.ip,
+          userAgent: req.get("User-Agent"),
+          details: {
+            importedCount: createdFarms.length,
+            farmIds: createdFarms.map((f) => f.id),
+          },
+        });
         await client.query("COMMIT");
       } catch (err) {
         await client.query("ROLLBACK");
@@ -4276,6 +4327,21 @@ app.post(
         inMemoryFarms.push(newFarm);
         createdFarms.push(newFarm);
       }
+      await recordAuditLog({
+        inMemoryLogs: inMemoryAuditLogs,
+        actorUserId: req.auth ? (req.auth.userId || req.auth.id) : null,
+        actorEmail: req.auth ? req.auth.email : null,
+        organizationId: orgId,
+        action: "FARMS_CSV_IMPORTED",
+        resourceType: "farms",
+        resourceId: `BATCH-${createdFarms.length}`,
+        ipAddress: req.ip,
+        userAgent: req.get("User-Agent"),
+        details: {
+          importedCount: createdFarms.length,
+          farmIds: createdFarms.map((f) => f.id),
+        },
+      });
     }
 
     return res.status(201).json({
@@ -5731,13 +5797,32 @@ app.post(
 
 /**
  * Giả lập yêu cầu bàn giao quá hạn phục vụ kiểm thử trực tiếp (S-24 / T-56 / T-57)
+ * - Vô hiệu hóa trên môi trường production để bảo mật hệ thống (P0).
+ * - Yêu cầu quyền admin (requirePermission(["admin"])) và bắt buộc truyền transferId hoặc lotId cụ thể.
  * - Cho phép sửa created_at của yêu cầu bàn giao PENDING thành N giờ trước (mặc định 49h).
  * - Tự động kích hoạt job quét markOverdueTransfers để chuyển trạng thái isOverdue = true ngay lập tức.
  */
-app.post("/api/transfers/simulate-overdue", async (req, res) => {
-  const { transferId, lotId, hours = 49 } = req.body || {};
-  const targetHours = Number(hours) || 49;
-  const simulatedTime = new Date(Date.now() - targetHours * 3600 * 1000).toISOString();
+app.post(
+  "/api/transfers/simulate-overdue",
+  requirePermission(["admin"]),
+  async (req, res) => {
+    if (process.env.NODE_ENV === "production") {
+      return res.status(403).json({
+        error: "FORBIDDEN",
+        message: "API giả lập quá hạn bị vô hiệu hóa trong môi trường production.",
+      });
+    }
+
+    const { transferId, lotId, hours = 49 } = req.body || {};
+    if (!transferId && !lotId) {
+      return res.status(400).json({
+        error: "TARGET_REQUIRED",
+        message: "Phải cung cấp transferId hoặc lotId cụ thể để giả lập quá hạn, không cho phép cập nhật hàng loạt.",
+      });
+    }
+
+    const targetHours = Number(hours) || 49;
+    const simulatedTime = new Date(Date.now() - targetHours * 3600 * 1000).toISOString();
 
   try {
     if (pool) {
@@ -6001,7 +6086,7 @@ app.get(
   }
 );
 
-// Tạo địa điểm mới (S-30)
+// Tạo địa điểm mới (S-30) - Ghi audit nguyên tử trong cùng transaction (S-31 Atomicity)
 app.post(
   "/api/locations",
   requirePermission(["producer", "cooperative", "transporter", "distributor", "org_admin", "admin"]),
@@ -6013,32 +6098,79 @@ app.post(
       }
 
       const organizationId = req.auth.organizationId;
-      const newLoc = await createLocation(pool, inMemoryLocations, {
-        name: name.trim(),
-        address: address ? address.trim() : null,
-        organizationId,
-        locationType: locationType || "warehouse",
-        contactPerson: contactPerson ? contactPerson.trim() : null,
-        phone: phone ? phone.trim() : null,
-        coordinates: coordinates || null,
-      });
+      const userId = req.auth.userId || req.auth.id;
 
-      // Ghi nhật ký thao tác nghiệp vụ (S-31)
-      await recordAuditLog({
-        pool,
-        inMemoryLogs: inMemoryAuditLogs,
-        actorUserId: req.auth.userId,
-        actorEmail: req.auth.email,
-        organizationId,
-        action: "LOCATION_CREATED",
-        resourceType: "location",
-        resourceId: newLoc.id,
-        ipAddress: req.ip,
-        userAgent: req.get("User-Agent"),
-        details: { name: newLoc.name, locationType: newLoc.locationType, address: newLoc.address },
-      });
+      let newLoc = null;
+      if (pool) {
+        const client = await pool.connect();
+        try {
+          await client.query("BEGIN");
 
-      return res.status(201).json({ message: "Tạo địa điểm thành công.", location: newLoc });
+          newLoc = await createLocation(client, inMemoryLocations, {
+            name: name.trim(),
+            address: address ? address.trim() : null,
+            organizationId,
+            locationType: locationType || "warehouse",
+            contactPerson: contactPerson ? contactPerson.trim() : null,
+            phone: phone ? phone.trim() : null,
+            coordinates: coordinates || null,
+          });
+
+          // Ghi nhật ký thao tác nghiệp vụ trong cùng transaction (S-31 Atomicity)
+          await recordAuditLog({
+            client,
+            pool,
+            inMemoryLogs: inMemoryAuditLogs,
+            actorUserId: userId,
+            actorEmail: req.auth.email,
+            organizationId,
+            action: "LOCATION_CREATED",
+            resourceType: "location",
+            resourceId: newLoc.id,
+            ipAddress: req.ip,
+            userAgent: req.get("User-Agent"),
+            details: { name: newLoc.name, locationType: newLoc.locationType, address: newLoc.address },
+          });
+
+          await client.query("COMMIT");
+          return res.status(201).json({ message: "Tạo địa điểm thành công.", location: newLoc });
+        } catch (txErr) {
+          await client.query("ROLLBACK");
+          if (newLoc) {
+            const idx = inMemoryLocations.findIndex((l) => l.id === newLoc.id);
+            if (idx !== -1) inMemoryLocations.splice(idx, 1);
+          }
+          throw txErr;
+        } finally {
+          client.release();
+        }
+      } else {
+        newLoc = await createLocation(null, inMemoryLocations, {
+          name: name.trim(),
+          address: address ? address.trim() : null,
+          organizationId,
+          locationType: locationType || "warehouse",
+          contactPerson: contactPerson ? contactPerson.trim() : null,
+          phone: phone ? phone.trim() : null,
+          coordinates: coordinates || null,
+        });
+
+        // Ghi nhật ký thao tác nghiệp vụ (S-31)
+        await recordAuditLog({
+          inMemoryLogs: inMemoryAuditLogs,
+          actorUserId: userId,
+          actorEmail: req.auth.email,
+          organizationId,
+          action: "LOCATION_CREATED",
+          resourceType: "location",
+          resourceId: newLoc.id,
+          ipAddress: req.ip,
+          userAgent: req.get("User-Agent"),
+          details: { name: newLoc.name, locationType: newLoc.locationType, address: newLoc.address },
+        });
+
+        return res.status(201).json({ message: "Tạo địa điểm thành công.", location: newLoc });
+      }
     } catch (err) {
       return res.status(500).json({ message: err.message });
     }

@@ -1,7 +1,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const http = require("node:http");
-const { app, users, inMemoryProducts, inMemoryFarms, seedDemoUser, hashPassword } = require("../src/server");
+const { app, users, inMemoryProducts, inMemoryFarms, inMemoryAuditLogs, seedDemoUser, hashPassword } = require("../src/server");
 
 function request(server, options, body) {
   return new Promise((resolve, reject) => {
@@ -333,5 +333,45 @@ test("CSV Import - Products & Farms validation and atomic import", async (t) => 
 
     assert.equal(res.status, 400);
     assert.match(res.body.message, /không được để trống/);
+  });
+
+  await t.test("10. Products CSV import records mandatory audit log (PRODUCTS_CSV_IMPORTED)", async () => {
+    const csvContent = "name,unit\nSản phẩm Audit Test 1,kg\nSản phẩm Audit Test 2,thung";
+    const res = await request(
+      server,
+      {
+        hostname: "127.0.0.1",
+        port,
+        path: "/api/products/import-csv",
+        method: "POST",
+        headers: { "Content-Type": "application/json", Cookie: adminCookie },
+      },
+      { csvContent }
+    );
+
+    assert.equal(res.status, 201);
+    const audit = inMemoryAuditLogs.find((l) => l.action === "PRODUCTS_CSV_IMPORTED" && l.details && l.details.importedCount === 2);
+    assert.ok(audit, "Phải ghi nhận nhật ký thao tác PRODUCTS_CSV_IMPORTED");
+    assert.equal(audit.resourceType, "products");
+  });
+
+  await t.test("11. Farms CSV import records mandatory audit log (FARMS_CSV_IMPORTED)", async () => {
+    const csvContent = "name,area,coordinates\nThửa đất Audit Test 1,1.5,\nThửa đất Audit Test 2,2.0,21.5 105.8";
+    const res = await request(
+      server,
+      {
+        hostname: "127.0.0.1",
+        port,
+        path: "/api/farms/import-csv",
+        method: "POST",
+        headers: { "Content-Type": "application/json", Cookie: adminCookie },
+      },
+      { csvContent }
+    );
+
+    assert.equal(res.status, 201);
+    const audit = inMemoryAuditLogs.find((l) => l.action === "FARMS_CSV_IMPORTED" && l.details && l.details.importedCount === 2);
+    assert.ok(audit, "Phải ghi nhận nhật ký thao tác FARMS_CSV_IMPORTED");
+    assert.equal(audit.resourceType, "farms");
   });
 });
