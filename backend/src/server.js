@@ -4790,13 +4790,63 @@ app.post(
 );
 
 /**
- * Lấy danh sách yêu cầu bàn giao lô hàng (S-15, S-16)
- * - Lọc theo status (PENDING, CONFIRMED, REJECTED)
- * - Lọc theo type (outgoing: gửi đi, incoming: nhận về)
- * - Lọc theo lotId
+ * Thống kê tổng số lượng yêu cầu bàn giao phục vụ badge hiển thị nhanh (Ưu tiên 3)
  */
 app.get(
-  "/api/transfers",
+  "/api/transfers/summary",
+  requirePermission(["producer", "cooperative", "transporter", "distributor", "inspector", "org_admin", "admin"]),
+  async (req, res) => {
+    const isGlobal = req.auth.isInspector || req.auth.roleId === "admin";
+    const userOrgId = req.auth.organizationId;
+
+    try {
+      if (pool) {
+        let inQuery = "SELECT COUNT(*) AS total FROM lot_transfers WHERE status = 'PENDING'";
+        let outQuery = "SELECT COUNT(*) AS total FROM lot_transfers WHERE status = 'PENDING'";
+        const inParams = [];
+        const outParams = [];
+
+        if (!isGlobal) {
+          inParams.push(userOrgId);
+          inQuery += " AND to_organization_id = $1";
+          outParams.push(userOrgId);
+          outQuery += " AND from_organization_id = $1";
+        }
+
+        const [incRes, outRes] = await Promise.all([
+          pool.query(inQuery, inParams),
+          pool.query(outQuery, outParams),
+        ]);
+
+        return res.status(200).json({
+          incomingPending: Number(incRes.rows[0].total || 0),
+          outgoingPending: Number(outRes.rows[0].total || 0),
+        });
+      }
+
+      let inCount = 0;
+      let outCount = 0;
+      for (const t of inMemoryTransfers) {
+        if (t.status === "PENDING") {
+          if (isGlobal || t.toOrganizationId === userOrgId) inCount++;
+          if (isGlobal || t.fromOrganizationId === userOrgId) outCount++;
+        }
+      }
+      return res.status(200).json({
+        incomingPending: inCount,
+        outgoingPending: outCount,
+      });
+    } catch (err) {
+      return res.status(500).json({ message: err.message });
+    }
+  }
+);
+
+/**
+ * Đếm số lượng yêu cầu bàn giao theo bộ lọc (Ưu tiên 3)
+ */
+app.get(
+  "/api/transfers/count",
   requirePermission(["producer", "cooperative", "transporter", "distributor", "inspector", "org_admin", "admin"]),
   async (req, res) => {
     const isGlobal = req.auth.isInspector || req.auth.roleId === "admin";
@@ -4805,6 +4855,113 @@ app.get(
 
     try {
       if (pool) {
+        let query = "SELECT COUNT(*) AS total FROM lot_transfers t WHERE 1=1";
+        const params = [];
+        if (!isGlobal) {
+          if (type === "outgoing") {
+            params.push(userOrgId);
+            query += ` AND t.from_organization_id = ${params.length}`;
+          } else if (type === "incoming") {
+            params.push(userOrgId);
+            query += ` AND t.to_organization_id = ${params.length}`;
+          } else {
+            params.push(userOrgId);
+            query += ` AND (t.from_organization_id = ${params.length} OR t.to_organization_id = ${params.length})`;
+          }
+        }
+        if (status) {
+          params.push(status.toUpperCase());
+          query += ` AND t.status = ${params.length}`;
+        }
+        if (lotId) {
+          params.push(lotId);
+          query += ` AND t.lot_id = ${params.length}`;
+        }
+
+        const resCount = await pool.query(query, params);
+        return res.status(200).json({ count: Number(resCount.rows[0].total || 0) });
+      }
+
+      let filtered = [...inMemoryTransfers];
+      if (!isGlobal) {
+        if (type === "outgoing") {
+          filtered = filtered.filter((t) => t.fromOrganizationId === userOrgId);
+        } else if (type === "incoming") {
+          filtered = filtered.filter((t) => t.toOrganizationId === userOrgId);
+        } else {
+          filtered = filtered.filter(
+            (t) => t.fromOrganizationId === userOrgId || t.toOrganizationId === userOrgId
+          );
+        }
+      }
+      if (status) {
+        const st = status.toUpperCase();
+        filtered = filtered.filter((t) => t.status === st);
+      }
+      if (lotId) {
+        filtered = filtered.filter((t) => t.lotId === lotId);
+      }
+      return res.status(200).json({ count: filtered.length });
+    } catch (err) {
+      return res.status(500).json({ message: err.message });
+    }
+  }
+);
+
+/**
+ * Lấy danh sách yêu cầu bàn giao lô hàng hỗ trợ phân trang (S-15, S-16, Ưu tiên 3)
+ * - Lọc theo status (PENDING, CONFIRMED, REJECTED)
+ * - Lọc theo type (outgoing: gửi đi, incoming: nhận về)
+ * - Lọc theo lotId
+ * - Phân trang: limit, offset
+ */
+app.get(
+  "/api/transfers",
+  requirePermission(["producer", "cooperative", "transporter", "distributor", "inspector", "org_admin", "admin"]),
+  async (req, res) => {
+    const isGlobal = req.auth.isInspector || req.auth.roleId === "admin";
+    const userOrgId = req.auth.organizationId;
+    const { status, type, lotId, limit, offset } = req.query;
+
+    const safeLimit = limit !== undefined && limit !== null && limit !== ""
+      ? Math.max(1, Math.min(Number(limit) || 50, 500))
+      : null;
+    const safeOffset = Math.max(0, Number(offset) || 0);
+
+    try {
+      if (pool) {
+        let whereSql = " WHERE 1=1";
+        const params = [];
+
+        if (!isGlobal) {
+          if (type === "outgoing") {
+            params.push(userOrgId);
+            whereSql += ` AND t.from_organization_id = $${params.length}`;
+          } else if (type === "incoming") {
+            params.push(userOrgId);
+            whereSql += ` AND t.to_organization_id = $${params.length}`;
+          } else {
+            params.push(userOrgId);
+            whereSql += ` AND (t.from_organization_id = $${params.length} OR t.to_organization_id = $${params.length})`;
+          }
+        }
+
+        if (status) {
+          params.push(status.toUpperCase());
+          whereSql += ` AND t.status = $${params.length}`;
+        }
+
+        if (lotId) {
+          params.push(lotId);
+          whereSql += ` AND t.lot_id = $${params.length}`;
+        }
+
+        let total = null;
+        if (safeLimit !== null) {
+          const countRes = await pool.query(`SELECT COUNT(*) AS total FROM lot_transfers t${whereSql}`, params);
+          total = Number(countRes.rows[0].total || 0);
+        }
+
         let query = `
           SELECT 
             t.id, t.lot_id, t.from_organization_id, t.to_organization_id,
@@ -4817,57 +4974,45 @@ app.get(
           JOIN lots l ON t.lot_id = l.id
           LEFT JOIN organizations o_from ON t.from_organization_id = o_from.id
           LEFT JOIN organizations o_to ON t.to_organization_id = o_to.id
-          WHERE 1=1
+          ${whereSql}
+          ORDER BY t.created_at DESC
         `;
-        const params = [];
 
-        if (!isGlobal) {
-          if (type === "outgoing") {
-            params.push(userOrgId);
-            query += ` AND t.from_organization_id = $${params.length}`;
-          } else if (type === "incoming") {
-            params.push(userOrgId);
-            query += ` AND t.to_organization_id = $${params.length}`;
-          } else {
-            params.push(userOrgId);
-            query += ` AND (t.from_organization_id = $${params.length} OR t.to_organization_id = $${params.length})`;
-          }
+        if (safeLimit !== null) {
+          params.push(safeLimit);
+          query += ` LIMIT $${params.length}`;
+          params.push(safeOffset);
+          query += ` OFFSET $${params.length}`;
         }
-
-        if (status) {
-          params.push(status.toUpperCase());
-          query += ` AND t.status = $${params.length}`;
-        }
-
-        if (lotId) {
-          params.push(lotId);
-          query += ` AND t.lot_id = $${params.length}`;
-        }
-
-        query += " ORDER BY t.created_at DESC";
 
         const result = await pool.query(query, params);
-        return res.status(200).json({
-          transfers: result.rows.map((r) => ({
-            id: r.id,
-            lotId: r.lot_id,
-            lotName: r.lot_name,
-            lotStatus: r.lot_status,
-            fromOrganizationId: r.from_organization_id,
-            fromOrganizationName: r.from_organization_name,
-            toOrganizationId: r.to_organization_id,
-            toOrganizationName: r.to_organization_name,
-            status: r.status,
-            isOverdue: Boolean(r.is_overdue),
-            overdueAt: r.overdue_at || null,
-            notes: r.notes,
-            createdByUserId: r.created_by_user_id,
-            resolvedByUserId: r.resolved_by_user_id,
-            rejectionReason: r.rejection_reason,
-            createdAt: r.created_at,
-            updatedAt: r.updated_at,
-          })),
-        });
+        const mappedTransfers = result.rows.map((r) => ({
+          id: r.id,
+          lotId: r.lot_id,
+          lotName: r.lot_name,
+          lotStatus: r.lot_status,
+          fromOrganizationId: r.from_organization_id,
+          fromOrganizationName: r.from_organization_name,
+          toOrganizationId: r.to_organization_id,
+          toOrganizationName: r.to_organization_name,
+          status: r.status,
+          isOverdue: Boolean(r.is_overdue),
+          overdueAt: r.overdue_at || null,
+          notes: r.notes,
+          createdByUserId: r.created_by_user_id,
+          resolvedByUserId: r.resolved_by_user_id,
+          rejectionReason: r.rejection_reason,
+          createdAt: r.created_at,
+          updatedAt: r.updated_at,
+        }));
+
+        const responseObj = { transfers: mappedTransfers };
+        if (safeLimit !== null) {
+          responseObj.total = total;
+          responseObj.limit = safeLimit;
+          responseObj.offset = safeOffset;
+        }
+        return res.status(200).json(responseObj);
       }
 
       // In-memory fallback
@@ -4894,9 +5039,15 @@ app.get(
       }
 
       filtered.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      const total = filtered.length;
 
-      return res.status(200).json({
-        transfers: filtered.map((t) => {
+      let paged = filtered;
+      if (safeLimit !== null) {
+        paged = filtered.slice(safeOffset, safeOffset + safeLimit);
+      }
+
+      const responseObj = {
+        transfers: paged.map((t) => {
           const lot = inMemoryLots.find((l) => l.id === t.lotId);
           const fromOrg = inMemoryOrganizations.find((o) => o.id === t.fromOrganizationId);
           const toOrg = inMemoryOrganizations.find((o) => o.id === t.toOrganizationId);
@@ -4910,7 +5061,15 @@ app.get(
             toOrganizationName: toOrg ? toOrg.name : t.toOrganizationId,
           };
         }),
-      });
+      };
+
+      if (safeLimit !== null) {
+        responseObj.total = total;
+        responseObj.limit = safeLimit;
+        responseObj.offset = safeOffset;
+      }
+
+      return res.status(200).json(responseObj);
     } catch (err) {
       return res.status(500).json({ message: err.message });
     }

@@ -14,5 +14,8 @@ COPY farms.html /usr/share/nginx/html/farms.html
 COPY products.html /usr/share/nginx/html/products.html
 COPY harvest.html /usr/share/nginx/html/harvest.html
 COPY integrity.html /usr/share/nginx/html/integrity.html
+COPY audit-logs.html /usr/share/nginx/html/audit-logs.html
+COPY s28-genealogy-demo.html /usr/share/nginx/html/s28-genealogy-demo.html
+COPY s28-genealogy-test.html /usr/share/nginx/html/s28-genealogy-test.html
 
 EXPOSE 80

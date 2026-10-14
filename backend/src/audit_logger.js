@@ -44,10 +44,11 @@ async function recordAuditLog({
   const db = client || pool;
   if (db && typeof db.query === "function") {
     try {
-      await db.query(
+      const insertRes = await db.query(
         `INSERT INTO audit_logs (
           actor_user_id, actor_email, organization_id, action, resource_type, resource_id, ip_address, user_agent, details, created_at
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())`,
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
+        RETURNING id, created_at`,
         [
           actorUserId,
           actorEmail,
@@ -60,16 +61,23 @@ async function recordAuditLog({
           JSON.stringify(logEntry.details),
         ]
       );
+      if (insertRes.rows && insertRes.rows.length > 0) {
+        logEntry.id = insertRes.rows[0].id;
+        logEntry.createdAt = insertRes.rows[0].created_at;
+      }
     } catch (err) {
       console.error("[AUDIT LOG ERROR] Không thể ghi audit log vào CSDL:", err.message);
       if (shouldThrow) {
         throw new Error(`Audit log persistence failed: ${err.message}`);
       }
+      return null;
     }
   }
 
-  // 2. Lưu vào RAM (In-Memory Buffer) sau khi ghi CSDL thành công
-  if (Array.isArray(inMemoryLogs)) {
+  // 2. Chỉ lưu vào RAM khi chạy chế độ in-memory (không có DB kết nối)
+  // để đảm bảo tính nhất quán (DB là Single Source of Truth) và tránh tình trạng
+  // log bị đưa vào RAM trước khi transaction commit hoặc khi ghi DB thất bại
+  if (!db && Array.isArray(inMemoryLogs)) {
     inMemoryLogs.unshift(logEntry);
     if (inMemoryLogs.length > MAX_IN_MEMORY_LOGS) {
       inMemoryLogs.pop();
@@ -160,7 +168,10 @@ async function getAuditLogs({
         })),
       };
     } catch (err) {
-      console.warn("[AUDIT LOG QUERY ERROR] Lỗi truy vấn database, fallback sang in-memory:", err.message);
+      console.error("[AUDIT LOG QUERY ERROR] Lỗi truy vấn database:", err.message);
+      // Khi đã cấu hình PostgreSQL, nếu truy vấn DB lỗi phải ném lỗi rõ ràng, không fallback về RAM
+      // Chỉ dùng RAM khi không có pool kết nối (chế độ in-memory thuần túy)
+      throw new Error(`Audit log query failed: ${err.message}`);
     }
   }
 

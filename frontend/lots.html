@@ -812,7 +812,7 @@
 
     async function loadPage() {
       try {
-        // 1. Khởi tạo App Shell
+        // 1. Chỉ đợi xác thực danh tính người dùng (App Shell)
         currentUser = await initAppShell({ activeNav: "lots" });
         if (!currentUser) return;
 
@@ -831,28 +831,28 @@
           toggleMultiBtn.style.display = canMergeRole ? "inline-flex" : "none";
         }
 
-        // 2. Tải danh mục sản phẩm vào dropdown lọc
-        await loadProductsDropdown();
-
         // Đọc tham số URL nếu có (?productId=... hoặc ?search=...)
         const urlParams = new URLSearchParams(window.location.search);
         const paramProductId = urlParams.get("productId");
         const paramSearch = urlParams.get("search");
 
-        if (paramProductId) {
-          const productSelect = document.getElementById("productFilter");
-          if (productSelect) productSelect.value = paramProductId;
-        }
         if (paramSearch) {
           const searchInput = document.getElementById("searchInput");
           if (searchInput) searchInput.value = paramSearch;
         }
 
-        // 3. Tải danh sách lô đầu tiên (20 lô)
-        await fetchLots(true);
+        // 2. Tải song song dữ liệu độc lập bằng Promise.allSettled() để tăng tốc hiển thị trang (Ưu tiên 1)
+        // fetchLots hiển thị danh sách ngay mà không bị chặn bởi dropdown sản phẩm hay thống kê bàn giao
+        const lotsPromise = fetchLots(true, paramProductId);
+        const productsPromise = loadProductsDropdown().then(() => {
+          if (paramProductId) {
+            const productSelect = document.getElementById("productFilter");
+            if (productSelect) productSelect.value = paramProductId;
+          }
+        });
+        const badgePromise = updateIncomingBadge();
 
-        // 4. Cập nhật số lượng bàn giao chờ tiếp nhận (S-15)
-        await updateIncomingBadge();
+        await Promise.allSettled([lotsPromise, productsPromise, badgePromise]);
 
         if (urlParams.get("tab") === "incoming") {
           switchLotsTab("incoming");
@@ -883,7 +883,7 @@
       }
     }
 
-    async function fetchLots(isReset = true) {
+    async function fetchLots(isReset = true, overrideProductId = null) {
       if (isLoading) return;
       isLoading = true;
 
@@ -901,7 +901,7 @@
       }
 
       const searchVal = document.getElementById("searchInput").value.trim();
-      const productVal = document.getElementById("productFilter").value;
+      const productVal = overrideProductId !== null ? overrideProductId : document.getElementById("productFilter").value;
 
       const queryParams = new URLSearchParams({ limit: 20 });
       if (searchVal) queryParams.append("search", searchVal);
@@ -1623,16 +1623,12 @@
 
     async function updateIncomingBadge() {
       try {
-        // Cập nhật cả 2 chiều: bàn giao đến (incoming) và bàn giao đi (outgoing)
-        const [incomingRes, outgoingRes] = await Promise.all([
-          fetch("/api/transfers?type=incoming&status=PENDING", { credentials: "same-origin" }),
-          fetch("/api/transfers?type=outgoing&status=PENDING", { credentials: "same-origin" })
-        ]);
-
-        if (incomingRes.ok) {
-          const incomingData = await incomingRes.json();
-          const incomingTransfers = incomingData.transfers || [];
-          const inCount = incomingTransfers.length;
+        // Sử dụng API summary trả về trực tiếp số lượng bàn giao thay vì tải toàn bộ danh sách (Ưu tiên 3)
+        const summaryRes = await fetch("/api/transfers/summary", { credentials: "same-origin" });
+        if (summaryRes.ok) {
+          const summary = await summaryRes.json();
+          const inCount = Number(summary.incomingPending || 0);
+          const outCount = Number(summary.outgoingPending || 0);
 
           const badge = document.getElementById("incomingBadge");
           const statIncoming = document.getElementById("statIncomingCount");
@@ -1646,12 +1642,6 @@
               badge.style.display = "none";
             }
           }
-        }
-
-        if (outgoingRes.ok) {
-          const outgoingData = await outgoingRes.json();
-          const outgoingTransfers = outgoingData.transfers || [];
-          const outCount = outgoingTransfers.length;
 
           const outBadge = document.getElementById("outgoingBadge");
           const statOutgoing = document.getElementById("statOutgoingCount");
@@ -1664,6 +1654,37 @@
             } else {
               outBadge.style.display = "none";
             }
+          }
+          return;
+        }
+
+        // Dự phòng khi gọi API transfers thông thường
+        const [incomingRes, outgoingRes] = await Promise.all([
+          fetch("/api/transfers?type=incoming&status=PENDING&limit=1", { credentials: "same-origin" }),
+          fetch("/api/transfers?type=outgoing&status=PENDING&limit=1", { credentials: "same-origin" })
+        ]);
+
+        if (incomingRes.ok) {
+          const incomingData = await incomingRes.json();
+          const inCount = typeof incomingData.total === "number" ? incomingData.total : (incomingData.transfers || []).length;
+          const badge = document.getElementById("incomingBadge");
+          const statIncoming = document.getElementById("statIncomingCount");
+          if (statIncoming) statIncoming.textContent = inCount;
+          if (badge) {
+            badge.textContent = inCount;
+            badge.style.display = inCount > 0 ? "inline-block" : "none";
+          }
+        }
+
+        if (outgoingRes.ok) {
+          const outgoingData = await outgoingRes.json();
+          const outCount = typeof outgoingData.total === "number" ? outgoingData.total : (outgoingData.transfers || []).length;
+          const outBadge = document.getElementById("outgoingBadge");
+          const statOutgoing = document.getElementById("statOutgoingCount");
+          if (statOutgoing) statOutgoing.textContent = outCount;
+          if (outBadge) {
+            outBadge.textContent = outCount;
+            outBadge.style.display = outCount > 0 ? "inline-block" : "none";
           }
         }
       } catch (err) {
