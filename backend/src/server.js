@@ -4494,6 +4494,8 @@ app.post(
             name: r.name,
             status: r.status,
             organizationId: r.organization_id,
+            remainingQuantity: r.remaining_quantity !== null && r.remaining_quantity !== undefined ? Number(r.remaining_quantity) : null,
+            initialQuantity: r.initial_quantity !== null && r.initial_quantity !== undefined ? Number(r.initial_quantity) : null,
           };
         }
       } else {
