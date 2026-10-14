@@ -7,6 +7,25 @@ const inMemoryAuditLogs = [];
 const MAX_IN_MEMORY_LOGS = 1000;
 
 /**
+ * Danh sách các hành vi nghiệp vụ quan trọng bắt buộc phải ghi audit log thành công.
+ * Nếu thất bại ở tầng CSDL (kể cả ngoài transaction), hệ thống phải ném lỗi để ngăn chặn
+ * hành vi dữ liệu mà không có bằng chứng kiểm toán.
+ */
+const MANDATORY_AUDIT_ACTIONS = new Set([
+  "LOT_CREATED",
+  "LOT_SPLIT",
+  "LOT_MERGED",
+  "LOT_CONSUMED",
+  "LOT_LOCATION_UPDATED",
+  "LOCATION_CREATED",
+  "TRANSFER_INITIATED",
+  "TRANSFER_CONFIRMED",
+  "TRANSFER_REJECTED",
+  "PRODUCTS_CSV_IMPORTED",
+  "FARMS_CSV_IMPORTED",
+]);
+
+/**
  * Ghi nhận một thao tác nghiệp vụ vào nhật ký kiểm toán (S-31)
  */
 async function recordAuditLog({
@@ -38,10 +57,15 @@ async function recordAuditLog({
     createdAt: new Date().toISOString(),
   };
 
-  const shouldThrow = Boolean(throwOnError || client || process.env.STRICT_AUDIT === "true");
-
-  // 1. Ghi vĩnh viễn vào PostgreSQL nếu có kết nối (hỗ trợ client trong transaction hoặc pool)
+  // 1. Xác định kết nối DB (client trong transaction hoặc pool)
   const db = client || pool;
+  const isMandatory = MANDATORY_AUDIT_ACTIONS.has(action);
+  const shouldThrow = Boolean(
+    throwOnError ||
+    client ||
+    process.env.STRICT_AUDIT === "true" ||
+    (db && isMandatory)
+  );
   if (db && typeof db.query === "function") {
     try {
       const insertRes = await db.query(
@@ -204,6 +228,7 @@ async function getAuditLogs({
 }
 
 module.exports = {
+  MANDATORY_AUDIT_ACTIONS,
   inMemoryAuditLogs,
   recordAuditLog,
   getAuditLogs,

@@ -4860,22 +4860,22 @@ app.get(
         if (!isGlobal) {
           if (type === "outgoing") {
             params.push(userOrgId);
-            query += ` AND t.from_organization_id = ${params.length}`;
+            query += ` AND t.from_organization_id = $${params.length}`;
           } else if (type === "incoming") {
             params.push(userOrgId);
-            query += ` AND t.to_organization_id = ${params.length}`;
+            query += ` AND t.to_organization_id = $${params.length}`;
           } else {
             params.push(userOrgId);
-            query += ` AND (t.from_organization_id = ${params.length} OR t.to_organization_id = ${params.length})`;
+            query += ` AND (t.from_organization_id = $${params.length} OR t.to_organization_id = $${params.length})`;
           }
         }
         if (status) {
           params.push(status.toUpperCase());
-          query += ` AND t.status = ${params.length}`;
+          query += ` AND t.status = $${params.length}`;
         }
         if (lotId) {
           params.push(lotId);
-          query += ` AND t.lot_id = ${params.length}`;
+          query += ` AND t.lot_id = $${params.length}`;
         }
 
         const resCount = await pool.query(query, params);

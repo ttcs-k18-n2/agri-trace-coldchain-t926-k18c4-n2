@@ -208,6 +208,93 @@ test("S-31: Kiểm thử tích hợp Audit Logs trên PostgreSQL thực tế", a
       assert.equal(res.body.logs[0].resourceId, "AUTH-001");
       assert.equal(res.body.logs[0].resourceType, "auth");
     });
+
+    // Test 7: Thao tác bắt buộc (MANDATORY_AUDIT_ACTIONS) ném lỗi khi ghi PostgreSQL thất bại dù ngoài transaction
+    await t.test("7. Thao tác bắt buộc (MANDATORY_AUDIT_ACTIONS) ném lỗi khi ghi PostgreSQL thất bại", async () => {
+      const brokenPool = {
+        query: async () => {
+          throw new Error("Simulated Disk Full on audit_logs table");
+        },
+      };
+
+      // Hành vi LOCATION_CREATED là bắt buộc, phải throw
+      await assert.rejects(
+        async () => {
+          await recordAuditLog({
+            pool: brokenPool,
+            action: "LOCATION_CREATED",
+            resourceType: "location",
+            resourceId: "LOC-FAIL-TEST",
+          });
+        },
+        (err) => {
+          assert.match(err.message, /Audit log persistence failed/);
+          return true;
+        },
+        "Hành vi mandatory audit phải ném lỗi khi DB ghi thất bại"
+      );
+
+      // Hành vi không bắt buộc và throwOnError: false sẽ log error và trả về null
+      const optionalLog = await recordAuditLog({
+        pool: brokenPool,
+        action: "OPTIONAL_ACTION_TEST",
+        resourceType: "system",
+        throwOnError: false,
+      });
+      assert.equal(optionalLog, null, "Hành vi không bắt buộc khi ghi DB lỗi trả về null");
+    });
+
+    // Test 8: Kiểm thử API /api/transfers/count, /api/transfers/summary và /api/transfers trên PostgreSQL thực tế
+    await t.test("8. Kiểm thử API /api/transfers/count, /api/transfers/summary và /api/transfers trên PostgreSQL thực tế", async () => {
+      const testLotId = "LOT-PG-TR-01";
+      const testTransferId = "TR-PG-TEST-01";
+      const otherOrgId = "org-audit-pg-other";
+
+      await pool.query("INSERT INTO organizations (id, name, type) VALUES ($1, $2, $3) ON CONFLICT (id) DO NOTHING;", [otherOrgId, "Tổ chức Đối tác PG", "distributor"]);
+      await pool.query("INSERT INTO products (id, name, unit) VALUES ('PROD-PG-TEST', 'SP Test PG', 'kg') ON CONFLICT (id) DO NOTHING;");
+      await pool.query("DELETE FROM lot_transfers WHERE id = $1;", [testTransferId]);
+      await pool.query("DELETE FROM lots WHERE id = $1;", [testLotId]);
+      await pool.query(
+        "INSERT INTO lots (id, name, product_id, organization_id, initial_quantity, remaining_quantity, status) VALUES ($1, $2, $3, $4, 100, 100, 'Đang lưu kho');",
+        [testLotId, "Lô Test Transfers PG", "PROD-PG-TEST", testOrgId]
+      );
+      await pool.query(
+        "INSERT INTO lot_transfers (id, lot_id, from_organization_id, to_organization_id, status, notes, created_by_user_id) VALUES ($1, $2, $3, $4, 'PENDING', 'Ghi chú test', $5);",
+        [testTransferId, testLotId, testOrgId, otherOrgId, testUserId]
+      );
+
+      // 8.1 Kiểm tra GET /api/transfers/summary trên PostgreSQL
+      const summaryRes = await agent.get("/api/transfers/summary");
+      assert.equal(summaryRes.status, 200, "summary API phải trả về HTTP 200");
+      assert.ok(summaryRes.body.outgoingPending >= 1, "outgoingPending phải >= 1");
+      assert.ok(typeof summaryRes.body.incomingPending === "number");
+
+      // 8.2 Kiểm tra GET /api/transfers/count trên PostgreSQL với đầy đủ các bộ lọc (P1 SQL placeholder fix)
+      const countOutgoing = await agent.get("/api/transfers/count?type=outgoing&status=PENDING");
+      assert.equal(countOutgoing.status, 200, "count outgoing phải trả về HTTP 200");
+      assert.ok(countOutgoing.body.count >= 1, "count outgoing phải >= 1");
+
+      const countIncoming = await agent.get("/api/transfers/count?type=incoming&status=PENDING");
+      assert.equal(countIncoming.status, 200, "count incoming phải trả về HTTP 200");
+      assert.ok(typeof countIncoming.body.count === "number");
+
+      const countByLot = await agent.get("/api/transfers/count?lotId=" + testLotId);
+      assert.equal(countByLot.status, 200, "count by lotId phải trả về HTTP 200");
+      assert.equal(countByLot.body.count, 1, "count by lotId phải chính xác là 1");
+
+      // 8.3 Kiểm tra GET /api/transfers có phân trang limit & offset trên PostgreSQL
+      const pagedTransfers = await agent.get("/api/transfers?type=outgoing&status=PENDING&limit=1&offset=0");
+      assert.equal(pagedTransfers.status, 200, "transfers paged API phải trả về HTTP 200");
+      assert.equal(pagedTransfers.body.transfers.length, 1);
+      assert.equal(pagedTransfers.body.limit, 1);
+      assert.equal(pagedTransfers.body.offset, 0);
+      assert.ok(pagedTransfers.body.total >= 1);
+
+      // Dọn dẹp dữ liệu transfer test
+      await pool.query("DELETE FROM lot_transfers WHERE id = $1;", [testTransferId]);
+      await pool.query("DELETE FROM lots WHERE id = $1;", [testLotId]);
+      await pool.query("DELETE FROM organizations WHERE id = $1;", [otherOrgId]);
+    });
   } finally {
     // Dọn dẹp dữ liệu kiểm thử
     if (pool) {
