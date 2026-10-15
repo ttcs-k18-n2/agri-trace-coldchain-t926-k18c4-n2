@@ -34,6 +34,27 @@ const {
 } = require("./quantity");
 const { traceLotOrigins, traceLotDescendants, CycleDetectedError } = require("./lot_genealogy");
 const { getPublicLotMapData } = require("./public_trace_map");
+
+const publicMapRateLimitMap = new Map();
+function checkPublicMapRateLimit(ip) {
+  const now = Date.now();
+  const windowMs = 60 * 1000;
+  const maxRequests = 120;
+  const record = publicMapRateLimitMap.get(ip) || { count: 0, resetTime: now + windowMs };
+  if (now > record.resetTime) {
+    record.count = 1;
+    record.resetTime = now + windowMs;
+  } else {
+    record.count++;
+  }
+  publicMapRateLimitMap.set(ip, record);
+  if (publicMapRateLimitMap.size > 10000) {
+    for (const [k, v] of publicMapRateLimitMap.entries()) {
+      if (now > v.resetTime) publicMapRateLimitMap.delete(k);
+    }
+  }
+  return record.count <= maxRequests;
+}
 const {
   validateProductsCsv,
   validateFarmsCsv,
@@ -623,11 +644,28 @@ app.get("/api/health", checkHealth);
 app.get(
   ["/api/public/lots/:code/map", "/api/public/lots/:code/public-map"],
   async (req, res) => {
-    const code = req.params.code;
-    if (!code || typeof code !== "string" || !code.trim()) {
+    const clientIp = req.ip || req.socket.remoteAddress || "127.0.0.1";
+    if (!checkPublicMapRateLimit(clientIp)) {
+      return res.status(429).json({
+        error: "TOO_MANY_REQUESTS",
+        message: "Quá nhiều yêu cầu truy xuất bản đồ. Vui lòng thử lại sau.",
+      });
+    }
+
+    const rawCode = req.params.code;
+    if (!rawCode || typeof rawCode !== "string") {
       return res.status(400).json({
         error: "INVALID_LOT_CODE",
         message: "Mã lô hàng không hợp lệ.",
+      });
+    }
+
+    const code = rawCode.trim();
+    // Giới hạn độ dài tối đa 50 ký tự và không chứa ký tự độc hại (Issue 33)
+    if (!/^[A-Za-z0-9_-]{1,50}$/.test(code)) {
+      return res.status(400).json({
+        error: "INVALID_LOT_CODE",
+        message: "Mã lô hàng không đúng định dạng (tối đa 50 ký tự, không chứa ký tự đặc biệt).",
       });
     }
 
@@ -6043,7 +6081,7 @@ app.get(["/public-trace", "/public-trace.html"], (req, res) => {
     return sendFrontendFile(res, frontendPublicTracePath);
   }
   const query = req.url.includes("?") ? req.url.substring(req.url.indexOf("?")) : "";
-  return res.redirect("http://localhost:8080/public-trace.html" + query);
+  return res.redirect("/public-trace.html" + query);
 });
 
 const frontendLotDetailPath = path.join(__dirname, "../../frontend/lot-detail.html");

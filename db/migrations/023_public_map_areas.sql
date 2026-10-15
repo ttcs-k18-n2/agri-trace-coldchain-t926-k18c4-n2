@@ -20,14 +20,14 @@ CREATE INDEX IF NOT EXISTS idx_public_map_areas_keywords ON public_map_areas(key
 -- Nạp các vùng canh tác và phân phối đại diện
 INSERT INTO public_map_areas (id, name, admin_level, commune, district, province, latitude, longitude, keywords, description)
 VALUES
-    ('AREA-LA-BANG', 'Vùng chè an toàn La Bằng', 'commune', 'La Bằng', 'Đại Từ', 'Thái Nguyên', 21.5580, 105.6720, 'la bằng, la bang, đồi chè, doi che, labang', 'Tâm hành chính xã La Bằng, vùng chỉ dẫn địa lý chè Đại Từ'),
-    ('AREA-HUNG-SON', 'Vùng trồng rau củ an toàn Hùng Sơn', 'commune', 'Hùng Sơn', 'Đại Từ', 'Thái Nguyên', 21.5750, 105.6905, 'hùng sơn, hung son, cà chua, ca chua, hungson', 'Khu vực trung tâm thị trấn Hùng Sơn'),
-    ('AREA-TAN-CUONG', 'Vùng chỉ dẫn địa lý Chè Tân Cương', 'commune', 'Tân Cương', 'TP Thái Nguyên', 'Thái Nguyên', 21.5450, 105.7720, 'tân cương, tan cuong, chè tân cương, che tan cuong', 'Vùng chè đặc sản Tân Cương Thái Nguyên'),
-    ('AREA-YEN-DUNG', 'Vùng chuyên canh rau sạch Yên Dũng', 'district', 'Nham Biền', 'Yên Dũng', 'Bắc Giang', 21.2290, 106.1820, 'yên dũng, yen dung, nham biền, nham bien, rau cải, yendung', 'Khu vực trung tâm huyện Yên Dũng'),
-    ('AREA-HIEP-HOA', 'Vùng trồng nông sản Hiệp Hòa', 'district', 'Hiệp Hòa', 'Hiệp Hòa', 'Bắc Giang', 21.3415, 105.9810, 'hiệp hòa, hiep hoa, dưa chuột, dua chuot, hiephoa', 'Vùng trồng dưa và rau quả sạch Hiệp Hòa'),
+    ('AREA-LA-BANG', 'Vùng chè an toàn La Bằng', 'commune', 'La Bằng', 'Đại Từ', 'Thái Nguyên', 21.5580, 105.6720, 'la bằng, la bang, labang, đại từ, daitu', 'Tâm hành chính xã La Bằng, vùng chỉ dẫn địa lý chè Đại Từ'),
+    ('AREA-HUNG-SON', 'Vùng trồng nông sản an toàn Hùng Sơn', 'commune', 'Hùng Sơn', 'Đại Từ', 'Thái Nguyên', 21.5750, 105.6905, 'hùng sơn, hung son, hungson, đại từ, daitu', 'Khu vực trung tâm thị trấn Hùng Sơn'),
+    ('AREA-TAN-CUONG', 'Vùng chỉ dẫn địa lý Tân Cương', 'commune', 'Tân Cương', 'TP Thái Nguyên', 'Thái Nguyên', 21.5450, 105.7720, 'tân cương, tan cuong, tancuong, thái nguyên, thai nguyen', 'Vùng đặc sản Tân Cương Thái Nguyên'),
+    ('AREA-YEN-DUNG', 'Vùng chuyên canh nông sản Yên Dũng', 'district', 'Nham Biền', 'Yên Dũng', 'Bắc Giang', 21.2290, 106.1820, 'yên dũng, yen dung, nham biền, nham bien, yendung', 'Khu vực trung tâm huyện Yên Dũng'),
+    ('AREA-HIEP-HOA', 'Vùng trồng nông sản Hiệp Hòa', 'district', 'Hiệp Hòa', 'Hiệp Hòa', 'Bắc Giang', 21.3415, 105.9810, 'hiệp hòa, hiep hoa, hiephoa', 'Vùng trồng nông sản Hiệp Hòa'),
     ('AREA-DAI-TU', 'Khu vực sản xuất nông nghiệp Đại Từ', 'district', 'Đại Từ', 'Đại Từ', 'Thái Nguyên', 21.6300, 105.6400, 'đại từ, dai tu, thái nguyên, thai nguyen, daitu', 'Khu vực huyện Đại Từ'),
-    ('AREA-LONG-BIEN', 'Cụm logistics phân phối Long Biên', 'district', 'Phúc Đồng', 'Long Biên', 'Hà Nội', 21.0356, 105.9012, 'đài tư, dai tu, long biên, long bien, kcn đài tư, longbien', 'Trung tâm logistics và kho lạnh tiêu chuẩn'),
-    ('AREA-CAU-GIAY', 'Khu vực phân phối Cầu Giấy', 'district', 'Dịch Vọng', 'Cầu Giấy', 'Hà Nội', 21.0333, 105.7989, 'cầu giấy, cau giay, caugiay', 'Trung tâm bán lẻ và phân phối tiêu dùng'),
+    ('AREA-LONG-BIEN', 'Cụm logistics phân phối Long Biên', 'district', 'Phúc Đồng', 'Long Biên', 'Hà Nội', 21.0356, 105.9012, 'long biên, long bien, kcn đài tư, dai tu, longbien', 'Trung tâm logistics và kho lạnh tiêu chuẩn'),
+    ('AREA-CAU-GIAY', 'Khu vực phân phối Cầu Giấy', 'district', 'Dịch Vọng', 'Cầu Giấy', 'Hà Nội', 21.0333, 105.7989, 'cầu giấy, cau giay, caugiay, dịch vọng, dich vong', 'Trung tâm bán lẻ và phân phối tiêu dùng'),
     ('AREA-THANH-XUAN', 'Khu vực phân phối Thanh Xuân', 'district', 'Thanh Xuân Trung', 'Thanh Xuân', 'Hà Nội', 20.9981, 105.8152, 'nguyễn trãi, nguyen trai, thanh xuân, thanh xuan, thanhxuan', 'Điểm phân phối và chuỗi cửa hàng tiện ích')
 ON CONFLICT (id) DO NOTHING;
 

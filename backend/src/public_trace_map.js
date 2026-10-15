@@ -24,40 +24,40 @@ const DEFAULT_MAP_AREAS = [
     province: "Thái Nguyên",
     latitude: 21.5580,
     longitude: 105.6720,
-    keywords: ["la bằng", "la bang", "đồi chè", "doi che", "labang"],
+    keywords: ["la bằng", "la bang", "labang", "đại từ", "daitu"],
     description: "Tâm hành chính xã La Bằng, vùng chỉ dẫn địa lý chè Đại Từ",
   },
   {
     id: "AREA-HUNG-SON",
-    name: "Vùng trồng rau củ an toàn Hùng Sơn",
+    name: "Vùng trồng nông sản an toàn Hùng Sơn",
     commune: "Hùng Sơn",
     district: "Đại Từ",
     province: "Thái Nguyên",
     latitude: 21.5750,
     longitude: 105.6905,
-    keywords: ["hùng sơn", "hung son", "cà chua", "ca chua", "hungson"],
+    keywords: ["hùng sơn", "hung son", "hungson", "đại từ", "daitu"],
     description: "Khu vực trung tâm thị trấn Hùng Sơn",
   },
   {
     id: "AREA-TAN-CUONG",
-    name: "Vùng chỉ dẫn địa lý Chè Tân Cương",
+    name: "Vùng chỉ dẫn địa lý Tân Cương",
     commune: "Tân Cương",
     district: "TP Thái Nguyên",
     province: "Thái Nguyên",
     latitude: 21.5450,
     longitude: 105.7720,
-    keywords: ["tân cương", "tan cuong", "chè tân cương", "che tan cuong"],
-    description: "Vùng chè đặc sản Tân Cương Thái Nguyên",
+    keywords: ["tân cương", "tan cuong", "tancuong", "thái nguyên", "thai nguyen"],
+    description: "Vùng đặc sản Tân Cương Thái Nguyên",
   },
   {
     id: "AREA-YEN-DUNG",
-    name: "Vùng chuyên canh rau sạch Yên Dũng",
+    name: "Vùng chuyên canh nông sản Yên Dũng",
     commune: "Nham Biền",
     district: "Yên Dũng",
     province: "Bắc Giang",
     latitude: 21.2290,
     longitude: 106.1820,
-    keywords: ["yên dũng", "yen dung", "nham biền", "nham bien", "rau cải", "yendung"],
+    keywords: ["yên dũng", "yen dung", "nham biền", "nham bien", "yendung"],
     description: "Khu vực trung tâm huyện Yên Dũng",
   },
   {
@@ -67,9 +67,9 @@ const DEFAULT_MAP_AREAS = [
     district: "Hiệp Hòa",
     province: "Bắc Giang",
     latitude: 21.3415,
-    longitude: 105.981,
-    keywords: ["hiệp hòa", "hiep hoa", "dưa chuột", "dua chuot", "hiephoa"],
-    description: "Vùng trồng dưa và rau quả sạch Hiệp Hòa",
+    longitude: 105.9810,
+    keywords: ["hiệp hòa", "hiep hoa", "hiephoa"],
+    description: "Vùng trồng nông sản sạch Hiệp Hòa",
   },
   {
     id: "AREA-DAI-TU",
@@ -122,19 +122,30 @@ const DEFAULT_MAP_AREAS = [
  */
 function parseCoordinates(raw) {
   if (!raw) return null;
+  let lat = null;
+  let lng = null;
+
   if (typeof raw === "object" && raw.lat !== undefined && raw.lng !== undefined) {
-    const lat = Number(raw.lat);
-    const lng = Number(raw.lng);
-    if (!Number.isNaN(lat) && !Number.isNaN(lng)) {
-      return { lat, lng };
-    }
-    return null;
-  }
-  if (typeof raw === "string") {
+    lat = Number(raw.lat);
+    lng = Number(raw.lng);
+  } else if (typeof raw === "string") {
     const parts = raw.split(",").map((p) => Number(p.trim()));
-    if (parts.length === 2 && !Number.isNaN(parts[0]) && !Number.isNaN(parts[1])) {
-      return { lat: parts[0], lng: parts[1] };
+    if (parts.length === 2) {
+      lat = parts[0];
+      lng = parts[1];
     }
+  }
+
+  // Chặn Infinity, NaN và kiểm tra dải vĩ độ [-90, 90], kinh độ [-180, 180]
+  if (
+    Number.isFinite(lat) &&
+    Number.isFinite(lng) &&
+    lat >= -90 &&
+    lat <= 90 &&
+    lng >= -180 &&
+    lng <= 180
+  ) {
+    return { lat, lng };
   }
   return null;
 }
@@ -143,7 +154,7 @@ function parseCoordinates(raw) {
  * Tìm tọa độ đại diện cấp xã / khu vực cho vùng trồng (S-06 / N2-290)
  * Tuyệt đối không trả về tọa độ thửa gốc chi tiết nhằm bảo vệ vị trí đất riêng tư của nông dân.
  */
-async function resolveRepresentativeArea(pool, farm, customAreas = DEFAULT_MAP_AREAS) {
+async function resolveRepresentativeArea(pool, farm, customAreas = DEFAULT_MAP_AREAS, cachedDbAreas = null) {
   if (!farm) {
     return {
       regionName: "Vùng trồng chưa định vị",
@@ -156,59 +167,66 @@ async function resolveRepresentativeArea(pool, farm, customAreas = DEFAULT_MAP_A
 
   const farmName = (farm.name || farm.farm_name || "").toLowerCase();
   const farmAddress = (farm.address || "").toLowerCase();
-  const searchTarget = `${farmName} ${farmAddress}`;
+  const searchTarget = `${farmName} ${farmAddress}`.trim();
 
-  // 1. Thử tìm trong bảng public_map_areas nếu kết nối PostgreSQL
-  if (pool && typeof pool.query === "function") {
+  // 1. Đối chiếu danh mục cấp xã/khu vực từ PostgreSQL
+  let dbRows = cachedDbAreas;
+  if (!dbRows && pool && typeof pool.query === "function") {
     try {
       const dbAreasRes = await pool.query(
         "SELECT id, name, admin_level, commune, district, province, latitude, longitude, keywords FROM public_map_areas"
       );
-      if (dbAreasRes && dbAreasRes.rows.length > 0) {
-        for (const row of dbAreasRes.rows) {
-          const kws = (row.keywords || "").split(",").map((k) => k.trim().toLowerCase());
-          const matchKeyword = kws.some((k) => k && searchTarget.includes(k));
-          const matchName = searchTarget.includes(row.name.toLowerCase());
-          if (matchKeyword || matchName) {
-            return {
-              regionName: row.name,
-              commune: row.commune,
-              district: row.district,
-              province: row.province,
-              coordinates: {
-                lat: Number(row.latitude),
-                lng: Number(row.longitude),
-              },
-              hasCoordinates: true,
-              verified: true,
-              adminLevel: row.admin_level || "commune",
-            };
-          }
-        }
-      }
-    } catch {
-      // Fallback in-memory nếu bảng chưa sẵn sàng
+      dbRows = dbAreasRes ? dbAreasRes.rows : [];
+    } catch (dbErr) {
+      console.error("[resolveRepresentativeArea DB error]:", dbErr.message);
     }
   }
 
-  // 2. Tra cứu trong danh mục default in-memory areas
+  if (dbRows && dbRows.length > 0) {
+    for (const row of dbRows) {
+      const kws = (row.keywords || "")
+        .split(",")
+        .map((k) => k.trim().toLowerCase())
+        .filter((k) => k.length >= 2);
+      const matchKeyword = kws.some((k) => searchTarget.includes(k));
+      const matchName = searchTarget.includes(row.name.toLowerCase());
+      if (matchKeyword || matchName) {
+        const coords = parseCoordinates({ lat: row.latitude, lng: row.longitude });
+        if (coords) {
+          return {
+            regionName: row.name,
+            commune: row.commune,
+            district: row.district,
+            province: row.province,
+            coordinates: coords,
+            hasCoordinates: true,
+            verified: true,
+            adminLevel: row.admin_level || "commune",
+          };
+        }
+      }
+    }
+  }
+
+  // 2. Tra cứu trong danh mục đại diện cấp xã in-memory
   for (const area of customAreas) {
-    const matchKeyword = (area.keywords || []).some((kw) => searchTarget.includes(kw.toLowerCase()));
+    const kws = (area.keywords || []).map((k) => k.trim().toLowerCase()).filter((k) => k.length >= 2);
+    const matchKeyword = kws.some((kw) => searchTarget.includes(kw));
     const matchName = searchTarget.includes(area.name.toLowerCase());
     if (matchKeyword || matchName) {
-      return {
-        regionName: area.name,
-        commune: area.commune,
-        district: area.district,
-        province: area.province,
-        coordinates: {
-          lat: Number(area.latitude),
-          lng: Number(area.longitude),
-        },
-        hasCoordinates: true,
-        verified: true,
-        adminLevel: area.adminLevel || "commune",
-      };
+      const coords = parseCoordinates({ lat: area.latitude, lng: area.longitude });
+      if (coords) {
+        return {
+          regionName: area.name,
+          commune: area.commune,
+          district: area.district,
+          province: area.province,
+          coordinates: coords,
+          hasCoordinates: true,
+          verified: true,
+          adminLevel: area.adminLevel || "commune",
+        };
+      }
     }
   }
 
@@ -421,7 +439,20 @@ async function getPublicLotMapData(options = {}) {
   const rootLots = originsTrace.rootLots || [];
   const isMerged = !originsTrace.isRoot && rootLots.length > 1;
 
-  // 3. Xây dựng danh sách Vùng trồng gốc an toàn (Origins)
+  // 3. Tải trước danh mục public_map_areas theo nhóm để chống lỗi N+1 query
+  let preloadedAreas = null;
+  if (pool && typeof pool.query === "function") {
+    try {
+      const areasRes = await pool.query(
+        "SELECT id, name, admin_level, commune, district, province, latitude, longitude, keywords FROM public_map_areas"
+      );
+      preloadedAreas = areasRes ? areasRes.rows : [];
+    } catch (areaErr) {
+      console.error("[getPublicLotMapData Preload Areas Error]:", areaErr.message);
+    }
+  }
+
+  // Xây dựng danh sách Vùng trồng gốc an toàn (Origins)
   const origins = [];
   const seenFarms = new Set();
 
@@ -432,7 +463,7 @@ async function getPublicLotMapData(options = {}) {
 
     if (!seenFarms.has(farmKey)) {
       seenFarms.add(farmKey);
-      const representativeArea = await resolveRepresentativeArea(pool, farmObj);
+      const representativeArea = await resolveRepresentativeArea(pool, farmObj, DEFAULT_MAP_AREAS, preloadedAreas);
 
       origins.push({
         farmName: farmObj ? farmObj.name : (root.farmName || "Vùng canh tác ban đầu"),
@@ -605,6 +636,12 @@ async function getPublicLotMapData(options = {}) {
       const locType = curLoc ? curLoc.locationType : (lotRecord.locationType || "store");
       const locName = curLoc ? curLoc.name : (lotRecord.locationName || `Kho #${lotRecord.locationId}`);
 
+      // Lấy thời gian từ sự kiện chuyển kho thực tế thay vì lấy ngày tạo lô (Issue 11)
+      const locEvent = [...rawEvents].reverse().find(
+        (e) => (e.payload && (e.payload.newLocationId === lotRecord.locationId || e.payload.locationId === lotRecord.locationId))
+      );
+      const arrivalTime = locEvent ? locEvent.occurredAt : null;
+
       journey.push({
         step: currentStep++,
         type: locType,
@@ -616,7 +653,7 @@ async function getPublicLotMapData(options = {}) {
         coordinates: curCoords,
         hasCoordinates: Boolean(curCoords),
         verified: Boolean(curCoords),
-        occurredAt: lotRecord.createdAt,
+        occurredAt: arrivalTime,
         description: `Vị trí hiện tại của lô hàng: ${locName}`,
         isOrigin: false,
         isCurrentLocation: true,
@@ -624,18 +661,18 @@ async function getPublicLotMapData(options = {}) {
     }
   }
 
-  // 6. Xây dựng các đoạn đường nối (Routes) cho MapLibre GL JS
-  // Quy tắc: Chỉ nối các điểm có tọa độ xác minh; đối với lô gộp, các nguồn gộp cùng nối vào điểm kế tiếp, KHÔNG nối trực tiếp với nhau!
+  // 6. Xây dựng các đoạn đường nối sơ đồ hóa (Schematic Routes)
+  // Chỉ nối các điểm đã được xác minh tọa độ (verified). Không nối trực tiếp các nhánh độc lập trước khi gộp.
   const routes = [];
-  const locatedStops = journey.filter((s) => s.hasCoordinates && s.coordinates);
+  const locatedStops = journey.filter((s) => s.hasCoordinates && s.coordinates && s.verified);
 
   if (locatedStops.length >= 2) {
     const originLocatedStops = locatedStops.filter((s) => s.isOrigin);
     const nonOriginLocatedStops = locatedStops.filter((s) => !s.isOrigin);
 
     if (originLocatedStops.length > 1 && nonOriginLocatedStops.length > 0) {
-      // Trường hợp lô gộp (Merged Lot):
-      // Nối từng vùng trồng gốc vào điểm dừng đầu tiên (thường là kho sơ chế/trung chuyển)
+      // Đối với lô gộp đa nguồn:
+      // Từng vùng trồng gốc nối vào điểm dừng trung chuyển/chế biến đầu tiên đã xác minh
       const firstCommonStop = nonOriginLocatedStops[0];
       for (const orig of originLocatedStops) {
         routes.push({
@@ -643,6 +680,7 @@ async function getPublicLotMapData(options = {}) {
           toStep: firstCommonStop.step,
           fromTitle: orig.title,
           toTitle: firstCommonStop.title,
+          isSchematic: true,
           coordinates: [
             [orig.coordinates.lng, orig.coordinates.lat],
             [firstCommonStop.coordinates.lng, firstCommonStop.coordinates.lat],
@@ -659,14 +697,15 @@ async function getPublicLotMapData(options = {}) {
           toStep: to.step,
           fromTitle: from.title,
           toTitle: to.title,
+          isSchematic: true,
           coordinates: [
             [from.coordinates.lng, from.coordinates.lat],
             [to.coordinates.lng, to.coordinates.lat],
           ],
         });
       }
-    } else {
-      // Trường hợp tuyến tính đơn nguồn thông thường
+    } else if (originLocatedStops.length <= 1) {
+      // Trường hợp tuyến tính thông thường
       for (let i = 0; i < locatedStops.length - 1; i++) {
         const from = locatedStops[i];
         const to = locatedStops[i + 1];
@@ -675,6 +714,7 @@ async function getPublicLotMapData(options = {}) {
           toStep: to.step,
           fromTitle: from.title,
           toTitle: to.title,
+          isSchematic: true,
           coordinates: [
             [from.coordinates.lng, from.coordinates.lat],
             [to.coordinates.lng, to.coordinates.lat],
@@ -685,7 +725,7 @@ async function getPublicLotMapData(options = {}) {
   }
 
   // 7. Thống kê tổng hợp & kiểm tra an toàn dữ liệu
-  const verifiedCount = journey.filter((s) => s.hasCoordinates).length;
+  const verifiedCount = journey.filter((s) => s.hasCoordinates && s.verified).length;
   const unlocatedCount = journey.length - verifiedCount;
 
   return {
@@ -708,7 +748,8 @@ async function getPublicLotMapData(options = {}) {
       verifiedStops: verifiedCount,
       unverifiedStops: unlocatedCount,
       hasUnlocatedStops: unlocatedCount > 0,
-      disclaimer: "Tọa độ vùng trồng hiển thị theo tâm khu vực hành chính (xã/phường) nhằm bảo vệ quyền riêng tư và vùng sản xuất của nông hộ.",
+      isSchematic: true,
+      disclaimer: "Tọa độ vùng trồng hiển thị theo tâm khu vực hành chính (xã/phường) nhằm bảo vệ quyền riêng tư nông hộ. Các tuyến đường trên bản đồ mang tính chất sơ đồ hóa chuỗi cung ứng, không phải định vị GPS thời gian thực.",
     },
   };
 }

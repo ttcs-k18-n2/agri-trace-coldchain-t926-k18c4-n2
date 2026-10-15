@@ -50,6 +50,7 @@
       this.map = null;
       this.markers = [];
       this.mapData = null;
+      this.currentAbortController = null;
     }
 
     /**
@@ -61,10 +62,17 @@
         return null;
       }
 
+      // Hủy yêu cầu mạng trước đó nếu người dùng nhập hoặc click liên tiếp (Issue 23)
+      if (this.currentAbortController) {
+        try { this.currentAbortController.abort(); } catch (e) {}
+      }
+      this.currentAbortController = new AbortController();
+      const signal = this.currentAbortController.signal;
+
       this.renderLoading();
 
       try {
-        const response = await fetch(`${this.apiUrl}/${encodeURIComponent(lotCode)}/map`);
+        const response = await fetch(`${this.apiUrl}/${encodeURIComponent(lotCode)}/map`, { signal });
         if (!response.ok) {
           const errData = await response.json().catch(() => ({}));
           const errMsg = errData.message || (response.status === 404
@@ -79,6 +87,9 @@
         this.render(data);
         return data;
       } catch (err) {
+        if (err.name === "AbortError") {
+          return null;
+        }
         this.renderError("Không thể kết nối đến máy chủ truy xuất nguồn gốc. Vui lòng kiểm tra lại đường truyền internet.");
         return null;
       }
@@ -173,9 +184,16 @@
           if (this.map) this.map.resize();
         }, { passive: true });
 
-        this.map.on("error", () => {
-          // Khi lỗi tải tiles từ OpenFreeMap, giữ bản đồ và hiển thị thông báo
-          console.warn("OpenFreeMap tile server issue detected. Fallback active.");
+        this.map.on("error", (e) => {
+          console.warn("OpenFreeMap tile server issue detected:", e);
+          const notice = mapDiv.querySelector(".map-offline-notice");
+          if (!notice) {
+            const nDiv = document.createElement("div");
+            nDiv.className = "map-offline-notice";
+            nDiv.style.cssText = "position: absolute; bottom: 10px; left: 10px; right: 10px; background: rgba(254, 243, 199, 0.95); border: 1px solid #fcd34d; color: #92400e; padding: 6px 12px; border-radius: 8px; font-size: 12px; z-index: 10; display: flex; align-items: center; gap: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.06);";
+            nDiv.innerHTML = "<span>⚠️ Kết nối máy chủ bản đồ số chậm. Toàn bộ hành trình chuỗi lạnh vẫn được hiển thị đầy đủ bên dưới.</span>";
+            mapDiv.appendChild(nDiv);
+          }
         });
 
         // Bổ sung ghi chú quyền riêng tư phía dưới bản đồ

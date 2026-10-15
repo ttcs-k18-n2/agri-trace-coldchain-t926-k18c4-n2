@@ -253,6 +253,19 @@ test("S-60 / N2-290 / N2-258: Kiểm thử toàn diện API Bản đồ vị tr�
     );
   });
 
+  await t.test("8b. Xử lý lỗi 400 khi mã lô vượt quá 50 ký tự hoặc chứa ký tự đặc biệt", async () => {
+    // Mã dài quá 50 ký tự
+    const longCode = "A".repeat(55);
+    const res1 = await request(app).get(`/api/public/lots/${longCode}/map`);
+    assert.equal(res1.status, 400);
+    assert.equal(res1.body.error, "INVALID_LOT_CODE");
+
+    // Mã chứa ký tự đặc biệt độc hại
+    const res2 = await request(app).get("/api/public/lots/LOT%3Cscript%3E/map");
+    assert.equal(res2.status, 400);
+    assert.equal(res2.body.error, "INVALID_LOT_CODE");
+  });
+
   await t.test("10. Hàm giải quyết tọa độ đại diện cấp xã resolveRepresentativeArea", async () => {
     // 1. Khớp từ khóa La Bằng: lấy tọa độ tâm xã độc lập, không trùng thửa gốc
     const farm1 = { name: "Thửa đồi chè La Bằng 01", coordinates: "21.5645, 105.6789" };
@@ -274,5 +287,26 @@ test("S-60 / N2-290 / N2-258: Kiểm thử toàn diện API Bản đồ vị tr�
     const areaNoCoords = await resolveRepresentativeArea(null, farmNoCoords);
     assert.equal(areaNoCoords.hasCoordinates, false);
     assert.equal(areaNoCoords.coordinates, null);
+
+    // 4. Kiểm tra nông trại ở tỉnh khác trồng cùng loại nông sản KHÔNG bị gán nhầm vào Thái Nguyên (Issue 9)
+    const farmLamDong = { name: "Hợp tác xã Cà chua Đà Lạt", address: "Đơn Dương, Lâm Đồng" };
+    const areaLamDong = await resolveRepresentativeArea(null, farmLamDong);
+    assert.notEqual(areaLamDong.regionName, "Vùng trồng nông sản an toàn Hùng Sơn", "Không được đoán vị trí dựa trên từ khóa cà chua");
+    assert.equal(areaLamDong.hasCoordinates, false);
+  });
+
+  await t.test("11. Hàm parseCoordinates kiểm tra phạm vi vĩ độ/kinh độ và chặn Infinity/NaN", async () => {
+    const { parseCoordinates } = require("../src/public_trace_map");
+    assert.equal(parseCoordinates("Infinity, 105.0"), null, "Chặn Infinity");
+    assert.equal(parseCoordinates("21.0, NaN"), null, "Chặn NaN");
+    assert.equal(parseCoordinates("95.0, 105.0"), null, "Chặn vĩ độ > 90");
+    assert.equal(parseCoordinates("-95.0, 105.0"), null, "Chặn vĩ độ < -90");
+    assert.equal(parseCoordinates("21.0, 185.0"), null, "Chặn kinh độ > 180");
+    assert.equal(parseCoordinates("21.0, -185.0"), null, "Chặn kinh độ < -180");
+
+    const valid = parseCoordinates("21.5580, 105.6720");
+    assert.ok(valid);
+    assert.equal(valid.lat, 21.558);
+    assert.equal(valid.lng, 105.672);
   });
 });

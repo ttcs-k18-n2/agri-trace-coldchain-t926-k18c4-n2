@@ -358,17 +358,38 @@
       });
       window.__traceMapInstance = traceMap;
 
-      // Đọc mã lô từ query param ?code=... hoặc ?lot=...
+      // Đọc mã lô từ query param ?code=..., ?lot=..., hoặc ?id=... (Issue 26)
       const urlParams = new URLSearchParams(window.location.search);
-      const codeFromUrl = urlParams.get("code") || urlParams.get("lot");
+      const codeFromUrl = urlParams.get("code") || urlParams.get("lot") || urlParams.get("id");
 
       if (codeFromUrl) {
         document.getElementById("lot-code-input").value = codeFromUrl;
         loadLotTrace(codeFromUrl);
       } else {
-        // Mặc định nạp thử nghiệm lô LOT-001
-        document.getElementById("lot-code-input").value = "LOT-001";
-        loadLotTrace("LOT-001");
+        // Trang chờ quét mã QR hoặc nhập mã tra cứu, không tự động tải ngầm LOT-001 (Issue 24)
+        showAwaitingState();
+      }
+    }
+
+    function showAwaitingState() {
+      const mapContainer = document.getElementById("trace-map");
+      const timelineContainer = document.getElementById("trace-timeline");
+      const summaryCard = document.getElementById("lot-summary-card");
+      if (summaryCard) summaryCard.style.display = "none";
+
+      if (mapContainer) {
+        mapContainer.innerHTML = `
+          <div class="trace-map-fallback" style="background: #f8fafc; border: 1.5px dashed #cbd5e1; border-radius: 12px; padding: 48px 20px; text-align: center;">
+            <div style="width: 56px; height: 56px; background: #e0f2fe; color: #0284c7; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; margin-bottom: 16px;">
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+            </div>
+            <h4 style="font-size: 17px; margin: 0 0 8px 0; color: #1e293b;">Sẵn sàng truy xuất nguồn gốc chuỗi lạnh</h4>
+            <p style="font-size: 14px; color: #64748b; max-width: 460px; margin: 0 auto 16px auto; line-height: 1.5;">Vui lòng nhập mã lô nông sản trên tem nhãn bao bì, quét mã QR hoặc chọn một trong các mã thử nghiệm phía trên để xem bản đồ hành trình.</p>
+          </div>
+        `;
+      }
+      if (timelineContainer) {
+        timelineContainer.innerHTML = "";
       }
     }
 
