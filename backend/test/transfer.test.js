@@ -281,6 +281,49 @@ test("S-15: Quy trình bàn giao lô sang tổ chức khác ở trạng thái ch
     assert.equal(lotTransfersRes.body.transfers.length, 1);
     assert.equal(lotTransfersRes.body.transfers[0].id, createdTransferId);
   });
+
+  await t.test("10. Ưu tiên 3: API /api/transfers/summary và /api/transfers/count trả về số lượng bàn giao", async () => {
+    // 10.1 GET /api/transfers/summary
+    const summaryRes = await request(server, {
+      hostname: "127.0.0.1",
+      port,
+      path: "/api/transfers/summary",
+      method: "GET",
+      headers: { Cookie: cookieOrg1 },
+    });
+    assert.equal(summaryRes.status, 200);
+    assert.ok(typeof summaryRes.body.outgoingPending === "number");
+    assert.ok(typeof summaryRes.body.incomingPending === "number");
+    assert.ok(summaryRes.body.outgoingPending >= 1);
+
+    // 10.2 GET /api/transfers/count
+    const countRes = await request(server, {
+      hostname: "127.0.0.1",
+      port,
+      path: "/api/transfers/count?type=outgoing&status=PENDING",
+      method: "GET",
+      headers: { Cookie: cookieOrg1 },
+    });
+    assert.equal(countRes.status, 200);
+    assert.ok(typeof countRes.body.count === "number");
+    assert.ok(countRes.body.count >= 1);
+  });
+
+  await t.test("11. Ưu tiên 3: API GET /api/transfers hỗ trợ phân trang limit và offset", async () => {
+    const pagedRes = await request(server, {
+      hostname: "127.0.0.1",
+      port,
+      path: "/api/transfers?limit=1&offset=0",
+      method: "GET",
+      headers: { Cookie: cookieOrg1 },
+    });
+    assert.equal(pagedRes.status, 200);
+    assert.ok(Array.isArray(pagedRes.body.transfers));
+    assert.equal(pagedRes.body.transfers.length, 1);
+    assert.equal(pagedRes.body.limit, 1);
+    assert.equal(pagedRes.body.offset, 0);
+    assert.ok(typeof pagedRes.body.total === "number");
+  });
 });
 
 test("S-16: Quy trình xác nhận và từ chối tiếp nhận bàn giao lô hàng", async (t) => {

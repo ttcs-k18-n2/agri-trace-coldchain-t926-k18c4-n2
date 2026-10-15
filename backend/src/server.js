@@ -936,6 +936,23 @@ app.post(
           );
           createdProducts.push(insertRes.rows[0]);
         }
+        await recordAuditLog({
+          client,
+          pool,
+          inMemoryLogs: inMemoryAuditLogs,
+          actorUserId: req.auth ? (req.auth.userId || req.auth.id) : null,
+          actorEmail: req.auth ? req.auth.email : null,
+          organizationId: req.auth ? req.auth.organizationId : null,
+          action: "PRODUCTS_CSV_IMPORTED",
+          resourceType: "products",
+          resourceId: `BATCH-${createdProducts.length}`,
+          ipAddress: req.ip,
+          userAgent: req.get("User-Agent"),
+          details: {
+            importedCount: createdProducts.length,
+            productIds: createdProducts.map((p) => p.id),
+          },
+        });
         await client.query("COMMIT");
       } catch (err) {
         await client.query("ROLLBACK");
@@ -955,6 +972,21 @@ app.post(
         inMemoryProducts.push(newProd);
         createdProducts.push(newProd);
       }
+      await recordAuditLog({
+        inMemoryLogs: inMemoryAuditLogs,
+        actorUserId: req.auth ? (req.auth.userId || req.auth.id) : null,
+        actorEmail: req.auth ? req.auth.email : null,
+        organizationId: req.auth ? req.auth.organizationId : null,
+        action: "PRODUCTS_CSV_IMPORTED",
+        resourceType: "products",
+        resourceId: `BATCH-${createdProducts.length}`,
+        ipAddress: req.ip,
+        userAgent: req.get("User-Agent"),
+        details: {
+          importedCount: createdProducts.length,
+          productIds: createdProducts.map((p) => p.id),
+        },
+      });
     }
 
     return res.status(201).json({
@@ -3590,11 +3622,8 @@ app.get(
  * Chuỗi sự kiện có mã băm bảo vệ tính toàn vẹn (S-10):
  * - INSERT lot + appendBatchEvent(HARVEST_CREATED) nằm trong cùng transaction nguyên tử (nếu event lỗi -> rollback lot).
  */
-app.post(
-  "/api/lots",
-  requirePermission(["producer", "cooperative", "org_admin", "admin"]),
-  async (req, res) => {
-    const { farmId, productId, quantity, harvestedAt } = req.body;
+async function handleCreateHarvestLot(req, res) {
+  const { farmId, productId, quantity, harvestedAt } = req.body;
     const orgId = req.auth.organizationId;
     const userId = req.auth.userId || req.auth.id || req.auth.email || "user";
 
@@ -3922,7 +3951,12 @@ app.post(
     cleanupHarvestIdempotency();
 
     return res.status(201).json(successResponse);
-  }
+}
+
+app.post(
+  "/api/lots",
+  requirePermission(["producer", "cooperative", "org_admin", "admin"]),
+  handleCreateHarvestLot
 );
 
 /**
@@ -3934,7 +3968,7 @@ app.post(
   async (req, res) => {
     // Nếu request truyền farmId và productId, chuyển tiếp xử lý theo nghiệp vụ thu hoạch mới (T-20)
     if (req.body.farmId && req.body.productId) {
-      return app._router.handle({ ...req, url: "/api/lots", method: "POST" }, res);
+      return handleCreateHarvestLot(req, res);
     }
 
     const { id, name, status } = req.body;
@@ -4256,6 +4290,23 @@ app.post(
             organizationId: r.organization_id,
           });
         }
+        await recordAuditLog({
+          client,
+          pool,
+          inMemoryLogs: inMemoryAuditLogs,
+          actorUserId: req.auth ? (req.auth.userId || req.auth.id) : null,
+          actorEmail: req.auth ? req.auth.email : null,
+          organizationId: orgId,
+          action: "FARMS_CSV_IMPORTED",
+          resourceType: "farms",
+          resourceId: `BATCH-${createdFarms.length}`,
+          ipAddress: req.ip,
+          userAgent: req.get("User-Agent"),
+          details: {
+            importedCount: createdFarms.length,
+            farmIds: createdFarms.map((f) => f.id),
+          },
+        });
         await client.query("COMMIT");
       } catch (err) {
         await client.query("ROLLBACK");
@@ -4276,6 +4327,21 @@ app.post(
         inMemoryFarms.push(newFarm);
         createdFarms.push(newFarm);
       }
+      await recordAuditLog({
+        inMemoryLogs: inMemoryAuditLogs,
+        actorUserId: req.auth ? (req.auth.userId || req.auth.id) : null,
+        actorEmail: req.auth ? req.auth.email : null,
+        organizationId: orgId,
+        action: "FARMS_CSV_IMPORTED",
+        resourceType: "farms",
+        resourceId: `BATCH-${createdFarms.length}`,
+        ipAddress: req.ip,
+        userAgent: req.get("User-Agent"),
+        details: {
+          importedCount: createdFarms.length,
+          farmIds: createdFarms.map((f) => f.id),
+        },
+      });
     }
 
     return res.status(201).json({
@@ -4494,6 +4560,8 @@ app.post(
             name: r.name,
             status: r.status,
             organizationId: r.organization_id,
+            remainingQuantity: r.remaining_quantity !== null && r.remaining_quantity !== undefined ? Number(r.remaining_quantity) : null,
+            initialQuantity: r.initial_quantity !== null && r.initial_quantity !== undefined ? Number(r.initial_quantity) : null,
           };
         }
       } else {
@@ -4790,13 +4858,63 @@ app.post(
 );
 
 /**
- * Lấy danh sách yêu cầu bàn giao lô hàng (S-15, S-16)
- * - Lọc theo status (PENDING, CONFIRMED, REJECTED)
- * - Lọc theo type (outgoing: gửi đi, incoming: nhận về)
- * - Lọc theo lotId
+ * Thống kê tổng số lượng yêu cầu bàn giao phục vụ badge hiển thị nhanh (Ưu tiên 3)
  */
 app.get(
-  "/api/transfers",
+  "/api/transfers/summary",
+  requirePermission(["producer", "cooperative", "transporter", "distributor", "inspector", "org_admin", "admin"]),
+  async (req, res) => {
+    const isGlobal = req.auth.isInspector || req.auth.roleId === "admin";
+    const userOrgId = req.auth.organizationId;
+
+    try {
+      if (pool) {
+        let inQuery = "SELECT COUNT(*) AS total FROM lot_transfers WHERE status = 'PENDING'";
+        let outQuery = "SELECT COUNT(*) AS total FROM lot_transfers WHERE status = 'PENDING'";
+        const inParams = [];
+        const outParams = [];
+
+        if (!isGlobal) {
+          inParams.push(userOrgId);
+          inQuery += " AND to_organization_id = $1";
+          outParams.push(userOrgId);
+          outQuery += " AND from_organization_id = $1";
+        }
+
+        const [incRes, outRes] = await Promise.all([
+          pool.query(inQuery, inParams),
+          pool.query(outQuery, outParams),
+        ]);
+
+        return res.status(200).json({
+          incomingPending: Number(incRes.rows[0].total || 0),
+          outgoingPending: Number(outRes.rows[0].total || 0),
+        });
+      }
+
+      let inCount = 0;
+      let outCount = 0;
+      for (const t of inMemoryTransfers) {
+        if (t.status === "PENDING") {
+          if (isGlobal || t.toOrganizationId === userOrgId) inCount++;
+          if (isGlobal || t.fromOrganizationId === userOrgId) outCount++;
+        }
+      }
+      return res.status(200).json({
+        incomingPending: inCount,
+        outgoingPending: outCount,
+      });
+    } catch (err) {
+      return res.status(500).json({ message: err.message });
+    }
+  }
+);
+
+/**
+ * Đếm số lượng yêu cầu bàn giao theo bộ lọc (Ưu tiên 3)
+ */
+app.get(
+  "/api/transfers/count",
   requirePermission(["producer", "cooperative", "transporter", "distributor", "inspector", "org_admin", "admin"]),
   async (req, res) => {
     const isGlobal = req.auth.isInspector || req.auth.roleId === "admin";
@@ -4805,22 +4923,8 @@ app.get(
 
     try {
       if (pool) {
-        let query = `
-          SELECT 
-            t.id, t.lot_id, t.from_organization_id, t.to_organization_id,
-            t.status, t.notes, t.created_by_user_id, t.resolved_by_user_id,
-            t.rejection_reason, t.is_overdue, t.overdue_at, t.created_at, t.updated_at,
-            l.name AS lot_name, l.status AS lot_status,
-            o_from.name AS from_organization_name,
-            o_to.name AS to_organization_name
-          FROM lot_transfers t
-          JOIN lots l ON t.lot_id = l.id
-          LEFT JOIN organizations o_from ON t.from_organization_id = o_from.id
-          LEFT JOIN organizations o_to ON t.to_organization_id = o_to.id
-          WHERE 1=1
-        `;
+        let query = "SELECT COUNT(*) AS total FROM lot_transfers t WHERE 1=1";
         const params = [];
-
         if (!isGlobal) {
           if (type === "outgoing") {
             params.push(userOrgId);
@@ -4833,41 +4937,150 @@ app.get(
             query += ` AND (t.from_organization_id = $${params.length} OR t.to_organization_id = $${params.length})`;
           }
         }
-
         if (status) {
           params.push(status.toUpperCase());
           query += ` AND t.status = $${params.length}`;
         }
-
         if (lotId) {
           params.push(lotId);
           query += ` AND t.lot_id = $${params.length}`;
         }
 
-        query += " ORDER BY t.created_at DESC";
+        const resCount = await pool.query(query, params);
+        return res.status(200).json({ count: Number(resCount.rows[0].total || 0) });
+      }
+
+      let filtered = [...inMemoryTransfers];
+      if (!isGlobal) {
+        if (type === "outgoing") {
+          filtered = filtered.filter((t) => t.fromOrganizationId === userOrgId);
+        } else if (type === "incoming") {
+          filtered = filtered.filter((t) => t.toOrganizationId === userOrgId);
+        } else {
+          filtered = filtered.filter(
+            (t) => t.fromOrganizationId === userOrgId || t.toOrganizationId === userOrgId
+          );
+        }
+      }
+      if (status) {
+        const st = status.toUpperCase();
+        filtered = filtered.filter((t) => t.status === st);
+      }
+      if (lotId) {
+        filtered = filtered.filter((t) => t.lotId === lotId);
+      }
+      return res.status(200).json({ count: filtered.length });
+    } catch (err) {
+      return res.status(500).json({ message: err.message });
+    }
+  }
+);
+
+/**
+ * Lấy danh sách yêu cầu bàn giao lô hàng hỗ trợ phân trang (S-15, S-16, Ưu tiên 3)
+ * - Lọc theo status (PENDING, CONFIRMED, REJECTED)
+ * - Lọc theo type (outgoing: gửi đi, incoming: nhận về)
+ * - Lọc theo lotId
+ * - Phân trang: limit, offset
+ */
+app.get(
+  "/api/transfers",
+  requirePermission(["producer", "cooperative", "transporter", "distributor", "inspector", "org_admin", "admin"]),
+  async (req, res) => {
+    const isGlobal = req.auth.isInspector || req.auth.roleId === "admin";
+    const userOrgId = req.auth.organizationId;
+    const { status, type, lotId, limit, offset } = req.query;
+
+    const safeLimit = limit !== undefined && limit !== null && limit !== ""
+      ? Math.max(1, Math.min(Number(limit) || 50, 500))
+      : null;
+    const safeOffset = Math.max(0, Number(offset) || 0);
+
+    try {
+      if (pool) {
+        let whereSql = " WHERE 1=1";
+        const params = [];
+
+        if (!isGlobal) {
+          if (type === "outgoing") {
+            params.push(userOrgId);
+            whereSql += ` AND t.from_organization_id = $${params.length}`;
+          } else if (type === "incoming") {
+            params.push(userOrgId);
+            whereSql += ` AND t.to_organization_id = $${params.length}`;
+          } else {
+            params.push(userOrgId);
+            whereSql += ` AND (t.from_organization_id = $${params.length} OR t.to_organization_id = $${params.length})`;
+          }
+        }
+
+        if (status) {
+          params.push(status.toUpperCase());
+          whereSql += ` AND t.status = $${params.length}`;
+        }
+
+        if (lotId) {
+          params.push(lotId);
+          whereSql += ` AND t.lot_id = $${params.length}`;
+        }
+
+        let total = null;
+        if (safeLimit !== null) {
+          const countRes = await pool.query(`SELECT COUNT(*) AS total FROM lot_transfers t${whereSql}`, params);
+          total = Number(countRes.rows[0].total || 0);
+        }
+
+        let query = `
+          SELECT 
+            t.id, t.lot_id, t.from_organization_id, t.to_organization_id,
+            t.status, t.notes, t.created_by_user_id, t.resolved_by_user_id,
+            t.rejection_reason, t.is_overdue, t.overdue_at, t.created_at, t.updated_at,
+            l.name AS lot_name, l.status AS lot_status,
+            o_from.name AS from_organization_name,
+            o_to.name AS to_organization_name
+          FROM lot_transfers t
+          JOIN lots l ON t.lot_id = l.id
+          LEFT JOIN organizations o_from ON t.from_organization_id = o_from.id
+          LEFT JOIN organizations o_to ON t.to_organization_id = o_to.id
+          ${whereSql}
+          ORDER BY t.created_at DESC
+        `;
+
+        if (safeLimit !== null) {
+          params.push(safeLimit);
+          query += ` LIMIT $${params.length}`;
+          params.push(safeOffset);
+          query += ` OFFSET $${params.length}`;
+        }
 
         const result = await pool.query(query, params);
-        return res.status(200).json({
-          transfers: result.rows.map((r) => ({
-            id: r.id,
-            lotId: r.lot_id,
-            lotName: r.lot_name,
-            lotStatus: r.lot_status,
-            fromOrganizationId: r.from_organization_id,
-            fromOrganizationName: r.from_organization_name,
-            toOrganizationId: r.to_organization_id,
-            toOrganizationName: r.to_organization_name,
-            status: r.status,
-            isOverdue: Boolean(r.is_overdue),
-            overdueAt: r.overdue_at || null,
-            notes: r.notes,
-            createdByUserId: r.created_by_user_id,
-            resolvedByUserId: r.resolved_by_user_id,
-            rejectionReason: r.rejection_reason,
-            createdAt: r.created_at,
-            updatedAt: r.updated_at,
-          })),
-        });
+        const mappedTransfers = result.rows.map((r) => ({
+          id: r.id,
+          lotId: r.lot_id,
+          lotName: r.lot_name,
+          lotStatus: r.lot_status,
+          fromOrganizationId: r.from_organization_id,
+          fromOrganizationName: r.from_organization_name,
+          toOrganizationId: r.to_organization_id,
+          toOrganizationName: r.to_organization_name,
+          status: r.status,
+          isOverdue: Boolean(r.is_overdue),
+          overdueAt: r.overdue_at || null,
+          notes: r.notes,
+          createdByUserId: r.created_by_user_id,
+          resolvedByUserId: r.resolved_by_user_id,
+          rejectionReason: r.rejection_reason,
+          createdAt: r.created_at,
+          updatedAt: r.updated_at,
+        }));
+
+        const responseObj = { transfers: mappedTransfers };
+        if (safeLimit !== null) {
+          responseObj.total = total;
+          responseObj.limit = safeLimit;
+          responseObj.offset = safeOffset;
+        }
+        return res.status(200).json(responseObj);
       }
 
       // In-memory fallback
@@ -4894,9 +5107,15 @@ app.get(
       }
 
       filtered.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      const total = filtered.length;
 
-      return res.status(200).json({
-        transfers: filtered.map((t) => {
+      let paged = filtered;
+      if (safeLimit !== null) {
+        paged = filtered.slice(safeOffset, safeOffset + safeLimit);
+      }
+
+      const responseObj = {
+        transfers: paged.map((t) => {
           const lot = inMemoryLots.find((l) => l.id === t.lotId);
           const fromOrg = inMemoryOrganizations.find((o) => o.id === t.fromOrganizationId);
           const toOrg = inMemoryOrganizations.find((o) => o.id === t.toOrganizationId);
@@ -4910,7 +5129,15 @@ app.get(
             toOrganizationName: toOrg ? toOrg.name : t.toOrganizationId,
           };
         }),
-      });
+      };
+
+      if (safeLimit !== null) {
+        responseObj.total = total;
+        responseObj.limit = safeLimit;
+        responseObj.offset = safeOffset;
+      }
+
+      return res.status(200).json(responseObj);
     } catch (err) {
       return res.status(500).json({ message: err.message });
     }
@@ -5570,13 +5797,32 @@ app.post(
 
 /**
  * Giả lập yêu cầu bàn giao quá hạn phục vụ kiểm thử trực tiếp (S-24 / T-56 / T-57)
+ * - Vô hiệu hóa trên môi trường production để bảo mật hệ thống (P0).
+ * - Yêu cầu quyền admin (requirePermission(["admin"])) và bắt buộc truyền transferId hoặc lotId cụ thể.
  * - Cho phép sửa created_at của yêu cầu bàn giao PENDING thành N giờ trước (mặc định 49h).
  * - Tự động kích hoạt job quét markOverdueTransfers để chuyển trạng thái isOverdue = true ngay lập tức.
  */
-app.post("/api/transfers/simulate-overdue", async (req, res) => {
-  const { transferId, lotId, hours = 49 } = req.body || {};
-  const targetHours = Number(hours) || 49;
-  const simulatedTime = new Date(Date.now() - targetHours * 3600 * 1000).toISOString();
+app.post(
+  "/api/transfers/simulate-overdue",
+  requirePermission(["admin"]),
+  async (req, res) => {
+    if (process.env.NODE_ENV === "production") {
+      return res.status(403).json({
+        error: "FORBIDDEN",
+        message: "API giả lập quá hạn bị vô hiệu hóa trong môi trường production.",
+      });
+    }
+
+    const { transferId, lotId, hours = 49 } = req.body || {};
+    if (!transferId && !lotId) {
+      return res.status(400).json({
+        error: "TARGET_REQUIRED",
+        message: "Phải cung cấp transferId hoặc lotId cụ thể để giả lập quá hạn, không cho phép cập nhật hàng loạt.",
+      });
+    }
+
+    const targetHours = Number(hours) || 49;
+    const simulatedTime = new Date(Date.now() - targetHours * 3600 * 1000).toISOString();
 
   try {
     if (pool) {
@@ -5840,7 +6086,7 @@ app.get(
   }
 );
 
-// Tạo địa điểm mới (S-30)
+// Tạo địa điểm mới (S-30) - Ghi audit nguyên tử trong cùng transaction (S-31 Atomicity)
 app.post(
   "/api/locations",
   requirePermission(["producer", "cooperative", "transporter", "distributor", "org_admin", "admin"]),
@@ -5852,32 +6098,79 @@ app.post(
       }
 
       const organizationId = req.auth.organizationId;
-      const newLoc = await createLocation(pool, inMemoryLocations, {
-        name: name.trim(),
-        address: address ? address.trim() : null,
-        organizationId,
-        locationType: locationType || "warehouse",
-        contactPerson: contactPerson ? contactPerson.trim() : null,
-        phone: phone ? phone.trim() : null,
-        coordinates: coordinates || null,
-      });
+      const userId = req.auth.userId || req.auth.id;
 
-      // Ghi nhật ký thao tác nghiệp vụ (S-31)
-      await recordAuditLog({
-        pool,
-        inMemoryLogs: inMemoryAuditLogs,
-        actorUserId: req.auth.userId,
-        actorEmail: req.auth.email,
-        organizationId,
-        action: "LOCATION_CREATED",
-        resourceType: "location",
-        resourceId: newLoc.id,
-        ipAddress: req.ip,
-        userAgent: req.get("User-Agent"),
-        details: { name: newLoc.name, locationType: newLoc.locationType, address: newLoc.address },
-      });
+      let newLoc = null;
+      if (pool) {
+        const client = await pool.connect();
+        try {
+          await client.query("BEGIN");
 
-      return res.status(201).json({ message: "Tạo địa điểm thành công.", location: newLoc });
+          newLoc = await createLocation(client, inMemoryLocations, {
+            name: name.trim(),
+            address: address ? address.trim() : null,
+            organizationId,
+            locationType: locationType || "warehouse",
+            contactPerson: contactPerson ? contactPerson.trim() : null,
+            phone: phone ? phone.trim() : null,
+            coordinates: coordinates || null,
+          });
+
+          // Ghi nhật ký thao tác nghiệp vụ trong cùng transaction (S-31 Atomicity)
+          await recordAuditLog({
+            client,
+            pool,
+            inMemoryLogs: inMemoryAuditLogs,
+            actorUserId: userId,
+            actorEmail: req.auth.email,
+            organizationId,
+            action: "LOCATION_CREATED",
+            resourceType: "location",
+            resourceId: newLoc.id,
+            ipAddress: req.ip,
+            userAgent: req.get("User-Agent"),
+            details: { name: newLoc.name, locationType: newLoc.locationType, address: newLoc.address },
+          });
+
+          await client.query("COMMIT");
+          return res.status(201).json({ message: "Tạo địa điểm thành công.", location: newLoc });
+        } catch (txErr) {
+          await client.query("ROLLBACK");
+          if (newLoc) {
+            const idx = inMemoryLocations.findIndex((l) => l.id === newLoc.id);
+            if (idx !== -1) inMemoryLocations.splice(idx, 1);
+          }
+          throw txErr;
+        } finally {
+          client.release();
+        }
+      } else {
+        newLoc = await createLocation(null, inMemoryLocations, {
+          name: name.trim(),
+          address: address ? address.trim() : null,
+          organizationId,
+          locationType: locationType || "warehouse",
+          contactPerson: contactPerson ? contactPerson.trim() : null,
+          phone: phone ? phone.trim() : null,
+          coordinates: coordinates || null,
+        });
+
+        // Ghi nhật ký thao tác nghiệp vụ (S-31)
+        await recordAuditLog({
+          inMemoryLogs: inMemoryAuditLogs,
+          actorUserId: userId,
+          actorEmail: req.auth.email,
+          organizationId,
+          action: "LOCATION_CREATED",
+          resourceType: "location",
+          resourceId: newLoc.id,
+          ipAddress: req.ip,
+          userAgent: req.get("User-Agent"),
+          details: { name: newLoc.name, locationType: newLoc.locationType, address: newLoc.address },
+        });
+
+        return res.status(201).json({ message: "Tạo địa điểm thành công.", location: newLoc });
+      }
     } catch (err) {
       return res.status(500).json({ message: err.message });
     }
