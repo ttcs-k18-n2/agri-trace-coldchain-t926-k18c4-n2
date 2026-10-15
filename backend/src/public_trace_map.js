@@ -22,10 +22,10 @@ const DEFAULT_MAP_AREAS = [
     commune: "La Bằng",
     district: "Đại Từ",
     province: "Thái Nguyên",
-    latitude: 21.5645,
-    longitude: 105.6789,
+    latitude: 21.5580,
+    longitude: 105.6720,
     keywords: ["la bằng", "la bang", "đồi chè", "doi che", "labang"],
-    description: "Tâm xã La Bằng, vùng chỉ dẫn địa lý chè Đại Từ",
+    description: "Tâm hành chính xã La Bằng, vùng chỉ dẫn địa lý chè Đại Từ",
   },
   {
     id: "AREA-HUNG-SON",
@@ -33,10 +33,10 @@ const DEFAULT_MAP_AREAS = [
     commune: "Hùng Sơn",
     district: "Đại Từ",
     province: "Thái Nguyên",
-    latitude: 21.5712,
-    longitude: 105.6841,
+    latitude: 21.5750,
+    longitude: 105.6905,
     keywords: ["hùng sơn", "hung son", "cà chua", "ca chua", "hungson"],
-    description: "Khu vực sản xuất nông nghiệp công nghệ cao Hùng Sơn",
+    description: "Khu vực trung tâm thị trấn Hùng Sơn",
   },
   {
     id: "AREA-TAN-CUONG",
@@ -44,8 +44,8 @@ const DEFAULT_MAP_AREAS = [
     commune: "Tân Cương",
     district: "TP Thái Nguyên",
     province: "Thái Nguyên",
-    latitude: 21.545,
-    longitude: 105.772,
+    latitude: 21.5450,
+    longitude: 105.7720,
     keywords: ["tân cương", "tan cuong", "chè tân cương", "che tan cuong"],
     description: "Vùng chè đặc sản Tân Cương Thái Nguyên",
   },
@@ -55,10 +55,10 @@ const DEFAULT_MAP_AREAS = [
     commune: "Nham Biền",
     district: "Yên Dũng",
     province: "Bắc Giang",
-    latitude: 21.2341,
-    longitude: 106.1892,
+    latitude: 21.2290,
+    longitude: 106.1820,
     keywords: ["yên dũng", "yen dung", "nham biền", "nham bien", "rau cải", "yendung"],
-    description: "Khu vực cánh đồng mẫu lớn huyện Yên Dũng",
+    description: "Khu vực trung tâm huyện Yên Dũng",
   },
   {
     id: "AREA-HIEP-HOA",
@@ -212,29 +212,11 @@ async function resolveRepresentativeArea(pool, farm, customAreas = DEFAULT_MAP_A
     }
   }
 
-  // 3. Nếu không khớp danh mục nhưng có tọa độ thửa đất:
-  // Làm mờ tọa độ về cấp xã (làm tròn 2 chữ số thập phân ~1.1km) để bảo vệ quyền riêng tư
-  const rawCoords = parseCoordinates(farm.coordinates);
-  if (rawCoords) {
-    const blurredLat = Number(rawCoords.lat.toFixed(2));
-    const blurredLng = Number(rawCoords.lng.toFixed(2));
-    return {
-      regionName: `Khu vực sản xuất ${farm.name || "Nông trại"}`,
-      commune: null,
-      district: null,
-      province: null,
-      coordinates: {
-        lat: blurredLat,
-        lng: blurredLng,
-      },
-      hasCoordinates: true,
-      verified: true,
-      adminLevel: "commune_centroid",
-    };
-  }
-
+  // 3. Nếu không khớp danh mục:
+  // Tuyệt đối không làm tròn hay suy đoán tọa độ thửa đất riêng tư (S-06 / N2-290).
+  // Đánh dấu rõ ràng là mốc văn bản chưa định vị tọa độ.
   return {
-    regionName: farm.name || "Khu vực sản xuất nông sản",
+    regionName: farm.name || "Khu vực sản xuất nông nghiệp",
     commune: null,
     district: null,
     province: null,
@@ -265,6 +247,19 @@ function getLocationTypeLabel(type) {
     default:
       return "Điểm lưu kho & trung chuyển";
   }
+}
+
+function getSafePublicOrgName(orgName, orgId, orgMap, fallback = "Đối tác chuỗi cung ứng") {
+  if (orgName && typeof orgName === "string" && !orgName.toLowerCase().startsWith("org-")) {
+    return orgName;
+  }
+  if (orgId && orgMap && orgMap.has(orgId)) {
+    const mapped = orgMap.get(orgId);
+    if (mapped && typeof mapped === "string" && !mapped.toLowerCase().startsWith("org-")) {
+      return mapped;
+    }
+  }
+  return fallback;
 }
 
 /**
@@ -338,7 +333,7 @@ async function getPublicLotMapData(options = {}) {
         name: r.name,
         status: r.status,
         organizationId: r.organization_id,
-        organizationName: r.organization_name || r.organization_id,
+        organizationName: getSafePublicOrgName(r.organization_name, r.organization_id, orgMap, "Đơn vị sản xuất"),
         farmId: r.farm_id,
         farmName: r.farm_name,
         farmArea: r.farm_area !== null ? Number(r.farm_area) : null,
@@ -357,11 +352,15 @@ async function getPublicLotMapData(options = {}) {
         locationCoordinates: r.location_coordinates,
         createdAt: r.created_at,
       };
+    } else {
+      // Khi đã kết nối DB PostgreSQL thật, không tìm thấy thì báo 404, không tìm trong mock in-memory
+      const notFoundErr = new Error(`Không tìm thấy lô hàng ${normalizedCode}`);
+      notFoundErr.statusCode = 404;
+      notFoundErr.code = "LOT_NOT_FOUND";
+      throw notFoundErr;
     }
-  }
-
-  // Fallback in-memory nếu không dùng PostgreSQL hoặc không thấy trong DB
-  if (!lotRecord) {
+  } else {
+    // Chỉ fallback in-memory khi không có kết nối DB (môi trường test in-memory / unit test)
     const foundLot = inMemoryLots.find(
       (l) => l.id && l.id.toUpperCase() === normalizedCode.toUpperCase()
     );
@@ -383,7 +382,7 @@ async function getPublicLotMapData(options = {}) {
         name: foundLot.name,
         status: foundLot.status || "Đã thu hoạch",
         organizationId: orgId,
-        organizationName: orgMap.get(orgId) || orgId,
+        organizationName: getSafePublicOrgName(null, orgId, orgMap, "Đơn vị sản xuất"),
         farmId: farmObj ? farmObj.id : null,
         farmName: farmObj ? farmObj.name : null,
         farmArea: farmObj && farmObj.area !== undefined ? Number(farmObj.area) : null,
@@ -436,10 +435,9 @@ async function getPublicLotMapData(options = {}) {
       const representativeArea = await resolveRepresentativeArea(pool, farmObj);
 
       origins.push({
-        originLotId: root.id,
         farmName: farmObj ? farmObj.name : (root.farmName || "Vùng canh tác ban đầu"),
         area: farmObj && farmObj.area !== undefined && farmObj.area !== null ? Number(farmObj.area) : null,
-        organizationName: root.organizationName || orgMap.get(root.organizationId) || root.organizationId || null,
+        organizationName: getSafePublicOrgName(root.organizationName, root.organizationId, orgMap, "Hợp tác xã sản xuất"),
         regionName: representativeArea.regionName,
         commune: representativeArea.commune || null,
         district: representativeArea.district || null,
@@ -530,7 +528,6 @@ async function getPublicLotMapData(options = {}) {
       occurredAt: origin.harvestedAt,
       description: `Thu hoạch nông sản an toàn tại ${origin.regionName}`,
       isOrigin: true,
-      originLotId: origin.originLotId,
     });
   }
 
@@ -560,42 +557,43 @@ async function getPublicLotMapData(options = {}) {
           typeLabel: getLocationTypeLabel(locType),
           title: locName,
           locationName: locName,
-          organizationName: orgMap.get(ev.organizationId) || ev.organizationId,
+          organizationName: getSafePublicOrgName(null, ev.organizationId, orgMap, "Đơn vị lưu kho chuỗi lạnh"),
           address: locAddress,
           coordinates: locCoords,
           hasCoordinates: Boolean(locCoords),
           verified: Boolean(locCoords),
           occurredAt: ev.occurredAt,
-          description: ev.payload.step || `Lưu kho bảo quản tại ${locName}`,
+          description: `Lưu kho bảo quản tại ${locName}`,
           isOrigin: false,
         });
       }
     } else if (ev.eventType === "TRANSFER_CONFIRMED") {
+      const fromOrg = getSafePublicOrgName(ev.payload.fromOrganizationName, ev.payload.fromOrganizationId, orgMap, "Bên giao");
+      const toOrg = getSafePublicOrgName(ev.payload.toOrganizationName, ev.payload.toOrganizationId, orgMap, "Bên nhận");
       journey.push({
         step: currentStep++,
         type: "transit",
         typeLabel: "Bàn giao vận chuyển chuỗi lạnh",
-        title: `Tiếp nhận bàn giao: ${ev.payload.fromOrganizationName || "Bên gửi"} ➔ ${ev.payload.toOrganizationName || "Bên nhận"}`,
+        title: `Bàn giao vận chuyển: ${fromOrg} ➔ ${toOrg}`,
         locationName: "Điểm bàn giao chuỗi lạnh",
-        organizationName: ev.payload.toOrganizationName || orgMap.get(ev.organizationId) || ev.organizationId,
-        address: "Hành trình vận chuyển giữa các tổ chức đối tác",
+        organizationName: toOrg,
+        address: "Hành trình vận chuyển chuyên dụng giữa các đối tác",
         coordinates: null,
         hasCoordinates: false,
         verified: false,
         occurredAt: ev.occurredAt,
-        description: ev.payload.notes ? `Ghi chú bàn giao: ${ev.payload.notes}` : "Xác nhận tiếp nhận lô hàng thành công qua hệ thống",
+        description: "Xác nhận bàn giao lô hàng qua chuỗi lạnh an toàn",
         isOrigin: false,
         isTransfer: true,
       });
     }
   }
 
-  // Nếu lô hiện tại có vị trí hiện tại (location_id) mà chưa xuất hiện ở bước cuối
+  // Nếu lô hiện tại có vị trí hiện tại (location_id) mà chưa từng xuất hiện trong toàn bộ hành trình
   if (lotRecord.locationId) {
-    const lastStop = journey[journey.length - 1];
-    const isAlreadyLast = lastStop && (lastStop.locationName === lotRecord.locationName || lastStop.title === lotRecord.locationName);
+    const alreadyVisited = journey.some((s) => s.locationName === lotRecord.locationName || s.title === lotRecord.locationName);
 
-    if (!isAlreadyLast) {
+    if (!alreadyVisited) {
       let curLoc = null;
       if (pool && typeof pool.query === "function") {
         curLoc = await getLocationById(pool, inMemoryLocations, lotRecord.locationId);

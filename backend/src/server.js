@@ -656,19 +656,19 @@ app.get(
       if (err.name === "CycleDetectedError" || err.statusCode === 422) {
         return res.status(422).json({
           error: "GENEALOGY_CYCLE_ERROR",
-          message: err.message || "Phát hiện lỗi chu trình phả hệ trong dữ liệu truy vết lô hàng.",
-          cycleLotId: err.cycleLotId,
+          message: "Phát hiện sự cố vòng lặp cấu trúc phả hệ trong dữ liệu truy vết.",
         });
       }
       if (err.statusCode === 400 || err.code === "INVALID_LOT_CODE") {
         return res.status(400).json({
           error: "INVALID_LOT_CODE",
-          message: err.message,
+          message: "Mã lô hàng không hợp lệ.",
         });
       }
+      console.error("[PublicTraceMap Internal Error]:", err);
       return res.status(err.statusCode || 500).json({
         error: "INTERNAL_ERROR",
-        message: err.message || "Lỗi máy chủ khi truy xuất bản đồ lô hàng.",
+        message: "Lỗi máy chủ khi truy xuất bản đồ lô hàng. Vui lòng thử lại sau.",
       });
     }
   }

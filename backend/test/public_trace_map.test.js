@@ -81,13 +81,16 @@ test("S-60 / N2-290 / N2-258: Kiểm thử toàn diện API Bản đồ vị tr�
     assert.equal(rawJson.includes('"previous_hash":'), false, "Không được lộ chuỗi băm previous_hash nội bộ");
     assert.equal(rawJson.includes('"event_hash":'), false, "Không được lộ chuỗi băm event_hash nội bộ");
 
-    // 3. Tọa độ vùng trồng là tọa độ đại diện cấp xã, không phải tọa độ thửa gốc chi tiết
+    // 3. Tọa độ vùng trồng là tọa độ đại diện cấp xã, không trùng tọa độ thửa gốc chi tiết
     const origin = res.body.origins[0];
     assert.ok(origin.coordinates);
-    // Tọa độ đại diện vùng Hùng Sơn là 21.5712, 105.6841 (tâm khu vực)
     assert.equal(typeof origin.coordinates.lat, "number");
     assert.equal(typeof origin.coordinates.lng, "number");
+    assert.notEqual(origin.coordinates.lat, 21.5712, "Tọa độ công khai không được trùng tọa độ thửa gốc FARM-002");
     assert.equal(origin.coordinatesString, undefined, "Không để lộ chuỗi tọa độ thửa gốc");
+
+    // 4. Không để lộ ID nội bộ hoặc ghi chú bàn giao
+    assert.equal(rawJson.includes("originLotId"), false, "Không để lộ originLotId nội bộ");
   });
 
   await t.test("4. Lô gộp từ nhiều nguồn (Merged multi-origin): Lấy đủ tất cả vùng trồng gốc và không nối chéo các nguồn", async () => {
@@ -185,6 +188,7 @@ test("S-60 / N2-290 / N2-258: Kiểm thử toàn diện API Bản đồ vị tr�
     assert.equal(journey[1].type, "transit");
     assert.equal(journey[1].hasCoordinates, false, "Mốc bàn giao không có tọa độ cố định");
     assert.equal(journey[1].verified, false);
+    assert.equal(journey[1].description.includes("5°C"), false, "Không lộ ghi chú nội bộ ev.payload.notes");
 
     // Bước 3: Lưu kho điểm phân phối
     assert.equal(journey[2].step, 3);
@@ -250,21 +254,20 @@ test("S-60 / N2-290 / N2-258: Kiểm thử toàn diện API Bản đồ vị tr�
   });
 
   await t.test("10. Hàm giải quyết tọa độ đại diện cấp xã resolveRepresentativeArea", async () => {
-    // 1. Khớp từ khóa La Bằng
+    // 1. Khớp từ khóa La Bằng: lấy tọa độ tâm xã độc lập, không trùng thửa gốc
     const farm1 = { name: "Thửa đồi chè La Bằng 01", coordinates: "21.5645, 105.6789" };
     const area1 = await resolveRepresentativeArea(null, farm1);
     assert.equal(area1.hasCoordinates, true);
     assert.ok(area1.regionName.includes("La Bằng"));
-    assert.equal(area1.coordinates.lat, 21.5645);
-    assert.equal(area1.coordinates.lng, 105.6789);
+    assert.equal(area1.coordinates.lat, 21.558);
+    assert.equal(area1.coordinates.lng, 105.672);
+    assert.notEqual(area1.coordinates.lat, 21.5645, "Không trùng tọa độ thửa đất riêng tư của nông dân");
 
-    // 2. Nông trại mới không có trong danh mục: làm mờ tọa độ về 2 số thập phân (~1.1km)
+    // 2. Nông trại không nằm trong danh mục đại diện cấp xã: tuyệt đối không suy đoán/làm tròn tọa độ thửa
     const farmCustom = { name: "Nông hộ Trần Văn C", coordinates: "21.876543, 106.123456" };
     const areaCustom = await resolveRepresentativeArea(null, farmCustom);
-    assert.equal(areaCustom.hasCoordinates, true);
-    assert.equal(areaCustom.coordinates.lat, 21.88);
-    assert.equal(areaCustom.coordinates.lng, 106.12);
-    assert.notEqual(areaCustom.coordinates.lat, 21.876543, "Không được giữ độ chính xác tuyệt đối thửa gốc");
+    assert.equal(areaCustom.hasCoordinates, false, "Không có vùng đại diện thì không trả tọa độ");
+    assert.equal(areaCustom.coordinates, null);
 
     // 3. Nông trại không có tọa độ
     const farmNoCoords = { name: "Thửa không định vị", coordinates: "" };

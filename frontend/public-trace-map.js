@@ -92,6 +92,16 @@
       const container = document.getElementById(this.containerId);
       if (!container) return;
 
+      // Hủy sạch thực thể bản đồ MapLibre cũ để giải phóng WebGL context
+      if (this.map) {
+        (this.markers || []).forEach((m) => {
+          try { m.marker.remove(); } catch (e) {}
+        });
+        this.markers = [];
+        try { this.map.remove(); } catch (e) {}
+        this.map = null;
+      }
+
       container.innerHTML = "";
 
       // Kiểm tra xem MapLibre GL JS có sẵn sàng không
@@ -153,7 +163,15 @@
           this.drawRoutes(data.routes || []);
           this.addMarkers(locatedStops);
           this.fitMapBounds(locatedStops);
+          setTimeout(() => {
+            if (this.map) this.map.resize();
+          }, 200);
         });
+
+        // Tự động resize bản đồ khi xoay màn hình mobile hoặc co giãn kích thước
+        window.addEventListener("resize", () => {
+          if (this.map) this.map.resize();
+        }, { passive: true });
 
         this.map.on("error", () => {
           // Khi lỗi tải tiles từ OpenFreeMap, giữ bản đồ và hiển thị thông báo
@@ -396,7 +414,7 @@
         const hasCoords = step.hasCoordinates && step.coordinates;
 
         html += `
-          <div class="trace-timeline-step-card" data-step="${step.step}" ${hasCoords ? `onclick="window.__traceMapInstance && window.__traceMapInstance.flyToStep(${step.step})"` : ""} style="${hasCoords ? "cursor: pointer;" : ""}">
+          <div class="trace-timeline-step-card" data-step="${step.step}" style="${hasCoords ? "cursor: pointer;" : ""}">
             <div class="trace-timeline-step-icon ${cat}">
               ${step.step}
             </div>
@@ -426,6 +444,17 @@
 
       html += `</div>`;
       timelineEl.innerHTML = html;
+
+      // Gắn Event Delegation xử lý click trên mốc hành trình an toàn
+      timelineEl.onclick = (e) => {
+        const card = e.target.closest(".trace-timeline-step-card");
+        if (card) {
+          const stepNum = Number(card.getAttribute("data-step"));
+          if (!Number.isNaN(stepNum)) {
+            this.flyToStep(stepNum);
+          }
+        }
+      };
     }
 
     /**
