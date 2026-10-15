@@ -17,5 +17,8 @@ COPY integrity.html /usr/share/nginx/html/integrity.html
 COPY audit-logs.html /usr/share/nginx/html/audit-logs.html
 COPY s28-genealogy-demo.html /usr/share/nginx/html/s28-genealogy-demo.html
 COPY s28-genealogy-test.html /usr/share/nginx/html/s28-genealogy-test.html
+COPY public-trace.html /usr/share/nginx/html/public-trace.html
+COPY public-trace-map.js /usr/share/nginx/html/public-trace-map.js
+COPY public-trace-map.css /usr/share/nginx/html/public-trace-map.css
 
 EXPOSE 80
