@@ -1,0 +1,440 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Truy Xuất Nguồn Gốc & Bản Đồ Hành Trình Nông Sản | AgriTrace</title>
+  <meta name="description" content="Cổng thông tin truy xuất nguồn gốc nông sản công khai, theo dõi vị trí vùng trồng và hành trình chuỗi lạnh minh bạch.">
+  
+  <!-- MapLibre GL JS CSS & Script -->
+  <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" />
+  <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+
+  <!-- Public Trace Map CSS & Custom Styles -->
+  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="public-trace-map.css" />
+
+  <style>
+    body {
+      background: #f8fafc;
+      color: #0f172a;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      margin: 0;
+      padding: 0;
+    }
+    .public-header {
+      background: linear-gradient(135deg, #15803d, #166534);
+      color: #ffffff;
+      padding: 24px 20px;
+      box-shadow: 0 4px 20px rgba(22, 101, 52, 0.2);
+    }
+    .public-header-container {
+      max-width: 1040px;
+      margin: 0 auto;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 16px;
+    }
+    .public-logo {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      text-decoration: none;
+      color: #ffffff;
+    }
+    .public-logo-icon {
+      width: 40px;
+      height: 40px;
+      background: rgba(255, 255, 255, 0.2);
+      backdrop-filter: blur(8px);
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .public-container {
+      max-width: 1040px;
+      margin: 24px auto 48px;
+      padding: 0 16px;
+    }
+    .search-card {
+      background: #ffffff;
+      border: 1px solid #e2e8f0;
+      border-radius: 14px;
+      padding: 20px 24px;
+      margin-bottom: 24px;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.04);
+    }
+    .search-form {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    .search-input {
+      flex: 1;
+      min-width: 240px;
+      padding: 12px 16px;
+      border: 1.5px solid #cbd5e1;
+      border-radius: 8px;
+      font-size: 15px;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    .search-input:focus {
+      border-color: #16a34a;
+      box-shadow: 0 0 0 3px rgba(22, 163, 74, 0.15);
+    }
+    .search-btn {
+      padding: 12px 24px;
+      background: #16a34a;
+      color: #ffffff;
+      border: none;
+      border-radius: 8px;
+      font-weight: 600;
+      font-size: 15px;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      transition: background 0.2s;
+    }
+    .search-btn:hover {
+      background: #15803d;
+    }
+    .quick-samples {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: 14px;
+      font-size: 13px;
+      color: #64748b;
+      flex-wrap: wrap;
+    }
+    .quick-sample-chip {
+      background: #f1f5f9;
+      border: 1px solid #e2e8f0;
+      padding: 4px 10px;
+      border-radius: 6px;
+      color: #334155;
+      cursor: pointer;
+      font-weight: 600;
+      transition: all 0.15s;
+    }
+    .quick-sample-chip:hover {
+      background: #dcfce7;
+      border-color: #86efac;
+      color: #166534;
+    }
+    .lot-info-card {
+      background: #ffffff;
+      border: 1px solid #e2e8f0;
+      border-radius: 14px;
+      padding: 24px;
+      margin-bottom: 24px;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.04);
+      display: none;
+    }
+    .lot-info-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 16px;
+      flex-wrap: wrap;
+      margin-bottom: 16px;
+      border-bottom: 1px solid #f1f5f9;
+      padding-bottom: 16px;
+    }
+    .lot-title-group h2 {
+      margin: 0 0 6px 0;
+      font-size: 24px;
+      color: #0f172a;
+    }
+    .lot-code-tag {
+      font-family: monospace;
+      font-size: 14px;
+      font-weight: 700;
+      background: #f1f5f9;
+      color: #334155;
+      padding: 4px 10px;
+      border-radius: 6px;
+      border: 1px solid #e2e8f0;
+      display: inline-block;
+    }
+    .verified-banner {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: #dcfce7;
+      color: #15803d;
+      border: 1px solid #86efac;
+      padding: 8px 14px;
+      border-radius: 8px;
+      font-weight: 600;
+      font-size: 14px;
+    }
+    .lot-stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 16px;
+      margin-top: 12px;
+    }
+    .lot-stat-item {
+      background: #f8fafc;
+      padding: 12px 14px;
+      border-radius: 10px;
+      border: 1px solid #edf2f7;
+    }
+    .lot-stat-label {
+      font-size: 12px;
+      color: #64748b;
+      margin-bottom: 4px;
+      text-transform: uppercase;
+      font-weight: 600;
+    }
+    .lot-stat-val {
+      font-size: 15px;
+      font-weight: 700;
+      color: #1e293b;
+    }
+    .section-title {
+      font-size: 18px;
+      font-weight: 700;
+      color: #0f172a;
+      margin: 28px 0 14px 0;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .public-footer {
+      text-align: center;
+      padding: 32px 16px;
+      color: #64748b;
+      font-size: 13px;
+      border-top: 1px solid #e2e8f0;
+      background: #ffffff;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Header -->
+  <header class="public-header">
+    <div class="public-header-container">
+      <a href="/public-trace.html" class="public-logo">
+        <div class="public-logo-icon">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+          </svg>
+        </div>
+        <div>
+          <h1 style="font-size: 20px; margin: 0; line-height: 1.2;">AgriTrace ColdChain</h1>
+          <span style="font-size: 12px; opacity: 0.9;">Cổng Thông Tin Truy Xuất Nguồn Gốc Nông Sản Công Khai</span>
+        </div>
+      </a>
+      <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+        <span style="font-size: 13px; opacity: 0.95;">Hệ thống chứng thực minh bạch</span>
+        <a href="/lots.html" id="btnBackToApp" style="background: rgba(255, 255, 255, 0.22); color: #ffffff; text-decoration: none; padding: 7px 14px; border-radius: 8px; font-size: 13px; font-weight: 600; display: inline-flex; align-items: center; gap: 6px; border: 1px solid rgba(255, 255, 255, 0.35); transition: background 0.2s;">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m7.5 4.27 9 5.15"/><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg>
+          <span>Vào phần mềm quản lý</span>
+        </a>
+      </div>
+    </div>
+  </header>
+
+  <!-- Nội dung chính -->
+  <main class="public-container">
+
+    <!-- Thanh tìm kiếm mã lô -->
+    <div class="search-card">
+      <form class="search-form" id="trace-search-form" onsubmit="event.preventDefault(); handleSearch();">
+        <label for="lot-code-input" style="font-size: 14px; font-weight: 600; width: 100%;">Nhập mã truy xuất nông sản (hoặc quét mã QR trên bao bì):</label>
+        <input 
+          type="text" 
+          id="lot-code-input" 
+          class="search-input" 
+          placeholder="Ví dụ: LOT-001, LOT-002, LOT-101, L10..." 
+          autocomplete="off" 
+          required 
+        />
+        <button type="submit" class="search-btn">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <circle cx="11" cy="11" r="8"></circle>
+            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+          </svg>
+          Truy xuất hành trình
+        </button>
+      </form>
+      <div class="quick-samples">
+        <span>Gợi ý mã thử nghiệm:</span>
+        <span class="quick-sample-chip" onclick="quickSearch('LOT-001')">LOT-001 (Cà chua Thái Nguyên)</span>
+        <span class="quick-sample-chip" onclick="quickSearch('LOT-002')">LOT-002 (Chè Tân Cương)</span>
+        <span class="quick-sample-chip" onclick="quickSearch('LOT-101')">LOT-101 (Rau cải Bắc Giang)</span>
+        <span class="quick-sample-chip" onclick="quickSearch('L10')">L10 (Lô gộp đa tầng)</span>
+      </div>
+    </div>
+
+    <!-- Thông tin tổng quan nông sản sau khi quét -->
+    <div class="lot-info-card" id="lot-summary-card">
+      <div class="lot-info-header">
+        <div class="lot-title-group">
+          <h2 id="lot-product-name">Nông sản sạch</h2>
+          <span class="lot-code-tag" id="lot-code-display">Mã lô: LOT-XXXXX</span>
+        </div>
+        <div class="verified-banner">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+          </svg>
+          <span>Truy xuất được & Toàn vẹn</span>
+        </div>
+      </div>
+      <div class="lot-stats-grid">
+        <div class="lot-stat-item">
+          <div class="lot-stat-label">Hợp tác xã / Tổ chức sản xuất</div>
+          <div class="lot-stat-val" id="lot-org-name">---</div>
+        </div>
+        <div class="lot-stat-item">
+          <div class="lot-stat-label">Thời gian thu hoạch</div>
+          <div class="lot-stat-val" id="lot-harvest-date">---</div>
+        </div>
+        <div class="lot-stat-item">
+          <div class="lot-stat-label">Trạng thái lô hàng</div>
+          <div class="lot-stat-val" id="lot-status">---</div>
+        </div>
+        <div class="lot-stat-item">
+          <div class="lot-stat-label">Loại nguồn gốc</div>
+          <div class="lot-stat-val" id="lot-origin-type">1 Vùng trồng gốc</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Phần bản đồ hành trình S-60 -->
+    <h3 class="section-title">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"></polygon>
+        <line x1="8" y1="2" x2="8" y2="18"></line>
+        <line x1="16" y1="6" x2="16" y2="22"></line>
+      </svg>
+      Bản đồ vị trí vùng trồng & điểm phân phối chuỗi lạnh
+    </h3>
+    
+    <div class="public-trace-map-wrapper">
+      <div id="trace-map" class="public-trace-map-container">
+        <!-- Bản đồ MapLibre kết xuất tại đây -->
+      </div>
+    </div>
+
+    <!-- Phần dòng thời gian sự kiện hành trình -->
+    <h3 class="section-title" style="margin-top: 36px;">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="12" cy="12" r="10"></circle>
+        <polyline points="12 6 12 12 16 14"></polyline>
+      </svg>
+      Chi tiết hành trình nông sản từ nông trại đến bàn ăn
+    </h3>
+    <div id="trace-timeline">
+      <!-- Danh sách mốc hành trình kết xuất tại đây -->
+    </div>
+
+  </main>
+
+  <!-- Footer -->
+  <footer class="public-footer">
+    <p>Hệ thống AgriTrace ColdChain sử dụng nền tảng bản đồ số mở <strong>OpenFreeMap</strong> và thư viện <strong>MapLibre GL JS</strong>.</p>
+    <p style="margin-top: 6px; font-size: 12px; color: #94a3b8;">
+      Tọa độ vùng trồng được bảo vệ theo chuẩn S-06 hiển thị theo tâm khu vực hành chính xã/phường, đảm bảo quyền riêng tư của nông dân.
+    </p>
+  </footer>
+
+  <!-- Script bản đồ S-60 -->
+  <script src="public-trace-map.js"></script>
+
+  <script>
+    let traceMap = null;
+
+    function initPage() {
+      traceMap = new PublicTraceMap({
+        containerId: "trace-map",
+        timelineContainerId: "trace-timeline",
+        apiUrl: "/api/public/lots",
+      });
+      window.__traceMapInstance = traceMap;
+
+      // Đọc mã lô từ query param ?code=..., ?lot=..., hoặc ?id=... (Issue 26)
+      const urlParams = new URLSearchParams(window.location.search);
+      const codeFromUrl = urlParams.get("code") || urlParams.get("lot") || urlParams.get("id");
+
+      if (codeFromUrl) {
+        document.getElementById("lot-code-input").value = codeFromUrl;
+        loadLotTrace(codeFromUrl);
+      } else {
+        // Trang chờ quét mã QR hoặc nhập mã tra cứu, không tự động tải ngầm LOT-001 (Issue 24)
+        showAwaitingState();
+      }
+    }
+
+    function showAwaitingState() {
+      const mapContainer = document.getElementById("trace-map");
+      const timelineContainer = document.getElementById("trace-timeline");
+      const summaryCard = document.getElementById("lot-summary-card");
+      if (summaryCard) summaryCard.style.display = "none";
+
+      if (mapContainer) {
+        mapContainer.innerHTML = `
+          <div class="trace-map-fallback" style="background: #f8fafc; border: 1.5px dashed #cbd5e1; border-radius: 12px; padding: 48px 20px; text-align: center;">
+            <div style="width: 56px; height: 56px; background: #e0f2fe; color: #0284c7; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; margin-bottom: 16px;">
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+            </div>
+            <h4 style="font-size: 17px; margin: 0 0 8px 0; color: #1e293b;">Sẵn sàng truy xuất nguồn gốc chuỗi lạnh</h4>
+            <p style="font-size: 14px; color: #64748b; max-width: 460px; margin: 0 auto 16px auto; line-height: 1.5;">Vui lòng nhập mã lô nông sản trên tem nhãn bao bì, quét mã QR hoặc chọn một trong các mã thử nghiệm phía trên để xem bản đồ hành trình.</p>
+          </div>
+        `;
+      }
+      if (timelineContainer) {
+        timelineContainer.innerHTML = "";
+      }
+    }
+
+    function quickSearch(code) {
+      document.getElementById("lot-code-input").value = code;
+      loadLotTrace(code);
+    }
+
+    function handleSearch() {
+      const code = document.getElementById("lot-code-input").value.trim();
+      if (code) {
+        // Cập nhật URL không reload
+        const newUrl = new URL(window.location);
+        newUrl.searchParams.set("code", code);
+        window.history.pushState({}, "", newUrl);
+        loadLotTrace(code);
+      }
+    }
+
+    async function loadLotTrace(code) {
+      const summaryCard = document.getElementById("lot-summary-card");
+      const data = await traceMap.loadAndRender(code);
+
+      if (data && data.lot) {
+        summaryCard.style.display = "block";
+        document.getElementById("lot-product-name").textContent = data.lot.productName || data.lot.name || "Nông sản";
+        document.getElementById("lot-code-display").textContent = "Mã lô: " + data.lot.code;
+        document.getElementById("lot-org-name").textContent = data.lot.organizationName || "Hợp tác xã nông nghiệp";
+        
+        const hDate = data.lot.harvestedAt ? new Date(data.lot.harvestedAt).toLocaleDateString("vi-VN") : "Đang cập nhật";
+        document.getElementById("lot-harvest-date").textContent = hDate;
+        document.getElementById("lot-status").textContent = data.lot.status || "Đã thu hoạch";
+        document.getElementById("lot-origin-type").textContent = data.lot.isMerged
+          ? `Lô gộp (${data.origins ? data.origins.length : 2} nguồn trồng gốc)`
+          : "Đơn nguồn (1 vùng trồng gốc)";
+      } else {
+        summaryCard.style.display = "none";
+      }
+    }
+
+    window.addEventListener("DOMContentLoaded", initPage);
+  </script>
+</body>
+</html>

@@ -33,6 +33,28 @@ const {
   validateMergeItems,
 } = require("./quantity");
 const { traceLotOrigins, traceLotDescendants, CycleDetectedError } = require("./lot_genealogy");
+const { getPublicLotMapData } = require("./public_trace_map");
+
+const publicMapRateLimitMap = new Map();
+function checkPublicMapRateLimit(ip) {
+  const now = Date.now();
+  const windowMs = 60 * 1000;
+  const maxRequests = 120;
+  const record = publicMapRateLimitMap.get(ip) || { count: 0, resetTime: now + windowMs };
+  if (now > record.resetTime) {
+    record.count = 1;
+    record.resetTime = now + windowMs;
+  } else {
+    record.count++;
+  }
+  publicMapRateLimitMap.set(ip, record);
+  if (publicMapRateLimitMap.size > 10000) {
+    for (const [k, v] of publicMapRateLimitMap.entries()) {
+      if (now > v.resetTime) publicMapRateLimitMap.delete(k);
+    }
+  }
+  return record.count <= maxRequests;
+}
 const {
   validateProductsCsv,
   validateFarmsCsv,
@@ -130,11 +152,11 @@ const inMemoryFarms = [
   { id: "FARM-101", name: "Thửa rau cải Yên Dũng 01", area: 3.0, coordinates: "21.2341, 106.1892", organizationId: "org-002" },
 ];
 const inMemoryLots = [
-  { id: "LOT-001", name: "Lô cà chua Thái Nguyên", status: "Đã thu hoạch", organizationId: "org-001", farmId: "FARM-002", productId: "PROD-TOMATO", initialQuantity: 500, remainingQuantity: 500, harvestedAt: "2026-09-25", parentLotId: null },
-  { id: "LOT-002", name: "Lô chè Tân Cương", status: "Đã thu hoạch", organizationId: "org-001", farmId: "FARM-001", productId: "PROD-TEA", initialQuantity: 120, remainingQuantity: 120, harvestedAt: "2026-09-26", parentLotId: null },
-  { id: "LOT-101", name: "Lô rau cải Bắc Giang", status: "Đã thu hoạch", organizationId: "org-002", farmId: "FARM-101", productId: "PROD-VEGETABLE", initialQuantity: 300, remainingQuantity: 300, harvestedAt: "2026-09-27", parentLotId: null },
+  { id: "LOT-001", name: "Lô cà chua Thái Nguyên", status: "Đã thu hoạch", organizationId: "org-001", farmId: "FARM-002", productId: "PROD-TOMATO", initialQuantity: 500, remainingQuantity: 500, harvestedAt: "2026-09-25", parentLotId: null, locationId: "LOC-WH-TN-01" },
+  { id: "LOT-002", name: "Lô chè Tân Cương", status: "Đã thu hoạch", organizationId: "org-001", farmId: "FARM-001", productId: "PROD-TEA", initialQuantity: 120, remainingQuantity: 120, harvestedAt: "2026-09-26", parentLotId: null, locationId: "LOC-WH-TN-01" },
+  { id: "LOT-101", name: "Lô rau cải Bắc Giang", status: "Đã thu hoạch", organizationId: "org-002", farmId: "FARM-101", productId: "PROD-VEGETABLE", initialQuantity: 300, remainingQuantity: 300, harvestedAt: "2026-09-27", parentLotId: null, locationId: "LOC-WH-BG-01" },
   { id: "LOT-102", name: "Lô dưa chuột Hiệp Hòa", status: "Đã thu hoạch", organizationId: "org-002", farmId: null, productId: null, initialQuantity: 250, remainingQuantity: 250, harvestedAt: "2026-09-28", parentLotId: null },
-  { id: "LOT-DIST-01", name: "Lô cà chua phân phối siêu thị", status: "Đã nhập kho", organizationId: "org-dist", farmId: null, productId: "PROD-TOMATO", initialQuantity: 200, remainingQuantity: 200, harvestedAt: "2026-10-01", parentLotId: null },
+  { id: "LOT-DIST-01", name: "Lô cà chua phân phối siêu thị", status: "Đã nhập kho", organizationId: "org-dist", farmId: null, productId: "PROD-TOMATO", initialQuantity: 200, remainingQuantity: 200, harvestedAt: "2026-10-01", parentLotId: null, locationId: "LOC-STORE-HN-01" },
   { id: "LOT-DIST-02", name: "Lô rau cải sạch cửa hàng bán lẻ", status: "Đang lưu kho", organizationId: "org-dist", farmId: null, productId: "PROD-VEGETABLE", initialQuantity: 150, remainingQuantity: 150, harvestedAt: "2026-10-02", parentLotId: null },
 ];
 
@@ -610,6 +632,86 @@ app.get("/", (req, res) => {
 
 app.get("/health", checkHealth);
 app.get("/api/health", checkHealth);
+
+/**
+ * S-60 (N2-131 / N2-290): API Bản đồ vị trí vùng trồng và điểm phân phối trên trang truy xuất công khai
+ * - Không yêu cầu đăng nhập (Public Consumer API).
+ * - Tái sử dụng traceLotOrigins() để lấy toàn bộ vùng trồng gốc.
+ * - Trích xuất lịch sử TRANSFER_CONFIRMED và LOCATION_CHANGED theo thứ tự thời gian.
+ * - Bảo vệ tọa độ thửa riêng tư theo S-06 (sử dụng danh mục tọa độ đại diện cấp xã).
+ * - Tuyệt đối không trả về số điện thoại, mã định danh người dùng nội bộ, hay dữ liệu nhạy cảm.
+ */
+app.get(
+  ["/api/public/lots/:code/map", "/api/public/lots/:code/public-map"],
+  async (req, res) => {
+    const clientIp = req.ip || req.socket.remoteAddress || "127.0.0.1";
+    if (!checkPublicMapRateLimit(clientIp)) {
+      return res.status(429).json({
+        error: "TOO_MANY_REQUESTS",
+        message: "Quá nhiều yêu cầu truy xuất bản đồ. Vui lòng thử lại sau.",
+      });
+    }
+
+    const rawCode = req.params.code;
+    if (!rawCode || typeof rawCode !== "string") {
+      return res.status(400).json({
+        error: "INVALID_LOT_CODE",
+        message: "Mã lô hàng không hợp lệ.",
+      });
+    }
+
+    const code = rawCode.trim();
+    // Giới hạn độ dài tối đa 50 ký tự và không chứa ký tự độc hại (Issue 33)
+    if (!/^[A-Za-z0-9_-]{1,50}$/.test(code)) {
+      return res.status(400).json({
+        error: "INVALID_LOT_CODE",
+        message: "Mã lô hàng không đúng định dạng (tối đa 50 ký tự, không chứa ký tự đặc biệt).",
+      });
+    }
+
+    try {
+      const mapData = await getPublicLotMapData({
+        pool,
+        lotCode: code.trim(),
+        inMemoryLots,
+        inMemoryBatchRelations,
+        inMemoryBatchEvents,
+        inMemoryOrgs,
+        inMemoryProducts,
+        inMemoryFarms,
+        inMemoryLocations,
+        inMemoryTransfers,
+      });
+
+      return res.status(200).json(mapData);
+    } catch (err) {
+      if (err.statusCode === 404 || err.code === "LOT_NOT_FOUND" || err.message?.includes("Không tìm thấy lô hàng")) {
+        return res.status(404).json({
+          error: "LOT_NOT_FOUND",
+          message: `Không tìm thấy thông tin lô hàng ${code} trên hệ thống truy xuất công khai.`,
+        });
+      }
+      if (err.name === "CycleDetectedError" || err.statusCode === 422) {
+        return res.status(422).json({
+          error: "GENEALOGY_CYCLE_ERROR",
+          message: "Phát hiện sự cố vòng lặp cấu trúc phả hệ trong dữ liệu truy vết.",
+        });
+      }
+      if (err.statusCode === 400 || err.code === "INVALID_LOT_CODE") {
+        return res.status(400).json({
+          error: "INVALID_LOT_CODE",
+          message: "Mã lô hàng không hợp lệ.",
+        });
+      }
+      console.error("[PublicTraceMap Internal Error]:", err);
+      return res.status(err.statusCode || 500).json({
+        error: "INTERNAL_ERROR",
+        message: "Lỗi máy chủ khi truy xuất bản đồ lô hàng. Vui lòng thử lại sau.",
+      });
+    }
+  }
+);
+
 
 app.post("/api/login", async (req, res) => {
   const email = normalizeEmail(req.body.email);
@@ -5971,6 +6073,17 @@ app.get("/harvest", requireAuth, (req, res) => {
   return res.redirect("http://localhost:8080/harvest.html");
 });
 
+
+const frontendPublicTracePath = path.join(__dirname, "../../frontend/public-trace.html");
+
+app.get(["/public-trace", "/public-trace.html"], (req, res) => {
+  if (fs.existsSync(frontendPublicTracePath)) {
+    return sendFrontendFile(res, frontendPublicTracePath);
+  }
+  const query = req.url.includes("?") ? req.url.substring(req.url.indexOf("?")) : "";
+  return res.redirect("/public-trace.html" + query);
+});
+
 const frontendLotDetailPath = path.join(__dirname, "../../frontend/lot-detail.html");
 
 app.get(["/lot-detail", "/lot-detail.html"], requireAuth, (req, res) => {
@@ -6381,6 +6494,79 @@ app.patch(
 );
 
 /**
+ * Cập nhật tọa độ / định vị nhanh cho lô hàng (Choice A - Story S-60)
+ */
+app.patch(
+  "/api/lots/:id/coordinates",
+  requirePermission(["producer", "cooperative", "transporter", "distributor", "org_admin", "admin", "inspector", "auditor"]),
+  async (req, res) => {
+    const lotId = req.params.id;
+    const { coordinates, name, address, type } = req.body || {};
+
+    const { parseCoordinates } = require("./public_trace_map");
+    const parsed = parseCoordinates(coordinates);
+    if (!parsed) {
+      return res.status(400).json({
+        error: "INVALID_COORDINATES",
+        message: "Tọa độ không hợp lệ. Vui lòng nhập định dạng Vĩ độ, Kinh độ (Ví dụ: 21.5750, 105.6905).",
+      });
+    }
+
+    const customData = {
+      lat: parsed.lat,
+      lng: parsed.lng,
+      name: (name && typeof name === "string") ? name.trim() : null,
+      address: (address && typeof address === "string") ? address.trim() : null,
+      type: type || "farm",
+      updatedAt: new Date().toISOString(),
+    };
+
+    const targetLot = inMemoryLots.find((l) => l.id && l.id.toUpperCase() === lotId.toUpperCase());
+    if (targetLot) {
+      targetLot.customCoordinates = customData;
+    }
+
+    if (pool) {
+      try {
+        await pool.query(
+          "UPDATE lots SET custom_coordinates = $1 WHERE UPPER(id) = UPPER($2)",
+          [JSON.stringify(customData), lotId]
+        );
+      } catch (_) {}
+    }
+
+    if (req.auth) {
+      recordAuditLog({
+        userId: req.auth.userId,
+        organizationId: req.auth.organizationId,
+        action: "UPDATE_LOT_COORDINATES",
+        target: lotId,
+        details: { coordinates: parsed, name, type },
+      });
+    }
+
+    const mapData = await getPublicLotMapData({
+      pool,
+      lotCode: lotId,
+      inMemoryLots,
+      inMemoryBatchRelations,
+      inMemoryBatchEvents,
+      inMemoryOrgs: inMemoryOrganizations,
+      inMemoryProducts,
+      inMemoryFarms,
+      inMemoryLocations,
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Cập nhật tọa độ lô hàng thành công!",
+      coordinates: parsed,
+      mapData,
+    });
+  }
+);
+
+/**
  * ==============================================================================
  * BÁO CÁO TÓM TẮT VỊ TRÍ & KHỐI LƯỢNG HẬU DUỆ (Story S-27)
  * ==============================================================================
@@ -6569,6 +6755,7 @@ module.exports = {
   seedS22InMemory,
   traceLotOrigins,
   traceLotDescendants,
+  getPublicLotMapData,
   inMemoryLocations,
   fetchLocations,
   getLocationById,

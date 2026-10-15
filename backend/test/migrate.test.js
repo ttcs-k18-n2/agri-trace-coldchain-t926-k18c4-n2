@@ -102,6 +102,36 @@ test("S-29: Migration 019 creates idx_lots_status and idx_lots_org_status with r
   );
 });
 
+
+test("S-60: Migration 023 creates public_map_areas table and index with rollback", () => {
+  const fs = require("node:fs");
+  const path = require("node:path");
+
+  const upPath = path.resolve(__dirname, "../../db/migrations/023_public_map_areas.sql");
+  const downPath = path.resolve(__dirname, "../../db/migrations/down/023_public_map_areas.down.sql");
+
+  assert.ok(fs.existsSync(upPath), "Migration 023 UP file must exist");
+  assert.ok(fs.existsSync(downPath), "Migration 023 DOWN file must exist");
+
+  const upSql = fs.readFileSync(upPath, "utf-8");
+  const downSql = fs.readFileSync(downPath, "utf-8");
+
+  assert.match(
+    upSql,
+    /CREATE\s+TABLE\s+(IF\s+NOT\s+EXISTS\s+)?public_map_areas/i,
+    "Migration 023 must create public_map_areas table"
+  );
+  assert.match(upSql, /latitude\s+NUMERIC/i);
+  assert.match(upSql, /longitude\s+NUMERIC/i);
+  assert.match(upSql, /keywords/i);
+
+  assert.match(
+    downSql,
+    /DROP\s+TABLE\s+(IF\s+EXISTS\s+)?public_map_areas/i,
+    "Migration 023 rollback must drop table public_map_areas"
+  );
+});
+
 if (process.env.DATABASE_URL) {
   test("migrate: up and down work with database", async () => {
     const upRes = await runMigrations("up");

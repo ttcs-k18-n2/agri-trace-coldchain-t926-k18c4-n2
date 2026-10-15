@@ -5,6 +5,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>AGRI TRACEABILITY - Chi tiết lô thu hoạch & Phả hệ</title>
   <link rel="stylesheet" href="/styles.css?v=20261014">
+  <!-- MapLibre GL JS & CSS & Public Trace Map Component for embedded journey map (S-60) -->
+  <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" />
+  <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+  <link rel="stylesheet" href="public-trace-map.css" />
+  <script src="public-trace-map.js"></script>
 
   <style>
     .detail-container {
@@ -1648,6 +1653,13 @@
         }
 
         renderLot(lotData, lotEvents, { isIntegrityValid, integrityError }, lotOrigins);
+
+        // Kích hoạt tab nếu có query param ?tab=...
+        const urlParams = new URLSearchParams(window.location.search);
+        const activeTabParam = urlParams.get("tab");
+        if (activeTabParam && ["overview", "timeline", "lineage", "genealogy", "map"].includes(activeTabParam)) {
+          switchLotTab(activeTabParam);
+        }
       } catch (err) {
         renderError("Lỗi hệ thống", err.message || "Không thể đồng bộ dữ liệu.");
       }
@@ -1709,6 +1721,14 @@
             </a>
           `;
         }
+
+        // Nút xem bản đồ hành trình công khai (Story S-60)
+        actionButtonsHtml += `
+          <button type="button" onclick="switchLotTab('map')" class="btn btn-secondary" style="gap: 8px; font-weight: 600;" id="btnViewPublicMap" title="Xem bản đồ vị trí vùng trồng & điểm phân phối chuỗi lạnh">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"></polygon><line x1="8" y1="2" x2="8" y2="18"></line><line x1="16" y1="6" x2="16" y2="22"></line></svg>
+            <span>📍 Xem bản đồ hành trình</span>
+          </button>
+        `;
 
         roleActionsEl.innerHTML = actionButtonsHtml;
         roleActionsEl.style.display = actionButtonsHtml ? "flex" : "none";
@@ -1808,6 +1828,10 @@
                       <span>Gộp lô hàng</span>
                     </button>
                   ` : ""}
+                  <a href="javascript:void(0)" onclick="switchLotTab('map')" class="dropdown-item">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"></polygon><line x1="8" y1="2" x2="8" y2="18"></line><line x1="16" y1="6" x2="16" y2="22"></line></svg>
+                    <span>Xem bản đồ hành trình</span>
+                  </a>
                   ${canConsume ? `
                     <button type="button" class="dropdown-item" id="btnOpenConsumeFromDetail" style="color: #059669;">
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
@@ -1936,6 +1960,14 @@
             </svg>
             <span>Nguồn gốc</span>
             <span class="tab-badge">${((Array.isArray(lot.parentLots) && lot.parentLots.length > 0) ? lot.parentLots.length : (lot.parentLot ? 1 : 0)) + (lot.childLots ? lot.childLots.length : 0)}</span>
+          </button>
+          <button type="button" class="lot-tab-btn" id="tabBtnMap" role="tab" aria-selected="false" aria-controls="tabPaneMap" onclick="switchLotTab('map')">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"></polygon>
+              <line x1="8" y1="2" x2="8" y2="18"></line>
+              <line x1="16" y1="6" x2="16" y2="22"></line>
+            </svg>
+            <span>Bản đồ hành trình</span>
           </button>
           <button type="button" class="lot-tab-btn" id="tabBtnGenealogy" role="tab" aria-selected="false" aria-controls="tabPaneGenealogy" onclick="switchLotTab('genealogy')">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
@@ -2653,7 +2685,88 @@
             </div>
           </div>
         </div>
-      `;
+      
+
+        <!-- Tab 5: Bản đồ hành trình (S-60) -->
+        <div class="lot-tab-pane" id="tabPaneMap" role="tabpanel" aria-labelledby="tabBtnMap">
+          <div class="card" style="margin-bottom: 24px; padding: 20px; background: #ffffff; border: 1px solid var(--color-border); border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 16px;">
+              <div>
+                <h3 class="card-heading" style="margin-bottom: 4px; font-size: 16px; font-weight: 700; color: #0f172a;">📍 Bản đồ vị trí vùng trồng & hành trình chuỗi lạnh</h3>
+                <div style="font-size: 13px; color: var(--color-text-muted);">
+                  Tọa độ nguồn gốc vùng trồng, các điểm trung chuyển kho bãi và đường đi chuỗi lạnh của lô hàng.
+                </div>
+              </div>
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <button type="button" class="btn btn-secondary" onclick="loadDetailMap(lotData ? lotData.id : '')" style="font-size: 12px; height: 32px; padding: 0 10px; font-weight: 600;">
+                  🔄 Tải lại bản đồ
+                </button>
+                <a id="btnOpenPublicMapTab" href="/public-trace.html" target="_blank" rel="noopener noreferrer" class="btn btn-secondary" style="font-size: 12px; height: 32px; padding: 0 10px; display: inline-flex; align-items: center; gap: 4px; text-decoration: none; font-weight: 600;">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>
+                  <span>Mở cổng công khai</span>
+                </a>
+              </div>
+            </div>
+
+            <div id="lotDetailMapStatus" style="display: none; padding: 10px 14px; border-radius: 8px; font-size: 13px; margin-bottom: 16px;"></div>
+
+            <!-- Thanh công cụ tùy chỉnh / gán tọa độ thủ công cho lô hàng (Choice A - Story S-60) -->
+            <div class="custom-coord-panel">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; flex-wrap: wrap; gap: 8px;">
+                <div style="font-size: 13.5px; font-weight: 700; color: #0f172a; display: flex; align-items: center; gap: 6px;">
+                  <span>📍 Tùy chỉnh tọa độ / Định vị nhanh cho lô hàng</span>
+                  <span style="font-size: 11px; background: #e0f2fe; color: #0369a1; padding: 2px 8px; border-radius: 9999px; font-weight: 600;">Lựa chọn A</span>
+                </div>
+                <div style="font-size: 12px; color: #64748b;">
+                  Gõ tọa độ (Vĩ độ, Kinh độ), bấm gợi ý mẫu hoặc click trực tiếp trên bản đồ
+                </div>
+              </div>
+
+              <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
+                <select id="inputCustomType" class="form-control" style="width: auto; min-width: 140px; font-size: 12.5px; height: 36px;">
+                  <option value="farm">🌱 Vùng trồng nông sản</option>
+                  <option value="cold_storage">❄️ Kho bảo quản lạnh</option>
+                  <option value="store">🏢 Điểm phân phối / Bán lẻ</option>
+                </select>
+                <input type="text" id="inputCustomName" class="form-control" placeholder="Tên địa điểm (VD: Vùng trồng Thái Nguyên)" style="flex: 1; min-width: 180px; font-size: 12.5px; height: 36px;" value="${lot ? escapeHtml(lot.name || '') : ''}">
+                <input type="text" id="inputCustomCoords" class="form-control" placeholder="Vĩ độ, Kinh độ (VD: 21.5750, 105.6905)" style="width: 220px; font-size: 12.5px; height: 36px; font-family: monospace;">
+                <button type="button" class="btn btn-secondary" onclick="handlePreviewCustomCoordinate()" style="font-size: 12.5px; height: 36px; font-weight: 600; white-space: nowrap; display: inline-flex; align-items: center; gap: 6px;">
+                  <span>📍 Ghim lên bản đồ</span>
+                </button>
+                <button type="button" class="btn btn-primary" onclick="handleSaveCustomCoordinate()" style="font-size: 12.5px; height: 36px; font-weight: 600; white-space: nowrap; display: inline-flex; align-items: center; gap: 6px;">
+                  <span>💾 Lưu vào hệ thống</span>
+                </button>
+              </div>
+
+              <div style="display: flex; align-items: center; gap: 6px; margin-top: 10px; flex-wrap: wrap; font-size: 12px;">
+                <span style="color: #64748b; font-weight: 600;">Gợi ý mẫu:</span>
+                <button type="button" class="chip-btn" onclick="applyPresetCoordinate('farm', 'Vùng cà chua Hùng Sơn', '21.5750, 105.6905')">🍅 Hùng Sơn (21.5750, 105.6905)</button>
+                <button type="button" class="chip-btn" onclick="applyPresetCoordinate('farm', 'Vùng chè Tân Cương', '21.5450, 105.7720')">🌿 Tân Cương (21.5450, 105.7720)</button>
+                <button type="button" class="chip-btn" onclick="applyPresetCoordinate('farm', 'Vùng chè La Bằng', '21.5580, 105.6720')">🌱 La Bằng (21.5580, 105.6720)</button>
+                <button type="button" class="chip-btn" onclick="applyPresetCoordinate('cold_storage', 'Kho lạnh Nông trại Thái Nguyên', '21.5830, 105.8250')">❄️ Kho lạnh TN (21.5830, 105.8250)</button>
+                <button type="button" class="chip-btn" onclick="applyPresetCoordinate('store', 'Điểm phân phối Hà Nội', '21.0356, 105.9012')">🏢 Hà Nội (21.0356, 105.9012)</button>
+                <button type="button" class="chip-btn" onclick="handleGetDeviceLocation()" title="Lấy GPS từ thiết bị">🎯 GPS thiết bị</button>
+              </div>
+
+              <div id="customCoordStatusAlert" style="display: none; margin-top: 10px; padding: 8px 12px; border-radius: 6px; font-size: 12.5px;"></div>
+            </div>
+
+            <div class="public-trace-map-wrapper" style="margin-bottom: 20px;">
+              <div id="lotDetailMapCanvas" class="public-trace-map-container">
+                <div style="display: flex; align-items: center; justify-content: center; height: 100%; color: var(--color-text-muted);">
+                  Đang khởi tạo bản đồ hành trình...
+                </div>
+              </div>
+            </div>
+
+            <div id="lotDetailMapTimelineContainer" style="margin-top: 16px;">
+              <h4 style="margin: 0 0 12px; font-size: 14.5px; font-weight: 700; color: #1e293b;">Các trạm dừng trong hành trình</h4>
+              <div id="lotDetailMapTimeline">
+                <div style="color: var(--color-text-muted); font-size: 13px;">Đang tải hành trình...</div>
+              </div>
+            </div>
+          </div>
+        </div>`;
 
       const btnDirectTransfer = document.getElementById("btnTransferDirectHero");
       if (btnDirectTransfer) {
@@ -2960,6 +3073,7 @@
         { key: "timeline", btnId: "tabBtnTimeline", paneId: "tabPaneTimeline" },
         { key: "lineage", btnId: "tabBtnLineage", paneId: "tabPaneLineage" },
         { key: "genealogy", btnId: "tabBtnGenealogy", paneId: "tabPaneGenealogy" },
+        { key: "map", btnId: "tabBtnMap", paneId: "tabPaneMap" },
       ];
 
       tabs.forEach((t) => {
@@ -2980,8 +3094,228 @@
           loadGenealogyTree(lotData.id);
         }
       }
+      if (tabKey === "map" && lotData && lotData.id) {
+        loadDetailMap(lotData.id);
+      }
     }
     window.switchLotTab = switchLotTab;
+
+    let lotDetailTraceMapInstance = null;
+    let lotDetailMapLoadedId = null;
+
+    async function loadDetailMap(targetId) {
+      if (!targetId) return;
+
+      const openPublicBtn = document.getElementById("btnOpenPublicMapTab");
+      if (openPublicBtn) {
+        openPublicBtn.href = `/public-trace.html?code=${encodeURIComponent(targetId)}`;
+      }
+
+      const canvasEl = document.getElementById("lotDetailMapCanvas");
+      if (!canvasEl) return;
+
+      if (lotDetailMapLoadedId === targetId && lotDetailTraceMapInstance) {
+        setTimeout(() => {
+          if (lotDetailTraceMapInstance && lotDetailTraceMapInstance.map) {
+            lotDetailTraceMapInstance.map.resize();
+          }
+        }, 150);
+        return;
+      }
+
+      try {
+        if (!lotDetailTraceMapInstance) {
+          lotDetailTraceMapInstance = new PublicTraceMap({
+            containerId: "lotDetailMapCanvas",
+            timelineContainerId: "lotDetailMapTimeline",
+            apiUrl: "/api/public/lots",
+            onMapClick: (pt) => {
+              const coordsInput = document.getElementById("inputCustomCoords");
+              if (coordsInput) coordsInput.value = `${pt.lat.toFixed(4)}, ${pt.lng.toFixed(4)}`;
+            }
+          });
+          window.__lotDetailTraceMap = lotDetailTraceMapInstance;
+        }
+
+        await lotDetailTraceMapInstance.loadAndRender(targetId);
+        lotDetailMapLoadedId = targetId;
+
+        setTimeout(() => {
+          if (lotDetailTraceMapInstance && lotDetailTraceMapInstance.map) {
+            lotDetailTraceMapInstance.map.resize();
+          }
+        }, 200);
+      } catch (err) {
+        console.error("Lỗi nạp bản đồ hành trình chi tiết:", err);
+      }
+    }
+    window.loadDetailMap = loadDetailMap;
+
+    function applyPresetCoordinate(type, name, coords) {
+      const typeEl = document.getElementById("inputCustomType");
+      const nameEl = document.getElementById("inputCustomName");
+      const coordsEl = document.getElementById("inputCustomCoords");
+      if (typeEl) typeEl.value = type;
+      if (nameEl) nameEl.value = name;
+      if (coordsEl) coordsEl.value = coords;
+      handlePreviewCustomCoordinate();
+    }
+    window.applyPresetCoordinate = applyPresetCoordinate;
+
+    function handlePreviewCustomCoordinate() {
+      const coordsInput = document.getElementById("inputCustomCoords");
+      const nameInput = document.getElementById("inputCustomName");
+      const typeInput = document.getElementById("inputCustomType");
+      const alertEl = document.getElementById("customCoordStatusAlert");
+
+      const coordsStr = coordsInput ? coordsInput.value.trim() : "";
+      if (!coordsStr) {
+        if (alertEl) {
+          alertEl.style.display = "block";
+          alertEl.style.background = "#fef2f2";
+          alertEl.style.color = "#991b1b";
+          alertEl.textContent = "Vui lòng nhập tọa độ (Vĩ độ, Kinh độ, ví dụ: 21.5750, 105.6905).";
+        }
+        return;
+      }
+
+      if (!lotDetailTraceMapInstance) {
+        lotDetailTraceMapInstance = new PublicTraceMap({
+          containerId: "lotDetailMapCanvas",
+          timelineContainerId: "lotDetailMapTimeline",
+          apiUrl: "/api/public/lots",
+          onMapClick: (pt) => {
+            if (coordsInput) coordsInput.value = `${pt.lat.toFixed(4)}, ${pt.lng.toFixed(4)}`;
+          }
+        });
+        window.__lotDetailTraceMap = lotDetailTraceMapInstance;
+      } else {
+        lotDetailTraceMapInstance.onMapClick = (pt) => {
+          if (coordsInput) coordsInput.value = `${pt.lat.toFixed(4)}, ${pt.lng.toFixed(4)}`;
+        };
+      }
+
+      const success = lotDetailTraceMapInstance.applyCustomCoordinates({
+        coordinates: coordsStr,
+        name: nameInput ? nameInput.value.trim() : "",
+        type: typeInput ? typeInput.value : "farm"
+      });
+
+      if (alertEl) {
+        if (success) {
+          alertEl.style.display = "block";
+          alertEl.style.background = "#dcfce7";
+          alertEl.style.color = "#15803d";
+          alertEl.innerHTML = "✔ <strong>Đã ghim lên bản đồ!</strong> Bấm 'Lưu vào hệ thống' để lưu vĩnh viễn.";
+        } else {
+          alertEl.style.display = "block";
+          alertEl.style.background = "#fef2f2";
+          alertEl.style.color = "#991b1b";
+          alertEl.textContent = "Định dạng tọa độ không hợp lệ. Vui lòng nhập: Vĩ độ, Kinh độ (VD: 21.5750, 105.6905).";
+        }
+      }
+    }
+    window.handlePreviewCustomCoordinate = handlePreviewCustomCoordinate;
+
+    async function handleSaveCustomCoordinate() {
+      const coordsInput = document.getElementById("inputCustomCoords");
+      const nameInput = document.getElementById("inputCustomName");
+      const typeInput = document.getElementById("inputCustomType");
+      const alertEl = document.getElementById("customCoordStatusAlert");
+
+      const coordsStr = coordsInput ? coordsInput.value.trim() : "";
+      if (!coordsStr) {
+        if (alertEl) {
+          alertEl.style.display = "block";
+          alertEl.style.background = "#fef2f2";
+          alertEl.style.color = "#991b1b";
+          alertEl.textContent = "Vui lòng nhập tọa độ trước khi lưu.";
+        }
+        return;
+      }
+
+      const currentLotId = lotData ? lotData.id : null;
+      if (!currentLotId) return;
+
+      try {
+        if (alertEl) {
+          alertEl.style.display = "block";
+          alertEl.style.background = "#e0f2fe";
+          alertEl.style.color = "#0369a1";
+          alertEl.textContent = "Đang lưu tọa độ vào hệ thống...";
+        }
+
+        const res = await fetch(`/api/lots/${encodeURIComponent(currentLotId)}/coordinates`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          credentials: "same-origin",
+          body: JSON.stringify({
+            coordinates: coordsStr,
+            name: nameInput ? nameInput.value.trim() : "",
+            type: typeInput ? typeInput.value : "farm"
+          })
+        });
+
+        const resData = await res.json();
+        if (!res.ok) {
+          throw new Error(resData.message || "Không thể lưu tọa độ.");
+        }
+
+        if (alertEl) {
+          alertEl.style.display = "block";
+          alertEl.style.background = "#dcfce7";
+          alertEl.style.color = "#15803d";
+          alertEl.innerHTML = "🎉 <strong>Lưu tọa độ thành công!</strong> Vị trí đã được cập nhật cho cả hệ thống quản lý và trang truy xuất công khai.";
+        }
+
+        if (lotDetailTraceMapInstance && resData.mapData) {
+          lotDetailTraceMapInstance.render(resData.mapData);
+        } else {
+          await loadDetailMap(currentLotId);
+        }
+      } catch (err) {
+        if (alertEl) {
+          alertEl.style.display = "block";
+          alertEl.style.background = "#fef2f2";
+          alertEl.style.color = "#991b1b";
+          alertEl.textContent = err.message || "Lỗi lưu tọa độ.";
+        }
+      }
+    }
+    window.handleSaveCustomCoordinate = handleSaveCustomCoordinate;
+
+    function handleGetDeviceLocation() {
+      const coordsInput = document.getElementById("inputCustomCoords");
+      const alertEl = document.getElementById("customCoordStatusAlert");
+      if (!navigator.geolocation) {
+        alert("Trình duyệt không hỗ trợ Geolocation GPS.");
+        return;
+      }
+      if (alertEl) {
+        alertEl.style.display = "block";
+        alertEl.style.background = "#e0f2fe";
+        alertEl.style.color = "#0369a1";
+        alertEl.textContent = "Đang lấy tọa độ GPS từ thiết bị của bạn...";
+      }
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          const lat = pos.coords.latitude.toFixed(4);
+          const lng = pos.coords.longitude.toFixed(4);
+          if (coordsInput) coordsInput.value = `${lat}, ${lng}`;
+          handlePreviewCustomCoordinate();
+        },
+        (err) => {
+          if (alertEl) {
+            alertEl.style.display = "block";
+            alertEl.style.background = "#fef2f2";
+            alertEl.style.color = "#991b1b";
+            alertEl.textContent = `Không lấy được GPS (${err.message}). Bạn có thể tự gõ tọa độ hoặc chọn gợi ý.`;
+          }
+        },
+        { enableHighAccuracy: true, timeout: 8000 }
+      );
+    }
+    window.handleGetDeviceLocation = handleGetDeviceLocation;
 
     async function loadGenealogyTree(targetId) {
       if (!targetId) return;
