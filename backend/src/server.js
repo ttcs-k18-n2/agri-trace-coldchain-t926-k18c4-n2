@@ -6494,6 +6494,79 @@ app.patch(
 );
 
 /**
+ * Cập nhật tọa độ / định vị nhanh cho lô hàng (Choice A - Story S-60)
+ */
+app.patch(
+  "/api/lots/:id/coordinates",
+  requirePermission(["producer", "cooperative", "transporter", "distributor", "org_admin", "admin", "inspector", "auditor"]),
+  async (req, res) => {
+    const lotId = req.params.id;
+    const { coordinates, name, address, type } = req.body || {};
+
+    const { parseCoordinates } = require("./public_trace_map");
+    const parsed = parseCoordinates(coordinates);
+    if (!parsed) {
+      return res.status(400).json({
+        error: "INVALID_COORDINATES",
+        message: "Tọa độ không hợp lệ. Vui lòng nhập định dạng Vĩ độ, Kinh độ (Ví dụ: 21.5750, 105.6905).",
+      });
+    }
+
+    const customData = {
+      lat: parsed.lat,
+      lng: parsed.lng,
+      name: (name && typeof name === "string") ? name.trim() : null,
+      address: (address && typeof address === "string") ? address.trim() : null,
+      type: type || "farm",
+      updatedAt: new Date().toISOString(),
+    };
+
+    const targetLot = inMemoryLots.find((l) => l.id && l.id.toUpperCase() === lotId.toUpperCase());
+    if (targetLot) {
+      targetLot.customCoordinates = customData;
+    }
+
+    if (pool) {
+      try {
+        await pool.query(
+          "UPDATE lots SET custom_coordinates = $1 WHERE UPPER(id) = UPPER($2)",
+          [JSON.stringify(customData), lotId]
+        );
+      } catch (_) {}
+    }
+
+    if (req.auth) {
+      recordAuditLog({
+        userId: req.auth.userId,
+        organizationId: req.auth.organizationId,
+        action: "UPDATE_LOT_COORDINATES",
+        target: lotId,
+        details: { coordinates: parsed, name, type },
+      });
+    }
+
+    const mapData = await getPublicLotMapData({
+      pool,
+      lotCode: lotId,
+      inMemoryLots,
+      inMemoryBatchRelations,
+      inMemoryBatchEvents,
+      inMemoryOrgs: inMemoryOrganizations,
+      inMemoryProducts,
+      inMemoryFarms,
+      inMemoryLocations,
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Cập nhật tọa độ lô hàng thành công!",
+      coordinates: parsed,
+      mapData,
+    });
+  }
+);
+
+/**
  * ==============================================================================
  * BÁO CÁO TÓM TẮT VỊ TRÍ & KHỐI LƯỢNG HẬU DUỆ (Story S-27)
  * ==============================================================================

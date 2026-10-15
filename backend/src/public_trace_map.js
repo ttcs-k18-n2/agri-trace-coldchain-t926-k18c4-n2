@@ -369,6 +369,7 @@ async function getPublicLotMapData(options = {}) {
         locationType: r.location_type,
         locationCoordinates: r.location_coordinates,
         createdAt: r.created_at,
+        customCoordinates: r.custom_coordinates || null,
       };
     } else {
       // Khi đã kết nối DB PostgreSQL thật, không tìm thấy thì báo 404, không tìm trong mock in-memory
@@ -418,6 +419,7 @@ async function getPublicLotMapData(options = {}) {
         locationType: locObj ? locObj.locationType : null,
         locationCoordinates: locObj ? locObj.coordinates : null,
         createdAt: foundLot.createdAt || foundLot.created_at || null,
+        customCoordinates: foundLot.customCoordinates || foundLot.custom_coordinates || null,
       };
     }
   }
@@ -658,6 +660,65 @@ async function getPublicLotMapData(options = {}) {
         isOrigin: false,
         isCurrentLocation: true,
       });
+    }
+  }
+
+  // Hỗ trợ tọa độ gán thủ công / tùy chỉnh (Choice A - Story S-60)
+  if (lotRecord.customCoordinates) {
+    const rawCoords = lotRecord.customCoordinates.coordinates || lotRecord.customCoordinates;
+    const customCoords = parseCoordinates(rawCoords);
+    if (customCoords) {
+      const customTitle = lotRecord.customCoordinates.name || (lotRecord.name ? `Vùng trồng ${lotRecord.name}` : "Vùng trồng đã định vị");
+      const customType = lotRecord.customCoordinates.type || "farm";
+
+      if (origins.length > 0 && !origins[0].hasCoordinates) {
+        origins[0].coordinates = customCoords;
+        origins[0].hasCoordinates = true;
+        origins[0].verified = true;
+        origins[0].farmName = customTitle;
+        origins[0].regionName = customTitle;
+      } else if (origins.length === 0) {
+        origins.push({
+          farmName: customTitle,
+          regionName: customTitle,
+          coordinates: customCoords,
+          hasCoordinates: true,
+          verified: true,
+          harvestedAt: lotRecord.harvestedAt || new Date().toISOString(),
+        });
+      }
+
+      const unlocatedOrigin = journey.find((s) => s.isOrigin && !s.hasCoordinates);
+      if (unlocatedOrigin) {
+        unlocatedOrigin.coordinates = customCoords;
+        unlocatedOrigin.hasCoordinates = true;
+        unlocatedOrigin.verified = true;
+        unlocatedOrigin.title = customTitle;
+        unlocatedOrigin.locationName = customTitle;
+        unlocatedOrigin.type = customType;
+        unlocatedOrigin.typeLabel = getLocationTypeLabel(customType);
+        unlocatedOrigin.address = lotRecord.customCoordinates.address || unlocatedOrigin.address || `${customCoords.lat.toFixed(4)}, ${customCoords.lng.toFixed(4)}`;
+      } else {
+        const alreadyHas = journey.some((s) => s.coordinates && Math.abs(s.coordinates.lat - customCoords.lat) < 0.0001 && Math.abs(s.coordinates.lng - customCoords.lng) < 0.0001);
+        if (!alreadyHas) {
+          journey.push({
+            step: currentStep++,
+            type: customType,
+            typeLabel: getLocationTypeLabel(customType),
+            title: customTitle,
+            locationName: customTitle,
+            organizationName: lotRecord.organizationName,
+            address: lotRecord.customCoordinates.address || `${customCoords.lat.toFixed(4)}, ${customCoords.lng.toFixed(4)}`,
+            coordinates: customCoords,
+            hasCoordinates: true,
+            verified: true,
+            occurredAt: lotRecord.harvestedAt || new Date().toISOString(),
+            description: `Định vị tọa độ: ${customCoords.lat.toFixed(4)}, ${customCoords.lng.toFixed(4)}`,
+            isOrigin: customType === "farm",
+            isCurrentLocation: true,
+          });
+        }
+      }
     }
   }
 

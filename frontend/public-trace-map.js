@@ -51,6 +51,7 @@
       this.markers = [];
       this.mapData = null;
       this.currentAbortController = null;
+      this.onMapClick = options.onMapClick || null;
     }
 
     /**
@@ -184,6 +185,12 @@
           if (this.map) this.map.resize();
         }, { passive: true });
 
+        this.map.on("click", (e) => {
+          if (typeof this.onMapClick === "function") {
+            this.onMapClick({ lat: e.lngLat.lat, lng: e.lngLat.lng });
+          }
+        });
+
         this.map.on("error", (e) => {
           console.warn("OpenFreeMap tile server issue detected:", e);
           const notice = mapDiv.querySelector(".map-offline-notice");
@@ -223,6 +230,97 @@
     /**
      * Vẽ các đường nối hành trình (GeoJSON routes)
      */
+    /**
+     * Tùy chỉnh / gán tọa độ thủ công cho bản đồ hiện tại (Story S-60 Choice A)
+     */
+    applyCustomCoordinates(custom = {}) {
+      if (!this.mapData) {
+        this.mapData = { journey: [], origins: [], routes: [], summary: {} };
+      }
+      const data = JSON.parse(JSON.stringify(this.mapData));
+      let lat = null, lng = null;
+      if (typeof custom.coordinates === "string") {
+        const parts = custom.coordinates.split(",").map(p => Number(p.trim()));
+        if (parts.length === 2) { lat = parts[0]; lng = parts[1]; }
+      } else if (custom.lat !== undefined && custom.lng !== undefined) {
+        lat = Number(custom.lat);
+        lng = Number(custom.lng);
+      } else if (custom.coordinates && typeof custom.coordinates === "object") {
+        lat = Number(custom.coordinates.lat);
+        lng = Number(custom.coordinates.lng);
+      }
+
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) return false;
+
+      const coords = { lat, lng };
+      const stopTitle = custom.name || (data.lot ? `Vùng trồng ${data.lot.name}` : "Vùng trồng đã định vị");
+      const stopType = custom.type || "farm";
+      const stopLabel = stopType === "farm" ? "Vùng trồng nông sản" : (stopType === "cold_storage" ? "Kho bảo quản lạnh" : "Điểm phân phối / Bán lẻ");
+
+      if (!data.journey) data.journey = [];
+      const unlocated = data.journey.find(s => !s.hasCoordinates || !s.coordinates);
+      if (unlocated) {
+        unlocated.coordinates = coords;
+        unlocated.hasCoordinates = true;
+        unlocated.verified = true;
+        unlocated.title = stopTitle;
+        unlocated.locationName = stopTitle;
+        unlocated.type = stopType;
+        unlocated.typeLabel = stopLabel;
+        if (custom.address) unlocated.address = custom.address;
+      } else {
+        data.journey.push({
+          step: data.journey.length + 1,
+          type: stopType,
+          typeLabel: stopLabel,
+          title: stopTitle,
+          locationName: stopTitle,
+          organizationName: data.lot ? data.lot.organizationName : "Đơn vị sản xuất",
+          address: custom.address || `${coords.lat.toFixed(4)}, ${coords.lng.toFixed(4)}`,
+          coordinates: coords,
+          hasCoordinates: true,
+          verified: true,
+          occurredAt: (data.lot && data.lot.harvestedAt) || new Date().toISOString(),
+          description: `Định vị tọa độ thủ công: ${coords.lat.toFixed(4)}, ${coords.lng.toFixed(4)}`,
+          isOrigin: stopType === "farm",
+          isCurrentLocation: true,
+        });
+      }
+
+      if (!data.origins || data.origins.length === 0 || !data.origins[0].hasCoordinates) {
+        data.origins = [{
+          farmName: stopTitle,
+          regionName: stopTitle,
+          coordinates: coords,
+          hasCoordinates: true,
+          verified: true,
+          harvestedAt: (data.lot && data.lot.harvestedAt) || new Date().toISOString(),
+        }];
+      }
+
+      const located = data.journey.filter(s => s.hasCoordinates && s.coordinates);
+      if (located.length >= 2) {
+        data.routes = [];
+        for (let i = 0; i < located.length - 1; i++) {
+          data.routes.push({
+            fromStep: located[i].step,
+            toStep: located[i+1].step,
+            fromTitle: located[i].title,
+            toTitle: located[i+1].title,
+            isSchematic: true,
+            coordinates: [
+              [located[i].coordinates.lng, located[i].coordinates.lat],
+              [located[i+1].coordinates.lng, located[i+1].coordinates.lat],
+            ],
+          });
+        }
+      }
+
+      this.mapData = data;
+      this.render(data);
+      return true;
+    }
+
     drawRoutes(routes) {
       if (!this.map || !routes || routes.length === 0) return;
 
@@ -493,6 +591,12 @@
           </div>
           <h4 class="trace-map-fallback-title">Hành trình nông sản minh bạch</h4>
           <p class="trace-map-fallback-desc">${escapeHtml(noticeText)}</p>
+          <div style="margin-top: 14px; display: inline-flex; gap: 8px; flex-wrap: wrap; justify-content: center; align-items: center;">
+            <span style="font-size: 12px; color: #64748b; font-weight: 600;">Xem thử định vị mẫu:</span>
+            <button type="button" class="chip-btn" onclick="window.__traceMapInstance ? window.__traceMapInstance.applyCustomCoordinates({ coordinates: '21.5750, 105.6905', name: 'Vùng cà chua Hùng Sơn', type: 'farm' }) : (window.__lotDetailTraceMap && window.__lotDetailTraceMap.applyCustomCoordinates({ coordinates: '21.5750, 105.6905', name: 'Vùng cà chua Hùng Sơn', type: 'farm' }))">🍅 Hùng Sơn (21.5750, 105.6905)</button>
+            <button type="button" class="chip-btn" onclick="window.__traceMapInstance ? window.__traceMapInstance.applyCustomCoordinates({ coordinates: '21.5580, 105.6720', name: 'Vùng chè La Bằng', type: 'farm' }) : (window.__lotDetailTraceMap && window.__lotDetailTraceMap.applyCustomCoordinates({ coordinates: '21.5580, 105.6720', name: 'Vùng chè La Bằng', type: 'farm' }))">🌱 La Bằng (21.5580, 105.6720)</button>
+            <button type="button" class="chip-btn" onclick="window.__traceMapInstance ? window.__traceMapInstance.applyCustomCoordinates({ coordinates: '21.0356, 105.9012', name: 'Cụm logistics Hà Nội', type: 'store' }) : (window.__lotDetailTraceMap && window.__lotDetailTraceMap.applyCustomCoordinates({ coordinates: '21.0356, 105.9012', name: 'Cụm logistics Hà Nội', type: 'store' }))">🏢 Hà Nội (21.0356, 105.9012)</button>
+          </div>
         </div>
       `;
     }
