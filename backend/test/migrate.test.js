@@ -140,9 +140,42 @@ test("S-34: Migration 023 creates recall_orders table with rollback and NFR comp
   );
 });
 
+test("S-36/S-37: Migration 024 creates recall_acknowledgments with FK, UNIQUE constraint and rollback", () => {
+  const fs = require("node:fs");
+  const path = require("node:path");
+
+  const upPath = path.resolve(__dirname, "../../db/migrations/024_recall_acknowledgments.sql");
+  const downPath = path.resolve(__dirname, "../../db/migrations/down/024_recall_acknowledgments.down.sql");
+
+  assert.ok(fs.existsSync(upPath), "Migration 024 UP file must exist");
+  assert.ok(fs.existsSync(downPath), "Migration 024 DOWN file must exist");
+
+  const upSql = fs.readFileSync(upPath, "utf-8");
+  const downSql = fs.readFileSync(downPath, "utf-8");
+
+  assert.match(
+    upSql,
+    /CREATE\s+TABLE\s+(IF\s+NOT\s+EXISTS\s+)?recall_acknowledgments/i,
+    "Migration 024 must create recall_acknowledgments table"
+  );
+  assert.match(upSql, /recall_id\s+VARCHAR\(64\)/i);
+  assert.match(upSql, /REFERENCES\s+recall_orders\s*\(\s*id\s*\)/i);
+  assert.match(upSql, /REFERENCES\s+organizations\s*\(\s*id\s*\)/i);
+  assert.match(upSql, /UNIQUE\s*\(\s*recall_id\s*,\s*organization_id\s*\)/i);
+  assert.match(upSql, /CREATE\s+INDEX\s+(IF\s+NOT\s+EXISTS\s+)?idx_recall_acknowledgments_recall_id/i);
+  assert.match(upSql, /CREATE\s+INDEX\s+(IF\s+NOT\s+EXISTS\s+)?idx_recall_acknowledgments_org_id/i);
+
+  assert.match(
+    downSql,
+    /DROP\s+TABLE\s+(IF\s+EXISTS\s+)?recall_acknowledgments/i,
+    "Migration 024 rollback must drop table recall_acknowledgments"
+  );
+});
+
 if (process.env.DATABASE_URL) {
   test("migrate: up and down work with database", async () => {
     const upRes = await runMigrations("up");
     assert.equal(upRes.status, "ok");
   });
 }
+
