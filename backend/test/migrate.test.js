@@ -292,7 +292,8 @@ test("S-40: Mock migration runner - already-applied 024 upgrade path applies onl
     "013_transfers", "014_transfer_overdue", "015_batch_events_timeline_index",
     "016_lots_parent_lineage", "017_batch_relations", "018_grant_agri_app_permissions",
     "019_lot_consumed_status", "020_locations", "021_audit_logs",
-    "022_consumed_lot_constraints", "023_public_map_areas", "024_shipments"
+    "022_consumed_lot_constraints", "023_public_map_areas",
+    "024_lot_custom_coordinates", "024_shipments"
   ];
   const appliedMigrations = [...existingApplied];
 
@@ -331,6 +332,10 @@ test("S-40: Mock migration runner - already-applied 024 upgrade path applies onl
   assert.ok(
     !executedStatements.some((s) => s.sql.includes("CREATE TABLE IF NOT EXISTS shipments")),
     "024_shipments must not be re-executed when already applied"
+  );
+  assert.ok(
+    !executedStatements.some((s) => s.sql.includes("custom_coordinates")),
+    "024_lot_custom_coordinates must not be re-executed when already applied"
   );
 });
 
