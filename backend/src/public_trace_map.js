@@ -330,6 +330,7 @@ async function getPublicLotMapData(options = {}) {
       `SELECT 
         l.id, l.name, l.status, l.organization_id, l.farm_id, l.product_id,
         l.initial_quantity, l.remaining_quantity, l.harvested_at, l.parent_lot_id, l.location_id, l.created_at,
+        l.custom_coordinates,
         f.name AS farm_name, f.coordinates AS farm_coordinates, f.area AS farm_area,
         p.name AS product_name, p.unit AS product_unit,
         o.name AS organization_name,
@@ -345,6 +346,18 @@ async function getPublicLotMapData(options = {}) {
 
     if (lotRes.rows.length > 0) {
       const r = lotRes.rows[0];
+      let parsedCustomCoords = null;
+      if (r.custom_coordinates) {
+        if (typeof r.custom_coordinates === "string") {
+          try {
+            parsedCustomCoords = JSON.parse(r.custom_coordinates);
+          } catch {
+            parsedCustomCoords = null;
+          }
+        } else if (typeof r.custom_coordinates === "object") {
+          parsedCustomCoords = r.custom_coordinates;
+        }
+      }
       lotRecord = {
         id: r.id,
         code: r.id,
@@ -369,7 +382,7 @@ async function getPublicLotMapData(options = {}) {
         locationType: r.location_type,
         locationCoordinates: r.location_coordinates,
         createdAt: r.created_at,
-        customCoordinates: r.custom_coordinates || null,
+        customCoordinates: parsedCustomCoords,
       };
     } else {
       // Khi đã kết nối DB PostgreSQL thật, không tìm thấy thì báo 404, không tìm trong mock in-memory

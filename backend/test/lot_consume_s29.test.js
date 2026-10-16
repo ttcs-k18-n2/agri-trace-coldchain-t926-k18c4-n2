@@ -6,7 +6,6 @@ const {
   users,
   hashPassword,
   inMemoryLots,
-  inMemoryBatchEvents,
   inMemoryTransfers,
 } = require("../src/server");
 

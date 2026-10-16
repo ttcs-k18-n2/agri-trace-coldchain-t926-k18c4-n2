@@ -8,9 +8,13 @@ const assert = require("node:assert/strict");
 const request = require("supertest");
 const {
   app,
+  users,
+  hashPassword,
   inMemoryLots,
   inMemoryBatchEvents,
+  inMemoryAuditLogs,
   seedS22Data,
+  setDatabasePool,
 } = require("../src/server");
 const {
   getPublicLotMapData,
@@ -308,5 +312,227 @@ test("S-60 / N2-290 / N2-258: Kiểm thử toàn diện API Bản đồ vị tr�
     assert.ok(valid);
     assert.equal(valid.lat, 21.558);
     assert.equal(valid.lng, 105.672);
+  });
+
+  await t.test("12. PATCH /api/lots/:id/coordinates - Phân quyền và kiểm tra sở hữu lô hàng", async () => {
+    const passwordHash = await hashPassword("Password123!");
+    users.set("producer_org1@test.vn", {
+      id: "usr-prod-org1",
+      email: "producer_org1@test.vn",
+      passwordHash,
+      roleId: "producer",
+      organizationId: "org-001",
+      status: "active",
+    });
+    users.set("coop_org2@test.vn", {
+      id: "usr-coop-org2",
+      email: "coop_org2@test.vn",
+      passwordHash,
+      roleId: "cooperative",
+      organizationId: "org-002",
+      status: "active",
+    });
+    users.set("inspector@test.vn", {
+      id: "usr-inspector",
+      email: "inspector@test.vn",
+      passwordHash,
+      roleId: "inspector",
+      organizationId: "org-inspector",
+      status: "active",
+    });
+    users.set("auditor@test.vn", {
+      id: "usr-auditor",
+      email: "auditor@test.vn",
+      passwordHash,
+      roleId: "auditor",
+      organizationId: "org-inspector",
+      status: "active",
+    });
+
+    // 1. Unauthenticated request -> 401
+    const unauthRes = await request(app)
+      .patch("/api/lots/LOT-001/coordinates")
+      .send({ coordinates: "21.5750, 105.6905" });
+    assert.equal(unauthRes.status, 401, "Chưa đăng nhập phải bị chặn 401");
+
+    // 2. Inspector (chỉ đọc) -> 403
+    const inspectorAgent = request.agent(app);
+    await inspectorAgent.post("/api/login").send({ email: "inspector@test.vn", password: "Password123!" });
+    const inspectorRes = await inspectorAgent
+      .patch("/api/lots/LOT-001/coordinates")
+      .send({ coordinates: "21.5750, 105.6905" });
+    assert.equal(inspectorRes.status, 403, "Inspector không được sửa tọa độ");
+
+    // 3. Auditor (chỉ đọc) -> 403
+    const auditorAgent = request.agent(app);
+    await auditorAgent.post("/api/login").send({ email: "auditor@test.vn", password: "Password123!" });
+    const auditorRes = await auditorAgent
+      .patch("/api/lots/LOT-001/coordinates")
+      .send({ coordinates: "21.5750, 105.6905" });
+    assert.equal(auditorRes.status, 403, "Auditor không được sửa tọa độ");
+
+    // 4. Tổ chức khác (org-002) cố sửa lô của org-001 -> 403
+    const coopAgent = request.agent(app);
+    await coopAgent.post("/api/login").send({ email: "coop_org2@test.vn", password: "Password123!" });
+    const crossRes = await coopAgent
+      .patch("/api/lots/LOT-001/coordinates")
+      .send({ coordinates: "21.5750, 105.6905" });
+    assert.equal(crossRes.status, 403, "Tổ chức không sở hữu lô phải bị 403");
+
+    // 5. Lô không tồn tại -> 404
+    const prodAgent = request.agent(app);
+    await prodAgent.post("/api/login").send({ email: "producer_org1@test.vn", password: "Password123!" });
+    const notFoundRes = await prodAgent
+      .patch("/api/lots/LOT-NON-EXISTENT/coordinates")
+      .send({ coordinates: "21.5750, 105.6905" });
+    assert.equal(notFoundRes.status, 404, "Lô không tồn tại phải trả 404");
+
+    // 6. Định dạng tọa độ sai -> 400
+    const invalidRes = await prodAgent
+      .patch("/api/lots/LOT-001/coordinates")
+      .send({ coordinates: "invalid-coords" });
+    assert.equal(invalidRes.status, 400, "Tọa độ sai định dạng phải trả 400");
+  });
+
+  await t.test("13. PATCH /api/lots/:id/coordinates - Cập nhật tọa độ thành công, audit log và hiển thị trên bản đồ", async () => {
+    const prodAgent = request.agent(app);
+    await prodAgent.post("/api/login").send({ email: "producer_org1@test.vn", password: "Password123!" });
+
+    const auditCountBefore = inMemoryAuditLogs.length;
+
+    const res = await prodAgent
+      .patch("/api/lots/LOT-001/coordinates")
+      .send({
+        coordinates: "21.5750, 105.6905",
+        name: "Vùng trồng thử nghiệm Nông trại 1",
+        address: "Xã Hùng Sơn, Đại Từ, Thái Nguyên",
+        type: "farm",
+      });
+
+    assert.equal(res.status, 200);
+    assert.equal(res.body.success, true);
+    assert.equal(res.body.coordinates.lat, 21.575);
+    assert.equal(res.body.coordinates.lng, 105.6905);
+
+    // Kiểm tra audit log (lưu ý audit_logger dùng unshift nên log mới nhất ở index 0)
+    assert.ok(inMemoryAuditLogs.length > auditCountBefore, "Audit log phải được ghi nhận");
+    const lastLog = inMemoryAuditLogs[0];
+    assert.equal(lastLog.action, "UPDATE_LOT_COORDINATES");
+    assert.equal(lastLog.actorUserId, "usr-prod-org1");
+    assert.equal(lastLog.resourceId, "LOT-001");
+    assert.equal(lastLog.details.name, "Vùng trồng thử nghiệm Nông trại 1");
+
+    // Kiểm tra API công khai đọc được tọa độ mới
+    const mapRes = await request(app).get("/api/public/lots/LOT-001/map");
+    assert.equal(mapRes.status, 200);
+    const origin = mapRes.body.origins[0];
+    assert.equal(origin.hasCoordinates, true);
+    assert.equal(origin.coordinates.lat, 21.575);
+    assert.equal(origin.coordinates.lng, 105.6905);
+  });
+
+  await t.test("14. PATCH /api/lots/:id/coordinates - Xử lý lỗi DB và bảo vệ toàn vẹn RAM", async () => {
+    const prodAgent = request.agent(app);
+    await prodAgent.post("/api/login").send({ email: "producer_org1@test.vn", password: "Password123!" });
+
+    const lotBefore = inMemoryLots.find((l) => l.id === "LOT-002");
+    const originalCustom = lotBefore ? lotBefore.customCoordinates : undefined;
+
+    // Giả lập pool ném lỗi (ví dụ thiếu cột hoặc lỗi kết nối DB)
+    const mockFaultyPool = {
+      async query(sql) {
+        if (sql.includes("SELECT * FROM lots")) {
+          return { rows: [{ id: "LOT-002", organization_id: "org-001" }] };
+        }
+        if (sql.includes("UPDATE lots SET custom_coordinates")) {
+          throw new Error("column \"custom_coordinates\" of relation \"lots\" does not exist");
+        }
+        return { rows: [] };
+      },
+    };
+
+    setDatabasePool(mockFaultyPool);
+
+    try {
+      const res = await prodAgent
+        .patch("/api/lots/LOT-002/coordinates")
+        .send({
+          coordinates: "21.6000, 105.7000",
+          name: "Vùng chè lỗi DB",
+        });
+
+      assert.equal(res.status, 500, "Lỗi DB phải trả mã 500 thay vì 200");
+      assert.equal(res.body.error, "DATABASE_ERROR");
+      assert.match(res.body.message, /custom_coordinates/);
+
+      // RAM không được cập nhật trước khi DB thành công
+      const lotAfter = inMemoryLots.find((l) => l.id === "LOT-002");
+      assert.deepEqual(lotAfter.customCoordinates, originalCustom, "RAM không được cập nhật nếu DB bị lỗi");
+    } finally {
+      setDatabasePool(null);
+    }
+  });
+
+  await t.test("15. getPublicLotMapData đọc l.custom_coordinates từ kết quả SELECT PostgreSQL", async () => {
+    let queriedCustomCoordinates = false;
+    const lotRow = {
+      id: "LOT-DB-TEST",
+      name: "Lô kiểm thử đọc DB",
+      status: "Đã thu hoạch",
+      organization_id: "org-001",
+      organization_name: "Nông trại Thái Nguyên",
+      farm_id: null,
+      farm_name: "Thửa trồng chưa có tọa độ đại diện",
+      farm_coordinates: null,
+      farm_area: 2.5,
+      product_id: "PROD-TEA",
+      product_name: "Chè búp",
+      product_unit: "kg",
+      initial_quantity: 100,
+      remaining_quantity: 100,
+      harvested_at: "2026-10-10",
+      parent_lot_id: null,
+      location_id: null,
+      created_at: new Date().toISOString(),
+      custom_coordinates: {
+        lat: 21.5432,
+        lng: 105.7654,
+        name: "Điểm ghim DB chính xác",
+        type: "farm",
+      },
+    };
+
+    const mockDbPool = {
+      async query(sql) {
+        if (sql.includes("UPPER(l.id) = UPPER($1)")) {
+          queriedCustomCoordinates = sql.includes("l.custom_coordinates");
+          return { rows: [lotRow] };
+        }
+        if (sql.includes("WHERE l.id = ANY($1)")) {
+          return { rows: [lotRow] };
+        }
+        return { rows: [] };
+      },
+    };
+
+    const mapData = await getPublicLotMapData({
+      pool: mockDbPool,
+      lotCode: "LOT-DB-TEST",
+      inMemoryLots: [],
+      inMemoryBatchRelations: [],
+      inMemoryBatchEvents: [],
+      inMemoryOrgs: [],
+      inMemoryProducts: [],
+      inMemoryFarms: [],
+      inMemoryLocations: [],
+    });
+
+    assert.ok(queriedCustomCoordinates, "Câu SQL trong public_trace_map phải SELECT l.custom_coordinates");
+    assert.ok(mapData);
+    assert.equal(mapData.lot.code, "LOT-DB-TEST");
+    assert.ok(mapData.origins.length > 0);
+    assert.equal(mapData.origins[0].hasCoordinates, true);
+    assert.equal(mapData.origins[0].coordinates.lat, 21.5432);
+    assert.equal(mapData.origins[0].coordinates.lng, 105.7654);
   });
 });
