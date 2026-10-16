@@ -172,22 +172,36 @@
   function normalizeShipment(raw) {
     if (!raw || typeof raw !== "object") return null;
 
+    const coldBox = raw.containerId || raw.container_id || raw.coldBoxId || raw.cold_box_id || (raw.container && raw.container.id) || "N/A";
+    const originLoc = raw.origin || raw.originLocationId || raw.origin_location_id || raw.fromLocation || raw.source_location || "N/A";
+    const destLoc = raw.destination || raw.destinationLocationId || raw.destination_location_id || raw.toLocation || raw.dest_location || "N/A";
+    const depTime = raw.departureTime || raw.departure_time || raw.startedAt || raw.started_at || raw.createdAt || raw.created_at || new Date().toISOString();
+
+    const lots = Array.isArray(raw.lots) ? raw.lots : [];
+    const lotIds = Array.isArray(raw.lotIds)
+      ? raw.lotIds
+      : lots.map(l => (typeof l === "object" ? (l.id || l.lotId || l.lot_id || l.code) : l)).filter(Boolean);
+
     return {
       id: raw.id || raw.shipmentId || raw.code,
       code: raw.code || raw.shipmentCode || raw.id,
-      containerId: raw.containerId || raw.container_id || (raw.container && raw.container.id) || "N/A",
-      containerName: (raw.container && raw.container.name) || raw.containerName || raw.containerId || "Thùng lạnh tiêu chuẩn",
+      containerId: coldBox,
+      coldBoxId: coldBox,
+      containerName: (raw.container && raw.container.name) || raw.containerName || coldBox || "Thùng lạnh tiêu chuẩn",
       containerTempRange: raw.containerTempRange || (raw.container ? `${raw.container.tempMin}°C - ${raw.container.tempMax}°C` : "2°C - 8°C"),
       currentTemp: typeof raw.currentTemp === "number" ? raw.currentTemp : (raw.current_temp || 4.2),
       status: (raw.status || "IN_TRANSIT").toUpperCase(), // IN_TRANSIT, COMPLETED, SCHEDULED, ALERT
-      origin: raw.origin || raw.fromLocation || raw.source_location || "N/A",
-      destination: raw.destination || raw.toLocation || raw.dest_location || "N/A",
-      departureTime: raw.departureTime || raw.departure_time || raw.startedAt || raw.createdAt || new Date().toISOString(),
+      origin: originLoc,
+      originLocationId: originLoc,
+      destination: destLoc,
+      destinationLocationId: destLoc,
+      departureTime: depTime,
+      startedAt: depTime,
       completedAt: raw.completedAt || raw.completed_at || null,
       driverName: raw.driverName || raw.driver_name || raw.driver || "Chưa phân công",
       vehiclePlate: raw.vehiclePlate || raw.vehicle_plate || raw.vehicle || "N/A",
-      lotIds: Array.isArray(raw.lotIds) ? raw.lotIds : (Array.isArray(raw.lots) ? raw.lots.map(l => (typeof l === "object" ? l.id : l)) : []),
-      lots: Array.isArray(raw.lots) ? raw.lots : [],
+      lotIds,
+      lots,
       notes: raw.notes || "",
       createdAt: raw.createdAt || raw.created_at || new Date().toISOString(),
       organizationId: raw.organizationId || raw.organization_id || "",
@@ -217,6 +231,16 @@
           success: false,
           isUnauthorized: true,
           message: "Phiên làm việc đã hết hạn. Vui lòng đăng nhập lại.",
+          shipments: [],
+        };
+      }
+
+      if (res.status === 403) {
+        const errJson = await res.json().catch(() => ({}));
+        return {
+          success: false,
+          isForbidden: true,
+          message: errJson.message || "Bạn không có quyền xem danh sách chuyến vận chuyển.",
           shipments: [],
         };
       }
@@ -313,6 +337,19 @@
         credentials: "same-origin",
       });
 
+      if (res.status === 401) {
+        return { success: false, isUnauthorized: true, message: "Phiên làm việc đã hết hạn. Vui lòng đăng nhập lại." };
+      }
+
+      if (res.status === 403) {
+        const errJson = await res.json().catch(() => ({}));
+        return {
+          success: false,
+          isForbidden: true,
+          message: errJson.message || "Bạn không có quyền truy cập thông tin chuyến vận chuyển này.",
+        };
+      }
+
       if (res.ok) {
         const data = await res.json();
         const shipment = normalizeShipment(data.shipment || data);
@@ -327,11 +364,12 @@
             return { success: true, isSandboxMode: true, shipment: found };
           }
         }
+        const errJson = await res.json().catch(() => ({}));
         return {
           success: false,
-          isWaitingContract: true,
+          isWaitingContract: res.status === 501,
           contractDoc: CONTRACT_DOC_PATH,
-          message: `Không tìm thấy chuyến hoặc Backend chưa hỗ trợ endpoint chi tiết (${CONTRACT_DOC_PATH}).`,
+          message: errJson.message || `Không tìm thấy chuyến hoặc Backend chưa hỗ trợ endpoint chi tiết (${CONTRACT_DOC_PATH}).`,
         };
       }
 
@@ -433,11 +471,15 @@
     const bodyData = {
       code: payload.shipmentCode.trim(),
       containerId: payload.containerId.trim(),
+      coldBoxId: payload.containerId.trim(),
       lotIds: payload.lotIds,
       origin: payload.origin.trim(),
+      originLocationId: payload.origin.trim(),
       destination: payload.destination.trim(),
+      destinationLocationId: payload.destination.trim(),
       departureTime: new Date(payload.departureTime).toISOString(),
       driverName: (payload.driverName || "").trim(),
+      driverPhone: (payload.driverPhone || "").trim(),
       vehiclePlate: (payload.vehiclePlate || "").trim(),
       notes: (payload.notes || "").trim(),
     };
@@ -458,6 +500,25 @@
           success: false,
           isUnauthorized: true,
           message: "Phiên làm việc đã hết hạn. Vui lòng đăng nhập lại.",
+        };
+      }
+
+      if (res.status === 403) {
+        const errJson = await res.json().catch(() => ({}));
+        return {
+          success: false,
+          isForbidden: true,
+          message: errJson.message || "Tài khoản của bạn không có quyền mở chuyến vận chuyển.",
+        };
+      }
+
+      if (res.status === 409) {
+        const errJson = await res.json().catch(() => ({}));
+        return {
+          success: false,
+          isConflict: true,
+          error: errJson.error || "LOT_ALREADY_IN_ACTIVE_SHIPMENT",
+          message: errJson.message || "Một hoặc nhiều lô hàng đã được gắn vào chuyến vận chuyển đang hoạt động khác.",
         };
       }
 
@@ -489,18 +550,21 @@
             id: `shp-${Date.now()}`,
             code: bodyData.code,
             containerId: bodyData.containerId,
+            coldBoxId: bodyData.coldBoxId,
             lotIds: bodyData.lotIds,
             lots: (payload.selectedLotsList || []).map(l => ({
               id: l.id,
+              lotId: l.id,
               name: l.name,
               product_name: l.product_name || l.productName,
-              quantity: l.current_quantity || l.quantity,
+              quantity: l.current_quantity != null ? l.current_quantity : (l.remaining_quantity != null ? l.remaining_quantity : (l.quantity || 0)),
               unit: l.unit || "kg",
             })),
             origin: bodyData.origin,
             destination: bodyData.destination,
             departureTime: bodyData.departureTime,
             driverName: bodyData.driverName,
+            driverPhone: bodyData.driverPhone,
             vehiclePlate: bodyData.vehiclePlate,
             notes: bodyData.notes,
             status: "IN_TRANSIT",
@@ -526,10 +590,11 @@
         };
       }
 
-      const errText = await res.text();
+      const errJson = await res.json().catch(() => null);
+      const errText = errJson ? errJson.message : await res.text().catch(() => "");
       return {
         success: false,
-        message: `Lỗi máy chủ (${res.status}): ${errText || "Không thể tạo chuyến"}`,
+        message: errText || `Lỗi máy chủ (${res.status}): Không thể tạo chuyến`,
       };
     } catch (err) {
       if (isSandboxMode()) {
@@ -538,12 +603,14 @@
           id: `shp-${Date.now()}`,
           code: bodyData.code,
           containerId: bodyData.containerId,
+          coldBoxId: bodyData.coldBoxId,
           lotIds: bodyData.lotIds,
           lots: (payload.selectedLotsList || []),
           origin: bodyData.origin,
           destination: bodyData.destination,
           departureTime: bodyData.departureTime,
           driverName: bodyData.driverName,
+          driverPhone: bodyData.driverPhone,
           vehiclePlate: bodyData.vehiclePlate,
           notes: bodyData.notes,
           status: "IN_TRANSIT",
@@ -583,10 +650,35 @@
     try {
       const res = await fetch(`/api/shipments/${encodeURIComponent(shipmentId)}/complete`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
         credentials: "same-origin",
         body: JSON.stringify(data),
       });
+
+      if (res.status === 401) {
+        return {
+          success: false,
+          isUnauthorized: true,
+          message: "Phiên làm việc đã hết hạn. Vui lòng đăng nhập lại.",
+        };
+      }
+
+      if (res.status === 403) {
+        const errJson = await res.json().catch(() => ({}));
+        return {
+          success: false,
+          isForbidden: true,
+          message: errJson.message || "Tài khoản của bạn không có quyền kết thúc chuyến vận chuyển.",
+        };
+      }
+
+      if (res.status === 400 || res.status === 422) {
+        const errJson = await res.json().catch(() => ({}));
+        return {
+          success: false,
+          message: errJson.message || "Không thể kết thúc chuyến vận chuyển (chuyến có thể đã kết thúc).",
+        };
+      }
 
       if (res.ok) {
         const resData = await res.json();
@@ -613,15 +705,17 @@
             };
           }
         }
+        const errJson = await res.json().catch(() => ({}));
         return {
           success: false,
-          isWaitingContract: true,
+          isWaitingContract: res.status === 501,
           contractDoc: CONTRACT_DOC_PATH,
-          message: `Backend chưa hoàn tất API kết thúc chuyến theo ${CONTRACT_DOC_PATH}.`,
+          message: errJson.message || (res.status === 404 ? "Không tìm thấy chuyến vận chuyển yêu cầu." : `Backend chưa hoàn tất API kết thúc chuyến theo ${CONTRACT_DOC_PATH}.`),
         };
       }
 
-      return { success: false, message: `Lỗi kết thúc chuyến (HTTP ${res.status}).` };
+      const errJson = await res.json().catch(() => null);
+      return { success: false, message: (errJson && errJson.message) || `Lỗi kết thúc chuyến (HTTP ${res.status}).` };
     } catch (err) {
       if (isSandboxMode()) {
         const list = getSandboxShipments();
@@ -664,7 +758,7 @@
             id: l.id,
             name: l.name || l.id,
             product_name: l.product_name || l.productName || "Nông sản sạch",
-            current_quantity: l.current_quantity || l.quantity || 0,
+            current_quantity: l.current_quantity != null ? l.current_quantity : (l.remaining_quantity != null ? l.remaining_quantity : (l.quantity || 0)),
             unit: l.unit || "kg",
             status: l.status || "ACTIVE",
             harvested_at: l.harvested_at || l.harvestDate || l.created_at,
