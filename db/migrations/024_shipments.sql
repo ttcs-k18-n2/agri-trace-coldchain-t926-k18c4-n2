@@ -39,6 +39,11 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_active_shipment_per_lot
 ON shipment_lots (lot_id) 
 WHERE is_active = TRUE;
 
+-- Ràng buộc cốt lõi chặn một thùng lạnh tham gia 2 chuyến đang hoạt động đồng thời (S-40 AC-S40-05 / TC-S40-10)
+CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_active_shipment_per_cold_box
+ON shipments (cold_box_id)
+WHERE status = 'IN_TRANSIT';
+
 -- Các index phục vụ tìm kiếm và báo cáo
 CREATE INDEX IF NOT EXISTS idx_shipments_org ON shipments(organization_id);
 CREATE INDEX IF NOT EXISTS idx_shipments_status ON shipments(status);

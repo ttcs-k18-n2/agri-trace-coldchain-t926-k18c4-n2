@@ -6770,6 +6770,66 @@ app.get(
   }
 );
 
+/**
+ * Danh mục thùng lạnh tiêu chuẩn chuỗi lạnh phục vụ S-40 (Jira N2-211)
+ */
+app.get(
+  "/api/cold-containers",
+  requirePermission(["producer", "cooperative", "transporter", "distributor", "inspector", "org_admin", "admin"]),
+  async (_req, res) => {
+    return res.status(200).json({
+      success: true,
+      containers: [
+        {
+          id: "CONT-COLD-01",
+          name: "Thùng lạnh chuyên dụng 50L (Vắc-xin & Nông sản nhạy cảm)",
+          tempMin: 2,
+          tempMax: 8,
+          capacityLiters: 50,
+          sensorModel: "IoT DHT22 Pro",
+          status: "READY",
+        },
+        {
+          id: "CONT-COLD-02",
+          name: "Thùng lạnh siêu tốc 120L (Rau củ quả tươi cao cấp)",
+          tempMin: 0,
+          tempMax: 4,
+          capacityLiters: 120,
+          sensorModel: "PT100 Industrial",
+          status: "READY",
+        },
+        {
+          id: "CONT-FREEZE-01",
+          name: "Thùng đông sâu 200L (Thủy hải sản & Đông lạnh)",
+          tempMin: -20,
+          tempMax: -10,
+          capacityLiters: 200,
+          sensorModel: "K-Type Thermocouple",
+          status: "READY",
+        },
+        {
+          id: "CONT-CHILL-01",
+          name: "Thùng mát tiêu chuẩn 80L (Trái cây ôn đới & Nấm)",
+          tempMin: 8,
+          tempMax: 15,
+          capacityLiters: 80,
+          sensorModel: "Sensirion SHT30",
+          status: "READY",
+        },
+        {
+          id: "CBX-001",
+          name: "Thùng lạnh mẫu tiêu chuẩn S-40",
+          tempMin: 2,
+          tempMax: 4,
+          capacityLiters: 60,
+          sensorModel: "Sensirion SHT35 Pro",
+          status: "READY",
+        },
+      ],
+    });
+  }
+);
+
 async function start() {
   await seedDemoUser();
   seedDemoEvents();

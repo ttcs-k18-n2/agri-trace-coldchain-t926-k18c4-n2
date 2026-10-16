@@ -550,4 +550,200 @@ test("S-40 (Jira N2-211): Mở chuyến vận chuyển gắn nhiều lô và m�
     );
     assert.equal(adminCompleteRes.status, 200, "Admin kết thúc chuyến thành công");
   });
+
+  await t.test("8. Chặn một thùng lạnh tham gia 2 chuyến đang hoạt động đồng thời (Cold Box Concurrency Defense)", async () => {
+    setupLots();
+
+    // Mở chuyến 1 gắn thùng lạnh CBX-SHARED-01
+    const res1 = await request(
+      server,
+      {
+        hostname: "127.0.0.1",
+        port,
+        path: "/api/shipments",
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Cookie: producerCookie,
+        },
+      },
+      {
+        coldBoxId: "CBX-SHARED-01",
+        lotIds: ["LOT-S40-01"],
+        vehiclePlate: "29C-111.11",
+      }
+    );
+    assert.equal(res1.status, 201, "Mở chuyến 1 với CBX-SHARED-01 thành công");
+    const shipment1Id = res1.body.shipment.id;
+
+    // Mở chuyến 2 với cùng thùng lạnh CBX-SHARED-01 nhưng khác lô (LOT-S40-02) -> Phải bị chặn 409
+    const res2 = await request(
+      server,
+      {
+        hostname: "127.0.0.1",
+        port,
+        path: "/api/shipments",
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Cookie: producerCookie,
+        },
+      },
+      {
+        containerId: "CBX-SHARED-01", // thử cả alias containerId
+        lotIds: ["LOT-S40-02"],
+        vehiclePlate: "29C-222.22",
+      }
+    );
+    assert.equal(res2.status, 409, "Cố gắn thùng lạnh đang hoạt động phải trả về 409 Conflict");
+    assert.equal(res2.body.error, "COLD_BOX_ALREADY_IN_USE");
+    assert.equal(res2.body.activeShipmentId, shipment1Id);
+
+    // Kết thúc chuyến 1
+    const compRes = await request(
+      server,
+      {
+        hostname: "127.0.0.1",
+        port,
+        path: `/api/shipments/${shipment1Id}/complete`,
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Cookie: producerCookie,
+        },
+      },
+      { notes: "Đã dỡ hàng chuyến 1, giải phóng thùng lạnh" }
+    );
+    assert.equal(compRes.status, 200, "Kết thúc chuyến 1 thành công");
+
+    // Sau khi giải phóng, thùng lạnh CBX-SHARED-01 có thể được sử dụng lại cho chuyến mới
+    const res3 = await request(
+      server,
+      {
+        hostname: "127.0.0.1",
+        port,
+        path: "/api/shipments",
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Cookie: producerCookie,
+        },
+      },
+      {
+        coldBoxId: "CBX-SHARED-01",
+        lotIds: ["LOT-S40-02"],
+        vehiclePlate: "29C-222.22",
+      }
+    );
+    assert.equal(res3.status, 201, "Thùng lạnh đã giải phóng mở chuyến mới thành công");
+  });
+
+  await t.test("9. Chặn gắn các lô hàng thuộc nhiều tổ chức khác nhau vào cùng một chuyến vận chuyển", async () => {
+    setupLots();
+
+    // Dù là Admin, cũng không được phép gom các lô của các tổ chức khác nhau (org-001 và org-002) vào cùng một chuyến
+    const resMultiOrg = await request(
+      server,
+      {
+        hostname: "127.0.0.1",
+        port,
+        path: "/api/shipments",
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Cookie: adminCookie,
+        },
+      },
+      {
+        coldBoxId: "CBX-MULTI-ORG",
+        lotIds: ["LOT-S40-01", "LOT-S40-03"], // 01 thuộc org-001, 03 thuộc org-002
+      }
+    );
+    assert.equal(resMultiOrg.status, 400, "Gom lô nhiều tổ chức vào cùng chuyến phải trả về 400 Bad Request");
+    assert.equal(resMultiOrg.body.error, "MULTI_ORG_LOTS_NOT_ALLOWED");
+  });
+
+  await t.test("10. Tương thích định dạng trường (Aliases) và endpoint danh mục thùng lạnh", async () => {
+    setupLots();
+
+    // 10.1 Mở chuyến dùng các trường alias của frontend adapter (containerId, origin, destination)
+    const createAliasRes = await request(
+      server,
+      {
+        hostname: "127.0.0.1",
+        port,
+        path: "/api/shipments",
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Cookie: producerCookie,
+        },
+      },
+      {
+        containerId: "CONT-COLD-01",
+        lotIds: ["LOT-S40-01"],
+        origin: "Kho Mộc Châu",
+        destination: "Kho Hà Nội",
+        vehiclePlate: "29C-123.45",
+        driverName: "Tài xế Chuỗi Lạnh",
+      }
+    );
+
+    assert.equal(createAliasRes.status, 201);
+    const ship = createAliasRes.body.shipment;
+    assert.equal(ship.containerId, "CONT-COLD-01");
+    assert.equal(ship.coldBoxId, "CONT-COLD-01");
+    assert.equal(ship.origin, "Kho Mộc Châu");
+    assert.equal(ship.destination, "Kho Hà Nội");
+    assert.ok(ship.code);
+    assert.ok(ship.id);
+
+    // 10.2 Kiểm tra API chi tiết chuyến bảo toàn các trường alias và lotIds
+    const detailRes = await request(server, {
+      hostname: "127.0.0.1",
+      port,
+      path: `/api/shipments/${ship.id}`,
+      method: "GET",
+      headers: { Cookie: producerCookie },
+    });
+    assert.equal(detailRes.status, 200);
+    assert.equal(detailRes.body.shipment.containerId, "CONT-COLD-01");
+    assert.equal(detailRes.body.shipment.origin, "Kho Mộc Châu");
+    assert.equal(detailRes.body.shipment.destination, "Kho Hà Nội");
+    assert.deepEqual(detailRes.body.shipment.lotIds, ["LOT-S40-01"]);
+
+    // 10.3 Kiểm tra tìm kiếm chuyến theo từ khóa (search query)
+    const searchRes = await request(server, {
+      hostname: "127.0.0.1",
+      port,
+      path: "/api/shipments?search=29C-123.45",
+      method: "GET",
+      headers: { Cookie: producerCookie },
+    });
+    assert.equal(searchRes.status, 200);
+    assert.equal(searchRes.body.total, 1);
+    assert.equal(searchRes.body.data[0].id, ship.id);
+
+    // 10.4 Kiểm tra endpoint GET /api/cold-containers
+    const unauthContainers = await request(server, {
+      hostname: "127.0.0.1",
+      port,
+      path: "/api/cold-containers",
+      method: "GET",
+    });
+    assert.equal(unauthContainers.status, 401, "Truy cập cold-containers khi chưa đăng nhập phải trả về 401");
+
+    const authContainers = await request(server, {
+      hostname: "127.0.0.1",
+      port,
+      path: "/api/cold-containers",
+      method: "GET",
+      headers: { Cookie: producerCookie },
+    });
+    assert.equal(authContainers.status, 200, "Đăng nhập truy cập cold-containers thành công");
+    assert.equal(authContainers.body.success, true);
+    assert.ok(Array.isArray(authContainers.body.containers));
+    assert.ok(authContainers.body.containers.some((c) => c.id === "CONT-COLD-01"));
+  });
 });
+

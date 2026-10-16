@@ -80,12 +80,16 @@ async function createShipment({
     notes,
   } = data;
 
-  const cleanColdBoxId = typeof coldBoxId === "string" ? coldBoxId.trim() : null;
+  const rawColdBoxId = coldBoxId || data.containerId;
+  const rawOrigin = originLocationId || data.origin;
+  const rawDest = destinationLocationId || data.destination;
+
+  const cleanColdBoxId = typeof rawColdBoxId === "string" ? rawColdBoxId.trim() : null;
   const plate = typeof vehiclePlate === "string" ? vehiclePlate.trim() : (typeof licensePlate === "string" ? licensePlate.trim() : null);
   const cleanDriver = typeof driverName === "string" ? driverName.trim() : null;
   const cleanPhone = typeof driverPhone === "string" ? driverPhone.trim() : null;
-  const cleanOrigin = typeof originLocationId === "string" ? originLocationId.trim() : null;
-  const cleanDest = typeof destinationLocationId === "string" ? destinationLocationId.trim() : null;
+  const cleanOrigin = typeof rawOrigin === "string" ? rawOrigin.trim() : null;
+  const cleanDest = typeof rawDest === "string" ? rawDest.trim() : null;
   const cleanNotes = typeof notes === "string" ? notes.trim() : null;
 
   // 1. Kiểm tra đầu vào cơ bản
@@ -197,6 +201,17 @@ async function createShipment({
         };
       }
 
+      // Kiểm tra tất cả các lô hàng trong cùng một chuyến phải thuộc cùng một tổ chức
+      const distinctOrgIds = Array.from(new Set(lotsRes.rows.map((l) => l.organization_id)));
+      if (distinctOrgIds.length > 1) {
+        if (shouldManageTx) await dbClient.query("ROLLBACK");
+        return {
+          status: 400,
+          error: "MULTI_ORG_LOTS_NOT_ALLOWED",
+          message: "Tất cả các lô hàng trong cùng một chuyến vận chuyển phải thuộc cùng một tổ chức quản lý.",
+        };
+      }
+
       // 3.3 Kiểm tra trạng thái đã tiêu thụ của lô hàng
       const consumedLots = lotsRes.rows.filter((l) => {
         const remainingVal = Number(
@@ -238,6 +253,24 @@ async function createShipment({
             lotId: r.lot_id,
             activeShipmentId: r.shipment_id,
           })),
+        };
+      }
+
+      // 3.4.1 Kiểm tra thùng lạnh có đang bận trên chuyến khác (S-40 AC-S40-05 / TC-S40-10)
+      const activeColdBoxCheck = await dbClient.query(
+        `SELECT id FROM shipments
+         WHERE cold_box_id = $1 AND status = 'IN_TRANSIT'
+         LIMIT 1
+         FOR UPDATE`,
+        [cleanColdBoxId]
+      );
+      if (activeColdBoxCheck.rows.length > 0) {
+        if (shouldManageTx) await dbClient.query("ROLLBACK");
+        return {
+          status: 409,
+          error: "COLD_BOX_ALREADY_IN_USE",
+          message: `Thùng lạnh '${cleanColdBoxId}' đang tham gia một chuyến vận chuyển khác đang hoạt động.`,
+          activeShipmentId: activeColdBoxCheck.rows[0].id,
         };
       }
 
@@ -353,7 +386,9 @@ async function createShipment({
       const shipRow = insertShipRes.rows[0];
       const resultPayload = {
         id: shipRow.id,
+        code: shipRow.id,
         coldBoxId: shipRow.cold_box_id,
+        containerId: shipRow.cold_box_id,
         status: shipRow.status,
         organizationId: shipRow.organization_id,
         organizationName: orgName,
@@ -361,7 +396,9 @@ async function createShipment({
         driverName: shipRow.driver_name,
         driverPhone: shipRow.driver_phone,
         originLocationId: shipRow.origin_location_id,
+        origin: shipRow.origin_location_id,
         destinationLocationId: shipRow.destination_location_id,
+        destination: shipRow.destination_location_id,
         notes: shipRow.notes,
         createdByUserId: shipRow.created_by_user_id,
         startedAt: shipRow.started_at ? new Date(shipRow.started_at).toISOString() : nowIso,
@@ -384,8 +421,15 @@ async function createShipment({
       }
       if (
         txErr.code === "23505" ||
-        (txErr.message && txErr.message.includes("idx_unique_active_shipment_per_lot"))
+        (txErr.message && (txErr.message.includes("idx_unique_active_shipment_per_lot") || txErr.message.includes("idx_unique_active_shipment_per_cold_box")))
       ) {
+        if (txErr.message && txErr.message.includes("idx_unique_active_shipment_per_cold_box")) {
+          return {
+            status: 409,
+            error: "COLD_BOX_ALREADY_IN_USE",
+            message: `Thùng lạnh '${cleanColdBoxId}' đang tham gia một chuyến vận chuyển khác đang hoạt động.`,
+          };
+        }
         return {
           status: 409,
           error: "LOT_ALREADY_IN_ACTIVE_SHIPMENT",
@@ -428,6 +472,16 @@ async function createShipment({
       };
     }
 
+    // Kiểm tra tất cả các lô hàng trong cùng một chuyến phải thuộc cùng một tổ chức
+    const distinctOrgIds = Array.from(new Set(foundLots.map((l) => l.organizationId || l.organization_id)));
+    if (distinctOrgIds.length > 1) {
+      return {
+        status: 400,
+        error: "MULTI_ORG_LOTS_NOT_ALLOWED",
+        message: "Tất cả các lô hàng trong cùng một chuyến vận chuyển phải thuộc cùng một tổ chức quản lý.",
+      };
+    }
+
     // Kiểm tra đã tiêu thụ
     const consumedLots = foundLots.filter((l) => {
       const remainingVal = Number(
@@ -466,6 +520,19 @@ async function createShipment({
       };
     }
 
+    // Kiểm tra thùng lạnh có đang bận trên chuyến khác (S-40 AC-S40-05 / TC-S40-10)
+    const activeColdBox = inMemoryShipments.find(
+      (s) => s.coldBoxId === cleanColdBoxId && s.status === "IN_TRANSIT"
+    );
+    if (activeColdBox) {
+      return {
+        status: 409,
+        error: "COLD_BOX_ALREADY_IN_USE",
+        message: `Thùng lạnh '${cleanColdBoxId}' đang tham gia một chuyến vận chuyển khác đang hoạt động.`,
+        activeShipmentId: activeColdBox.id,
+      };
+    }
+
     const shipOrgId = isAdmin
       ? (foundLots[0].organizationId || foundLots[0].organization_id)
       : userOrgId;
@@ -475,7 +542,9 @@ async function createShipment({
 
     const newShipment = {
       id: shipmentId,
+      code: shipmentId,
       coldBoxId: cleanColdBoxId,
+      containerId: cleanColdBoxId,
       status: "IN_TRANSIT",
       organizationId: shipOrgId,
       organizationName: orgName,
@@ -483,7 +552,9 @@ async function createShipment({
       driverName: cleanDriver,
       driverPhone: cleanPhone,
       originLocationId: cleanOrigin,
+      origin: cleanOrigin,
       destinationLocationId: cleanDest,
+      destination: cleanDest,
       notes: cleanNotes,
       createdByUserId: userId,
       completedByUserId: null,
@@ -618,8 +689,9 @@ async function completeShipment({
     };
   }
 
+  const rawDest = data.destinationLocationId || data.destination;
   const cleanNotes = typeof data.notes === "string" ? data.notes.trim() : null;
-  const cleanDest = typeof data.destinationLocationId === "string" ? data.destinationLocationId.trim() : null;
+  const cleanDest = typeof rawDest === "string" ? rawDest.trim() : null;
   const now = new Date();
   const nowIso = now.toISOString();
 
@@ -765,14 +837,18 @@ async function completeShipment({
       const updatedRow = updateShipRes.rows[0];
       const resultPayload = {
         id: updatedRow.id,
+        code: updatedRow.id,
         coldBoxId: updatedRow.cold_box_id,
+        containerId: updatedRow.cold_box_id,
         status: updatedRow.status,
         organizationId: updatedRow.organization_id,
         vehiclePlate: updatedRow.vehicle_plate,
         driverName: updatedRow.driver_name,
         driverPhone: updatedRow.driver_phone,
         originLocationId: updatedRow.origin_location_id,
+        origin: updatedRow.origin_location_id,
         destinationLocationId: updatedRow.destination_location_id,
+        destination: updatedRow.destination_location_id,
         notes: updatedRow.notes,
         createdByUserId: updatedRow.created_by_user_id,
         completedByUserId: updatedRow.completed_by_user_id,
@@ -833,7 +909,10 @@ async function completeShipment({
   shipment.completedByUserId = userId;
   shipment.updatedAt = nowIso;
   if (cleanNotes) shipment.notes = cleanNotes;
-  if (cleanDest) shipment.destinationLocationId = cleanDest;
+  if (cleanDest) {
+    shipment.destinationLocationId = cleanDest;
+    shipment.destination = cleanDest;
+  }
 
   const attachedLots = inMemoryShipmentLots.filter((sl) => sl.shipmentId === shipmentId);
   const completedLotsMeta = [];
@@ -925,7 +1004,10 @@ async function getShipments({
   );
   const userOrgId = authContext ? (authContext.organizationId || authContext.organization_id) : null;
 
-  const { status, coldBoxId, lotId, limit = 50, offset = 0 } = filters;
+  const rawColdBoxId = filters.coldBoxId || filters.containerId;
+  const { status, lotId, limit = 50, offset = 0, search } = filters;
+  const coldBoxId = typeof rawColdBoxId === "string" ? rawColdBoxId.trim() : null;
+  const cleanSearch = typeof search === "string" ? search.trim() : null;
   const safeLimit = Math.max(1, Math.min(Number(limit) || 50, 200));
   const safeOffset = Math.max(0, Number(offset) || 0);
 
@@ -957,6 +1039,11 @@ async function getShipments({
       conditions.push(`EXISTS (SELECT 1 FROM shipment_lots sl WHERE sl.shipment_id = s.id AND sl.lot_id = $${params.length})`);
     }
 
+    if (cleanSearch) {
+      params.push(`%${cleanSearch}%`);
+      conditions.push(`(s.id ILIKE $${params.length} OR s.cold_box_id ILIKE $${params.length} OR s.vehicle_plate ILIKE $${params.length} OR s.driver_name ILIKE $${params.length})`);
+    }
+
     const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
 
     const countSql = `SELECT COUNT(*)::int AS total FROM shipments s ${whereClause}`;
@@ -984,7 +1071,9 @@ async function getShipments({
     const dataRes = await pool.query(dataSql, [...params, safeLimit, safeOffset]);
     const items = dataRes.rows.map((r) => ({
       id: r.id,
+      code: r.id,
       coldBoxId: r.cold_box_id,
+      containerId: r.cold_box_id,
       status: r.status,
       organizationId: r.organization_id,
       organizationName: r.organization_name || r.organization_id,
@@ -992,7 +1081,9 @@ async function getShipments({
       driverName: r.driver_name,
       driverPhone: r.driver_phone,
       originLocationId: r.origin_location_id,
+      origin: r.origin_location_id,
       destinationLocationId: r.destination_location_id,
+      destination: r.destination_location_id,
       notes: r.notes,
       lotCount: r.lot_count,
       lots: r.lots,
@@ -1006,6 +1097,8 @@ async function getShipments({
       success: true,
       data: items,
       shipments: items,
+      total,
+      count: total,
       pagination: {
         total,
         limit: safeLimit,
@@ -1043,11 +1136,25 @@ async function getShipments({
     });
   }
 
+  if (cleanSearch) {
+    const q = cleanSearch.toLowerCase();
+    filtered = filtered.filter((s) =>
+      (s.id && s.id.toLowerCase().includes(q)) ||
+      (s.coldBoxId && s.coldBoxId.toLowerCase().includes(q)) ||
+      (s.vehiclePlate && s.vehiclePlate.toLowerCase().includes(q)) ||
+      (s.driverName && s.driverName.toLowerCase().includes(q))
+    );
+  }
+
   const total = filtered.length;
   const paginated = filtered.slice(safeOffset, safeOffset + safeLimit).map((s) => {
     const attached = inMemoryShipmentLots.filter((sl) => sl.shipmentId === s.id);
     return {
       ...s,
+      code: s.id,
+      containerId: s.coldBoxId,
+      origin: s.originLocationId,
+      destination: s.destinationLocationId,
       organizationName: orgMap[s.organizationId] || s.organizationId,
       lotCount: attached.length,
       lots: attached.map((sl) => ({ lotId: sl.lotId, status: sl.status, isActive: sl.isActive })),
@@ -1059,6 +1166,8 @@ async function getShipments({
     success: true,
     data: paginated,
     shipments: paginated,
+    total,
+    count: total,
     pagination: {
       total,
       limit: safeLimit,
@@ -1127,7 +1236,9 @@ async function getShipmentById({
 
     const shipmentPayload = {
       id: ship.id,
+      code: ship.id,
       coldBoxId: ship.cold_box_id,
+      containerId: ship.cold_box_id,
       status: ship.status,
       organizationId: ship.organization_id,
       organizationName: ship.organization_name || ship.organization_id,
@@ -1135,8 +1246,11 @@ async function getShipmentById({
       driverName: ship.driver_name,
       driverPhone: ship.driver_phone,
       originLocationId: ship.origin_location_id,
+      origin: ship.origin_location_id,
       destinationLocationId: ship.destination_location_id,
+      destination: ship.destination_location_id,
       notes: ship.notes,
+      lotIds: lotsRes.rows.map((r) => r.lot_id),
       createdByUserId: ship.created_by_user_id,
       completedByUserId: ship.completed_by_user_id,
       startedAt: ship.started_at ? new Date(ship.started_at).toISOString() : null,
@@ -1184,6 +1298,11 @@ async function getShipmentById({
   const orgMap = await getOrganizationMap(null, inMemoryOrgs);
   const shipmentPayload = {
     ...ship,
+    code: ship.id,
+    containerId: ship.coldBoxId,
+    origin: ship.originLocationId,
+    destination: ship.destinationLocationId,
+    lotIds: attached.map((sl) => sl.lotId),
     organizationName: orgMap[ship.organizationId] || ship.organizationId,
     lots: attached.map((sl) => ({
       lotId: sl.lotId,
@@ -1227,11 +1346,17 @@ async function getActiveShipmentForLot({ pool = null, lotId }) {
       hasActiveShipment: true,
       shipment: {
         id: r.id,
+        code: r.id,
         coldBoxId: r.cold_box_id,
+        containerId: r.cold_box_id,
         status: r.status,
         vehiclePlate: r.vehicle_plate,
         driverName: r.driver_name,
         driverPhone: r.driver_phone,
+        originLocationId: r.origin_location_id,
+        origin: r.origin_location_id,
+        destinationLocationId: r.destination_location_id,
+        destination: r.destination_location_id,
         startedAt: r.started_at ? new Date(r.started_at).toISOString() : null,
       },
     };
@@ -1252,11 +1377,17 @@ async function getActiveShipmentForLot({ pool = null, lotId }) {
     hasActiveShipment: true,
     shipment: {
       id: shipment.id,
+      code: shipment.id,
       coldBoxId: shipment.coldBoxId,
+      containerId: shipment.coldBoxId,
       status: shipment.status,
       vehiclePlate: shipment.vehiclePlate,
       driverName: shipment.driverName,
       driverPhone: shipment.driverPhone,
+      originLocationId: shipment.originLocationId,
+      origin: shipment.originLocationId,
+      destinationLocationId: shipment.destinationLocationId,
+      destination: shipment.destinationLocationId,
       startedAt: shipment.startedAt,
     },
   };

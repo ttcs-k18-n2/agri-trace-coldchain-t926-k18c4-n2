@@ -132,6 +132,54 @@ test("S-60: Migration 023 creates public_map_areas table and index with rollback
   );
 });
 
+test("S-40: Migration 024 creates shipments and shipment_lots tables with rollback adhering to project convention", () => {
+  const fs = require("node:fs");
+  const path = require("node:path");
+
+  const upPath = path.resolve(__dirname, "../../db/migrations/024_shipments.sql");
+  const downPath = path.resolve(__dirname, "../../db/migrations/down/024_shipments.down.sql");
+  const duplicateDownPath = path.resolve(__dirname, "../../db/migrations/down/024_shipments.sql");
+
+  assert.ok(fs.existsSync(upPath), "Migration 024 UP file must exist");
+  assert.ok(fs.existsSync(downPath), "Migration 024 DOWN file must exist with .down.sql suffix");
+  assert.ok(!fs.existsSync(duplicateDownPath), "Duplicate 024_shipments.sql in down directory must not exist");
+
+  const upSql = fs.readFileSync(upPath, "utf-8");
+  const downSql = fs.readFileSync(downPath, "utf-8");
+
+  assert.match(
+    upSql,
+    /CREATE\s+TABLE\s+(IF\s+NOT\s+EXISTS\s+)?shipments/i,
+    "Migration 024 must create shipments table"
+  );
+  assert.match(
+    upSql,
+    /CREATE\s+TABLE\s+(IF\s+NOT\s+EXISTS\s+)?shipment_lots/i,
+    "Migration 024 must create shipment_lots table"
+  );
+  assert.match(
+    upSql,
+    /CREATE\s+UNIQUE\s+INDEX\s+(IF\s+NOT\s+EXISTS\s+)?idx_unique_active_shipment_per_lot/i,
+    "Migration 024 must enforce unique active shipment per lot"
+  );
+  assert.match(
+    upSql,
+    /CREATE\s+UNIQUE\s+INDEX\s+(IF\s+NOT\s+EXISTS\s+)?idx_unique_active_shipment_per_cold_box/i,
+    "Migration 024 must enforce unique active shipment per cold box"
+  );
+
+  assert.match(
+    downSql,
+    /DROP\s+TABLE\s+(IF\s+EXISTS\s+)?shipment_lots/i,
+    "Migration 024 rollback must drop table shipment_lots"
+  );
+  assert.match(
+    downSql,
+    /DROP\s+TABLE\s+(IF\s+EXISTS\s+)?shipments/i,
+    "Migration 024 rollback must drop table shipments"
+  );
+});
+
 if (process.env.DATABASE_URL) {
   test("migrate: up and down work with database", async () => {
     const upRes = await runMigrations("up");
