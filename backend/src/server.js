@@ -71,6 +71,15 @@ const {
   recordAuditLog,
   getAuditLogs,
 } = require("./audit_logger");
+const {
+  inMemoryShipments,
+  inMemoryShipmentLots,
+  createShipment,
+  completeShipment,
+  getShipments,
+  getShipmentById,
+  getActiveShipmentForLot,
+} = require("./shipment_service");
 const app = express();
 const PORT = Number(process.env.PORT || 3000);
 
@@ -6532,7 +6541,9 @@ app.patch(
           "UPDATE lots SET custom_coordinates = $1 WHERE UPPER(id) = UPPER($2)",
           [JSON.stringify(customData), lotId]
         );
-      } catch (_) {}
+      } catch {
+        /* ignore */
+      }
     }
 
     if (req.auth) {
@@ -6662,6 +6673,103 @@ app.get(
   }
 );
 
+/**
+ * S-40 (Jira N2-211): Mở chuyến vận chuyển gắn nhiều lô và một thùng lạnh
+ */
+app.post(
+  "/api/shipments",
+  requirePermission(["producer", "cooperative", "transporter", "distributor", "org_admin", "admin"]),
+  async (req, res) => {
+    try {
+      const result = await createShipment({
+        pool,
+        authContext: req.auth,
+        data: req.body,
+        inMemoryLots,
+        inMemoryOrgs,
+        ipAddress: req.ip,
+        userAgent: req.get("User-Agent"),
+      });
+      return res.status(result.status || (result.success ? 201 : 400)).json(result);
+    } catch (err) {
+      return res.status(500).json({ error: "INTERNAL_SERVER_ERROR", message: err.message });
+    }
+  }
+);
+
+app.get(
+  "/api/shipments",
+  requirePermission(["producer", "cooperative", "transporter", "distributor", "inspector", "org_admin", "admin"]),
+  async (req, res) => {
+    try {
+      const result = await getShipments({
+        pool,
+        authContext: req.auth,
+        filters: req.query,
+        inMemoryOrgs,
+      });
+      return res.status(200).json(result);
+    } catch (err) {
+      return res.status(500).json({ error: "INTERNAL_SERVER_ERROR", message: err.message });
+    }
+  }
+);
+
+app.get(
+  "/api/shipments/:id",
+  requirePermission(["producer", "cooperative", "transporter", "distributor", "inspector", "org_admin", "admin"]),
+  async (req, res) => {
+    try {
+      const result = await getShipmentById({
+        pool,
+        authContext: req.auth,
+        shipmentId: req.params.id,
+        inMemoryOrgs,
+      });
+      return res.status(result.status || 200).json(result);
+    } catch (err) {
+      return res.status(500).json({ error: "INTERNAL_SERVER_ERROR", message: err.message });
+    }
+  }
+);
+
+app.post(
+  ["/api/shipments/:id/complete", "/api/shipments/:id/end"],
+  requirePermission(["producer", "cooperative", "transporter", "distributor", "org_admin", "admin"]),
+  async (req, res) => {
+    try {
+      const result = await completeShipment({
+        pool,
+        authContext: req.auth,
+        shipmentId: req.params.id,
+        data: req.body,
+        inMemoryOrgs,
+        ipAddress: req.ip,
+        userAgent: req.get("User-Agent"),
+      });
+      return res.status(result.status || 200).json(result);
+    } catch (err) {
+      return res.status(500).json({ error: "INTERNAL_SERVER_ERROR", message: err.message });
+    }
+  }
+);
+
+app.get(
+  "/api/lots/:id/active-shipment",
+  requirePermission(["producer", "cooperative", "transporter", "distributor", "inspector", "org_admin", "admin"]),
+  async (req, res) => {
+    try {
+      const result = await getActiveShipmentForLot({
+        pool,
+        lotId: req.params.id,
+      });
+      return res.status(200).json(result);
+    } catch (err) {
+      return res.status(500).json({ error: "INTERNAL_SERVER_ERROR", message: err.message });
+    }
+  }
+);
+
 async function start() {
   await seedDemoUser();
   seedDemoEvents();
@@ -6767,6 +6875,13 @@ module.exports = {
   CycleDetectedError,
   lotOriginsCache,
   clearLotOriginsCache,
+  inMemoryShipments,
+  inMemoryShipmentLots,
+  createShipment,
+  completeShipment,
+  getShipments,
+  getShipmentById,
+  getActiveShipmentForLot,
   seedS22Data: () =>
     seedS22InMemory({
       inMemoryLots,
