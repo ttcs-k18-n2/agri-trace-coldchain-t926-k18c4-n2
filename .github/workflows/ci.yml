@@ -114,6 +114,9 @@ jobs:
       - name: Run automated tests with coverage
         env:
           NODE_ENV: test
+          CI: "true"
+          REQUIRE_DB: "true"
+          CONFIRMED_DISPOSABLE_DB: "true"
           DATABASE_URL: postgresql://agri_app:app_password@localhost:5432/agri_trace
           MIGRATION_DATABASE_URL: postgresql://agri_migration:migration_password@localhost:5432/agri_trace
           SESSION_SECRET: test-ci-session-secret-key-32-chars-long
