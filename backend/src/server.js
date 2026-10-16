@@ -90,8 +90,8 @@ app.use(
         process.env.NODE_ENV === "test"
           ? false
           : process.env.COOKIE_SECURE === "true" || process.env.COOKIE_SECURE === "auto"
-          ? "auto"
-          : false,
+            ? "auto"
+            : false,
       maxAge: 60 * 60 * 1000,
     },
   })
@@ -718,7 +718,7 @@ app.get("/api/me", async (req, res) => {
   const user = await getUserById(req.session.userId);
 
   if (!user) {
-    req.session.destroy(() => {});
+    req.session.destroy(() => { });
     return res.status(401).json({
       message: "Phiên không hợp lệ.",
     });
@@ -1334,10 +1334,10 @@ app.get(
     const callerOrgId = req.auth ? req.auth.organizationId || req.auth.organization_id : null;
     const isGlobal = Boolean(
       req.auth &&
-        (req.auth.roleId === "inspector" ||
-          req.auth.isInspector ||
-          req.auth.roleId === "admin" ||
-          req.auth.isAdmin)
+      (req.auth.roleId === "inspector" ||
+        req.auth.isInspector ||
+        req.auth.roleId === "admin" ||
+        req.auth.isAdmin)
     );
     try {
       let lot = null;
@@ -3624,278 +3624,156 @@ app.get(
  */
 async function handleCreateHarvestLot(req, res) {
   const { farmId, productId, quantity, harvestedAt } = req.body;
-    const orgId = req.auth.organizationId;
-    const userId = req.auth.userId || req.auth.id || req.auth.email || "user";
+  const orgId = req.auth.organizationId;
+  const userId = req.auth.userId || req.auth.id || req.auth.email || "user";
 
-    const errors = {};
+  const errors = {};
 
-    // 1. Kiểm tra thửa đất và sản phẩm bắt buộc (T-21, T-22)
-    if (!farmId) {
-      errors.farmId = "Vui lòng chọn thửa đất.";
-    }
-    if (!productId) {
-      errors.productId = "Vui lòng chọn sản phẩm.";
-    }
+  // 1. Kiểm tra thửa đất và sản phẩm bắt buộc (T-21, T-22)
+  if (!farmId) {
+    errors.farmId = "Vui lòng chọn thửa đất.";
+  }
+  if (!productId) {
+    errors.productId = "Vui lòng chọn sản phẩm.";
+  }
 
-    // 2. AC2: Khối lượng phải là số dương lớn hơn 0 (T-21, T-22)
-    const qty = Number(quantity);
-    if (!Number.isFinite(qty) || qty <= 0) {
-      errors.quantity = "Khối lượng phải là số dương lớn hơn 0.";
-    }
+  // 2. AC2: Khối lượng phải là số dương lớn hơn 0 (T-21, T-22)
+  const qty = Number(quantity);
+  if (!Number.isFinite(qty) || qty <= 0) {
+    errors.quantity = "Khối lượng phải là số dương lớn hơn 0.";
+  }
 
-    // 3. AC1: Ngày thu hoạch không được nằm trong tương lai (T-21, T-22)
-    let harvestDate;
-    if (harvestedAt) {
-      const parsedDate = new Date(harvestedAt);
-      if (isNaN(parsedDate.getTime())) {
-        errors.harvestedAt = "Ngày thu hoạch không hợp lệ.";
-      } else {
-        const inputDateStr = typeof harvestedAt === "string" && /^\d{4}-\d{2}-\d{2}$/.test(harvestedAt.trim())
-          ? harvestedAt.trim()
-          : parsedDate.toISOString().slice(0, 10);
-        const todayStr = new Date().toISOString().slice(0, 10);
-        if (inputDateStr > todayStr) {
-          errors.harvestedAt = "Ngày thu hoạch không được nằm trong tương lai.";
-        } else {
-          harvestDate = inputDateStr;
-        }
-      }
+  // 3. AC1: Ngày thu hoạch không được nằm trong tương lai (T-21, T-22)
+  let harvestDate;
+  if (harvestedAt) {
+    const parsedDate = new Date(harvestedAt);
+    if (isNaN(parsedDate.getTime())) {
+      errors.harvestedAt = "Ngày thu hoạch không hợp lệ.";
     } else {
-      harvestDate = new Date().toISOString().slice(0, 10);
+      const inputDateStr = typeof harvestedAt === "string" && /^\d{4}-\d{2}-\d{2}$/.test(harvestedAt.trim())
+        ? harvestedAt.trim()
+        : parsedDate.toISOString().slice(0, 10);
+      const todayStr = new Date().toISOString().slice(0, 10);
+      if (inputDateStr > todayStr) {
+        errors.harvestedAt = "Ngày thu hoạch không được nằm trong tương lai.";
+      } else {
+        harvestDate = inputDateStr;
+      }
     }
+  } else {
+    harvestDate = new Date().toISOString().slice(0, 10);
+  }
 
-    if (Object.keys(errors).length > 0) {
-      const firstMessage = errors.farmId || errors.productId || errors.quantity || errors.harvestedAt;
-      return res.status(400).json({
-        message: firstMessage,
-        errors,
-      });
-    }
+  if (Object.keys(errors).length > 0) {
+    const firstMessage = errors.farmId || errors.productId || errors.quantity || errors.harvestedAt;
+    return res.status(400).json({
+      message: firstMessage,
+      errors,
+    });
+  }
 
-    // 4. AC4: Idempotency & chống bấm lưu 2 lần
-    const idempotencyKey = req.get("X-Idempotency-Key") || req.body.requestId || req.body.idempotencyKey;
-    const idempotencyLookupKey = idempotencyKey ? `${orgId}:${idempotencyKey}` : null;
-    const fingerprintKey = `fp:${orgId}:${userId}:${farmId}:${productId}:${qty}:${harvestDate}`;
+  // 4. AC4: Idempotency & chống bấm lưu 2 lần
+  const idempotencyKey = req.get("X-Idempotency-Key") || req.body.requestId || req.body.idempotencyKey;
+  const idempotencyLookupKey = idempotencyKey ? `${orgId}:${idempotencyKey}` : null;
+  const fingerprintKey = `fp:${orgId}:${userId}:${farmId}:${productId}:${qty}:${harvestDate}`;
 
-    if (idempotencyLookupKey && harvestIdempotencyCache.has(idempotencyLookupKey)) {
-      const cached = harvestIdempotencyCache.get(idempotencyLookupKey);
-      return res.status(cached.status).json(cached.body);
-    }
+  if (idempotencyLookupKey && harvestIdempotencyCache.has(idempotencyLookupKey)) {
+    const cached = harvestIdempotencyCache.get(idempotencyLookupKey);
+    return res.status(cached.status).json(cached.body);
+  }
 
-    const recentFp = harvestIdempotencyCache.get(fingerprintKey);
-    if (recentFp && Date.now() - recentFp.createdAt < 2500) {
-      return res.status(recentFp.status).json(recentFp.body);
-    }
+  const recentFp = harvestIdempotencyCache.get(fingerprintKey);
+  if (recentFp && Date.now() - recentFp.createdAt < 2500) {
+    return res.status(recentFp.status).json(recentFp.body);
+  }
 
-    const MAX_RETRIES = 5;
-    let insertedLot = null;
+  const MAX_RETRIES = 5;
+  let insertedLot = null;
 
-    if (pool) {
-      const client = await pool.connect();
-      try {
-        // 5. AC3: Kiểm tra thửa đất thuộc tổ chức hiện tại qua scopedQueryById
-        const farmRes = await scopedQueryById(client, req.auth, "farms", farmId);
-        if (farmRes.isCrossTenant) {
-          logSecurityEvent("CROSS_TENANT_MUTATION_DENIED", {
-            userId: req.auth.userId || req.auth.id,
-            userEmail: req.auth.email,
-            userOrgId: orgId,
-            userRole: req.auth.roleId,
-            resourceType: "farms",
-            resourceId: farmId,
-            targetOrgId: farmRes.targetOrgId,
-            action: "HARVEST_ON_FOREIGN_FARM",
-            ip: req.ip,
-            userAgent: req.get("User-Agent"),
-          });
-          return res.status(403).json({ message: "Bạn không có quyền thao tác trên thửa đất của tổ chức khác." });
-        }
-        if (!farmRes.row) {
-          return res.status(404).json({ message: "Không tìm thấy thửa đất." });
-        }
-        const farm = farmRes.row;
+  if (pool) {
+    const client = await pool.connect();
+    try {
+      // 5. AC3: Kiểm tra thửa đất thuộc tổ chức hiện tại qua scopedQueryById
+      const farmRes = await scopedQueryById(client, req.auth, "farms", farmId);
+      if (farmRes.isCrossTenant) {
+        logSecurityEvent("CROSS_TENANT_MUTATION_DENIED", {
+          userId: req.auth.userId || req.auth.id,
+          userEmail: req.auth.email,
+          userOrgId: orgId,
+          userRole: req.auth.roleId,
+          resourceType: "farms",
+          resourceId: farmId,
+          targetOrgId: farmRes.targetOrgId,
+          action: "HARVEST_ON_FOREIGN_FARM",
+          ip: req.ip,
+          userAgent: req.get("User-Agent"),
+        });
+        return res.status(403).json({ message: "Bạn không có quyền thao tác trên thửa đất của tổ chức khác." });
+      }
+      if (!farmRes.row) {
+        return res.status(404).json({ message: "Không tìm thấy thửa đất." });
+      }
+      const farm = farmRes.row;
 
-        // 6. Kiểm tra sản phẩm tồn tại
-        const prodRes = await scopedQueryById(client, req.auth, "products", productId);
-        if (!prodRes.row) {
-          return res.status(400).json({
-            message: "Sản phẩm không tồn tại trong danh mục.",
-            errors: { productId: "Sản phẩm không tồn tại trong danh mục." },
-          });
-        }
-        const product = prodRes.row;
-        const lotName = req.body.name || `${product.name} - ${farm.name}`;
-        const status = "Đã thu hoạch";
+      // 6. Kiểm tra sản phẩm tồn tại
+      const prodRes = await scopedQueryById(client, req.auth, "products", productId);
+      if (!prodRes.row) {
+        return res.status(400).json({
+          message: "Sản phẩm không tồn tại trong danh mục.",
+          errors: { productId: "Sản phẩm không tồn tại trong danh mục." },
+        });
+      }
+      const product = prodRes.row;
+      const lotName = req.body.name || `${product.name} - ${farm.name}`;
+      const status = "Đã thu hoạch";
 
-        // S-10: Bắt đầu transaction nguyên tử cho INSERT lots + appendBatchEvent
-        await client.query("BEGIN");
+      // S-10: Bắt đầu transaction nguyên tử cho INSERT lots + appendBatchEvent
+      await client.query("BEGIN");
 
-        // 7. Chèn lô mới với cơ chế retry tối đa 5 lần nếu collision mã (T-19)
-        for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
-          const lotId = generateLotCode();
-          try {
-            const insertRes = await client.query(
-              `INSERT INTO lots (
+      // 7. Chèn lô mới với cơ chế retry tối đa 5 lần nếu collision mã (T-19)
+      for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+        const lotId = generateLotCode();
+        try {
+          const insertRes = await client.query(
+            `INSERT INTO lots (
                 id, name, status, organization_id, farm_id, product_id,
                 initial_quantity, remaining_quantity, harvested_at
               ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
               RETURNING *`,
-              [lotId, lotName, status, orgId, farmId, productId, qty, qty, harvestDate]
-            );
+            [lotId, lotName, status, orgId, farmId, productId, qty, qty, harvestDate]
+          );
 
-            const row = insertRes.rows[0];
-            insertedLot = {
-              id: row.id,
-              name: row.name,
-              status: row.status,
-              organizationId: row.organization_id,
-              farmId: row.farm_id,
-              farmName: farm.name,
-              productId: row.product_id,
-              productName: product.name,
-              unit: product.unit,
-              initialQuantity: Number(row.initial_quantity),
-              remainingQuantity: Number(row.remaining_quantity),
-              harvestedAt: row.harvested_at,
-            };
-            break;
-          } catch (insertErr) {
-            if (insertErr.code === "23505" && attempt < MAX_RETRIES - 1) {
-              continue;
-            }
-            throw insertErr;
+          const row = insertRes.rows[0];
+          insertedLot = {
+            id: row.id,
+            name: row.name,
+            status: row.status,
+            organizationId: row.organization_id,
+            farmId: row.farm_id,
+            farmName: farm.name,
+            productId: row.product_id,
+            productName: product.name,
+            unit: product.unit,
+            initialQuantity: Number(row.initial_quantity),
+            remainingQuantity: Number(row.remaining_quantity),
+            harvestedAt: row.harvested_at,
+          };
+          break;
+        } catch (insertErr) {
+          if (insertErr.code === "23505" && attempt < MAX_RETRIES - 1) {
+            continue;
           }
+          throw insertErr;
         }
-
-        if (!insertedLot) {
-          await client.query("ROLLBACK");
-          return res.status(500).json({ message: "Không thể sinh mã lô duy nhất sau 5 lần thử." });
-        }
-
-        // S-10: Ghi nhận sự kiện khởi tạo HARVEST_CREATED với chuỗi hash trong cùng transaction
-        const eventRecord = await appendBatchEvent(client, {
-          batchId: insertedLot.id,
-          eventType: "HARVEST_CREATED",
-          payload: {
-            farmId,
-            productId,
-            quantity: qty,
-            harvestedAt: harvestDate,
-          },
-          organizationId: orgId,
-          actorUserId: userId,
-          occurredAt: new Date(),
-        });
-
-        // Ghi audit log bằng cùng transaction client trước COMMIT (S-31 Atomicity)
-        await recordAuditLog({
-          client,
-          pool,
-          inMemoryLogs: inMemoryAuditLogs,
-          actorUserId: userId,
-          actorEmail: req.auth.email,
-          organizationId: orgId,
-          action: "LOT_CREATED",
-          resourceType: "lot",
-          resourceId: insertedLot.id,
-          ipAddress: req.ip,
-          userAgent: req.get("User-Agent"),
-          details: { farmId, productId, quantity: qty, harvestedAt: harvestDate },
-        });
-
-        await client.query("COMMIT");
-
-        const successResponse = {
-          message: "Ghi nhận thu hoạch thành công.",
-          lot: insertedLot,
-          event: eventRecord,
-        };
-
-        if (idempotencyLookupKey) {
-          harvestIdempotencyCache.set(idempotencyLookupKey, {
-            status: 201,
-            body: successResponse,
-            createdAt: Date.now(),
-          });
-        }
-        harvestIdempotencyCache.set(fingerprintKey, {
-          status: 201,
-          body: successResponse,
-          createdAt: Date.now(),
-        });
-        cleanupHarvestIdempotency();
-
-        return res.status(201).json(successResponse);
-      } catch (err) {
-        await client.query("ROLLBACK").catch(() => {});
-        return res.status(500).json({ message: err.message });
-      } finally {
-        client.release();
       }
-    }
 
-    // In-memory fallback
-    const farm = inMemoryFarms.find((f) => f.id === farmId);
-    if (!farm) {
-      return res.status(404).json({ message: "Không tìm thấy thửa đất." });
-    }
-    if (farm.organizationId !== orgId && req.auth.roleId !== "admin") {
-      logSecurityEvent("CROSS_TENANT_MUTATION_DENIED", {
-        userId: req.auth.userId || req.auth.id,
-        userEmail: req.auth.email,
-        userOrgId: orgId,
-        userRole: req.auth.roleId,
-        resourceType: "farms",
-        resourceId: farmId,
-        targetOrgId: farm.organizationId,
-        action: "HARVEST_ON_FOREIGN_FARM",
-        ip: req.ip,
-        userAgent: req.get("User-Agent"),
-      });
-      return res.status(403).json({ message: "Bạn không có quyền thao tác trên thửa đất của tổ chức khác." });
-    }
-
-    const product = inMemoryProducts.find((p) => p.id === productId);
-    if (!product) {
-      return res.status(400).json({
-        message: "Sản phẩm không tồn tại trong danh mục.",
-        errors: { productId: "Sản phẩm không tồn tại trong danh mục." },
-      });
-    }
-
-    const lotName = req.body.name || `${product.name} - ${farm.name}`;
-    const status = "Đã thu hoạch";
-
-    for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
-      const lotId = generateLotCode();
-      if (!inMemoryLots.some((l) => l.id === lotId)) {
-        insertedLot = {
-          id: lotId,
-          name: lotName,
-          status,
-          organizationId: orgId,
-          farmId,
-          farmName: farm.name,
-          productId,
-          productName: product.name,
-          unit: product.unit,
-          initialQuantity: qty,
-          remainingQuantity: qty,
-          harvestedAt: harvestDate,
-        };
-        break;
+      if (!insertedLot) {
+        await client.query("ROLLBACK");
+        return res.status(500).json({ message: "Không thể sinh mã lô duy nhất sau 5 lần thử." });
       }
-    }
 
-    if (!insertedLot) {
-      return res.status(500).json({ message: "Không thể sinh mã lô duy nhất sau 5 lần thử." });
-    }
-
-    // S-10: Ghi nhận sự kiện HARVEST_CREATED vào chuỗi hash chain
-    // Đảm bảo tính atomic: nếu append event lỗi, không thêm lot vào inMemoryLots (rollback)
-    let eventRecord;
-    try {
-      eventRecord = await appendBatchEvent(null, {
+      // S-10: Ghi nhận sự kiện khởi tạo HARVEST_CREATED với chuỗi hash trong cùng transaction
+      const eventRecord = await appendBatchEvent(client, {
         batchId: insertedLot.id,
         eventType: "HARVEST_CREATED",
         payload: {
@@ -3908,49 +3786,171 @@ async function handleCreateHarvestLot(req, res) {
         actorUserId: userId,
         occurredAt: new Date(),
       });
-      inMemoryLots.push(insertedLot);
-    } catch (eventErr) {
-      // Rollback: đảm bảo lô không được thêm vào inMemoryLots
-      const idx = inMemoryLots.findIndex((l) => l.id === insertedLot.id);
-      if (idx !== -1) inMemoryLots.splice(idx, 1);
-      return res.status(500).json({ message: "Lỗi ghi nhận chuỗi sự kiện lô hàng: " + eventErr.message });
-    }
 
-    await recordAuditLog({
-      pool,
-      inMemoryLogs: inMemoryAuditLogs,
-      actorUserId: userId,
-      actorEmail: req.auth.email,
-      organizationId: orgId,
-      action: "LOT_CREATED",
-      resourceType: "lot",
-      resourceId: insertedLot.id,
-      ipAddress: req.ip,
-      userAgent: req.get("User-Agent"),
-      details: { farmId, productId, quantity: qty, harvestedAt: harvestDate },
-    });
+      // Ghi audit log bằng cùng transaction client trước COMMIT (S-31 Atomicity)
+      await recordAuditLog({
+        client,
+        pool,
+        inMemoryLogs: inMemoryAuditLogs,
+        actorUserId: userId,
+        actorEmail: req.auth.email,
+        organizationId: orgId,
+        action: "LOT_CREATED",
+        resourceType: "lot",
+        resourceId: insertedLot.id,
+        ipAddress: req.ip,
+        userAgent: req.get("User-Agent"),
+        details: { farmId, productId, quantity: qty, harvestedAt: harvestDate },
+      });
 
-    const successResponse = {
-      message: "Ghi nhận thu hoạch thành công.",
-      lot: insertedLot,
-      event: eventRecord,
-    };
+      await client.query("COMMIT");
 
-    if (idempotencyLookupKey) {
-      harvestIdempotencyCache.set(idempotencyLookupKey, {
+      const successResponse = {
+        message: "Ghi nhận thu hoạch thành công.",
+        lot: insertedLot,
+        event: eventRecord,
+      };
+
+      if (idempotencyLookupKey) {
+        harvestIdempotencyCache.set(idempotencyLookupKey, {
+          status: 201,
+          body: successResponse,
+          createdAt: Date.now(),
+        });
+      }
+      harvestIdempotencyCache.set(fingerprintKey, {
         status: 201,
         body: successResponse,
         createdAt: Date.now(),
       });
+      cleanupHarvestIdempotency();
+
+      return res.status(201).json(successResponse);
+    } catch (err) {
+      await client.query("ROLLBACK").catch(() => { });
+      return res.status(500).json({ message: err.message });
+    } finally {
+      client.release();
     }
-    harvestIdempotencyCache.set(fingerprintKey, {
+  }
+
+  // In-memory fallback
+  const farm = inMemoryFarms.find((f) => f.id === farmId);
+  if (!farm) {
+    return res.status(404).json({ message: "Không tìm thấy thửa đất." });
+  }
+  if (farm.organizationId !== orgId && req.auth.roleId !== "admin") {
+    logSecurityEvent("CROSS_TENANT_MUTATION_DENIED", {
+      userId: req.auth.userId || req.auth.id,
+      userEmail: req.auth.email,
+      userOrgId: orgId,
+      userRole: req.auth.roleId,
+      resourceType: "farms",
+      resourceId: farmId,
+      targetOrgId: farm.organizationId,
+      action: "HARVEST_ON_FOREIGN_FARM",
+      ip: req.ip,
+      userAgent: req.get("User-Agent"),
+    });
+    return res.status(403).json({ message: "Bạn không có quyền thao tác trên thửa đất của tổ chức khác." });
+  }
+
+  const product = inMemoryProducts.find((p) => p.id === productId);
+  if (!product) {
+    return res.status(400).json({
+      message: "Sản phẩm không tồn tại trong danh mục.",
+      errors: { productId: "Sản phẩm không tồn tại trong danh mục." },
+    });
+  }
+
+  const lotName = req.body.name || `${product.name} - ${farm.name}`;
+  const status = "Đã thu hoạch";
+
+  for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+    const lotId = generateLotCode();
+    if (!inMemoryLots.some((l) => l.id === lotId)) {
+      insertedLot = {
+        id: lotId,
+        name: lotName,
+        status,
+        organizationId: orgId,
+        farmId,
+        farmName: farm.name,
+        productId,
+        productName: product.name,
+        unit: product.unit,
+        initialQuantity: qty,
+        remainingQuantity: qty,
+        harvestedAt: harvestDate,
+      };
+      break;
+    }
+  }
+
+  if (!insertedLot) {
+    return res.status(500).json({ message: "Không thể sinh mã lô duy nhất sau 5 lần thử." });
+  }
+
+  // S-10: Ghi nhận sự kiện HARVEST_CREATED vào chuỗi hash chain
+  // Đảm bảo tính atomic: nếu append event lỗi, không thêm lot vào inMemoryLots (rollback)
+  let eventRecord;
+  try {
+    eventRecord = await appendBatchEvent(null, {
+      batchId: insertedLot.id,
+      eventType: "HARVEST_CREATED",
+      payload: {
+        farmId,
+        productId,
+        quantity: qty,
+        harvestedAt: harvestDate,
+      },
+      organizationId: orgId,
+      actorUserId: userId,
+      occurredAt: new Date(),
+    });
+    inMemoryLots.push(insertedLot);
+  } catch (eventErr) {
+    // Rollback: đảm bảo lô không được thêm vào inMemoryLots
+    const idx = inMemoryLots.findIndex((l) => l.id === insertedLot.id);
+    if (idx !== -1) inMemoryLots.splice(idx, 1);
+    return res.status(500).json({ message: "Lỗi ghi nhận chuỗi sự kiện lô hàng: " + eventErr.message });
+  }
+
+  await recordAuditLog({
+    pool,
+    inMemoryLogs: inMemoryAuditLogs,
+    actorUserId: userId,
+    actorEmail: req.auth.email,
+    organizationId: orgId,
+    action: "LOT_CREATED",
+    resourceType: "lot",
+    resourceId: insertedLot.id,
+    ipAddress: req.ip,
+    userAgent: req.get("User-Agent"),
+    details: { farmId, productId, quantity: qty, harvestedAt: harvestDate },
+  });
+
+  const successResponse = {
+    message: "Ghi nhận thu hoạch thành công.",
+    lot: insertedLot,
+    event: eventRecord,
+  };
+
+  if (idempotencyLookupKey) {
+    harvestIdempotencyCache.set(idempotencyLookupKey, {
       status: 201,
       body: successResponse,
       createdAt: Date.now(),
     });
-    cleanupHarvestIdempotency();
+  }
+  harvestIdempotencyCache.set(fingerprintKey, {
+    status: 201,
+    body: successResponse,
+    createdAt: Date.now(),
+  });
+  cleanupHarvestIdempotency();
 
-    return res.status(201).json(successResponse);
+  return res.status(201).json(successResponse);
 }
 
 app.post(
@@ -5824,99 +5824,99 @@ app.post(
     const targetHours = Number(hours) || 49;
     const simulatedTime = new Date(Date.now() - targetHours * 3600 * 1000).toISOString();
 
-  try {
-    if (pool) {
-      let query = `
+    try {
+      if (pool) {
+        let query = `
         UPDATE lot_transfers 
         SET created_at = NOW() - ($1 || ' hours')::INTERVAL, 
             is_overdue = FALSE, 
             overdue_at = NULL 
         WHERE status = 'PENDING'
       `;
-      const params = [targetHours];
+        const params = [targetHours];
 
-      if (transferId) {
-        params.push(transferId);
-        query += ` AND id = $${params.length}`;
-      } else if (lotId) {
-        params.push(lotId);
-        query += ` AND lot_id = $${params.length}`;
+        if (transferId) {
+          params.push(transferId);
+          query += ` AND id = $${params.length}`;
+        } else if (lotId) {
+          params.push(lotId);
+          query += ` AND lot_id = $${params.length}`;
+        }
+        query += " RETURNING *";
+
+        const result = await pool.query(query, params);
+        if (result.rows.length === 0) {
+          return res.status(404).json({
+            error: "NO_PENDING_TRANSFER_FOUND",
+            message: "Không tìm thấy yêu cầu bàn giao PENDING nào để giả lập quá hạn. Hãy tạo một yêu cầu bàn giao trước.",
+          });
+        }
+
+        // Kích hoạt ngay job quét rà soát bàn giao quá hạn
+        const jobResult = await markOverdueTransfers({ pool, hours: 48 });
+
+        return res.status(200).json({
+          message: `Đã giả lập thành công ${result.rows.length} yêu cầu bàn giao thành ${targetHours} giờ trước và kích hoạt job quét đánh dấu QUÁ HẠN.`,
+          transfers: result.rows.map((r) => ({
+            id: r.id,
+            lotId: r.lot_id,
+            status: r.status,
+            isOverdue: true,
+            overdueAt: new Date().toISOString(),
+            createdAt: r.created_at,
+          })),
+          jobResult,
+        });
       }
-      query += " RETURNING *";
 
-      const result = await pool.query(query, params);
-      if (result.rows.length === 0) {
-        return res.status(404).json({
-          error: "NO_PENDING_TRANSFER_FOUND",
-          message: "Không tìm thấy yêu cầu bàn giao PENDING nào để giả lập quá hạn. Hãy tạo một yêu cầu bàn giao trước.",
+      // In-memory mode
+      let candidates = inMemoryTransfers.filter((t) => t.status === "PENDING");
+      if (transferId) candidates = candidates.filter((t) => t.id === transferId);
+      if (lotId) candidates = candidates.filter((t) => t.lotId === lotId);
+
+      if (candidates.length === 0) {
+        // Nếu chưa có transfer PENDING nào, tạo 1 transfer giả lập cho LOT-002 hoặc LOT-001
+        const lot = inMemoryLots.find((l) => l.organizationId === "org-001") || inMemoryLots[0];
+        const newTransferId = `TR-OVERDUE-${Date.now().toString().slice(-4)}`;
+        const newTr = {
+          id: newTransferId,
+          lotId: lot ? lot.id : "LOT-001",
+          fromOrganizationId: "org-001",
+          fromOrganizationName: "Nông trại Thái Nguyên",
+          toOrganizationId: "org-002",
+          toOrganizationName: "Hợp tác xã Rau Sạch Bắc Giang",
+          status: "PENDING",
+          isOverdue: false,
+          overdueAt: null,
+          notes: `Yêu cầu bàn giao giả lập ${targetHours} giờ trước để test S-24`,
+          createdByUserId: "usr-001",
+          createdAt: simulatedTime,
+          updatedAt: simulatedTime,
+        };
+        inMemoryTransfers.push(newTr);
+        candidates = [newTr];
+      } else {
+        candidates.forEach((t) => {
+          t.createdAt = simulatedTime;
+          t.isOverdue = false;
+          t.is_overdue = false;
+          t.overdueAt = null;
+          t.overdue_at = null;
         });
       }
 
       // Kích hoạt ngay job quét rà soát bàn giao quá hạn
-      const jobResult = await markOverdueTransfers({ pool, hours: 48 });
+      const jobResult = await markOverdueTransfers({ inMemoryTransfers, hours: 48 });
 
       return res.status(200).json({
-        message: `Đã giả lập thành công ${result.rows.length} yêu cầu bàn giao thành ${targetHours} giờ trước và kích hoạt job quét đánh dấu QUÁ HẠN.`,
-        transfers: result.rows.map((r) => ({
-          id: r.id,
-          lotId: r.lot_id,
-          status: r.status,
-          isOverdue: true,
-          overdueAt: new Date().toISOString(),
-          createdAt: r.created_at,
-        })),
+        message: `Đã giả lập thành công ${candidates.length} yêu cầu bàn giao thành ${targetHours} giờ trước và kích hoạt job quét đánh dấu QUÁ HẠN.`,
+        transfers: candidates,
         jobResult,
       });
+    } catch (err) {
+      return res.status(500).json({ error: err.message });
     }
-
-    // In-memory mode
-    let candidates = inMemoryTransfers.filter((t) => t.status === "PENDING");
-    if (transferId) candidates = candidates.filter((t) => t.id === transferId);
-    if (lotId) candidates = candidates.filter((t) => t.lotId === lotId);
-
-    if (candidates.length === 0) {
-      // Nếu chưa có transfer PENDING nào, tạo 1 transfer giả lập cho LOT-002 hoặc LOT-001
-      const lot = inMemoryLots.find((l) => l.organizationId === "org-001") || inMemoryLots[0];
-      const newTransferId = `TR-OVERDUE-${Date.now().toString().slice(-4)}`;
-      const newTr = {
-        id: newTransferId,
-        lotId: lot ? lot.id : "LOT-001",
-        fromOrganizationId: "org-001",
-        fromOrganizationName: "Nông trại Thái Nguyên",
-        toOrganizationId: "org-002",
-        toOrganizationName: "Hợp tác xã Rau Sạch Bắc Giang",
-        status: "PENDING",
-        isOverdue: false,
-        overdueAt: null,
-        notes: `Yêu cầu bàn giao giả lập ${targetHours} giờ trước để test S-24`,
-        createdByUserId: "usr-001",
-        createdAt: simulatedTime,
-        updatedAt: simulatedTime,
-      };
-      inMemoryTransfers.push(newTr);
-      candidates = [newTr];
-    } else {
-      candidates.forEach((t) => {
-        t.createdAt = simulatedTime;
-        t.isOverdue = false;
-        t.is_overdue = false;
-        t.overdueAt = null;
-        t.overdue_at = null;
-      });
-    }
-
-    // Kích hoạt ngay job quét rà soát bàn giao quá hạn
-    const jobResult = await markOverdueTransfers({ inMemoryTransfers, hours: 48 });
-
-    return res.status(200).json({
-      message: `Đã giả lập thành công ${candidates.length} yêu cầu bàn giao thành ${targetHours} giờ trước và kích hoạt job quét đánh dấu QUÁ HẠN.`,
-      transfers: candidates,
-      jobResult,
-    });
-  } catch (err) {
-    return res.status(500).json({ error: err.message });
-  }
-});
+  });
 
 function sendFrontendFile(res, filePath) {
   res.set({
@@ -6518,6 +6518,72 @@ async function start() {
 if (require.main === module) {
   start();
 }
+
+
+
+// --- S-36: Recall notifications & organization acknowledgments ---
+
+// 1. API: Nơi nhận/Cơ sở lưu trữ xác nhận đã nhận thông báo thu hồi
+app.post('/api/recalls/:recallId/acknowledgments', async (req, res) => {
+  const { recallId } = req.params;
+  const { org_name, status, note } = req.body; // status: ví dụ 'Received', 'Action Taken'
+
+  try {
+    const result = await pool.query(
+      `INSERT INTO recall_acknowledgments (recall_id, org_name, status, note) 
+       VALUES ($1, $2, $3, $4) RETURNING *`,
+      [recallId, org_name, status, note]
+    );
+    res.status(201).json({ message: 'Đã lưu phản hồi thành công', data: result.rows[0] });
+  } catch (error) {
+    console.error('Lỗi khi lưu phản hồi thu hồi:', error);
+    res.status(500).json({ error: 'Lỗi server khi lưu phản hồi' });
+  }
+});
+
+// 2. API: Lấy danh sách các đơn vị đã xác nhận (để hiển thị cho người tạo thông báo)
+app.get('/api/recalls/:recallId/acknowledgments', async (req, res) => {
+  const { recallId } = req.params;
+  try {
+    const result = await pool.query(
+      'SELECT * FROM recall_acknowledgments WHERE recall_id = $1 ORDER BY created_at DESC',
+      [recallId]
+    );
+    res.status(200).json(result.rows);
+  } catch (error) {
+    console.error('Lỗi khi lấy danh sách phản hồi:', error);
+    res.status(500).json({ error: 'Lỗi server khi lấy dữ liệu phản hồi' });
+  }
+});
+
+
+// --- S-37: Recall tracking progress ---
+// API: Theo dõi tiến độ thu hồi (đếm số lượng đã xác nhận / tổng số đơn vị liên quan)
+app.get('/api/recalls/:recallId/progress', async (req, res) => {
+  const { recallId } = req.params;
+
+  try {
+    // Lấy tổng số lượng phản hồi cho 1 đợt thu hồi
+    const ackResult = await pool.query(
+      'SELECT COUNT(*) as ack_count FROM recall_acknowledgments WHERE recall_id = $1',
+      [recallId]
+    );
+
+    // (Tùy thuộc vào logic của bạn, bạn có thể cần query thêm bảng khác để lấy 'tổng số đơn vị cần phải thông báo' để tính phần trăm)
+    // Ở đây mình ví dụ trả về số lượng đã xác nhận
+
+    res.status(200).json({
+      recall_id: recallId,
+      acknowledged_count: parseInt(ackResult.rows[0].ack_count, 10),
+      // total_expected: ... (Lấy từ bảng khác nếu có)
+    });
+
+  } catch (error) {
+    console.error('Lỗi khi tính tiến độ thu hồi:', error);
+    res.status(500).json({ error: 'Lỗi server khi tính tiến độ' });
+  }
+});
+
 
 module.exports = {
   app,
