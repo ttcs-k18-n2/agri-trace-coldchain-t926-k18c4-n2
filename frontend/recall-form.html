@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+</head>
+
+<body>
+    <div
+        style="font-family: Arial, sans-serif; max-width: 500px; margin: 20px auto; padding: 20px; border: 1px solid #ccc; border-radius: 8px;">
+        <h2>Gửi Xác Nhận Thu Hồi (S-36)</h2>
+        <form id="recallForm">
+            <!-- Tạm thời để ô nhập ID để test, sau này có thể tự động lấy ID -->
+            <label><strong>Mã Đợt Thu Hồi (ID):</strong></label><br>
+            <input type="number" id="recall_id" style="width: 100%; margin-bottom: 15px; padding: 8px;" required>
+
+            <label><strong>Tên Đơn Vị / Đại Lý:</strong></label><br>
+            <input type="text" id="org_name" placeholder="VD: Siêu thị A, Trạm phân phối B..."
+                style="width: 100%; margin-bottom: 15px; padding: 8px;" required>
+
+            <label><strong>Trạng Thái Xử Lý:</strong></label><br>
+            <select id="status" style="width: 100%; margin-bottom: 15px; padding: 8px;">
+                <option value="RECEIVED">Đã nhận thông báo</option>
+                <option value="IN_PROGRESS">Đang gom hàng chờ trả lại</option>
+                <option value="ACTION_TAKEN">Đã hoàn tất xử lý</option>
+            </select>
+
+            <label><strong>Ghi Chú Thêm:</strong></label><br>
+            <textarea id="note" rows="4" placeholder="Nhập ghi chú nếu có..."
+                style="width: 100%; margin-bottom: 15px; padding: 8px;"></textarea>
+
+            <button type="submit"
+                style="width: 100%; padding: 10px; background-color: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer;">
+                Gửi Xác Nhận
+            </button>
+        </form>
+    </div>
+
+    <script>
+        // Bắt sự kiện khi người dùng bấm nút Gửi
+        document.getElementById('recallForm').addEventListener('submit', function (event) {
+            event.preventDefault(); // Ngăn chặn trang bị tải lại
+
+            // Lấy dữ liệu từ các ô nhập liệu
+            const mockData = {
+                recall_id: document.getElementById('recall_id').value,
+                org_name: document.getElementById('org_name').value,
+                status: document.getElementById('status').value,
+                note: document.getElementById('note').value
+            };
+
+            // In dữ liệu ra màn hình Console (để test)
+            console.log("=== DỮ LIỆU CHUẨN BỊ GỬI LÊN API ===");
+            console.log(mockData);
+
+            alert("Đã lấy được dữ liệu form! Hãy nhấn F12 -> chọn tab Console để xem chi tiết.");
+
+            /* 
+            fetch(`http://localhost:3000/api/recalls/${mockData.recall_id}/acknowledgments`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(mockData)
+            })
+            .then(res => res.json())
+            .then(data => console.log('Thành công:', data))
+            .catch(err => console.error('Lỗi:', err));
+            */
+        });
+    </script>
+</body>
+
+</html>
