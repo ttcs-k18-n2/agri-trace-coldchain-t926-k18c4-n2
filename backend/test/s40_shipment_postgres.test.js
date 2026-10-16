@@ -119,6 +119,10 @@ test("S-40 (Jira N2-211/N2-212): Mở chuyến vận chuyển gắn nhiều lô 
     ON shipment_lots (lot_id) 
     WHERE is_active = TRUE;
 
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_active_shipment_per_cold_box
+    ON shipments (cold_box_id)
+    WHERE status = 'IN_TRANSIT';
+
     CREATE INDEX IF NOT EXISTS idx_shipments_org ON shipments(organization_id);
     CREATE INDEX IF NOT EXISTS idx_shipments_status ON shipments(status);
     CREATE INDEX IF NOT EXISTS idx_shipment_lots_shipment ON shipment_lots(shipment_id);
@@ -169,6 +173,8 @@ test("S-40 (Jira N2-211/N2-212): Mở chuyến vận chuyển gắn nhiều lô 
   const LOT_CONSUMED = "LOT-S40-CONS";
   const LOT_CONCURRENT = "LOT-S40-CONCUR";
   const LOT_OTHER_ORG = "LOT-S40-OTHER";
+  const LOT_DISJOINT_1 = "LOT-S40-DISJ-1";
+  const LOT_DISJOINT_2 = "LOT-S40-DISJ-2";
 
   // Dọn dẹp dữ liệu cũ nếu còn sót lại từ lần chạy trước
   await pool.query("DELETE FROM lot_transfers WHERE lot_id LIKE 'LOT-S40-%';");
@@ -229,6 +235,8 @@ test("S-40 (Jira N2-211/N2-212): Mở chuyến vận chuyển gắn nhiều lô 
     { id: LOT_CONSUMED, name: "Lô Đã Tiêu Thụ", org: ORG_TRANS, status: "Đã tiêu thụ", remaining: 0 },
     { id: LOT_CONCURRENT, name: "Lô Tranh Chấp Đồng Thời", org: ORG_TRANS, status: "Đang giữ", remaining: 100 },
     { id: LOT_OTHER_ORG, name: "Lô Của Tổ Chức Khác", org: ORG_OTHER, status: "Đang giữ", remaining: 100 },
+    { id: LOT_DISJOINT_1, name: "Lô Tách Biệt 1", org: ORG_TRANS, status: "Đang giữ", remaining: 100 },
+    { id: LOT_DISJOINT_2, name: "Lô Tách Biệt 2", org: ORG_TRANS, status: "Đang giữ", remaining: 100 },
   ];
 
   for (const l of lotsToInsert) {
@@ -544,6 +552,63 @@ test("S-40 (Jira N2-211/N2-212): Mở chuyến vận chuyển gắn nhiều lô 
       assert.equal(res.body.error, "LOT_ALREADY_IN_ACTIVE_SHIPMENT");
       assert.ok(Array.isArray(res.body.conflictingLots));
       assert.ok(res.body.conflictingLots.some((c) => c.lotId === LOT_1));
+    });
+
+    await s4.test("4.3 Xác nhận cả hai partial unique index tồn tại trên PostgreSQL vật lý", async () => {
+      const idxLotsRes = await pool.query(
+        "SELECT indexname FROM pg_indexes WHERE schemaname = 'public' AND tablename = 'shipment_lots' AND indexname = 'idx_unique_active_shipment_per_lot';"
+      );
+      assert.equal(idxLotsRes.rows.length, 1, "Partial unique index idx_unique_active_shipment_per_lot phải tồn tại");
+
+      const idxColdBoxRes = await pool.query(
+        "SELECT indexname FROM pg_indexes WHERE schemaname = 'public' AND tablename = 'shipments' AND indexname = 'idx_unique_active_shipment_per_cold_box';"
+      );
+      assert.equal(idxColdBoxRes.rows.length, 1, "Partial unique index idx_unique_active_shipment_per_cold_box phải tồn tại");
+    });
+
+    await s4.test("4.4 Tranh chấp đồng thời - Hai chuyến cùng gán 1 thùng lạnh với các lô tách biệt (Disjoint lots: 1x 201, 1x 409 COLD_BOX_ALREADY_IN_USE)", async () => {
+      const raceColdBox = "CBX-RACE-BOX-DISJ";
+      const req1Promise = transAgent.post("/api/shipments").send({
+        coldBoxId: raceColdBox,
+        lotIds: [LOT_DISJOINT_1],
+        notes: "Request Chuyến Thùng Lạnh A gửi đồng thời",
+      });
+
+      const req2Promise = transAgent.post("/api/shipments").send({
+        coldBoxId: raceColdBox,
+        lotIds: [LOT_DISJOINT_2],
+        notes: "Request Chuyến Thùng Lạnh B gửi đồng thời",
+      });
+
+      const [res1, res2] = await Promise.all([req1Promise, req2Promise]);
+
+      const statuses = [res1.status, res2.status];
+      const has201 = statuses.includes(201);
+      const has409 = statuses.includes(409);
+
+      assert.ok(has201, `Phải có đúng 1 request thành công (201). Nhận được: ${statuses.join(", ")}`);
+      assert.ok(has409, `Phải có đúng 1 request bị chặn do trùng thùng lạnh (409). Nhận được: ${statuses.join(", ")}`);
+
+      const conflictRes = res1.status === 409 ? res1 : res2;
+      assert.equal(conflictRes.body.error, "COLD_BOX_ALREADY_IN_USE");
+
+      // Kiểm tra DB: raceColdBox chỉ được gắn vào duy nhất 1 chuyến đang hoạt động
+      const dbCheck = await pool.query(
+        "SELECT COUNT(*) AS active_count FROM shipments WHERE cold_box_id = $1 AND status = 'IN_TRANSIT';",
+        [raceColdBox]
+      );
+      assert.equal(parseInt(dbCheck.rows[0].active_count, 10), 1, "Chỉ duy nhất 1 chuyến active cho thùng lạnh này");
+    });
+
+    await s4.test("4.5 Chặn gán thùng lạnh đã nằm trong chuyến active khi gọi tuần tự (409 COLD_BOX_ALREADY_IN_USE)", async () => {
+      const res = await transAgent.post("/api/shipments").send({
+        coldBoxId: "CBX-RACE-BOX-DISJ",
+        lotIds: [LOT_3],
+        notes: "Cố gán thùng lạnh đang trong chuyến hoạt động",
+      });
+      assert.equal(res.status, 409);
+      assert.equal(res.body.error, "COLD_BOX_ALREADY_IN_USE");
+      assert.match(res.body.message, /đang tham gia một chuyến vận chuyển khác/);
     });
   });
 
