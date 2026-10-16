@@ -14,6 +14,7 @@
   const APP_PERMISSIONS = {
     "farm.write": ["producer", "cooperative", "org_admin", "admin"],
     "harvest.create": ["producer", "cooperative", "org_admin", "admin"],
+    "shipment.create": ["transporter", "cooperative", "warehouse", "org_admin", "admin"],
     "product.write": ["admin"],
     "global.read": ["inspector", "admin"],
     "integrity.check": ["inspector", "admin"],
@@ -24,6 +25,8 @@
     navFarms: ["producer", "cooperative", "inspector", "org_admin", "admin"],
     navProducts: ["producer", "cooperative", "transporter", "distributor", "inspector", "org_admin", "admin", "warehouse", "processing", "retailer"],
     navHarvest: ["producer", "cooperative", "org_admin", "admin"],
+    navShipments: ["producer", "cooperative", "transporter", "distributor", "inspector", "org_admin", "admin", "warehouse", "processing", "retailer"],
+    navColdShipments: ["producer", "cooperative", "transporter", "distributor", "inspector", "org_admin", "admin", "warehouse", "processing", "retailer"],
     navIntegrity: ["inspector", "admin"],
     navAuditLogs: ["inspector", "admin"],
     navAudit: ["inspector", "admin"],
@@ -166,6 +169,8 @@
       farms: "navFarms",
       products: "navProducts",
       harvest: "navHarvest",
+      shipments: "navShipments",
+      coldShipments: "navShipments",
       integrity: "navIntegrity",
       audit: "navAuditLogs",
       auditLogs: "navAuditLogs",
@@ -179,6 +184,7 @@
       else if (path.includes("farms")) targetId = "navFarms";
       else if (path.includes("products")) targetId = "navProducts";
       else if (path.includes("harvest")) targetId = "navHarvest";
+      else if (path.includes("shipment")) targetId = "navShipments";
       else if (path.includes("integrity")) targetId = "navIntegrity";
       else if (path.includes("audit")) targetId = "navAuditLogs";
       else if (path.includes("public-trace")) targetId = "navPublicTrace";
