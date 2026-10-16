@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>AGRI TRACEABILITY - Quản lý lô thu hoạch & chuỗi lạnh</title>
-  <link rel="stylesheet" href="/styles.css">
+  <link rel="stylesheet" href="/styles.css?v=20261014">
 
   <style>
     /* Search & Filter Toolbar - Layer 3: Liquid Glass Floating Bar */
@@ -404,6 +404,10 @@
           <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
           <span>Nhật ký thao tác</span>
         </a>
+              <a href="/public-trace.html" class="nav-item" id="navPublicTrace">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"></polygon><line x1="8" y1="2" x2="8" y2="18"></line><line x1="16" y1="6" x2="16" y2="22"></line></svg>
+          <span>Bản đồ</span>
+        </a>
       </nav>
 
       <div class="user-controls">
@@ -798,7 +802,7 @@
     </div>
   </main>
 
-  <script src="/app-shell.js"></script>
+  <script src="/app-shell.js?v=20261014"></script>
   <script>
     let currentCursor = null;
     let hasMore = false;
@@ -812,7 +816,7 @@
 
     async function loadPage() {
       try {
-        // 1. Khởi tạo App Shell
+        // 1. Chỉ đợi xác thực danh tính người dùng (App Shell)
         currentUser = await initAppShell({ activeNav: "lots" });
         if (!currentUser) return;
 
@@ -831,28 +835,28 @@
           toggleMultiBtn.style.display = canMergeRole ? "inline-flex" : "none";
         }
 
-        // 2. Tải danh mục sản phẩm vào dropdown lọc
-        await loadProductsDropdown();
-
         // Đọc tham số URL nếu có (?productId=... hoặc ?search=...)
         const urlParams = new URLSearchParams(window.location.search);
         const paramProductId = urlParams.get("productId");
         const paramSearch = urlParams.get("search");
 
-        if (paramProductId) {
-          const productSelect = document.getElementById("productFilter");
-          if (productSelect) productSelect.value = paramProductId;
-        }
         if (paramSearch) {
           const searchInput = document.getElementById("searchInput");
           if (searchInput) searchInput.value = paramSearch;
         }
 
-        // 3. Tải danh sách lô đầu tiên (20 lô)
-        await fetchLots(true);
+        // 2. Tải song song dữ liệu độc lập bằng Promise.allSettled() để tăng tốc hiển thị trang (Ưu tiên 1)
+        // fetchLots hiển thị danh sách ngay mà không bị chặn bởi dropdown sản phẩm hay thống kê bàn giao
+        const lotsPromise = fetchLots(true, paramProductId);
+        const productsPromise = loadProductsDropdown().then(() => {
+          if (paramProductId) {
+            const productSelect = document.getElementById("productFilter");
+            if (productSelect) productSelect.value = paramProductId;
+          }
+        });
+        const badgePromise = updateIncomingBadge();
 
-        // 4. Cập nhật số lượng bàn giao chờ tiếp nhận (S-15)
-        await updateIncomingBadge();
+        await Promise.allSettled([lotsPromise, productsPromise, badgePromise]);
 
         if (urlParams.get("tab") === "incoming") {
           switchLotsTab("incoming");
@@ -883,7 +887,7 @@
       }
     }
 
-    async function fetchLots(isReset = true) {
+    async function fetchLots(isReset = true, overrideProductId = null) {
       if (isLoading) return;
       isLoading = true;
 
@@ -901,7 +905,7 @@
       }
 
       const searchVal = document.getElementById("searchInput").value.trim();
-      const productVal = document.getElementById("productFilter").value;
+      const productVal = overrideProductId !== null ? overrideProductId : document.getElementById("productFilter").value;
 
       const queryParams = new URLSearchParams({ limit: 20 });
       if (searchVal) queryParams.append("search", searchVal);
@@ -1109,6 +1113,10 @@
               <a href="/lot-detail.html?id=${encodeURIComponent(lot.id)}" class="dropdown-item">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
                 <span>Xem chi tiết lô</span>
+              </a>
+              <a href="/public-trace.html?code=${encodeURIComponent(lot.id)}" class="dropdown-item" target="_blank" rel="noopener noreferrer">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"></polygon><line x1="8" y1="2" x2="8" y2="18"></line><line x1="16" y1="6" x2="16" y2="22"></line></svg>
+                <span>Bản đồ hành trình</span>
               </a>
               ${canTransfer ? (
                 isPending ? `
@@ -1560,6 +1568,23 @@
     }
 
     let currentLotsTab = "my-lots";
+    let outgoingOffset = 0;
+    const outgoingLimit = 12;
+    let totalOutgoing = 0;
+
+    let incomingOffset = 0;
+    const incomingLimit = 12;
+    let totalIncoming = 0;
+
+    window.changeOutgoingPage = function(delta) {
+      outgoingOffset = Math.max(0, outgoingOffset + delta * outgoingLimit);
+      loadOutgoingTransfers(false);
+    };
+
+    window.changeIncomingPage = function(delta) {
+      incomingOffset = Math.max(0, incomingOffset + delta * incomingLimit);
+      loadIncomingTransfers(false);
+    };
 
     function switchLotsTab(tabName) {
       currentLotsTab = tabName;
@@ -1623,16 +1648,12 @@
 
     async function updateIncomingBadge() {
       try {
-        // Cập nhật cả 2 chiều: bàn giao đến (incoming) và bàn giao đi (outgoing)
-        const [incomingRes, outgoingRes] = await Promise.all([
-          fetch("/api/transfers?type=incoming&status=PENDING", { credentials: "same-origin" }),
-          fetch("/api/transfers?type=outgoing&status=PENDING", { credentials: "same-origin" })
-        ]);
-
-        if (incomingRes.ok) {
-          const incomingData = await incomingRes.json();
-          const incomingTransfers = incomingData.transfers || [];
-          const inCount = incomingTransfers.length;
+        // Sử dụng API summary trả về trực tiếp số lượng bàn giao thay vì tải toàn bộ danh sách (Ưu tiên 3)
+        const summaryRes = await fetch("/api/transfers/summary", { credentials: "same-origin" });
+        if (summaryRes.ok) {
+          const summary = await summaryRes.json();
+          const inCount = Number(summary.incomingPending || 0);
+          const outCount = Number(summary.outgoingPending || 0);
 
           const badge = document.getElementById("incomingBadge");
           const statIncoming = document.getElementById("statIncomingCount");
@@ -1646,12 +1667,6 @@
               badge.style.display = "none";
             }
           }
-        }
-
-        if (outgoingRes.ok) {
-          const outgoingData = await outgoingRes.json();
-          const outgoingTransfers = outgoingData.transfers || [];
-          const outCount = outgoingTransfers.length;
 
           const outBadge = document.getElementById("outgoingBadge");
           const statOutgoing = document.getElementById("statOutgoingCount");
@@ -1665,13 +1680,45 @@
               outBadge.style.display = "none";
             }
           }
+          return;
+        }
+
+        // Dự phòng khi gọi API transfers thông thường
+        const [incomingRes, outgoingRes] = await Promise.all([
+          fetch("/api/transfers?type=incoming&status=PENDING&limit=1", { credentials: "same-origin" }),
+          fetch("/api/transfers?type=outgoing&status=PENDING&limit=1", { credentials: "same-origin" })
+        ]);
+
+        if (incomingRes.ok) {
+          const incomingData = await incomingRes.json();
+          const inCount = typeof incomingData.total === "number" ? incomingData.total : (incomingData.transfers || []).length;
+          const badge = document.getElementById("incomingBadge");
+          const statIncoming = document.getElementById("statIncomingCount");
+          if (statIncoming) statIncoming.textContent = inCount;
+          if (badge) {
+            badge.textContent = inCount;
+            badge.style.display = inCount > 0 ? "inline-block" : "none";
+          }
+        }
+
+        if (outgoingRes.ok) {
+          const outgoingData = await outgoingRes.json();
+          const outCount = typeof outgoingData.total === "number" ? outgoingData.total : (outgoingData.transfers || []).length;
+          const outBadge = document.getElementById("outgoingBadge");
+          const statOutgoing = document.getElementById("statOutgoingCount");
+          if (statOutgoing) statOutgoing.textContent = outCount;
+          if (outBadge) {
+            outBadge.textContent = outCount;
+            outBadge.style.display = outCount > 0 ? "inline-block" : "none";
+          }
         }
       } catch (err) {
         console.warn("Could not update transfers badge", err);
       }
     }
 
-    async function loadOutgoingTransfers() {
+    async function loadOutgoingTransfers(resetPage = false) {
+      if (resetPage) outgoingOffset = 0;
       const container = document.getElementById("outgoingSection");
       if (!container) return;
 
@@ -1683,7 +1730,7 @@
       `;
 
       try {
-        const res = await fetch("/api/transfers?type=outgoing&status=PENDING", { credentials: "same-origin" });
+        const res = await fetch(`/api/transfers?type=outgoing&status=PENDING&limit=${outgoingLimit}&offset=${outgoingOffset}`, { credentials: "same-origin" });
         if (res.status === 401) {
           container.innerHTML = `
             <div style="text-align: center; padding: 40px; color: #dc2626;">
@@ -1696,6 +1743,7 @@
         if (!res.ok) throw new Error("Không thể tải danh sách bàn giao từ máy chủ.");
         const data = await res.json();
         const transfers = data.transfers || [];
+        totalOutgoing = typeof data.total === "number" ? data.total : transfers.length;
 
         updateIncomingBadge();
 
@@ -1717,7 +1765,7 @@
         container.innerHTML = `
           <div style="margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
             <div style="font-size: 14px; color: var(--color-text-muted);">
-              Bạn đã gửi <strong style="color: var(--color-text-main);">${transfers.length}</strong> yêu cầu bàn giao đang chờ đối tác tiếp nhận:
+              Bạn đã gửi <strong style="color: var(--color-text-main);">${totalOutgoing}</strong> yêu cầu bàn giao đang chờ đối tác tiếp nhận:
             </div>
             <div style="font-size: 12px; color: #1d4ed8; background: rgba(37, 99, 235, 0.1); border: 1px solid rgba(37, 99, 235, 0.2); padding: 4px 12px; border-radius: var(--radius-full); font-weight: 600;">
               Chờ đối tác xác nhận (Story S-15)
@@ -1789,6 +1837,17 @@
               </div>
             `).join('')}
           </div>
+          ${totalOutgoing > outgoingLimit ? `
+            <div class="pagination-bar" style="display: flex; justify-content: space-between; align-items: center; margin-top: 20px; padding: 12px 16px; background: #fff; border: 1px solid var(--color-border); border-radius: var(--radius-md);">
+              <div style="font-size: 13.5px; color: var(--color-text-muted);">
+                Hiển thị ${outgoingOffset + 1} - ${Math.min(outgoingOffset + transfers.length, totalOutgoing)} trên tổng số ${totalOutgoing} yêu cầu
+              </div>
+              <div style="display: flex; gap: 8px;">
+                <button type="button" class="btn btn-secondary btn-sm" onclick="changeOutgoingPage(-1)" ${outgoingOffset <= 0 ? "disabled" : ""}>← Trang trước</button>
+                <button type="button" class="btn btn-secondary btn-sm" onclick="changeOutgoingPage(1)" ${outgoingOffset + outgoingLimit >= totalOutgoing ? "disabled" : ""}>Trang sau →</button>
+              </div>
+            </div>
+          ` : ""}
         `;
       } catch (err) {
         container.innerHTML = `
@@ -1800,7 +1859,8 @@
       }
     }
 
-    async function loadIncomingTransfers() {
+    async function loadIncomingTransfers(resetPage = false) {
+      if (resetPage) incomingOffset = 0;
       const container = document.getElementById("incomingSection");
       if (!container) return;
 
@@ -1813,7 +1873,7 @@
 
 
       try {
-        const res = await fetch("/api/transfers?type=incoming&status=PENDING", { credentials: "same-origin" });
+        const res = await fetch(`/api/transfers?type=incoming&status=PENDING&limit=${incomingLimit}&offset=${incomingOffset}`, { credentials: "same-origin" });
         if (res.status === 401) {
           container.innerHTML = `
             <div style="text-align: center; padding: 40px; color: #dc2626;">
@@ -1827,6 +1887,7 @@
         if (!res.ok) throw new Error("Không thể tải danh sách bàn giao từ máy chủ.");
         const data = await res.json();
         const transfers = data.transfers || [];
+        totalIncoming = typeof data.total === "number" ? data.total : transfers.length;
 
         updateIncomingBadge();
 
@@ -1848,7 +1909,7 @@
         container.innerHTML = `
           <div style="margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
             <div style="font-size: 14px; color: var(--color-text-muted);">
-              Có <strong style="color: var(--color-text-main);">${transfers.length}</strong> lô hàng đang chờ tổ chức của bạn xác nhận tiếp nhận:
+              Có <strong style="color: var(--color-text-main);">${totalIncoming}</strong> lô hàng đang chờ tổ chức của bạn xác nhận tiếp nhận:
             </div>
             <div style="font-size: 12px; color: #b45309; background: rgba(245, 158, 11, 0.1); border: 1px solid rgba(245, 158, 11, 0.2); padding: 4px 12px; border-radius: var(--radius-full); font-weight: 600;">
               Trạng thái PENDING (Story S-15)
@@ -1931,6 +1992,22 @@
             `).join('')}
           </div>
         `;
+
+        if (totalIncoming > incomingLimit) {
+          const pBar = document.createElement("div");
+          pBar.className = "pagination-bar";
+          pBar.style.cssText = "display: flex; justify-content: space-between; align-items: center; margin-top: 20px; padding: 12px 16px; background: #fff; border: 1px solid var(--color-border); border-radius: var(--radius-md);";
+          pBar.innerHTML = `
+            <div style="font-size: 13.5px; color: var(--color-text-muted);">
+              Hiển thị ${incomingOffset + 1} - ${Math.min(incomingOffset + transfers.length, totalIncoming)} trên tổng số ${totalIncoming} yêu cầu
+            </div>
+            <div style="display: flex; gap: 8px;">
+              <button type="button" class="btn btn-secondary btn-sm" onclick="changeIncomingPage(-1)" ${incomingOffset <= 0 ? "disabled" : ""}>← Trang trước</button>
+              <button type="button" class="btn btn-secondary btn-sm" onclick="changeIncomingPage(1)" ${incomingOffset + incomingLimit >= totalIncoming ? "disabled" : ""}>Trang sau →</button>
+            </div>
+          `;
+          container.appendChild(pBar);
+        }
 
         // Gắn sự kiện cho các nút Xác nhận và Từ chối (S-16)
         container.querySelectorAll(".btn-confirm-transfer").forEach((btn) => {

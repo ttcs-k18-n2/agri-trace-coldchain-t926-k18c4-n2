@@ -8,10 +8,6 @@ const {
   inMemoryLots,
   inMemoryBatchRelations,
   inMemoryBatchEvents,
-  inMemoryOrgs,
-  inMemoryProducts,
-  inMemoryFarms,
-  inMemoryRecallOrders,
   seedS39Data,
   verifyBatchEventChain,
 } = require("../src/server");

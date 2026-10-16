@@ -34,6 +34,28 @@ const {
   validateMergeItems,
 } = require("./quantity");
 const { traceLotOrigins, traceLotDescendants, CycleDetectedError } = require("./lot_genealogy");
+const { getPublicLotMapData } = require("./public_trace_map");
+
+const publicMapRateLimitMap = new Map();
+function checkPublicMapRateLimit(ip) {
+  const now = Date.now();
+  const windowMs = 60 * 1000;
+  const maxRequests = 120;
+  const record = publicMapRateLimitMap.get(ip) || { count: 0, resetTime: now + windowMs };
+  if (now > record.resetTime) {
+    record.count = 1;
+    record.resetTime = now + windowMs;
+  } else {
+    record.count++;
+  }
+  publicMapRateLimitMap.set(ip, record);
+  if (publicMapRateLimitMap.size > 10000) {
+    for (const [k, v] of publicMapRateLimitMap.entries()) {
+      if (now > v.resetTime) publicMapRateLimitMap.delete(k);
+    }
+  }
+  return record.count <= maxRequests;
+}
 const {
   validateProductsCsv,
   validateFarmsCsv,
@@ -132,11 +154,11 @@ const inMemoryFarms = [
   { id: "FARM-101", name: "Thửa rau cải Yên Dũng 01", area: 3.0, coordinates: "21.2341, 106.1892", organizationId: "org-002" },
 ];
 const inMemoryLots = [
-  { id: "LOT-001", name: "Lô cà chua Thái Nguyên", status: "Đã thu hoạch", organizationId: "org-001", farmId: "FARM-002", productId: "PROD-TOMATO", initialQuantity: 500, remainingQuantity: 500, harvestedAt: "2026-09-25", parentLotId: null },
-  { id: "LOT-002", name: "Lô chè Tân Cương", status: "Đã thu hoạch", organizationId: "org-001", farmId: "FARM-001", productId: "PROD-TEA", initialQuantity: 120, remainingQuantity: 120, harvestedAt: "2026-09-26", parentLotId: null },
-  { id: "LOT-101", name: "Lô rau cải Bắc Giang", status: "Đã thu hoạch", organizationId: "org-002", farmId: "FARM-101", productId: "PROD-VEGETABLE", initialQuantity: 300, remainingQuantity: 300, harvestedAt: "2026-09-27", parentLotId: null },
+  { id: "LOT-001", name: "Lô cà chua Thái Nguyên", status: "Đã thu hoạch", organizationId: "org-001", farmId: "FARM-002", productId: "PROD-TOMATO", initialQuantity: 500, remainingQuantity: 500, harvestedAt: "2026-09-25", parentLotId: null, locationId: "LOC-WH-TN-01" },
+  { id: "LOT-002", name: "Lô chè Tân Cương", status: "Đã thu hoạch", organizationId: "org-001", farmId: "FARM-001", productId: "PROD-TEA", initialQuantity: 120, remainingQuantity: 120, harvestedAt: "2026-09-26", parentLotId: null, locationId: "LOC-WH-TN-01" },
+  { id: "LOT-101", name: "Lô rau cải Bắc Giang", status: "Đã thu hoạch", organizationId: "org-002", farmId: "FARM-101", productId: "PROD-VEGETABLE", initialQuantity: 300, remainingQuantity: 300, harvestedAt: "2026-09-27", parentLotId: null, locationId: "LOC-WH-BG-01" },
   { id: "LOT-102", name: "Lô dưa chuột Hiệp Hòa", status: "Đã thu hoạch", organizationId: "org-002", farmId: null, productId: null, initialQuantity: 250, remainingQuantity: 250, harvestedAt: "2026-09-28", parentLotId: null },
-  { id: "LOT-DIST-01", name: "Lô cà chua phân phối siêu thị", status: "Đã nhập kho", organizationId: "org-dist", farmId: null, productId: "PROD-TOMATO", initialQuantity: 200, remainingQuantity: 200, harvestedAt: "2026-10-01", parentLotId: null },
+  { id: "LOT-DIST-01", name: "Lô cà chua phân phối siêu thị", status: "Đã nhập kho", organizationId: "org-dist", farmId: null, productId: "PROD-TOMATO", initialQuantity: 200, remainingQuantity: 200, harvestedAt: "2026-10-01", parentLotId: null, locationId: "LOC-STORE-HN-01" },
   { id: "LOT-DIST-02", name: "Lô rau cải sạch cửa hàng bán lẻ", status: "Đang lưu kho", organizationId: "org-dist", farmId: null, productId: "PROD-VEGETABLE", initialQuantity: 150, remainingQuantity: 150, harvestedAt: "2026-10-02", parentLotId: null },
 ];
 
@@ -617,6 +639,86 @@ app.get("/", (req, res) => {
 app.get("/health", checkHealth);
 app.get("/api/health", checkHealth);
 
+/**
+ * S-60 (N2-131 / N2-290): API Bản đồ vị trí vùng trồng và điểm phân phối trên trang truy xuất công khai
+ * - Không yêu cầu đăng nhập (Public Consumer API).
+ * - Tái sử dụng traceLotOrigins() để lấy toàn bộ vùng trồng gốc.
+ * - Trích xuất lịch sử TRANSFER_CONFIRMED và LOCATION_CHANGED theo thứ tự thời gian.
+ * - Bảo vệ tọa độ thửa riêng tư theo S-06 (sử dụng danh mục tọa độ đại diện cấp xã).
+ * - Tuyệt đối không trả về số điện thoại, mã định danh người dùng nội bộ, hay dữ liệu nhạy cảm.
+ */
+app.get(
+  ["/api/public/lots/:code/map", "/api/public/lots/:code/public-map"],
+  async (req, res) => {
+    const clientIp = req.ip || req.socket.remoteAddress || "127.0.0.1";
+    if (!checkPublicMapRateLimit(clientIp)) {
+      return res.status(429).json({
+        error: "TOO_MANY_REQUESTS",
+        message: "Quá nhiều yêu cầu truy xuất bản đồ. Vui lòng thử lại sau.",
+      });
+    }
+
+    const rawCode = req.params.code;
+    if (!rawCode || typeof rawCode !== "string") {
+      return res.status(400).json({
+        error: "INVALID_LOT_CODE",
+        message: "Mã lô hàng không hợp lệ.",
+      });
+    }
+
+    const code = rawCode.trim();
+    // Giới hạn độ dài tối đa 50 ký tự và không chứa ký tự độc hại (Issue 33)
+    if (!/^[A-Za-z0-9_-]{1,50}$/.test(code)) {
+      return res.status(400).json({
+        error: "INVALID_LOT_CODE",
+        message: "Mã lô hàng không đúng định dạng (tối đa 50 ký tự, không chứa ký tự đặc biệt).",
+      });
+    }
+
+    try {
+      const mapData = await getPublicLotMapData({
+        pool,
+        lotCode: code.trim(),
+        inMemoryLots,
+        inMemoryBatchRelations,
+        inMemoryBatchEvents,
+        inMemoryOrgs,
+        inMemoryProducts,
+        inMemoryFarms,
+        inMemoryLocations,
+        inMemoryTransfers,
+      });
+
+      return res.status(200).json(mapData);
+    } catch (err) {
+      if (err.statusCode === 404 || err.code === "LOT_NOT_FOUND" || err.message?.includes("Không tìm thấy lô hàng")) {
+        return res.status(404).json({
+          error: "LOT_NOT_FOUND",
+          message: `Không tìm thấy thông tin lô hàng ${code} trên hệ thống truy xuất công khai.`,
+        });
+      }
+      if (err.name === "CycleDetectedError" || err.statusCode === 422) {
+        return res.status(422).json({
+          error: "GENEALOGY_CYCLE_ERROR",
+          message: "Phát hiện sự cố vòng lặp cấu trúc phả hệ trong dữ liệu truy vết.",
+        });
+      }
+      if (err.statusCode === 400 || err.code === "INVALID_LOT_CODE") {
+        return res.status(400).json({
+          error: "INVALID_LOT_CODE",
+          message: "Mã lô hàng không hợp lệ.",
+        });
+      }
+      console.error("[PublicTraceMap Internal Error]:", err);
+      return res.status(err.statusCode || 500).json({
+        error: "INTERNAL_ERROR",
+        message: "Lỗi máy chủ khi truy xuất bản đồ lô hàng. Vui lòng thử lại sau.",
+      });
+    }
+  }
+);
+
+
 app.post("/api/login", async (req, res) => {
   const email = normalizeEmail(req.body.email);
   const password = String(req.body.password || "");
@@ -942,6 +1044,23 @@ app.post(
           );
           createdProducts.push(insertRes.rows[0]);
         }
+        await recordAuditLog({
+          client,
+          pool,
+          inMemoryLogs: inMemoryAuditLogs,
+          actorUserId: req.auth ? (req.auth.userId || req.auth.id) : null,
+          actorEmail: req.auth ? req.auth.email : null,
+          organizationId: req.auth ? req.auth.organizationId : null,
+          action: "PRODUCTS_CSV_IMPORTED",
+          resourceType: "products",
+          resourceId: `BATCH-${createdProducts.length}`,
+          ipAddress: req.ip,
+          userAgent: req.get("User-Agent"),
+          details: {
+            importedCount: createdProducts.length,
+            productIds: createdProducts.map((p) => p.id),
+          },
+        });
         await client.query("COMMIT");
       } catch (err) {
         await client.query("ROLLBACK");
@@ -961,6 +1080,21 @@ app.post(
         inMemoryProducts.push(newProd);
         createdProducts.push(newProd);
       }
+      await recordAuditLog({
+        inMemoryLogs: inMemoryAuditLogs,
+        actorUserId: req.auth ? (req.auth.userId || req.auth.id) : null,
+        actorEmail: req.auth ? req.auth.email : null,
+        organizationId: req.auth ? req.auth.organizationId : null,
+        action: "PRODUCTS_CSV_IMPORTED",
+        resourceType: "products",
+        resourceId: `BATCH-${createdProducts.length}`,
+        ipAddress: req.ip,
+        userAgent: req.get("User-Agent"),
+        details: {
+          importedCount: createdProducts.length,
+          productIds: createdProducts.map((p) => p.id),
+        },
+      });
     }
 
     return res.status(201).json({
@@ -3600,11 +3734,8 @@ app.get(
  * Chuỗi sự kiện có mã băm bảo vệ tính toàn vẹn (S-10):
  * - INSERT lot + appendBatchEvent(HARVEST_CREATED) nằm trong cùng transaction nguyên tử (nếu event lỗi -> rollback lot).
  */
-app.post(
-  "/api/lots",
-  requirePermission(["producer", "cooperative", "org_admin", "admin"]),
-  async (req, res) => {
-    const { farmId, productId, quantity, harvestedAt } = req.body;
+async function handleCreateHarvestLot(req, res) {
+  const { farmId, productId, quantity, harvestedAt } = req.body;
     const orgId = req.auth.organizationId;
     const userId = req.auth.userId || req.auth.id || req.auth.email || "user";
 
@@ -3932,7 +4063,12 @@ app.post(
     cleanupHarvestIdempotency();
 
     return res.status(201).json(successResponse);
-  }
+}
+
+app.post(
+  "/api/lots",
+  requirePermission(["producer", "cooperative", "org_admin", "admin"]),
+  handleCreateHarvestLot
 );
 
 /**
@@ -3944,7 +4080,7 @@ app.post(
   async (req, res) => {
     // Nếu request truyền farmId và productId, chuyển tiếp xử lý theo nghiệp vụ thu hoạch mới (T-20)
     if (req.body.farmId && req.body.productId) {
-      return app._router.handle({ ...req, url: "/api/lots", method: "POST" }, res);
+      return handleCreateHarvestLot(req, res);
     }
 
     const { id, name, status } = req.body;
@@ -4266,6 +4402,23 @@ app.post(
             organizationId: r.organization_id,
           });
         }
+        await recordAuditLog({
+          client,
+          pool,
+          inMemoryLogs: inMemoryAuditLogs,
+          actorUserId: req.auth ? (req.auth.userId || req.auth.id) : null,
+          actorEmail: req.auth ? req.auth.email : null,
+          organizationId: orgId,
+          action: "FARMS_CSV_IMPORTED",
+          resourceType: "farms",
+          resourceId: `BATCH-${createdFarms.length}`,
+          ipAddress: req.ip,
+          userAgent: req.get("User-Agent"),
+          details: {
+            importedCount: createdFarms.length,
+            farmIds: createdFarms.map((f) => f.id),
+          },
+        });
         await client.query("COMMIT");
       } catch (err) {
         await client.query("ROLLBACK");
@@ -4286,6 +4439,21 @@ app.post(
         inMemoryFarms.push(newFarm);
         createdFarms.push(newFarm);
       }
+      await recordAuditLog({
+        inMemoryLogs: inMemoryAuditLogs,
+        actorUserId: req.auth ? (req.auth.userId || req.auth.id) : null,
+        actorEmail: req.auth ? req.auth.email : null,
+        organizationId: orgId,
+        action: "FARMS_CSV_IMPORTED",
+        resourceType: "farms",
+        resourceId: `BATCH-${createdFarms.length}`,
+        ipAddress: req.ip,
+        userAgent: req.get("User-Agent"),
+        details: {
+          importedCount: createdFarms.length,
+          farmIds: createdFarms.map((f) => f.id),
+        },
+      });
     }
 
     return res.status(201).json({
@@ -4504,6 +4672,8 @@ app.post(
             name: r.name,
             status: r.status,
             organizationId: r.organization_id,
+            remainingQuantity: r.remaining_quantity !== null && r.remaining_quantity !== undefined ? Number(r.remaining_quantity) : null,
+            initialQuantity: r.initial_quantity !== null && r.initial_quantity !== undefined ? Number(r.initial_quantity) : null,
           };
         }
       } else {
@@ -4800,13 +4970,63 @@ app.post(
 );
 
 /**
- * Lấy danh sách yêu cầu bàn giao lô hàng (S-15, S-16)
- * - Lọc theo status (PENDING, CONFIRMED, REJECTED)
- * - Lọc theo type (outgoing: gửi đi, incoming: nhận về)
- * - Lọc theo lotId
+ * Thống kê tổng số lượng yêu cầu bàn giao phục vụ badge hiển thị nhanh (Ưu tiên 3)
  */
 app.get(
-  "/api/transfers",
+  "/api/transfers/summary",
+  requirePermission(["producer", "cooperative", "transporter", "distributor", "inspector", "org_admin", "admin"]),
+  async (req, res) => {
+    const isGlobal = req.auth.isInspector || req.auth.roleId === "admin";
+    const userOrgId = req.auth.organizationId;
+
+    try {
+      if (pool) {
+        let inQuery = "SELECT COUNT(*) AS total FROM lot_transfers WHERE status = 'PENDING'";
+        let outQuery = "SELECT COUNT(*) AS total FROM lot_transfers WHERE status = 'PENDING'";
+        const inParams = [];
+        const outParams = [];
+
+        if (!isGlobal) {
+          inParams.push(userOrgId);
+          inQuery += " AND to_organization_id = $1";
+          outParams.push(userOrgId);
+          outQuery += " AND from_organization_id = $1";
+        }
+
+        const [incRes, outRes] = await Promise.all([
+          pool.query(inQuery, inParams),
+          pool.query(outQuery, outParams),
+        ]);
+
+        return res.status(200).json({
+          incomingPending: Number(incRes.rows[0].total || 0),
+          outgoingPending: Number(outRes.rows[0].total || 0),
+        });
+      }
+
+      let inCount = 0;
+      let outCount = 0;
+      for (const t of inMemoryTransfers) {
+        if (t.status === "PENDING") {
+          if (isGlobal || t.toOrganizationId === userOrgId) inCount++;
+          if (isGlobal || t.fromOrganizationId === userOrgId) outCount++;
+        }
+      }
+      return res.status(200).json({
+        incomingPending: inCount,
+        outgoingPending: outCount,
+      });
+    } catch (err) {
+      return res.status(500).json({ message: err.message });
+    }
+  }
+);
+
+/**
+ * Đếm số lượng yêu cầu bàn giao theo bộ lọc (Ưu tiên 3)
+ */
+app.get(
+  "/api/transfers/count",
   requirePermission(["producer", "cooperative", "transporter", "distributor", "inspector", "org_admin", "admin"]),
   async (req, res) => {
     const isGlobal = req.auth.isInspector || req.auth.roleId === "admin";
@@ -4815,22 +5035,8 @@ app.get(
 
     try {
       if (pool) {
-        let query = `
-          SELECT 
-            t.id, t.lot_id, t.from_organization_id, t.to_organization_id,
-            t.status, t.notes, t.created_by_user_id, t.resolved_by_user_id,
-            t.rejection_reason, t.is_overdue, t.overdue_at, t.created_at, t.updated_at,
-            l.name AS lot_name, l.status AS lot_status,
-            o_from.name AS from_organization_name,
-            o_to.name AS to_organization_name
-          FROM lot_transfers t
-          JOIN lots l ON t.lot_id = l.id
-          LEFT JOIN organizations o_from ON t.from_organization_id = o_from.id
-          LEFT JOIN organizations o_to ON t.to_organization_id = o_to.id
-          WHERE 1=1
-        `;
+        let query = "SELECT COUNT(*) AS total FROM lot_transfers t WHERE 1=1";
         const params = [];
-
         if (!isGlobal) {
           if (type === "outgoing") {
             params.push(userOrgId);
@@ -4843,41 +5049,150 @@ app.get(
             query += ` AND (t.from_organization_id = $${params.length} OR t.to_organization_id = $${params.length})`;
           }
         }
-
         if (status) {
           params.push(status.toUpperCase());
           query += ` AND t.status = $${params.length}`;
         }
-
         if (lotId) {
           params.push(lotId);
           query += ` AND t.lot_id = $${params.length}`;
         }
 
-        query += " ORDER BY t.created_at DESC";
+        const resCount = await pool.query(query, params);
+        return res.status(200).json({ count: Number(resCount.rows[0].total || 0) });
+      }
+
+      let filtered = [...inMemoryTransfers];
+      if (!isGlobal) {
+        if (type === "outgoing") {
+          filtered = filtered.filter((t) => t.fromOrganizationId === userOrgId);
+        } else if (type === "incoming") {
+          filtered = filtered.filter((t) => t.toOrganizationId === userOrgId);
+        } else {
+          filtered = filtered.filter(
+            (t) => t.fromOrganizationId === userOrgId || t.toOrganizationId === userOrgId
+          );
+        }
+      }
+      if (status) {
+        const st = status.toUpperCase();
+        filtered = filtered.filter((t) => t.status === st);
+      }
+      if (lotId) {
+        filtered = filtered.filter((t) => t.lotId === lotId);
+      }
+      return res.status(200).json({ count: filtered.length });
+    } catch (err) {
+      return res.status(500).json({ message: err.message });
+    }
+  }
+);
+
+/**
+ * Lấy danh sách yêu cầu bàn giao lô hàng hỗ trợ phân trang (S-15, S-16, Ưu tiên 3)
+ * - Lọc theo status (PENDING, CONFIRMED, REJECTED)
+ * - Lọc theo type (outgoing: gửi đi, incoming: nhận về)
+ * - Lọc theo lotId
+ * - Phân trang: limit, offset
+ */
+app.get(
+  "/api/transfers",
+  requirePermission(["producer", "cooperative", "transporter", "distributor", "inspector", "org_admin", "admin"]),
+  async (req, res) => {
+    const isGlobal = req.auth.isInspector || req.auth.roleId === "admin";
+    const userOrgId = req.auth.organizationId;
+    const { status, type, lotId, limit, offset } = req.query;
+
+    const safeLimit = limit !== undefined && limit !== null && limit !== ""
+      ? Math.max(1, Math.min(Number(limit) || 50, 500))
+      : null;
+    const safeOffset = Math.max(0, Number(offset) || 0);
+
+    try {
+      if (pool) {
+        let whereSql = " WHERE 1=1";
+        const params = [];
+
+        if (!isGlobal) {
+          if (type === "outgoing") {
+            params.push(userOrgId);
+            whereSql += ` AND t.from_organization_id = $${params.length}`;
+          } else if (type === "incoming") {
+            params.push(userOrgId);
+            whereSql += ` AND t.to_organization_id = $${params.length}`;
+          } else {
+            params.push(userOrgId);
+            whereSql += ` AND (t.from_organization_id = $${params.length} OR t.to_organization_id = $${params.length})`;
+          }
+        }
+
+        if (status) {
+          params.push(status.toUpperCase());
+          whereSql += ` AND t.status = $${params.length}`;
+        }
+
+        if (lotId) {
+          params.push(lotId);
+          whereSql += ` AND t.lot_id = $${params.length}`;
+        }
+
+        let total = null;
+        if (safeLimit !== null) {
+          const countRes = await pool.query(`SELECT COUNT(*) AS total FROM lot_transfers t${whereSql}`, params);
+          total = Number(countRes.rows[0].total || 0);
+        }
+
+        let query = `
+          SELECT 
+            t.id, t.lot_id, t.from_organization_id, t.to_organization_id,
+            t.status, t.notes, t.created_by_user_id, t.resolved_by_user_id,
+            t.rejection_reason, t.is_overdue, t.overdue_at, t.created_at, t.updated_at,
+            l.name AS lot_name, l.status AS lot_status,
+            o_from.name AS from_organization_name,
+            o_to.name AS to_organization_name
+          FROM lot_transfers t
+          JOIN lots l ON t.lot_id = l.id
+          LEFT JOIN organizations o_from ON t.from_organization_id = o_from.id
+          LEFT JOIN organizations o_to ON t.to_organization_id = o_to.id
+          ${whereSql}
+          ORDER BY t.created_at DESC
+        `;
+
+        if (safeLimit !== null) {
+          params.push(safeLimit);
+          query += ` LIMIT $${params.length}`;
+          params.push(safeOffset);
+          query += ` OFFSET $${params.length}`;
+        }
 
         const result = await pool.query(query, params);
-        return res.status(200).json({
-          transfers: result.rows.map((r) => ({
-            id: r.id,
-            lotId: r.lot_id,
-            lotName: r.lot_name,
-            lotStatus: r.lot_status,
-            fromOrganizationId: r.from_organization_id,
-            fromOrganizationName: r.from_organization_name,
-            toOrganizationId: r.to_organization_id,
-            toOrganizationName: r.to_organization_name,
-            status: r.status,
-            isOverdue: Boolean(r.is_overdue),
-            overdueAt: r.overdue_at || null,
-            notes: r.notes,
-            createdByUserId: r.created_by_user_id,
-            resolvedByUserId: r.resolved_by_user_id,
-            rejectionReason: r.rejection_reason,
-            createdAt: r.created_at,
-            updatedAt: r.updated_at,
-          })),
-        });
+        const mappedTransfers = result.rows.map((r) => ({
+          id: r.id,
+          lotId: r.lot_id,
+          lotName: r.lot_name,
+          lotStatus: r.lot_status,
+          fromOrganizationId: r.from_organization_id,
+          fromOrganizationName: r.from_organization_name,
+          toOrganizationId: r.to_organization_id,
+          toOrganizationName: r.to_organization_name,
+          status: r.status,
+          isOverdue: Boolean(r.is_overdue),
+          overdueAt: r.overdue_at || null,
+          notes: r.notes,
+          createdByUserId: r.created_by_user_id,
+          resolvedByUserId: r.resolved_by_user_id,
+          rejectionReason: r.rejection_reason,
+          createdAt: r.created_at,
+          updatedAt: r.updated_at,
+        }));
+
+        const responseObj = { transfers: mappedTransfers };
+        if (safeLimit !== null) {
+          responseObj.total = total;
+          responseObj.limit = safeLimit;
+          responseObj.offset = safeOffset;
+        }
+        return res.status(200).json(responseObj);
       }
 
       // In-memory fallback
@@ -4904,9 +5219,15 @@ app.get(
       }
 
       filtered.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      const total = filtered.length;
 
-      return res.status(200).json({
-        transfers: filtered.map((t) => {
+      let paged = filtered;
+      if (safeLimit !== null) {
+        paged = filtered.slice(safeOffset, safeOffset + safeLimit);
+      }
+
+      const responseObj = {
+        transfers: paged.map((t) => {
           const lot = inMemoryLots.find((l) => l.id === t.lotId);
           const fromOrg = inMemoryOrganizations.find((o) => o.id === t.fromOrganizationId);
           const toOrg = inMemoryOrganizations.find((o) => o.id === t.toOrganizationId);
@@ -4920,7 +5241,15 @@ app.get(
             toOrganizationName: toOrg ? toOrg.name : t.toOrganizationId,
           };
         }),
-      });
+      };
+
+      if (safeLimit !== null) {
+        responseObj.total = total;
+        responseObj.limit = safeLimit;
+        responseObj.offset = safeOffset;
+      }
+
+      return res.status(200).json(responseObj);
     } catch (err) {
       return res.status(500).json({ message: err.message });
     }
@@ -5580,13 +5909,32 @@ app.post(
 
 /**
  * Giả lập yêu cầu bàn giao quá hạn phục vụ kiểm thử trực tiếp (S-24 / T-56 / T-57)
+ * - Vô hiệu hóa trên môi trường production để bảo mật hệ thống (P0).
+ * - Yêu cầu quyền admin (requirePermission(["admin"])) và bắt buộc truyền transferId hoặc lotId cụ thể.
  * - Cho phép sửa created_at của yêu cầu bàn giao PENDING thành N giờ trước (mặc định 49h).
  * - Tự động kích hoạt job quét markOverdueTransfers để chuyển trạng thái isOverdue = true ngay lập tức.
  */
-app.post("/api/transfers/simulate-overdue", async (req, res) => {
-  const { transferId, lotId, hours = 49 } = req.body || {};
-  const targetHours = Number(hours) || 49;
-  const simulatedTime = new Date(Date.now() - targetHours * 3600 * 1000).toISOString();
+app.post(
+  "/api/transfers/simulate-overdue",
+  requirePermission(["admin"]),
+  async (req, res) => {
+    if (process.env.NODE_ENV === "production") {
+      return res.status(403).json({
+        error: "FORBIDDEN",
+        message: "API giả lập quá hạn bị vô hiệu hóa trong môi trường production.",
+      });
+    }
+
+    const { transferId, lotId, hours = 49 } = req.body || {};
+    if (!transferId && !lotId) {
+      return res.status(400).json({
+        error: "TARGET_REQUIRED",
+        message: "Phải cung cấp transferId hoặc lotId cụ thể để giả lập quá hạn, không cho phép cập nhật hàng loạt.",
+      });
+    }
+
+    const targetHours = Number(hours) || 49;
+    const simulatedTime = new Date(Date.now() - targetHours * 3600 * 1000).toISOString();
 
   try {
     if (pool) {
@@ -5735,6 +6083,17 @@ app.get("/harvest", requireAuth, (req, res) => {
   return res.redirect("http://localhost:8080/harvest.html");
 });
 
+
+const frontendPublicTracePath = path.join(__dirname, "../../frontend/public-trace.html");
+
+app.get(["/public-trace", "/public-trace.html"], (req, res) => {
+  if (fs.existsSync(frontendPublicTracePath)) {
+    return sendFrontendFile(res, frontendPublicTracePath);
+  }
+  const query = req.url.includes("?") ? req.url.substring(req.url.indexOf("?")) : "";
+  return res.redirect("/public-trace.html" + query);
+});
+
 const frontendLotDetailPath = path.join(__dirname, "../../frontend/lot-detail.html");
 
 app.get(["/lot-detail", "/lot-detail.html"], requireAuth, (req, res) => {
@@ -5850,7 +6209,7 @@ app.get(
   }
 );
 
-// Tạo địa điểm mới (S-30)
+// Tạo địa điểm mới (S-30) - Ghi audit nguyên tử trong cùng transaction (S-31 Atomicity)
 app.post(
   "/api/locations",
   requirePermission(["producer", "cooperative", "transporter", "distributor", "org_admin", "admin"]),
@@ -5862,32 +6221,79 @@ app.post(
       }
 
       const organizationId = req.auth.organizationId;
-      const newLoc = await createLocation(pool, inMemoryLocations, {
-        name: name.trim(),
-        address: address ? address.trim() : null,
-        organizationId,
-        locationType: locationType || "warehouse",
-        contactPerson: contactPerson ? contactPerson.trim() : null,
-        phone: phone ? phone.trim() : null,
-        coordinates: coordinates || null,
-      });
+      const userId = req.auth.userId || req.auth.id;
 
-      // Ghi nhật ký thao tác nghiệp vụ (S-31)
-      await recordAuditLog({
-        pool,
-        inMemoryLogs: inMemoryAuditLogs,
-        actorUserId: req.auth.userId,
-        actorEmail: req.auth.email,
-        organizationId,
-        action: "LOCATION_CREATED",
-        resourceType: "location",
-        resourceId: newLoc.id,
-        ipAddress: req.ip,
-        userAgent: req.get("User-Agent"),
-        details: { name: newLoc.name, locationType: newLoc.locationType, address: newLoc.address },
-      });
+      let newLoc = null;
+      if (pool) {
+        const client = await pool.connect();
+        try {
+          await client.query("BEGIN");
 
-      return res.status(201).json({ message: "Tạo địa điểm thành công.", location: newLoc });
+          newLoc = await createLocation(client, inMemoryLocations, {
+            name: name.trim(),
+            address: address ? address.trim() : null,
+            organizationId,
+            locationType: locationType || "warehouse",
+            contactPerson: contactPerson ? contactPerson.trim() : null,
+            phone: phone ? phone.trim() : null,
+            coordinates: coordinates || null,
+          });
+
+          // Ghi nhật ký thao tác nghiệp vụ trong cùng transaction (S-31 Atomicity)
+          await recordAuditLog({
+            client,
+            pool,
+            inMemoryLogs: inMemoryAuditLogs,
+            actorUserId: userId,
+            actorEmail: req.auth.email,
+            organizationId,
+            action: "LOCATION_CREATED",
+            resourceType: "location",
+            resourceId: newLoc.id,
+            ipAddress: req.ip,
+            userAgent: req.get("User-Agent"),
+            details: { name: newLoc.name, locationType: newLoc.locationType, address: newLoc.address },
+          });
+
+          await client.query("COMMIT");
+          return res.status(201).json({ message: "Tạo địa điểm thành công.", location: newLoc });
+        } catch (txErr) {
+          await client.query("ROLLBACK");
+          if (newLoc) {
+            const idx = inMemoryLocations.findIndex((l) => l.id === newLoc.id);
+            if (idx !== -1) inMemoryLocations.splice(idx, 1);
+          }
+          throw txErr;
+        } finally {
+          client.release();
+        }
+      } else {
+        newLoc = await createLocation(null, inMemoryLocations, {
+          name: name.trim(),
+          address: address ? address.trim() : null,
+          organizationId,
+          locationType: locationType || "warehouse",
+          contactPerson: contactPerson ? contactPerson.trim() : null,
+          phone: phone ? phone.trim() : null,
+          coordinates: coordinates || null,
+        });
+
+        // Ghi nhật ký thao tác nghiệp vụ (S-31)
+        await recordAuditLog({
+          inMemoryLogs: inMemoryAuditLogs,
+          actorUserId: userId,
+          actorEmail: req.auth.email,
+          organizationId,
+          action: "LOCATION_CREATED",
+          resourceType: "location",
+          resourceId: newLoc.id,
+          ipAddress: req.ip,
+          userAgent: req.get("User-Agent"),
+          details: { name: newLoc.name, locationType: newLoc.locationType, address: newLoc.address },
+        });
+
+        return res.status(201).json({ message: "Tạo địa điểm thành công.", location: newLoc });
+      }
     } catch (err) {
       return res.status(500).json({ message: err.message });
     }
@@ -6098,6 +6504,146 @@ app.patch(
 );
 
 /**
+ * Cập nhật tọa độ / định vị nhanh cho lô hàng (Choice A - Story S-60)
+ */
+app.patch(
+  "/api/lots/:id/coordinates",
+  requirePermission(["producer", "cooperative", "transporter", "distributor", "org_admin", "admin"]),
+  async (req, res) => {
+    const lotId = req.params.id;
+    const { coordinates, name, address, type } = req.body || {};
+
+    const { parseCoordinates } = require("./public_trace_map");
+    const parsed = parseCoordinates(coordinates);
+    if (!parsed) {
+      return res.status(400).json({
+        error: "INVALID_COORDINATES",
+        message: "Tọa độ không hợp lệ. Vui lòng nhập định dạng Vĩ độ, Kinh độ (Ví dụ: 21.5750, 105.6905).",
+      });
+    }
+
+    const customData = {
+      lat: parsed.lat,
+      lng: parsed.lng,
+      name: (name && typeof name === "string") ? name.trim() : null,
+      address: (address && typeof address === "string") ? address.trim() : null,
+      type: type || "farm",
+      updatedAt: new Date().toISOString(),
+    };
+
+    const isAdmin = Boolean(req.auth && (req.auth.roleId === "admin" || req.auth.isAdmin));
+    const callerOrg = isAdmin ? null : (req.auth ? (req.auth.organizationId || req.auth.organization_id) : null);
+
+    if (pool) {
+      const lotRes = await pool.query("SELECT * FROM lots WHERE UPPER(id) = UPPER($1)", [lotId]);
+      if (lotRes.rows.length === 0) {
+        return res.status(404).json({
+          error: "LOT_NOT_FOUND",
+          message: "Không tìm thấy lô hàng.",
+        });
+      }
+      const lot = lotRes.rows[0];
+      const lotOrgId = lot.organization_id;
+
+      if (!isAdmin && lotOrgId !== callerOrg) {
+        logSecurityEvent("CROSS_TENANT_ACCESS_DENIED", {
+          userId: req.auth.userId || req.auth.id,
+          userEmail: req.auth.email,
+          userOrgId: callerOrg,
+          userRole: req.auth.roleId,
+          resourceType: "lots",
+          resourceId: lotId,
+          targetOrgId: lotOrgId,
+          action: "UPDATE_COORDINATES",
+          ip: req.ip,
+          userAgent: req.get("User-Agent"),
+        });
+        return res.status(403).json({
+          error: "FORBIDDEN",
+          message: "Truy cập bị từ chối: chỉ tổ chức đang trực tiếp sở hữu lô hàng mới có quyền cập nhật tọa độ.",
+        });
+      }
+
+      try {
+        const updateRes = await pool.query(
+          "UPDATE lots SET custom_coordinates = $1 WHERE UPPER(id) = UPPER($2)",
+          [JSON.stringify(customData), lotId]
+        );
+        if (updateRes.rowCount === 0) {
+          return res.status(404).json({
+            error: "LOT_NOT_FOUND",
+            message: "Không tìm thấy lô hàng để cập nhật.",
+          });
+        }
+      } catch (dbErr) {
+        console.error("[ERROR UPDATE_COORDINATES]", dbErr.message);
+        return res.status(500).json({
+          error: "DATABASE_ERROR",
+          message: "Không thể lưu tọa độ vào cơ sở dữ liệu: " + dbErr.message,
+        });
+      }
+    } else {
+      const targetLot = inMemoryLots.find((l) => l.id && l.id.toUpperCase() === lotId.toUpperCase());
+      if (!targetLot) {
+        return res.status(404).json({
+          error: "LOT_NOT_FOUND",
+          message: "Không tìm thấy lô hàng.",
+        });
+      }
+      const lotOrgId = targetLot.organizationId || targetLot.organization_id;
+      if (!isAdmin && lotOrgId !== callerOrg) {
+        return res.status(403).json({
+          error: "FORBIDDEN",
+          message: "Truy cập bị từ chối: chỉ tổ chức đang trực tiếp sở hữu lô hàng mới có quyền cập nhật tọa độ.",
+        });
+      }
+    }
+
+    // Chỉ đồng bộ RAM sau khi lưu DB thành công (hoặc in-memory mode)
+    const targetLot = inMemoryLots.find((l) => l.id && l.id.toUpperCase() === lotId.toUpperCase());
+    if (targetLot) {
+      targetLot.customCoordinates = customData;
+      targetLot.custom_coordinates = customData;
+    }
+
+    if (req.auth) {
+      await recordAuditLog({
+        pool,
+        inMemoryLogs: inMemoryAuditLogs,
+        actorUserId: req.auth.userId || req.auth.id,
+        actorEmail: req.auth.email,
+        organizationId: req.auth.organizationId || "system",
+        action: "UPDATE_LOT_COORDINATES",
+        resourceType: "lot",
+        resourceId: lotId,
+        ipAddress: req.ip || "127.0.0.1",
+        userAgent: req.get("User-Agent") || null,
+        details: { coordinates: parsed, name, type },
+      });
+    }
+
+    const mapData = await getPublicLotMapData({
+      pool,
+      lotCode: lotId,
+      inMemoryLots,
+      inMemoryBatchRelations,
+      inMemoryBatchEvents,
+      inMemoryOrgs: inMemoryOrganizations,
+      inMemoryProducts,
+      inMemoryFarms,
+      inMemoryLocations,
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Cập nhật tọa độ lô hàng thành công!",
+      coordinates: parsed,
+      mapData,
+    });
+  }
+);
+
+/**
  * ==============================================================================
  * BÁO CÁO TÓM TẮT VỊ TRÍ & KHỐI LƯỢNG HẬU DUỆ (Story S-27)
  * ==============================================================================
@@ -6201,7 +6747,7 @@ app.post(
       // Kiểm tra lô hàng tồn tại
       let lot = null;
       if (pool) {
-        const lotRes = await pool.query("SELECT * FROM lots WHERE id = $1", [lotId]);
+        const lotRes = await scopedQueryById(pool, req.auth, "lots", lotId);
         lot = lotRes.rows[0] || null;
       } else {
         lot = inMemoryLots.find((l) => l.id === lotId) || null;
@@ -6227,7 +6773,7 @@ app.post(
           );
 
           // Cập nhật trạng thái lô hàng gốc thành 'Có sự cố' (S-33)
-          await client.query("UPDATE lots SET status = 'Có sự cố' WHERE id = $1", [lotId]);
+          await client.query("UPDATE lots SET status = 'Có sự cố' WHERE id = $1 AND organization_id = $2", [lotId, lotOrgId]);
 
           // Ghi nhận sự kiện RECALL_ORDER_CREATED vào chuỗi hash-chain batch_events (K-01 / S-10)
           const recallEvent = await appendBatchEvent(client, {
@@ -6550,6 +7096,7 @@ module.exports = {
   seedS39InMemory,
   traceLotOrigins,
   traceLotDescendants,
+  getPublicLotMapData,
   inMemoryLocations,
   fetchLocations,
   getLocationById,

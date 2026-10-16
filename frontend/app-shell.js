@@ -27,6 +27,7 @@
     navIntegrity: ["inspector", "admin"],
     navAuditLogs: ["inspector", "admin"],
     navAudit: ["inspector", "admin"],
+    navPublicTrace: ["producer", "cooperative", "transporter", "distributor", "inspector", "org_admin", "admin", "warehouse", "processing", "retailer"],
   };
 
   function hasPermission(roleId, action) {
@@ -168,6 +169,8 @@
       integrity: "navIntegrity",
       audit: "navAuditLogs",
       auditLogs: "navAuditLogs",
+      map: "navPublicTrace",
+      publicTrace: "navPublicTrace",
     };
 
     let targetId = navMap[activeKey];
@@ -178,6 +181,7 @@
       else if (path.includes("harvest")) targetId = "navHarvest";
       else if (path.includes("integrity")) targetId = "navIntegrity";
       else if (path.includes("audit")) targetId = "navAuditLogs";
+      else if (path.includes("public-trace")) targetId = "navPublicTrace";
     }
 
     if (targetId) {

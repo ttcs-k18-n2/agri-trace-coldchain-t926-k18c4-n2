@@ -12,9 +12,7 @@ const {
   inMemoryProducts,
   inMemoryFarms,
   traceLotDescendants,
-  collectDescendantLotIds,
   seedS39Data,
-  seedS39InMemory,
 } = require("../src/server");
 const { verifyBatchEventChain } = require("../src/integrity_verifier");
 

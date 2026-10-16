@@ -6,8 +6,6 @@ const {
   users,
   hashPassword,
   inMemoryLots,
-  inMemoryBatchRelations,
-  inMemoryFarms,
   seedS22Data,
   clearLotOriginsCache,
 } = require("../src/server");
