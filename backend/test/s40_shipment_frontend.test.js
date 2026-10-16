@@ -178,3 +178,42 @@ test("S-40 Docker & Nginx Deployment: Dockerfile and nginx.conf serve shipments 
   const nginxConf = fs.readFileSync(path.join(frontendDir, "nginx.conf"), "utf8");
   assert.match(nginxConf, /try_files\s+\$uri\s+\$uri\.html\s+\$uri\/\s+\/index\.html/);
 });
+
+test("S-40 Adapter & Backend Compatibility: Normalize handles coldBoxId and location aliases correctly", () => {
+  const backendRawShipment = {
+    id: "shp-abc12345",
+    coldBoxId: "CBX-001",
+    status: "IN_TRANSIT",
+    originLocationId: "LOC-WH-TN-01",
+    destinationLocationId: "LOC-HUB-HN-01",
+    vehiclePlate: "29C-888.88",
+    driverName: "Nguyễn Văn Lái",
+    lotIds: ["LOT-001", "LOT-002"],
+    lots: [{ lotId: "LOT-001" }, { lotId: "LOT-002" }],
+  };
+
+  const normalized = ShipmentAdapter.normalizeShipment(backendRawShipment);
+  assert.equal(normalized.id, "shp-abc12345");
+  assert.equal(normalized.containerId, "CBX-001");
+  assert.equal(normalized.origin, "LOC-WH-TN-01");
+  assert.equal(normalized.destination, "LOC-HUB-HN-01");
+  assert.equal(normalized.status, "IN_TRANSIT");
+  assert.equal(normalized.driverName, "Nguyễn Văn Lái");
+  assert.deepEqual(normalized.lotIds, ["LOT-001", "LOT-002"]);
+});
+
+test("S-40 Backend Route: GET /api/cold-containers returns valid container list", async () => {
+  const { app, seedDemoUser } = require("../src/server");
+  const request = require("supertest");
+  await seedDemoUser();
+
+  const agent = request.agent(app);
+  await agent.post("/api/login").send({ email: "user@example.com", password: "Password@123" });
+
+  const res = await agent.get("/api/cold-containers");
+  assert.equal(res.status, 200);
+  assert.equal(res.body.success, true);
+  assert.ok(Array.isArray(res.body.containers));
+  assert.ok(res.body.containers.length >= 4);
+  assert.ok(res.body.containers.some((c) => c.id === "CONT-COLD-01"));
+});

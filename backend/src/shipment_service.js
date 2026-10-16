@@ -80,12 +80,16 @@ async function createShipment({
     notes,
   } = data;
 
-  const cleanColdBoxId = typeof coldBoxId === "string" ? coldBoxId.trim() : null;
+  const rawColdBoxId = coldBoxId || data.containerId;
+  const rawOrigin = originLocationId || data.origin;
+  const rawDest = destinationLocationId || data.destination;
+
+  const cleanColdBoxId = typeof rawColdBoxId === "string" ? rawColdBoxId.trim() : null;
   const plate = typeof vehiclePlate === "string" ? vehiclePlate.trim() : (typeof licensePlate === "string" ? licensePlate.trim() : null);
   const cleanDriver = typeof driverName === "string" ? driverName.trim() : null;
   const cleanPhone = typeof driverPhone === "string" ? driverPhone.trim() : null;
-  const cleanOrigin = typeof originLocationId === "string" ? originLocationId.trim() : null;
-  const cleanDest = typeof destinationLocationId === "string" ? destinationLocationId.trim() : null;
+  const cleanOrigin = typeof rawOrigin === "string" ? rawOrigin.trim() : null;
+  const cleanDest = typeof rawDest === "string" ? rawDest.trim() : null;
   const cleanNotes = typeof notes === "string" ? notes.trim() : null;
 
   // 1. Kiểm tra đầu vào cơ bản
@@ -353,7 +357,9 @@ async function createShipment({
       const shipRow = insertShipRes.rows[0];
       const resultPayload = {
         id: shipRow.id,
+        code: shipRow.id,
         coldBoxId: shipRow.cold_box_id,
+        containerId: shipRow.cold_box_id,
         status: shipRow.status,
         organizationId: shipRow.organization_id,
         organizationName: orgName,
@@ -361,7 +367,9 @@ async function createShipment({
         driverName: shipRow.driver_name,
         driverPhone: shipRow.driver_phone,
         originLocationId: shipRow.origin_location_id,
+        origin: shipRow.origin_location_id,
         destinationLocationId: shipRow.destination_location_id,
+        destination: shipRow.destination_location_id,
         notes: shipRow.notes,
         createdByUserId: shipRow.created_by_user_id,
         startedAt: shipRow.started_at ? new Date(shipRow.started_at).toISOString() : nowIso,
@@ -475,7 +483,9 @@ async function createShipment({
 
     const newShipment = {
       id: shipmentId,
+      code: shipmentId,
       coldBoxId: cleanColdBoxId,
+      containerId: cleanColdBoxId,
       status: "IN_TRANSIT",
       organizationId: shipOrgId,
       organizationName: orgName,
@@ -483,7 +493,9 @@ async function createShipment({
       driverName: cleanDriver,
       driverPhone: cleanPhone,
       originLocationId: cleanOrigin,
+      origin: cleanOrigin,
       destinationLocationId: cleanDest,
+      destination: cleanDest,
       notes: cleanNotes,
       createdByUserId: userId,
       completedByUserId: null,
@@ -984,7 +996,9 @@ async function getShipments({
     const dataRes = await pool.query(dataSql, [...params, safeLimit, safeOffset]);
     const items = dataRes.rows.map((r) => ({
       id: r.id,
+      code: r.id,
       coldBoxId: r.cold_box_id,
+      containerId: r.cold_box_id,
       status: r.status,
       organizationId: r.organization_id,
       organizationName: r.organization_name || r.organization_id,
@@ -992,7 +1006,9 @@ async function getShipments({
       driverName: r.driver_name,
       driverPhone: r.driver_phone,
       originLocationId: r.origin_location_id,
+      origin: r.origin_location_id,
       destinationLocationId: r.destination_location_id,
+      destination: r.destination_location_id,
       notes: r.notes,
       lotCount: r.lot_count,
       lots: r.lots,
@@ -1127,7 +1143,9 @@ async function getShipmentById({
 
     const shipmentPayload = {
       id: ship.id,
+      code: ship.id,
       coldBoxId: ship.cold_box_id,
+      containerId: ship.cold_box_id,
       status: ship.status,
       organizationId: ship.organization_id,
       organizationName: ship.organization_name || ship.organization_id,
@@ -1135,7 +1153,9 @@ async function getShipmentById({
       driverName: ship.driver_name,
       driverPhone: ship.driver_phone,
       originLocationId: ship.origin_location_id,
+      origin: ship.origin_location_id,
       destinationLocationId: ship.destination_location_id,
+      destination: ship.destination_location_id,
       notes: ship.notes,
       createdByUserId: ship.created_by_user_id,
       completedByUserId: ship.completed_by_user_id,
