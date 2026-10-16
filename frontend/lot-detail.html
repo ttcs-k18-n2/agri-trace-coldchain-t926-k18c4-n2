@@ -1680,6 +1680,7 @@
       const canMerge = currentUser && !isInspector && (isAdmin || userOrgId === lotOrgId) && ["producer", "cooperative", "org_admin", "admin"].includes(role) && (lotRemainingVal !== null && lotRemainingVal > 0) && !lot.pendingTransfer && lot.status !== "Đã bán hết" && lot.status !== "Đã tiêu thụ";
       const canConsume = currentUser && !isInspector && (isAdmin || userOrgId === lotOrgId) && ["distributor", "org_admin", "admin"].includes(role) && (lotRemainingVal !== null && lotRemainingVal > 0) && !lot.pendingTransfer && lot.status !== "Đã bán hết" && lot.status !== "Đã tiêu thụ";
       const canManageLocation = currentUser && !isInspector && (isAdmin || userOrgId === lotOrgId);
+      const canEditCoordinates = currentUser && !isInspector && role !== "auditor" && (isAdmin || userOrgId === lotOrgId);
       const isRecipient = Boolean(userOrgId && lot.pendingTransfer && lot.pendingTransfer.toOrganizationId === userOrgId);
       const inspectorActions = document.getElementById("inspectorActions");
       const btnCheckIntegrityLink = document.getElementById("btnCheckIntegrityLink");
@@ -2710,6 +2711,7 @@
 
             <div id="lotDetailMapStatus" style="display: none; padding: 10px 14px; border-radius: 8px; font-size: 13px; margin-bottom: 16px;"></div>
 
+            ${canEditCoordinates ? `
             <!-- Thanh công cụ tùy chỉnh / gán tọa độ thủ công cho lô hàng (Choice A - Story S-60) -->
             <div class="custom-coord-panel">
               <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; flex-wrap: wrap; gap: 8px;">
@@ -2749,7 +2751,10 @@
               </div>
 
               <div id="customCoordStatusAlert" style="display: none; margin-top: 10px; padding: 8px 12px; border-radius: 6px; font-size: 12.5px;"></div>
-            </div>
+            </div>` : `
+            <div class="custom-coord-panel" style="background: #f8fafc; border: 1px dashed #cbd5e1; padding: 12px 16px; border-radius: 8px; font-size: 13px; color: #64748b; margin-bottom: 16px;">
+              🔒 Chỉ đơn vị đang quản lý lô hàng (${escapeHtml(lot.organizationName || lot.organizationId || "chủ sở hữu")}) hoặc Quản trị viên mới có quyền cập nhật tọa độ thủ công.
+            </div>`}
 
             <div class="public-trace-map-wrapper" style="margin-bottom: 20px;">
               <div id="lotDetailMapCanvas" class="public-trace-map-container">

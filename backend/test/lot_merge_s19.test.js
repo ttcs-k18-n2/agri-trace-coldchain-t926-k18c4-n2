@@ -341,9 +341,6 @@ test("Lot Merge API [S-19] (Tasks T-44, T-45, T-46) & Parent-Child Lineage Integ
     // lotB đang còn 120. Lấy 40 từ lotB và 0 từ lotA (sẽ thất bại) hoặc throw error via hook
     const lotBObj = inMemoryLots.find((l) => l.id === lotB);
     const initialBRem = lotBObj.remainingQuantity;
-    const initialLotsCount = inMemoryLots.length;
-    const initialRelationsCount = inMemoryBatchRelations.length;
-    const initialEventsCount = inMemoryBatchEvents.length;
 
     // Simulate failure during batch event append
     setAppendHookForTesting((eventData) => {
@@ -353,14 +350,7 @@ test("Lot Merge API [S-19] (Tasks T-44, T-45, T-46) & Parent-Child Lineage Integ
     });
 
     try {
-      const res = await distAgent.post("/api/lots/merge").send({
-        items: [
-          { parent_batch_id: lotB, take_quantity: 40 },
-          { parent_batch_id: lotA, take_quantity: 0.1 }, // lotA còn 0 -> sẽ bị validate chặn trước nếu không còn
-        ],
-      });
-
-      // Ở đây lotA đã hết, nên ta test với 2 lô còn số dư: lotB (120) và tạo 1 lô giả lập
+      // Test với 2 lô còn số dư: lotB (120) và tạo 1 lô giả lập
       // Tạo thêm 1 lô mới còn dư
       const tempLot = "LOT-MERGE-TEMP-ROLLBACK";
       inMemoryLots.push({
