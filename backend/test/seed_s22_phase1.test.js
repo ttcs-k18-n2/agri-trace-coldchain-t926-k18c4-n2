@@ -6,15 +6,13 @@ const {
   inMemoryLots,
   inMemoryBatchRelations,
   inMemoryBatchEvents,
-  inMemoryOrgs,
-  inMemoryProducts,
   inMemoryFarms,
 } = require("../src/server");
 const { verifyBatchEventChain } = require("../src/event_repository");
 
 test("S-22 Giai đoạn 1: Chuẩn bị dữ liệu mẫu và chuẩn hóa Schema (In-Memory Helper)", async (t) => {
   // Nạp dữ liệu qua helper seedS22Data()
-  const res = seedS22Data();
+  seedS22Data();
 
   await t.test("AC1: Bộ dữ liệu mẫu có tối thiểu 12 lô qua ba tầng, có tách và gộp, thuộc 3 tổ chức", () => {
     const s22LotIds = ["L01", "L02", "L03", "L04", "L05", "L06", "L07", "L08", "L09", "L10", "L11", "L12"];

@@ -6498,7 +6498,7 @@ app.patch(
  */
 app.patch(
   "/api/lots/:id/coordinates",
-  requirePermission(["producer", "cooperative", "transporter", "distributor", "org_admin", "admin", "inspector", "auditor"]),
+  requirePermission(["producer", "cooperative", "transporter", "distributor", "org_admin", "admin"]),
   async (req, res) => {
     const lotId = req.params.id;
     const { coordinates, name, address, type } = req.body || {};
@@ -6521,26 +6521,93 @@ app.patch(
       updatedAt: new Date().toISOString(),
     };
 
-    const targetLot = inMemoryLots.find((l) => l.id && l.id.toUpperCase() === lotId.toUpperCase());
-    if (targetLot) {
-      targetLot.customCoordinates = customData;
-    }
+    const isAdmin = Boolean(req.auth && (req.auth.roleId === "admin" || req.auth.isAdmin));
+    const callerOrg = isAdmin ? null : (req.auth ? (req.auth.organizationId || req.auth.organization_id) : null);
 
     if (pool) {
+      const lotRes = await pool.query("SELECT * FROM lots WHERE UPPER(id) = UPPER($1)", [lotId]);
+      if (lotRes.rows.length === 0) {
+        return res.status(404).json({
+          error: "LOT_NOT_FOUND",
+          message: "Không tìm thấy lô hàng.",
+        });
+      }
+      const lot = lotRes.rows[0];
+      const lotOrgId = lot.organization_id;
+
+      if (!isAdmin && lotOrgId !== callerOrg) {
+        logSecurityEvent("CROSS_TENANT_ACCESS_DENIED", {
+          userId: req.auth.userId || req.auth.id,
+          userEmail: req.auth.email,
+          userOrgId: callerOrg,
+          userRole: req.auth.roleId,
+          resourceType: "lots",
+          resourceId: lotId,
+          targetOrgId: lotOrgId,
+          action: "UPDATE_COORDINATES",
+          ip: req.ip,
+          userAgent: req.get("User-Agent"),
+        });
+        return res.status(403).json({
+          error: "FORBIDDEN",
+          message: "Truy cập bị từ chối: chỉ tổ chức đang trực tiếp sở hữu lô hàng mới có quyền cập nhật tọa độ.",
+        });
+      }
+
       try {
-        await pool.query(
+        const updateRes = await pool.query(
           "UPDATE lots SET custom_coordinates = $1 WHERE UPPER(id) = UPPER($2)",
           [JSON.stringify(customData), lotId]
         );
-      } catch (_) {}
+        if (updateRes.rowCount === 0) {
+          return res.status(404).json({
+            error: "LOT_NOT_FOUND",
+            message: "Không tìm thấy lô hàng để cập nhật.",
+          });
+        }
+      } catch (dbErr) {
+        console.error("[ERROR UPDATE_COORDINATES]", dbErr.message);
+        return res.status(500).json({
+          error: "DATABASE_ERROR",
+          message: "Không thể lưu tọa độ vào cơ sở dữ liệu: " + dbErr.message,
+        });
+      }
+    } else {
+      const targetLot = inMemoryLots.find((l) => l.id && l.id.toUpperCase() === lotId.toUpperCase());
+      if (!targetLot) {
+        return res.status(404).json({
+          error: "LOT_NOT_FOUND",
+          message: "Không tìm thấy lô hàng.",
+        });
+      }
+      const lotOrgId = targetLot.organizationId || targetLot.organization_id;
+      if (!isAdmin && lotOrgId !== callerOrg) {
+        return res.status(403).json({
+          error: "FORBIDDEN",
+          message: "Truy cập bị từ chối: chỉ tổ chức đang trực tiếp sở hữu lô hàng mới có quyền cập nhật tọa độ.",
+        });
+      }
+    }
+
+    // Chỉ đồng bộ RAM sau khi lưu DB thành công (hoặc in-memory mode)
+    const targetLot = inMemoryLots.find((l) => l.id && l.id.toUpperCase() === lotId.toUpperCase());
+    if (targetLot) {
+      targetLot.customCoordinates = customData;
+      targetLot.custom_coordinates = customData;
     }
 
     if (req.auth) {
-      recordAuditLog({
-        userId: req.auth.userId,
-        organizationId: req.auth.organizationId,
+      await recordAuditLog({
+        pool,
+        inMemoryLogs: inMemoryAuditLogs,
+        actorUserId: req.auth.userId || req.auth.id,
+        actorEmail: req.auth.email,
+        organizationId: req.auth.organizationId || "system",
         action: "UPDATE_LOT_COORDINATES",
-        target: lotId,
+        resourceType: "lot",
+        resourceId: lotId,
+        ipAddress: req.ip || "127.0.0.1",
+        userAgent: req.get("User-Agent") || null,
         details: { coordinates: parsed, name, type },
       });
     }
