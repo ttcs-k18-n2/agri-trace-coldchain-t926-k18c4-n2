@@ -44,8 +44,8 @@ async function getAppliedMigrations(client) {
   return res.rows.map((r) => r.version);
 }
 
-async function runMigrations(direction = "up") {
-  const pool = getPool();
+async function runMigrations(direction = "up", injectedPool = null) {
+  const pool = injectedPool || getPool();
   const client = await pool.connect();
 
   try {
@@ -142,7 +142,9 @@ async function runMigrations(direction = "up") {
     }
   } finally {
     client.release();
-    await pool.end();
+    if (!injectedPool) {
+      await pool.end();
+    }
   }
 }
 
