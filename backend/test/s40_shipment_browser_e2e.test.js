@@ -20,27 +20,297 @@ const http = require("node:http");
 const fs = require("node:fs");
 const path = require("node:path");
 const os = require("node:os");
+const crypto = require("node:crypto");
 const { spawn } = require("node:child_process");
 
 const frontendDir = path.resolve(__dirname, "../../frontend");
 
-// Detect Chrome / Edge executable
-function findBrowserExecutable() {
-  const candidates = [
+/**
+ * Lightweight, zero-dependency RFC 6455 WebSocket client for Node.js.
+ * Guarantees compatibility on Node 20 runtimes (standard CI) where
+ * global WebSocket is not available by default, avoiding extra packages.
+ */
+class SimpleWebSocket {
+  constructor(url) {
+    this.url = new URL(url);
+    this.onopen = null;
+    this.onerror = null;
+    this.onmessage = null;
+    this.onclose = null;
+    this.socket = null;
+    this.buffer = Buffer.alloc(0);
+
+    const key = crypto.randomBytes(16).toString("base64");
+    const req = http.request({
+      hostname: this.url.hostname,
+      port: this.url.port,
+      path: this.url.pathname + this.url.search,
+      headers: {
+        Connection: "Upgrade",
+        Upgrade: "websocket",
+        "Sec-WebSocket-Key": key,
+        "Sec-WebSocket-Version": "13",
+      },
+    });
+
+    const handshakeTimer = setTimeout(() => {
+      req.destroy(new Error("WebSocket handshake timed out"));
+    }, 15000);
+    handshakeTimer.unref();
+
+    req.on("upgrade", (res, socket, head) => {
+      clearTimeout(handshakeTimer);
+      this.socket = socket;
+      if (head && head.length > 0) {
+        this.buffer = Buffer.concat([this.buffer, head]);
+      }
+      this.socket.on("data", (chunk) => this._onData(chunk));
+      this.socket.on("error", (err) => {
+        if (this.onerror) this.onerror(err);
+      });
+      this.socket.on("close", () => {
+        if (this.onclose) this.onclose();
+      });
+      if (this.onopen) this.onopen();
+    });
+
+    req.on("response", (res) => {
+      clearTimeout(handshakeTimer);
+      if (res.statusCode !== 101) {
+        const err = new Error(`WebSocket upgrade failed with HTTP status ${res.statusCode}`);
+        if (this.onerror) this.onerror(err);
+      }
+    });
+
+    req.on("error", (err) => {
+      clearTimeout(handshakeTimer);
+      if (this.onerror) this.onerror(err);
+    });
+
+    req.end();
+  }
+
+  send(data) {
+    if (!this.socket || this.socket.destroyed) {
+      throw new Error("WebSocket is not connected");
+    }
+    const payload = Buffer.from(data, "utf8");
+    const length = payload.length;
+
+    let header;
+    if (length < 126) {
+      header = Buffer.alloc(2);
+      header[0] = 0x81; // FIN + text
+      header[1] = 0x80 | length; // Masked
+    } else if (length <= 65535) {
+      header = Buffer.alloc(4);
+      header[0] = 0x81;
+      header[1] = 0x80 | 126;
+      header.writeUInt16BE(length, 2);
+    } else {
+      header = Buffer.alloc(10);
+      header[0] = 0x81;
+      header[1] = 0x80 | 127;
+      header.writeBigUInt64BE(BigInt(length), 2);
+    }
+
+    const mask = crypto.randomBytes(4);
+    const masked = Buffer.alloc(length);
+    for (let i = 0; i < length; i++) {
+      masked[i] = payload[i] ^ mask[i % 4];
+    }
+
+    this.socket.write(Buffer.concat([header, mask, masked]));
+  }
+
+  _onData(chunk) {
+    this.buffer = Buffer.concat([this.buffer, chunk]);
+    this._processBuffer();
+  }
+
+  _processBuffer() {
+    while (this.buffer.length >= 2) {
+      const firstByte = this.buffer[0];
+      const secondByte = this.buffer[1];
+      const opcode = firstByte & 0x0f;
+      const isMasked = (secondByte & 0x80) !== 0;
+      let payloadLen = secondByte & 0x7f;
+      let offset = 2;
+
+      if (payloadLen === 126) {
+        if (this.buffer.length < 4) return;
+        payloadLen = this.buffer.readUInt16BE(2);
+        offset = 4;
+      } else if (payloadLen === 127) {
+        if (this.buffer.length < 10) return;
+        payloadLen = Number(this.buffer.readBigUInt64BE(2));
+        offset = 10;
+      }
+
+      let maskKey = null;
+      if (isMasked) {
+        if (this.buffer.length < offset + 4) return;
+        maskKey = this.buffer.subarray(offset, offset + 4);
+        offset += 4;
+      }
+
+      if (this.buffer.length < offset + payloadLen) {
+        return;
+      }
+
+      let payload = this.buffer.subarray(offset, offset + payloadLen);
+      this.buffer = this.buffer.subarray(offset + payloadLen);
+
+      if (isMasked) {
+        const unmasked = Buffer.alloc(payloadLen);
+        for (let i = 0; i < payloadLen; i++) {
+          unmasked[i] = payload[i] ^ maskKey[i % 4];
+        }
+        payload = unmasked;
+      }
+
+      if (opcode === 0x01) { // Text frame
+        if (this.onmessage) {
+          this.onmessage({ data: payload.toString("utf8") });
+        }
+      } else if (opcode === 0x08) { // Close frame
+        this.close();
+      } else if (opcode === 0x09) { // Ping
+        const pong = Buffer.alloc(6);
+        pong[0] = 0x8a;
+        pong[1] = 0x80;
+        const pingMask = crypto.randomBytes(4);
+        pingMask.copy(pong, 2);
+        if (this.socket && !this.socket.destroyed) this.socket.write(pong);
+      }
+    }
+  }
+
+  close() {
+    if (this.socket && !this.socket.destroyed) {
+      try {
+        const mask = crypto.randomBytes(4);
+        const frame = Buffer.from([0x88, 0x80, mask[0], mask[1], mask[2], mask[3]]);
+        this.socket.write(frame);
+      } catch {
+        // ignore
+      }
+      this.socket.destroy();
+    }
+  }
+}
+
+// Fallback to SimpleWebSocket if global WebSocket is not available (Node < 21/22)
+const WebSocketImpl = typeof globalThis.WebSocket === "function" ? globalThis.WebSocket : SimpleWebSocket;
+
+// Resolve browser executable across Linux, macOS, and Windows with explicit override support
+function resolveBrowserExecutable(env = process.env, platform = os.platform()) {
+  const explicit = env.CHROME_BIN || env.BROWSER;
+  if (explicit && explicit.trim() !== "") {
+    const trimmed = explicit.trim();
+    if (fs.existsSync(trimmed)) {
+      try {
+        if (fs.statSync(trimmed).isFile()) {
+          return { browserPath: path.resolve(trimmed), source: "env", error: null };
+        }
+      } catch (err) {
+        return { browserPath: null, source: "env", error: `Explicit browser override "${trimmed}" inaccessible: ${err.message}` };
+      }
+    }
+    return {
+      browserPath: null,
+      source: "env",
+      error: `Explicit browser override "${trimmed}" (set via ${env.CHROME_BIN ? "CHROME_BIN" : "BROWSER"}) was not found on filesystem.`,
+    };
+  }
+
+  const candidates = [];
+
+  if (platform === "win32") {
+    const programFiles = env.ProgramFiles || "C:\\Program Files";
+    const programFilesX86 = env["ProgramFiles(x86)"] || "C:\\Program Files (x86)";
+    const localAppData = env.LOCALAPPDATA;
+
+    candidates.push(
+      path.join(programFiles, "Google\\Chrome\\Application\\chrome.exe"),
+      path.join(programFilesX86, "Google\\Chrome\\Application\\chrome.exe"),
+      path.join(programFiles, "Microsoft\\Edge\\Application\\msedge.exe"),
+      path.join(programFilesX86, "Microsoft\\Edge\\Application\\msedge.exe"),
+      "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+      "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe",
+      "C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe",
+      "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe"
+    );
+    if (localAppData) {
+      candidates.push(
+        path.join(localAppData, "Google\\Chrome\\Application\\chrome.exe"),
+        path.join(localAppData, "Microsoft\\Edge\\Application\\msedge.exe")
+      );
+    }
+  } else if (platform === "darwin") {
+    candidates.push(
+      "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+      "/Applications/Chromium.app/Contents/MacOS/Chromium",
+      "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge"
+    );
+  } else {
+    // Linux and other POSIX platforms
+    candidates.push(
+      "/usr/bin/google-chrome",
+      "/usr/bin/google-chrome-stable",
+      "/usr/bin/chromium",
+      "/usr/bin/chromium-browser",
+      "/snap/bin/chromium",
+      "/usr/local/bin/google-chrome",
+      "/usr/local/bin/chromium"
+    );
+  }
+
+  const crossPlatformFallbacks = [
+    "/usr/bin/google-chrome",
+    "/usr/bin/google-chrome-stable",
+    "/usr/bin/chromium-browser",
+    "/usr/bin/chromium",
     "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
     "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe",
-    "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe",
-    "C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe",
   ];
-  for (const c of candidates) {
-    if (fs.existsSync(c)) return c;
+  for (const c of crossPlatformFallbacks) {
+    if (!candidates.includes(c)) candidates.push(c);
   }
-  return null;
+
+  for (const candidate of candidates) {
+    try {
+      if (fs.existsSync(candidate) && fs.statSync(candidate).isFile()) {
+        return { browserPath: candidate, source: "discovered", error: null };
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  return {
+    browserPath: null,
+    source: "none",
+    error: `No supported browser executable found for platform "${platform}". Checked candidates: ${candidates.slice(0, 4).join(", ")}...`,
+  };
+}
+
+// Strict requirement policy: fails CI if browser missing, allows optional local skip
+function isBrowserRequired(env = process.env) {
+  if (env.REQUIRE_BROWSER === "true" || env.REQUIRE_BROWSER === "1") return true;
+  if (env.CI === "true" || env.CI === "1") {
+    if (env.SKIP_BROWSER_TEST === "true" || env.SKIP_BROWSER_TEST === "1") {
+      return false;
+    }
+    return true;
+  }
+  return false;
 }
 
 class BrowserCDP {
-  constructor(wsUrl) {
+  constructor(wsUrl, wsImpl = WebSocketImpl) {
     this.wsUrl = wsUrl;
+    this.wsImpl = wsImpl;
     this.msgId = 0;
     this.pending = new Map();
     this.ws = null;
@@ -48,7 +318,7 @@ class BrowserCDP {
 
   async connect() {
     return new Promise((resolve, reject) => {
-      this.ws = new WebSocket(this.wsUrl);
+      this.ws = new this.wsImpl(this.wsUrl);
       this.ws.onopen = () => resolve();
       this.ws.onerror = (err) => reject(err);
       this.ws.onmessage = (event) => {
@@ -163,9 +433,17 @@ class BrowserCDP {
 
   async close() {
     if (this.ws) {
-      this.ws.close();
+      try {
+        this.ws.close();
+      } catch {
+        // ignore
+      }
       this.ws = null;
     }
+    for (const { reject } of this.pending.values()) {
+      reject(new Error("CDP connection closed"));
+    }
+    this.pending.clear();
   }
 }
 
@@ -192,11 +470,104 @@ const MIME_TYPES = {
   ".jpg": "image/jpeg",
 };
 
+// Focused Discovery, Policy & WebSocket Portability Tests
+test("S-40 Browser Discovery & CI Policy Guards", async (t) => {
+  await t.test("Discovery: Validates explicit CHROME_BIN / BROWSER overrides", () => {
+    // Non-existent path returns clear error
+    const fakeEnv = { CHROME_BIN: "/opt/fake/bin/nonexistent-chrome" };
+    const res = resolveBrowserExecutable(fakeEnv, "linux");
+    assert.equal(res.browserPath, null);
+    assert.match(res.error, /was not found on filesystem/);
+
+    // Existing file returns valid path
+    const validEnv = { CHROME_BIN: __filename };
+    const validRes = resolveBrowserExecutable(validEnv, "linux");
+    assert.equal(validRes.browserPath, path.resolve(__filename));
+    assert.equal(validRes.source, "env");
+  });
+
+  await t.test("Discovery: Checks standard platform candidate paths", () => {
+    const linuxRes = resolveBrowserExecutable({}, "linux");
+    assert.ok(linuxRes.browserPath !== undefined);
+
+    const winRes = resolveBrowserExecutable({}, "win32");
+    assert.ok(winRes.browserPath !== undefined);
+  });
+
+  await t.test("Policy: Enforces strict failure when REQUIRE_BROWSER=true or CI=true", () => {
+    assert.equal(isBrowserRequired({ REQUIRE_BROWSER: "true" }), true);
+    assert.equal(isBrowserRequired({ REQUIRE_BROWSER: "1" }), true);
+    assert.equal(isBrowserRequired({ CI: "true" }), true);
+    assert.equal(isBrowserRequired({ CI: "1" }), true);
+    assert.equal(isBrowserRequired({ CI: "true", SKIP_BROWSER_TEST: "true" }), false);
+    assert.equal(isBrowserRequired({}), false);
+    assert.equal(isBrowserRequired({ REQUIRE_BROWSER: "false", CI: "false" }), false);
+  });
+
+  await t.test("WebSocket Portability: SimpleWebSocket handshakes and frames over HTTP upgrade without global WebSocket", async () => {
+    const echoServer = http.createServer();
+    echoServer.on("upgrade", (req, socket, _head) => {
+      const key = req.headers["sec-websocket-key"];
+      const accept = crypto.createHash("sha1").update(key + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11").digest("base64");
+      socket.write(
+        "HTTP/1.1 101 Switching Protocols\r\n" +
+        "Upgrade: websocket\r\n" +
+        "Connection: Upgrade\r\n" +
+        `Sec-WebSocket-Accept: ${accept}\r\n\r\n`
+      );
+
+        socket.on("error", () => {});
+      socket.on("data", (chunk) => {
+        if (chunk.length >= 6) {
+          const isMasked = (chunk[1] & 0x80) !== 0;
+          const len = chunk[1] & 0x7f;
+          if (isMasked && chunk.length >= 6 + len) {
+            const mask = chunk.subarray(2, 6);
+            const payload = Buffer.alloc(len);
+            for (let i = 0; i < len; i++) {
+              payload[i] = chunk[6 + i] ^ mask[i % 4];
+            }
+            const resFrame = Buffer.concat([Buffer.from([0x81, len]), payload]);
+            socket.write(resFrame);
+          }
+        }
+      });
+    });
+
+    await new Promise((resolve) => echoServer.listen(0, "127.0.0.1", resolve));
+    const port = echoServer.address().port;
+
+    const ws = new SimpleWebSocket(`http://127.0.0.1:${port}`);
+    await new Promise((resolve, reject) => {
+      ws.onopen = resolve;
+      ws.onerror = reject;
+    });
+
+    const received = await new Promise((resolve) => {
+      ws.onmessage = (event) => resolve(event.data);
+      ws.send(JSON.stringify({ test: "echo-s40" }));
+    });
+
+    assert.equal(received, JSON.stringify({ test: "echo-s40" }));
+    ws.close();
+    echoServer.close();
+    if (typeof echoServer.closeAllConnections === "function") {
+      echoServer.closeAllConnections();
+    }
+  });
+});
+
 // Test Suite
 test("S-40 Mocked Browser E2E Coverage (Isolated with Fixtures, Zero Shared PostgreSQL)", async (t) => {
-  const browserPath = findBrowserExecutable();
+  const { browserPath, error: browserError } = resolveBrowserExecutable();
+  const required = isBrowserRequired();
+
   if (!browserPath) {
-    t.skip("No Chrome or Edge browser executable found on system. Reporting exact blocker: missing browser binary.");
+    const errorDetail = browserError || "No Chrome/Chromium/Edge browser executable found on system.";
+    if (required) {
+      assert.fail(`[STRICT BROWSER REQUIREMENT] Browser test cannot be skipped because REQUIRE_BROWSER=true or CI=true. ${errorDetail}`);
+    }
+    t.skip(`Skipping browser E2E test in optional local mode: ${errorDetail} (Set REQUIRE_BROWSER=true or CI=true to enforce).`);
     return;
   }
 
@@ -464,6 +835,8 @@ test("S-40 Mocked Browser E2E Coverage (Isolated with Fixtures, Zero Shared Post
 
   const chromeProc = spawn(browserPath, [
     "--headless=new",
+    "--no-sandbox",
+    "--disable-dev-shm-usage",
     `--remote-debugging-port=${cdpPort}`,
     "--no-first-run",
     "--no-default-browser-check",
@@ -668,13 +1041,31 @@ test("S-40 Mocked Browser E2E Coverage (Isolated with Fixtures, Zero Shared Post
       await client.click("#btnSubmitShipment");
 
       // Verify Alert Banner displays conflict error message
-      await client.waitForSelector("#alertBanner");
-      const alertText = await client.evaluate('document.getElementById("alertBanner").textContent');
+      const alertText = await client.waitForText("#alertBanner", "chuyến vận chuyển khác");
       assert.match(alertText, /chuyến vận chuyển khác/);
     });
   } finally {
     if (client) await client.close();
-    chromeProc.kill();
+    try {
+      chromeProc.kill("SIGKILL");
+    } catch {
+      chromeProc.kill();
+    }
     server.close();
+    if (typeof server.closeAllConnections === "function") {
+      server.closeAllConnections();
+    }
+    try {
+      fs.rmSync(tmpProfile, { recursive: true, force: true });
+    } catch {
+      // ignore
+    }
   }
 });
+
+module.exports = {
+  resolveBrowserExecutable,
+  isBrowserRequired,
+  SimpleWebSocket,
+  BrowserCDP,
+};
