@@ -14,7 +14,8 @@
   const APP_PERMISSIONS = {
     "farm.write": ["producer", "cooperative", "org_admin", "admin"],
     "harvest.create": ["producer", "cooperative", "org_admin", "admin"],
-    "shipment.create": ["transporter", "cooperative", "warehouse", "org_admin", "admin"],
+    "shipment.create": ["producer", "cooperative", "transporter", "distributor", "warehouse", "org_admin", "admin"],
+    "shipment.complete": ["producer", "cooperative", "transporter", "distributor", "warehouse", "org_admin", "admin"],
     "product.write": ["admin"],
     "global.read": ["inspector", "admin"],
     "integrity.check": ["inspector", "admin"],

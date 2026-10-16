@@ -273,6 +273,9 @@
     shipments.forEach((s) => {
       const statusMeta = window.ShipmentAdapter.formatShipmentStatus(s.status);
       const isRunning = s.status === "IN_TRANSIT" || s.status === "RUNNING";
+      const canComplete = window.hasPermission
+        ? window.hasPermission(currentUser ? currentUser.roleId : null, "shipment.complete")
+        : true;
 
       const card = document.createElement("div");
       card.className = "shipment-card";
@@ -362,10 +365,12 @@
           <button type="button" class="btn-card-action btn-view-detail" data-id="${escapeHtml(s.id)}">
             Chi tiết chuyến
           </button>
-          ${isRunning ? `
+          ${isRunning && canComplete ? `
             <button type="button" class="btn-card-action btn-complete-shipment" data-id="${escapeHtml(s.id)}">
               Kết thúc chuyến
             </button>
+          ` : isRunning ? `
+            <span class="status-readonly-hint" style="font-size:12px; color:var(--color-text-muted); padding:6px 10px;">Chỉ xem (Đang vận chuyển)</span>
           ` : `
             <span class="completed-text">Đã lưu trữ an toàn</span>
           `}
@@ -645,6 +650,11 @@
     if (e && typeof e.preventDefault === "function") e.preventDefault();
     if (isSubmitting) return;
 
+    if (window.hasPermission && currentUser && !window.hasPermission(currentUser.roleId, "shipment.create")) {
+      showAlert("Tài khoản của bạn không có quyền mở chuyến vận chuyển.", "error");
+      return;
+    }
+
     if (formErrorHandler) formErrorHandler.clear();
 
     const shipmentCode = elements.inputShipmentCode ? elements.inputShipmentCode.value.trim() : "";
@@ -689,7 +699,11 @@
         closeCreateModal();
         await loadShipments();
       } else {
-        if (res.errors && formErrorHandler) {
+        if (res.isForbidden) {
+          showAlert(res.message || "Tài khoản của bạn không có quyền mở chuyến vận chuyển.", "error");
+        } else if (res.isConflict) {
+          showAlert(res.message || "Một hoặc nhiều lô hàng đã được gắn vào chuyến vận chuyển khác.", "error");
+        } else if (res.errors && formErrorHandler) {
           formErrorHandler.showErrors(res.errors);
         } else {
           showAlert(res.message || "Không thể tạo chuyến vận chuyển.", "error");
@@ -717,6 +731,11 @@
    */
   async function handleCompleteShipment(shipmentId) {
     if (!shipmentId) return;
+
+    if (window.hasPermission && currentUser && !window.hasPermission(currentUser.roleId, "shipment.complete")) {
+      showAlert("Tài khoản của bạn không có quyền kết thúc chuyến vận chuyển.", "error");
+      return;
+    }
 
     const confirmed = window.confirm("Bạn có chắc chắn muốn kết thúc chuyến vận chuyển này không? Trạng thái sẽ được chuyển sang 'Đã kết thúc'.");
     if (!confirmed) return;
@@ -764,15 +783,24 @@
       const s = res.shipment;
       const statusMeta = window.ShipmentAdapter.formatShipmentStatus(s.status);
       const isRunning = s.status === "IN_TRANSIT" || s.status === "RUNNING";
+      const canComplete = window.hasPermission
+        ? window.hasPermission(currentUser ? currentUser.roleId : null, "shipment.complete")
+        : true;
 
       const lotsListHtml = (s.lots && s.lots.length > 0)
-        ? s.lots.map(l => `
+        ? s.lots.map(l => {
+            const lotId = l.id || l.lotId || l.code;
+            const lotName = l.product_name || l.name || l.lotName || "Nông sản sạch";
+            const lotQty = l.quantity != null ? l.quantity : (l.current_quantity != null ? l.current_quantity : (l.remaining_quantity != null ? l.remaining_quantity : "--"));
+            const lotUnit = l.unit || "kg";
+            return `
             <tr>
-              <td><strong><a href="/lot-detail.html?id=${encodeURIComponent(l.id || l.code)}" target="_blank" class="table-link">${escapeHtml(l.id || l.code)}</a></strong></td>
-              <td>${escapeHtml(l.product_name || l.name || "Nông sản")}</td>
-              <td style="text-align: right; font-weight: 600;">${l.quantity != null ? l.quantity : "--"} ${escapeHtml(l.unit || "kg")}</td>
+              <td><strong><a href="/lot-detail.html?id=${encodeURIComponent(lotId)}" target="_blank" class="table-link">${escapeHtml(lotId)}</a></strong></td>
+              <td>${escapeHtml(lotName)}</td>
+              <td style="text-align: right; font-weight: 600;">${lotQty} ${escapeHtml(lotUnit)}</td>
             </tr>
-          `).join("")
+          `;
+          }).join("")
         : (s.lotIds || []).map(id => `
             <tr>
               <td><strong><a href="/lot-detail.html?id=${encodeURIComponent(id)}" target="_blank" class="table-link">${escapeHtml(id)}</a></strong></td>
@@ -790,7 +818,7 @@
               ${escapeHtml(statusMeta.label)}
             </span>
           </div>
-          ${isRunning ? `
+          ${isRunning && canComplete ? `
             <button type="button" class="btn btn-warning btn-sm" id="btnDetailCompleteAction" data-id="${escapeHtml(s.id)}">
               Kết thúc chuyến vận chuyển
             </button>
