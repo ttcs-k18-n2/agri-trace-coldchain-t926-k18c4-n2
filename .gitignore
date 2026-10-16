@@ -1,0 +1,34 @@
+# Environment / secrets
+.env
+.env.*
+!.env.example
+
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Node / Frontend
+node_modules/
+dist/
+coverage/
+
+# Java / Backend
+target/
+*.class
+
+# Generic build output
+build/
+out/
+
+# Temporary files
+*.tmp
+*.swp
+
+# Staging deployment state
+.staging/

@@ -1,0 +1,942 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AGRI TRACEABILITY - Khai báo & Quản lý thửa đất</title>
+  <link rel="stylesheet" href="/styles.css?v=20261014">
+
+  <style>
+    /* Two-column layout */
+    .farm-layout {
+      display: grid;
+      grid-template-columns: 1fr 1.35fr;
+      gap: 24px;
+      align-items: flex-start;
+    }
+
+    .farm-card {
+      background: var(--color-surface);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-lg);
+      padding: 24px;
+      box-shadow: var(--shadow-sm);
+      transition: var(--transition-normal);
+    }
+
+    .card-header-group {
+      margin-bottom: 18px;
+      padding-bottom: 14px;
+      border-bottom: 1px solid var(--color-border-subtle);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .card-title {
+      font-size: 17px;
+      font-weight: 700;
+      letter-spacing: -0.015em;
+      color: var(--color-text-main);
+    }
+
+    .form-group {
+      margin-bottom: 16px;
+    }
+
+    .form-label {
+      display: block;
+      font-size: 12.5px;
+      font-weight: 600;
+      color: var(--color-text-main);
+      margin-bottom: 6px;
+    }
+
+    .form-label span.req {
+      color: var(--color-danger);
+    }
+
+    .form-input {
+      width: 100%;
+      height: 40px;
+      padding: 0 14px;
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-sm);
+      font-size: 14px;
+      background: #ffffff;
+      color: var(--color-text-main);
+      box-shadow: inset 0 1px 1px rgba(0, 0, 0, 0.02);
+      transition: var(--transition-fast);
+    }
+
+    .form-input:focus {
+      background: #ffffff;
+      border-color: var(--color-primary);
+      box-shadow: 0 0 0 3px rgba(36, 138, 61, 0.18);
+    }
+
+    .form-input.input-error {
+      border-color: var(--color-danger);
+      background: #FFF8F8;
+    }
+
+    .form-hint {
+      font-size: 11.5px;
+      color: var(--color-text-muted);
+      margin-top: 4px;
+    }
+
+    .error-msg {
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--color-danger);
+      margin-top: 4px;
+      display: block;
+    }
+
+    .form-actions {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin-top: 20px;
+    }
+
+    /* Farms list items - Layer 2: Clean List Item */
+    .farm-item {
+      background: var(--color-surface);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-md);
+      padding: 14px 18px;
+      margin-bottom: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 14px;
+      box-shadow: var(--shadow-xs);
+      transition: var(--transition-fast);
+    }
+
+    .farm-item:hover {
+      background: var(--color-surface-subtle);
+      border-color: rgba(0, 0, 0, 0.12);
+      transform: translateY(-1px);
+      box-shadow: var(--shadow-sm);
+    }
+
+    .farm-title {
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--color-text-main);
+      margin-bottom: 3px;
+    }
+
+    .farm-detail-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 12px;
+      color: var(--color-text-muted);
+      flex-wrap: wrap;
+    }
+
+    .farm-detail-tag {
+      font-weight: 500;
+      color: var(--color-primary);
+      background: var(--color-primary-light);
+      padding: 2px 7px;
+      border-radius: var(--radius-xs);
+    }
+
+    .btn-edit {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 5px 12px;
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--color-text-main);
+      background: rgba(0, 0, 0, 0.04);
+      border: 1px solid rgba(0, 0, 0, 0.04);
+      border-radius: var(--radius-full);
+      cursor: pointer;
+      transition: var(--transition-fast);
+    }
+
+    .btn-edit:hover {
+      background: rgba(0, 0, 0, 0.08);
+      color: var(--color-text-main);
+    }
+
+    .role-notice {
+      display: none;
+      padding: 12px 16px;
+      border-radius: var(--radius-md);
+      background: var(--color-warning-bg);
+      border: 1px solid var(--color-warning-border);
+      color: #92400e;
+      font-size: 13px;
+      margin-bottom: 16px;
+    }
+
+    @media (max-width: 900px) {
+      .farm-layout {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <!-- Global App Header with Navbar -->
+  <header class="app-header">
+    <div class="header-container">
+      <a href="/lots" class="brand-link">
+        <div class="brand-icon">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 2a10 10 0 0 1 10 10c0 5.523-4.477 10-10 10S2 17.523 2 12c0-2.2.7-4.2 1.9-5.9"/>
+            <path d="M12 6v6l4 2"/>
+            <path d="m4.93 4.93 4.24 4.24"/>
+          </svg>
+        </div>
+        <div class="brand-info">
+          <span class="brand-title">AGRI TRACE</span>
+          <span class="brand-tag">Chuỗi lạnh nông sản</span>
+        </div>
+      </a>
+
+      <!-- Navigation Tabs (S-01, S-06, S-07, S-08 connected!) -->
+      <nav class="nav-links" aria-label="Điều hướng chính">
+        <a href="/lots.html" class="nav-item" id="navLots">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m7.5 4.27 9 5.15"/><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg>
+          <span>Lô hàng</span>
+        </a>
+        <a href="/farms.html" class="nav-item active" id="navFarms">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 11v8a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-7a1 1 0 0 1 1-1h3"/><path d="M4 11V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v7"/><path d="M14 15v5a1 1 0 0 1-1 1h-2a1 1 0 0 1-1-1v-5"/><path d="M17 11V7a1 1 0 0 1 1-1h3a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1h-3a1 1 0 0 1-1-1v-3"/><path d="M3 21h18"/></svg>
+          <span>Thửa đất</span>
+        </a>
+        <a href="/products.html" class="nav-item" id="navProducts">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="m10 15 5-3-5-3v6Z"/></svg>
+          <span>Sản phẩm</span>
+        </a>
+        <a href="/harvest.html" class="nav-item" id="navHarvest">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+          <span>Ghi nhận thu hoạch</span>
+        </a>
+        <a href="/integrity.html" class="nav-item" id="navIntegrity">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg>
+          <span>Kiểm tra toàn vẹn</span>
+        </a>
+      </nav>
+
+      <div class="user-controls">
+        <div class="user-pill" id="userPill">
+          <div class="user-avatar" id="userAvatar"><span class="skeleton-shimmer skeleton-avatar"></span></div>
+          <div class="user-meta">
+            <span class="user-email" id="userEmail"><span class="skeleton-shimmer skeleton-text"></span></span>
+            <div class="user-badges">
+              <span class="badge-org" id="userOrg"><span class="skeleton-shimmer skeleton-badge"></span></span>
+              <span class="badge-role" id="userRole"><span class="skeleton-shimmer skeleton-badge"></span></span>
+            </div>
+          </div>
+        </div>
+
+        <button id="logout" class="btn-logout" onclick="window.handleLogout ? window.handleLogout(event) : (sessionStorage.clear(), window.location.href='/index.html')" title="Đăng xuất khỏi hệ thống">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+          <span>Đăng xuất</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Backward compatible hidden elements -->
+  <span id="userInfo" style="display: none;"></span>
+  <span id="orgBadge" style="display: none;"></span>
+
+  <!-- Main Content Layout -->
+  <main class="main-wrapper">
+    <!-- Page Header & Action -->
+    <div class="page-header">
+      <div class="page-title-group">
+        <h1>Vùng trồng & Khai báo thửa đất</h1>
+        <p class="page-subtitle">Quản lý định danh vùng canh tác, tọa độ và kết nối với các lô nông sản thu hoạch</p>
+      </div>
+      <div style="display: flex; gap: 8px; align-items: center;">
+        <button type="button" id="btn-open-farm-csv-modal" class="btn-primary" style="background: var(--color-surface); color: var(--color-text-main); border: 1px solid var(--color-border); display: none; align-items: center; gap: 6px;">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path></svg>
+          <span>Nhập từ CSV</span>
+        </button>
+        <a href="/lots" class="btn-secondary">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m15 18-6-6 6-6"/></svg>
+          <span>Quay lại Danh sách lô</span>
+        </a>
+      </div>
+    </div>
+
+    <!-- Inspector Read-only Notice -->
+    <div id="inspectorNotice" class="role-notice">
+      <strong>Lưu ý quyền hạn:</strong> Bạn đang đăng nhập với vai trò <strong>Cán bộ kiểm tra</strong>. Dữ liệu chỉ ở chế độ xem, biểu mẫu tạo và sửa thửa đất đã được vô hiệu hóa theo đúng quy định.
+    </div>
+
+    <!-- Global Alert Box -->
+    <div id="globalAlert" class="alert-box" style="display: none;" role="alert"></div>
+
+    <!-- Overview Stats Bar -->
+    <div class="stats-grid">
+      <div class="stat-card">
+        <div class="stat-icon green">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 11v8a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-7a1 1 0 0 1 1-1h3"/><path d="M4 11V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v7"/><path d="M3 21h18"/></svg>
+        </div>
+        <div>
+          <div class="stat-value" id="statTotalFarms">0</div>
+          <div class="stat-label">Tổng số thửa đất</div>
+        </div>
+      </div>
+
+      <div class="stat-card">
+        <div class="stat-icon amber">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+        </div>
+        <div>
+          <div class="stat-value" id="statTotalArea">0.0 ha</div>
+          <div class="stat-label">Tổng diện tích canh tác</div>
+        </div>
+      </div>
+
+      <div class="stat-card">
+        <div class="stat-icon blue">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>
+        </div>
+        <div>
+          <div class="stat-value">VietGAP</div>
+          <div class="stat-label">Tiêu chuẩn canh tác áp dụng</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Main Form & List Grid -->
+    <div class="farm-layout">
+      <!-- Left Column: Farm Form Card -->
+      <section class="farm-card" id="farmFormCard">
+        <div class="card-header-group">
+          <h2 class="card-title" id="formTitle">Khai báo thửa đất mới</h2>
+          <span style="font-size: 11px; font-weight: 700; color: var(--color-primary); background: var(--color-primary-light); padding: 2px 8px; border-radius: var(--radius-xs);">
+            Cơ sở dữ liệu
+          </span>
+        </div>
+
+        <form id="farmForm" novalidate>
+          <input type="hidden" id="farmId" value="">
+
+          <div class="form-group">
+            <label for="farmName" class="form-label">
+              Tên thửa đất <span class="req">*</span>
+            </label>
+            <input
+              type="text"
+              id="farmName"
+              class="form-input"
+              placeholder="Ví dụ: Đồi chè La Bằng 01"
+              required
+            >
+            <span class="form-hint">Đặt tên phân biệt để gán lô nông sản khi thu hoạch.</span>
+            <span id="nameError" class="error-msg" aria-live="polite"></span>
+          </div>
+
+          <div class="form-group">
+            <label for="farmArea" class="form-label">
+              Diện tích canh tác (ha) <span class="req">*</span>
+            </label>
+            <input
+              type="number"
+              step="0.01"
+              min="0.01"
+              id="farmArea"
+              class="form-input"
+              placeholder="Ví dụ: 2.5"
+              required
+            >
+            <span class="form-hint">Diện tích bắt buộc lớn hơn 0 ha (ràng buộc toàn vẹn CSDL).</span>
+            <span id="areaError" class="error-msg" aria-live="polite"></span>
+          </div>
+
+          <div class="form-group">
+            <label for="farmCoordinates" class="form-label">
+              Tọa độ GPS (Vĩ độ, Kinh độ)
+            </label>
+            <input
+              type="text"
+              id="farmCoordinates"
+              class="form-input"
+              placeholder="Ví dụ: 21.5650, 105.6790"
+            >
+            <span class="form-hint">Tùy chọn: Nhập định dạng vĩ độ, kinh độ để vẽ bản đồ.</span>
+            <span id="coordError" class="error-msg" aria-live="polite"></span>
+          </div>
+
+          <div class="form-actions">
+            <button type="submit" id="submitFarmBtn" class="btn-primary">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+              <span>Lưu thửa đất</span>
+            </button>
+            <button type="button" id="cancelEditBtn" class="btn-secondary" style="display: none;">
+              <span>Hủy chỉnh sửa</span>
+            </button>
+          </div>
+        </form>
+      </section>
+
+      <!-- Right Column: Farms List Card -->
+      <section class="farm-card">
+        <div class="card-header-group">
+          <h2 class="card-title">Danh sách thửa đất trực thuộc</h2>
+          <span style="font-size: 12px; color: var(--color-text-muted);">Cách ly theo tổ chức</span>
+        </div>
+
+        <div id="farmList" aria-live="polite">
+          <div style="text-align: center; padding: 40px; color: var(--color-text-muted);">
+            Đang tải danh sách thửa đất...
+          </div>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <!-- Modal Nhập Thửa đất từ CSV -->
+  <div id="modal-import-farm-csv" class="modal-backdrop" style="display: none;">
+    <div class="modal-card" style="max-width: 620px;">
+      <div class="modal-header">
+        <h2 class="modal-title">Nhập danh mục thửa đất từ CSV</h2>
+        <button id="btn-close-farm-csv-modal" class="btn-icon" aria-label="Đóng">&times;</button>
+      </div>
+      <form id="form-import-farm-csv">
+        <div class="modal-body">
+          <p style="font-size: 13px; color: var(--color-text-muted); margin-bottom: 12px; line-height: 1.5;">
+            Nhập nhanh danh mục thửa đất cho tổ chức của bạn. Ràng buộc toàn vẹn: nếu có bất kỳ dòng nào sai định dạng, diện tích &le; 0 hoặc trùng tên thửa trong tổ chức, toàn bộ sẽ bị hủy bỏ (<strong>All-or-Nothing</strong>).
+          </p>
+
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+            <span style="font-size: 12px; font-weight: 600; color: var(--color-text-main);">Tệp dữ liệu (.csv)</span>
+            <button type="button" id="btn-download-farm-csv-sample" class="csv-template-download">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+              Tải file CSV mẫu chuẩn
+            </button>
+          </div>
+
+          <div id="farm-csv-dropzone" class="csv-dropzone">
+            <div class="csv-dropzone-icon">🌱</div>
+            <div class="csv-dropzone-text">Nhấp để chọn tệp CSV hoặc kéo thả vào đây</div>
+            <div class="csv-dropzone-hint">Cột quy chuẩn: <strong>name, area, coordinates</strong> (diện tích > 0)</div>
+            <input type="file" id="farm-csv-file" accept=".csv,text/csv" style="display: none;">
+          </div>
+
+          <div id="farm-csv-selected" class="csv-file-selected" style="display: none; margin-top: 10px;">
+            <span id="farm-csv-filename">filename.csv</span>
+            <button type="button" id="btn-remove-farm-csv" style="background: none; border: none; color: #dc2626; cursor: pointer; font-size: 16px;">&times;</button>
+          </div>
+
+          <!-- Bảng chi tiết lỗi -->
+          <div id="farm-csv-error-box" class="csv-error-container" style="display: none;">
+            <div class="csv-error-header">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+              <span id="farm-csv-error-title">Phát hiện lỗi dữ liệu - Không dòng nào được tạo</span>
+            </div>
+            <div style="max-height: 220px; overflow-y: auto;">
+              <table class="csv-error-table">
+                <thead>
+                  <tr>
+                    <th style="width: 70px;">Dòng</th>
+                    <th style="width: 110px;">Cột</th>
+                    <th>Chi tiết lỗi</th>
+                  </tr>
+                </thead>
+                <tbody id="farm-csv-error-tbody"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" id="btn-cancel-farm-csv-modal" class="btn-secondary">Hủy bỏ</button>
+          <button type="submit" id="btn-submit-farm-csv" class="btn-primary" disabled>Tiến hành nhập</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script src="/app-shell.js?v=20261014"></script>
+  <script>
+    let isSubmitting = false;
+    let currentUserRole = "";
+
+    async function checkAuthAndLoad() {
+      try {
+        const user = await initAppShell({ activeNav: "farms" });
+        if (!user) return;
+        currentUserRole = user.roleId;
+
+        // Backward compatibility
+        const userInfoEl = document.getElementById("userInfo");
+        if (userInfoEl) userInfoEl.innerHTML = `Xin chào <strong>${user.email}</strong> | Vai trò: <strong>${user.roleId}</strong>`;
+        const orgBadgeEl = document.getElementById("orgBadge");
+        if (orgBadgeEl) orgBadgeEl.innerHTML = `Tổ chức: <strong>${user.organizationId}</strong>`;
+
+        // Kiểm tra quyền ghi thửa đất qua ma trận quyền dùng chung
+        const canWriteFarm = (typeof window.hasPermission === "function")
+          ? window.hasPermission(user.roleId, "farm.write")
+          : ["producer", "cooperative", "org_admin", "admin"].includes(user.roleId);
+
+        const formCard = document.getElementById("farmFormCard");
+        const farmLayout = document.querySelector(".farm-layout");
+        const noticeEl = document.getElementById("inspectorNotice");
+
+        if (!canWriteFarm) {
+          if (formCard) formCard.style.display = "none";
+          if (farmLayout) farmLayout.style.gridTemplateColumns = "1fr";
+
+          const roleName = (typeof window.formatRole === "function") ? formatRole(user.roleId) : user.roleId;
+
+          if (user.roleId === "inspector") {
+            if (noticeEl) {
+              noticeEl.style.display = "block";
+              noticeEl.textContent = `Chế độ kiểm tra: Bạn đang xem danh sách thửa đất toàn hệ thống với vai trò ${roleName}. Biểu mẫu khai báo đã được ẩn theo phân quyền.`;
+            }
+          } else {
+            // Vai trò không quản lý vùng trồng (transporter, distributor,...)
+            if (noticeEl) {
+              noticeEl.style.display = "block";
+              noticeEl.innerHTML = `Tài khoản vai trò <strong>${roleName}</strong> không quản lý vùng trồng / thửa đất. Đang chuyển hướng về <a href="/lots.html" style="text-decoration: underline; font-weight: 700;">Danh sách lô hàng</a>...`;
+            }
+            setTimeout(() => {
+              window.location.href = "/lots.html";
+            }, 2000);
+            return;
+          }
+        } else {
+          if (formCard) formCard.style.display = "";
+          if (noticeEl) noticeEl.style.display = "none";
+          const btnCsv = document.getElementById("btn-open-farm-csv-modal");
+          if (btnCsv) btnCsv.style.display = "inline-flex";
+        }
+
+        await loadFarms();
+      } catch (err) {
+        showAlert("Lỗi kết nối máy chủ.", false);
+      }
+    }
+
+    // ==========================================
+    // LOGIC NHẬP THỬA ĐẤT TỪ CSV (ALL-OR-NOTHING)
+    // ==========================================
+    const farmCsvModal = document.getElementById("modal-import-farm-csv");
+    const openFarmCsvBtn = document.getElementById("btn-open-farm-csv-modal");
+    const closeFarmCsvBtn = document.getElementById("btn-close-farm-csv-modal");
+    const cancelFarmCsvBtn = document.getElementById("btn-cancel-farm-csv-modal");
+    const farmCsvFileInput = document.getElementById("farm-csv-file");
+    const farmCsvDropzone = document.getElementById("farm-csv-dropzone");
+    const farmCsvSelectedBox = document.getElementById("farm-csv-selected");
+    const farmCsvFilenameEl = document.getElementById("farm-csv-filename");
+    const farmCsvRemoveBtn = document.getElementById("btn-remove-farm-csv");
+    const farmCsvSubmitBtn = document.getElementById("btn-submit-farm-csv");
+    const farmCsvErrorBox = document.getElementById("farm-csv-error-box");
+    const farmCsvErrorTbody = document.getElementById("farm-csv-error-tbody");
+    const downloadFarmSampleBtn = document.getElementById("btn-download-farm-csv-sample");
+
+    let selectedFarmCsvText = "";
+
+    function openFarmCsvModal() {
+      resetFarmCsvModal();
+      farmCsvModal.style.display = "flex";
+    }
+
+    function closeFarmCsvModal() {
+      farmCsvModal.style.display = "none";
+      resetFarmCsvModal();
+    }
+
+    function resetFarmCsvModal() {
+      selectedFarmCsvText = "";
+      farmCsvFileInput.value = "";
+      farmCsvSelectedBox.style.display = "none";
+      farmCsvDropzone.style.display = "flex";
+      farmCsvErrorBox.style.display = "none";
+      farmCsvErrorTbody.innerHTML = "";
+      farmCsvSubmitBtn.disabled = true;
+      farmCsvSubmitBtn.textContent = "Tiến hành nhập";
+    }
+
+    if (openFarmCsvBtn) openFarmCsvBtn.addEventListener("click", openFarmCsvModal);
+    if (closeFarmCsvBtn) closeFarmCsvBtn.addEventListener("click", closeFarmCsvModal);
+    if (cancelFarmCsvBtn) cancelFarmCsvBtn.addEventListener("click", closeFarmCsvModal);
+    if (farmCsvModal) {
+      farmCsvModal.addEventListener("click", (e) => {
+        if (e.target === farmCsvModal) closeFarmCsvModal();
+      });
+    }
+
+    if (farmCsvDropzone) {
+      farmCsvDropzone.addEventListener("click", () => farmCsvFileInput.click());
+      farmCsvDropzone.addEventListener("dragover", (e) => {
+        e.preventDefault();
+        farmCsvDropzone.classList.add("dragover");
+      });
+      farmCsvDropzone.addEventListener("dragleave", () => {
+        farmCsvDropzone.classList.remove("dragover");
+      });
+      farmCsvDropzone.addEventListener("drop", (e) => {
+        e.preventDefault();
+        farmCsvDropzone.classList.remove("dragover");
+        if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+          handleFarmCsvFile(e.dataTransfer.files[0]);
+        }
+      });
+    }
+
+    if (farmCsvFileInput) {
+      farmCsvFileInput.addEventListener("change", (e) => {
+        if (e.target.files && e.target.files.length > 0) {
+          handleFarmCsvFile(e.target.files[0]);
+        }
+      });
+    }
+
+    if (farmCsvRemoveBtn) {
+      farmCsvRemoveBtn.addEventListener("click", resetFarmCsvModal);
+    }
+
+    function handleFarmCsvFile(file) {
+      if (!file.name.toLowerCase().endsWith(".csv")) {
+        alert("Vui lòng chọn tệp có định dạng .csv");
+        return;
+      }
+
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        selectedFarmCsvText = e.target.result;
+        farmCsvFilenameEl.textContent = `${file.name} (${(file.size / 1024).toFixed(1)} KB)`;
+        farmCsvDropzone.style.display = "none";
+        farmCsvSelectedBox.style.display = "flex";
+        farmCsvErrorBox.style.display = "none";
+        farmCsvSubmitBtn.disabled = false;
+      };
+      reader.readAsText(file, "UTF-8");
+    }
+
+    if (downloadFarmSampleBtn) {
+      downloadFarmSampleBtn.addEventListener("click", () => {
+        const sampleCsvContent = "\uFEFFname,area,coordinates\nThửa xoài Cát Chu 01,2.5,\"10.3541, 105.7891\"\nThửa dưa hấu Hắc Mỹ Nhân 02,1.8,\"10.3621, 105.7942\"\nThửa rau thủy canh Tân Phú,0.95,\"10.3702, 105.8015\"";
+        const blob = new Blob([sampleCsvContent], { type: "text/csv;charset=utf-8;" });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.setAttribute("href", url);
+        link.setAttribute("download", "mau_danh_muc_thua_dat.csv");
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      });
+    }
+
+    document.getElementById("form-import-farm-csv").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      if (!selectedFarmCsvText || !selectedFarmCsvText.trim()) {
+        alert("Vui lòng chọn tệp CSV có nội dung hợp lệ.");
+        return;
+      }
+
+      farmCsvSubmitBtn.disabled = true;
+      farmCsvSubmitBtn.textContent = "Đang xử lý nhập dữ liệu...";
+      farmCsvErrorBox.style.display = "none";
+      farmCsvErrorTbody.innerHTML = "";
+
+      try {
+        const res = await fetch("/api/farms/import-csv", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ csvContent: selectedFarmCsvText }),
+        });
+
+        const data = await res.json();
+
+        if (!res.ok) {
+          if (data.errors && Array.isArray(data.errors) && data.errors.length > 0) {
+            farmCsvErrorTbody.innerHTML = data.errors
+              .map(
+                (err) => `
+              <tr>
+                <td><span class="csv-badge-row">Dòng ${escapeHtml(err.row)}</span></td>
+                <td><span class="csv-badge-col">${escapeHtml(err.column)}</span></td>
+                <td>${escapeHtml(err.message)}</td>
+              </tr>
+            `
+              )
+              .join("");
+            farmCsvErrorBox.style.display = "block";
+          } else {
+            farmCsvErrorTbody.innerHTML = `<tr><td colspan="3">${escapeHtml(data.message || "Lỗi xử lý file.")}</td></tr>`;
+            farmCsvErrorBox.style.display = "block";
+          }
+          return;
+        }
+
+        closeFarmCsvModal();
+        showAlert(`✓ ${data.message}`, true);
+        await loadFarms();
+      } catch (err) {
+        farmCsvErrorTbody.innerHTML = `<tr><td colspan="3">${escapeHtml(err.message || "Lỗi kết nối máy chủ.")}</td></tr>`;
+        farmCsvErrorBox.style.display = "block";
+      } finally {
+        farmCsvSubmitBtn.disabled = false;
+        farmCsvSubmitBtn.textContent = "Tiến hành nhập";
+      }
+    });
+
+    function escapeHtml(str) {
+      if (!str) return "";
+      return String(str)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+    }
+
+    async function loadFarms() {
+      const container = document.getElementById("farmList");
+      try {
+        const res = await fetch("/api/farms");
+        if (!res.ok) {
+          container.innerHTML = "<div class='empty-state'><div class='empty-state-title'>Không thể tải danh sách thửa đất</div></div>";
+          return;
+        }
+        const data = await res.json();
+        const farms = data.farms || [];
+
+        // Update stats
+        document.getElementById("statTotalFarms").textContent = farms.length;
+        const totalArea = farms.reduce((acc, f) => acc + (parseFloat(f.area) || 0), 0);
+        document.getElementById("statTotalArea").textContent = totalArea.toFixed(1) + " ha";
+
+        if (farms.length === 0) {
+          container.innerHTML = `
+            <div style="text-align: center; padding: 48px 16px; color: var(--color-text-muted);">
+              <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="color: var(--color-text-light); margin-bottom: 12px;"><path d="M7 11v8a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-7a1 1 0 0 1 1-1h3"/><path d="M4 11V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v7"/><path d="M3 21h18"/></svg>
+              <div style="font-weight: 700; color: var(--color-text-main);">Chưa có thửa đất nào</div>
+              <div style="font-size: 13px; margin-top: 4px;">Điền biểu mẫu bên cạnh để khai báo thửa đất đầu tiên.</div>
+            </div>
+          `;
+          return;
+        }
+
+        container.innerHTML = "";
+        farms.forEach((f) => {
+          const div = document.createElement("div");
+          div.className = "farm-item";
+          
+          const canWriteFarm = (typeof window.hasPermission === "function")
+            ? window.hasPermission(currentUserRole, "farm.write")
+            : ["producer", "cooperative", "org_admin", "admin"].includes(currentUserRole);
+
+          const editBtnHtml = !canWriteFarm 
+            ? `<span style="font-size: 11px; color: var(--color-text-muted);">(Chỉ xem)</span>`
+            : `<button class="btn-edit" onclick="startEdit('${f.id}', '${encodeURIComponent(f.name)}', ${f.area}, '${encodeURIComponent(f.coordinates || '')}')">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>
+                <span>Sửa</span>
+              </button>`;
+
+          div.innerHTML = `
+            <div>
+              <div class="farm-title">${f.name}</div>
+              <div class="farm-detail-row">
+                <span class="farm-detail-tag">${f.id}</span>
+                <span>Diện tích: <strong style="color: var(--color-text-main);">${f.area} ha</strong></span>
+                <span>Tọa độ: ${f.coordinates || "Chưa cập nhật"}</span>
+              </div>
+            </div>
+            <div>
+              ${editBtnHtml}
+            </div>
+          `;
+          container.appendChild(div);
+        });
+      } catch (err) {
+        container.innerHTML = "<div style='color: var(--color-danger);'>Không thể tải danh sách thửa đất.</div>";
+      }
+    }
+
+    // Helper quản lý hiển thị lỗi biểu mẫu dùng chung (T-22)
+    const farmErrorHandler = (typeof window.createFormErrorHandler === "function")
+      ? window.createFormErrorHandler({
+          scope: "#farmForm",
+          globalAlert: "#globalAlert",
+          fields: {
+            name: { input: "#farmName", error: "#nameError" },
+            area: { input: "#farmArea", error: "#areaError" },
+            coordinates: { input: "#farmCoordinates", error: "#coordError" },
+          },
+        })
+      : null;
+    if (farmErrorHandler && farmErrorHandler.bindAutoClear) {
+      farmErrorHandler.bindAutoClear();
+    }
+
+    function clearErrors() {
+      if (farmErrorHandler) {
+        farmErrorHandler.clear();
+      } else {
+        document.getElementById("nameError").textContent = "";
+        document.getElementById("areaError").textContent = "";
+        document.getElementById("coordError").textContent = "";
+        document.getElementById("farmName").classList.remove("input-error");
+        document.getElementById("farmArea").classList.remove("input-error");
+        const alert = document.getElementById("globalAlert");
+        alert.style.display = "none";
+        alert.className = "alert-box";
+      }
+    }
+
+    function showFieldErrors(errors) {
+      if (farmErrorHandler) {
+        farmErrorHandler.showErrors(errors);
+      } else {
+        if (errors.name) {
+          document.getElementById("nameError").textContent = errors.name;
+          document.getElementById("farmName").classList.add("input-error");
+        }
+        if (errors.area) {
+          document.getElementById("areaError").textContent = errors.area;
+          document.getElementById("farmArea").classList.add("input-error");
+        }
+        if (errors.coordinates) {
+          document.getElementById("coordError").textContent = errors.coordinates;
+        }
+      }
+    }
+
+    function showAlert(msg, isSuccess = true) {
+      const alert = document.getElementById("globalAlert");
+      alert.textContent = msg;
+      alert.className = "alert-box " + (isSuccess ? "alert-success" : "alert-error");
+      alert.style.display = "block";
+    }
+
+    window.startEdit = function(id, encName, area, encCoords) {
+      const canWriteFarm = (typeof window.hasPermission === "function")
+        ? window.hasPermission(currentUserRole, "farm.write")
+        : ["producer", "cooperative", "org_admin", "admin"].includes(currentUserRole);
+
+      if (!canWriteFarm) {
+        showAlert("Tài khoản của bạn chỉ có quyền xem, không được phép chỉnh sửa thửa đất.", false);
+        return;
+      }
+      document.getElementById("farmId").value = id;
+      document.getElementById("farmName").value = decodeURIComponent(encName);
+      document.getElementById("farmArea").value = area;
+      document.getElementById("farmCoordinates").value = decodeURIComponent(encCoords);
+      document.getElementById("formTitle").textContent = "Chỉnh sửa thửa đất (" + id + ")";
+      document.getElementById("submitFarmBtn").innerHTML = `
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/></svg>
+        <span>Cập nhật thửa đất</span>
+      `;
+      document.getElementById("cancelEditBtn").style.display = "block";
+      clearErrors();
+      document.getElementById("farmName").focus();
+    };
+
+    document.getElementById("cancelEditBtn").addEventListener("click", () => {
+      document.getElementById("farmId").value = "";
+      document.getElementById("farmForm").reset();
+      document.getElementById("formTitle").textContent = "Khai báo thửa đất mới";
+      document.getElementById("submitFarmBtn").innerHTML = `
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+        <span>Lưu thửa đất</span>
+      `;
+      document.getElementById("cancelEditBtn").style.display = "none";
+      clearErrors();
+    });
+
+    document.getElementById("farmForm").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      clearErrors();
+
+      // Chặn gửi form 2 lần liên tiếp (Double-submit prevention)
+      if (isSubmitting) return;
+
+      const submitBtn = document.getElementById("submitFarmBtn");
+      const farmId = document.getElementById("farmId").value;
+      const name = document.getElementById("farmName").value.trim();
+      const areaVal = document.getElementById("farmArea").value;
+      const coordinates = document.getElementById("farmCoordinates").value.trim();
+
+      // Kiểm tra sơ bộ client-side (T-22)
+      const clientErrors = {};
+      if (!name) {
+        clientErrors.name = "Tên thửa đất không được để trống.";
+      }
+
+      const numArea = parseFloat(areaVal);
+      if (isNaN(numArea) || numArea <= 0) {
+        clientErrors.area = "Diện tích phải là số lớn hơn 0 ha.";
+      }
+
+      if (Object.keys(clientErrors).length > 0) {
+        showFieldErrors(clientErrors);
+        return;
+      }
+
+      // Khóa nút để chặn bấm 2 lần
+      isSubmitting = true;
+      submitBtn.disabled = true;
+      submitBtn.textContent = "Đang xử lý...";
+
+      try {
+        const isEdit = Boolean(farmId);
+        const url = isEdit ? `/api/farms/${farmId}` : "/api/farms";
+        const method = isEdit ? "PUT" : "POST";
+
+        const res = await fetch(url, {
+          method,
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name, area: numArea, coordinates })
+        });
+
+        const data = await res.json();
+
+        if (res.ok) {
+          showAlert(data.message || "Thao tác thành công!", true);
+          document.getElementById("farmForm").reset();
+          document.getElementById("farmId").value = "";
+          document.getElementById("cancelEditBtn").style.display = "none";
+          document.getElementById("formTitle").textContent = "Khai báo thửa đất mới";
+          document.getElementById("submitFarmBtn").innerHTML = `
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/></svg>
+            <span>Lưu thửa đất</span>
+          `;
+          await loadFarms();
+        } else {
+          if (data.errors) {
+            showFieldErrors(data.errors);
+          } else {
+            showAlert(data.message || "Có lỗi xảy ra khi lưu thửa đất.", false);
+          }
+        }
+      } catch (err) {
+        showAlert("Không thể kết nối máy chủ.", false);
+      } finally {
+        isSubmitting = false;
+        submitBtn.disabled = false;
+        if (!document.getElementById("farmId").value) {
+          document.getElementById("submitFarmBtn").innerHTML = `
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+            <span>Lưu thửa đất</span>
+          `;
+        } else {
+          document.getElementById("submitFarmBtn").innerHTML = `
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/></svg>
+            <span>Cập nhật thửa đất</span>
+          `;
+        }
+      }
+    });
+
+    checkAuthAndLoad();
+  </script>
+</body>
+</html>

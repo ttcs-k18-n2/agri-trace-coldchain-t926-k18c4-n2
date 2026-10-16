@@ -1,0 +1,958 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Danh mục sản phẩm | AgriTrace ColdChain</title>
+  <meta name="description" content="Danh mục quy chuẩn nông sản và đơn vị tính dùng chung toàn hệ thống chuỗi lạnh">
+  <link rel="stylesheet" href="/styles.css?v=20261014">
+  <style>
+    .product-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 16px;
+      margin-top: 1.25rem;
+    }
+    .product-card {
+      background: var(--color-surface);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-lg);
+      padding: 18px 20px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      transition: var(--transition-normal);
+      box-shadow: var(--shadow-sm);
+    }
+    .product-card:hover {
+      transform: translateY(-1px);
+      box-shadow: var(--shadow-hover);
+      border-color: rgba(0, 0, 0, 0.12);
+    }
+    .product-header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+    .product-icon {
+      width: 38px;
+      height: 38px;
+      border-radius: var(--radius-md);
+      background: var(--color-primary-light);
+      color: var(--color-primary);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.15rem;
+      font-weight: 700;
+      flex-shrink: 0;
+    }
+
+    .product-title {
+      font-size: 16px;
+      font-weight: 600;
+      color: var(--color-text-main);
+      letter-spacing: -0.01em;
+    }
+    .unit-tag {
+      display: inline-flex;
+      align-items: center;
+      padding: 2px 8px;
+      border-radius: var(--radius-full);
+      font-size: 12px;
+      font-weight: 500;
+      background: rgba(0, 0, 0, 0.04);
+      color: var(--color-text-muted);
+    }
+    .unit-options {
+      display: flex;
+      gap: 8px;
+      margin-top: 8px;
+    }
+    .unit-option-label {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      padding: 8px 10px;
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      font-weight: 500;
+      font-size: 13px;
+      background: #ffffff;
+      color: var(--color-text-main);
+      transition: var(--transition-fast);
+    }
+    .unit-option-label input[type="radio"] {
+      accent-color: var(--color-primary);
+    }
+    .unit-option-label:hover {
+      border-color: rgba(0, 0, 0, 0.2);
+      background: var(--color-surface-subtle);
+    }
+    .unit-option-label.active {
+      border-color: var(--color-primary);
+      background: var(--color-primary-light);
+      color: var(--color-primary);
+      font-weight: 600;
+    }
+  </style>
+</head>
+<body>
+  <!-- Header / Navigation Bar -->
+  <header class="app-header">
+    <div class="header-container">
+      <a href="/lots" class="brand-link">
+        <div class="brand-icon">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 2a10 10 0 0 1 10 10c0 5.523-4.477 10-10 10S2 17.523 2 12c0-2.2.7-4.2 1.9-5.9"/>
+            <path d="M12 6v6l4 2"/>
+            <path d="m4.93 4.93 4.24 4.24"/>
+          </svg>
+        </div>
+        <div class="brand-info">
+          <span class="brand-title">AGRI TRACE</span>
+          <span class="brand-tag">Chuỗi lạnh nông sản</span>
+        </div>
+      </a>
+
+      <nav class="nav-links" aria-label="Điều hướng chính">
+        <a href="/lots.html" class="nav-item" id="navLots"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m7.5 4.27 9 5.15"/><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg><span>Lô hàng</span></a>
+        <a href="/farms.html" class="nav-item" id="navFarms"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 11v8a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-7a1 1 0 0 1 1-1h3"/><path d="M4 11V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v7"/><path d="M14 15v5a1 1 0 0 1-1 1h-2a1 1 0 0 1-1-1v-5"/><path d="M17 11V7a1 1 0 0 1 1-1h3a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1h-3a1 1 0 0 1-1-1v-3"/><path d="M3 21h18"/></svg><span>Thửa đất</span></a>
+        <a href="/products.html" class="nav-item active" id="navProducts"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="m10 15 5-3-5-3v6Z"/></svg><span>Sản phẩm</span></a>
+        <a href="/harvest.html" class="nav-item" id="navHarvest"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg><span>Ghi nhận thu hoạch</span></a>
+        <a href="/integrity.html" class="nav-item" id="navIntegrity"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg><span>Kiểm tra toàn vẹn</span></a>
+      </nav>
+
+      <div class="user-controls">
+        <div class="user-pill" id="userPill">
+          <div class="user-avatar" id="userAvatar"><span class="skeleton-shimmer skeleton-avatar"></span></div>
+          <div class="user-meta">
+            <span class="user-email" id="userEmail"><span class="skeleton-shimmer skeleton-text"></span></span>
+            <div class="user-badges">
+              <span class="badge-org" id="userOrg"><span class="skeleton-shimmer skeleton-badge"></span></span>
+              <span class="badge-role" id="userRole"><span class="skeleton-shimmer skeleton-badge"></span></span>
+            </div>
+          </div>
+        </div>
+        <button id="logout" class="btn-logout" onclick="window.handleLogout ? window.handleLogout(event) : (sessionStorage.clear(), window.location.href='/index.html')" title="Đăng xuất khỏi hệ thống">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+          <span>Đăng xuất</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Content -->
+  <main class="main-wrapper">
+    <div class="page-header">
+      <div class="page-title-group">
+        <h1>Danh mục sản phẩm</h1>
+        <p class="page-subtitle">Danh mục nông sản quy chuẩn và đơn vị tính dùng chung toàn bộ hệ thống chuỗi lạnh.</p>
+      </div>
+      <div id="admin-actions" style="display: none; align-items: center; gap: 8px;">
+        <button id="btn-open-csv-modal" class="btn btn-secondary" style="display: inline-flex; align-items: center; gap: 6px;">
+          <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path></svg>
+          Nhập từ CSV
+        </button>
+        <button id="btn-open-modal" class="btn btn-primary">
+          <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+          Thêm sản phẩm
+        </button>
+      </div>
+    </div>
+
+    <!-- Alert Banner -->
+    <div id="alert-banner" class="alert" style="display: none;"></div>
+
+    <!-- Search / Filter -->
+    <div class="card" style="margin-bottom: 1.5rem; padding: 1rem 1.25rem;">
+      <div style="display: flex; gap: 1rem; align-items: center; flex-wrap: wrap;">
+        <div style="flex: 1; min-width: 240px; position: relative;">
+          <input type="text" id="search-input" class="form-input" placeholder="🔍 Tìm kiếm sản phẩm theo tên hoặc đơn vị..." style="padding-left: 2.25rem;">
+        </div>
+        <div style="color: var(--color-text-muted); font-size: 0.9rem;">
+          Tổng số: <strong id="product-count" style="color: var(--color-primary);">0</strong> sản phẩm
+        </div>
+      </div>
+    </div>
+
+    <!-- Product Grid -->
+    <div id="products-loading" class="card" style="text-align: center; padding: 3rem;">
+      <div style="font-size: 1.1rem; color: var(--color-text-muted);">Đang tải danh mục sản phẩm...</div>
+    </div>
+
+    <div id="products-empty" class="card" style="display: none; text-align: center; padding: 3rem;">
+      <div style="font-size: 2.5rem; margin-bottom: 0.5rem;">📦</div>
+      <div style="font-weight: 700; font-size: 1.1rem; color: var(--color-text-main);">Chưa có sản phẩm nào</div>
+      <div style="color: var(--color-text-muted); margin-top: 0.25rem;">Danh mục sản phẩm hiện đang trống.</div>
+    </div>
+
+    <div id="product-grid" class="product-grid" style="display: none;"></div>
+  </main>
+
+  <!-- Modal Nhập Sản phẩm từ CSV (Chỉ dành cho Admin) -->
+  <div id="modal-import-csv" class="modal-backdrop" style="display: none;">
+    <div class="modal-card" style="max-width: 620px;">
+      <div class="modal-header">
+        <h2 class="modal-title">Nhập danh mục sản phẩm từ CSV</h2>
+        <button id="btn-close-csv-modal" class="btn-icon" aria-label="Đóng">&times;</button>
+      </div>
+      <form id="form-import-csv">
+        <div class="modal-body">
+          <p style="font-size: 13px; color: var(--color-text-muted); margin-bottom: 12px; line-height: 1.5;">
+            Nhập nhanh danh mục quy chuẩn. Hệ thống áp dụng quy tắc toàn vẹn: nếu có bất kỳ dòng nào sai hoặc trùng lặp, toàn bộ quá trình sẽ bị hủy bỏ (<strong>All-or-Nothing</strong>).
+          </p>
+
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+            <span style="font-size: 12px; font-weight: 600; color: var(--color-text-main);">Tệp dữ liệu (.csv)</span>
+            <button type="button" id="btn-download-product-csv-sample" class="csv-template-download">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+              Tải file CSV mẫu chuẩn
+            </button>
+          </div>
+
+          <div id="product-csv-dropzone" class="csv-dropzone">
+            <div class="csv-dropzone-icon">📄</div>
+            <div class="csv-dropzone-text">Nhấp để chọn tệp CSV hoặc kéo thả vào đây</div>
+            <div class="csv-dropzone-hint">Cột quy chuẩn: <strong>name, unit</strong> (đơn vị: kg, tan, thung)</div>
+            <input type="file" id="product-csv-file" accept=".csv,text/csv" style="display: none;">
+          </div>
+
+          <div id="product-csv-selected" class="csv-file-selected" style="display: none; margin-top: 10px;">
+            <span id="product-csv-filename">filename.csv</span>
+            <button type="button" id="btn-remove-product-csv" style="background: none; border: none; color: #dc2626; cursor: pointer; font-size: 16px;">&times;</button>
+          </div>
+
+          <!-- Bảng chi tiết lỗi -->
+          <div id="product-csv-error-box" class="csv-error-container" style="display: none;">
+            <div class="csv-error-header">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+              <span id="product-csv-error-title">Phát hiện lỗi dữ liệu - Không dòng nào được tạo</span>
+            </div>
+            <div style="max-height: 220px; overflow-y: auto;">
+              <table class="csv-error-table">
+                <thead>
+                  <tr>
+                    <th style="width: 70px;">Dòng</th>
+                    <th style="width: 110px;">Cột</th>
+                    <th>Chi tiết lỗi</th>
+                  </tr>
+                </thead>
+                <tbody id="product-csv-error-tbody"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" id="btn-cancel-csv-modal" class="btn btn-outline">Hủy bỏ</button>
+          <button type="submit" id="btn-submit-csv" class="btn btn-primary" disabled>Tiến hành nhập</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal Thêm sản phẩm (Chỉ dành cho Admin) -->
+  <div id="modal-add-product" class="modal-backdrop" style="display: none;">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h2 class="modal-title">Thêm sản phẩm mới</h2>
+        <button id="btn-close-modal" class="btn-icon" aria-label="Đóng">&times;</button>
+      </div>
+      <form id="form-add-product">
+        <div class="modal-body">
+          <div id="form-error" class="alert alert-danger" style="display: none; margin-bottom: 1rem;"></div>
+
+          <div class="form-group">
+            <label class="form-label" for="product-name">Tên sản phẩm <span style="color: var(--color-danger)">*</span></label>
+            <input type="text" id="product-name" name="name" class="form-input" required placeholder="Ví dụ: Cà chua, Chè, Rau cải, Khoai tây...">
+            <span class="form-hint">Tên sản phẩm là duy nhất (không phân biệt chữ hoa, chữ thường).</span>
+          </div>
+
+          <div class="form-group" style="margin-top: 1rem;">
+            <label class="form-label">Đơn vị tính <span style="color: var(--color-danger)">*</span></label>
+            <div class="unit-options">
+              <label class="unit-option-label active" id="label-kg">
+                <input type="radio" name="unit" value="kg" checked>
+                <span>kg (Kilogram)</span>
+              </label>
+              <label class="unit-option-label" id="label-tan">
+                <input type="radio" name="unit" value="tan">
+                <span>tấn (Tấn)</span>
+              </label>
+              <label class="unit-option-label" id="label-thung">
+                <input type="radio" name="unit" value="thung">
+                <span>thùng (Thùng)</span>
+              </label>
+            </div>
+            <span class="form-hint" style="margin-top: 0.5rem; display: block;">Đơn vị quy chuẩn: kg, tấn hoặc thùng.</span>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" id="btn-cancel-modal" class="btn btn-outline">Hủy bỏ</button>
+          <button type="submit" id="btn-submit-product" class="btn btn-primary">Lưu sản phẩm</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal Chi tiết sản phẩm -->
+  <div id="modal-detail-product" class="modal-backdrop" style="display: none;">
+    <div class="modal-card" style="max-width: 480px;">
+      <div class="modal-header">
+        <h2 class="modal-title">Chi tiết quy chuẩn sản phẩm</h2>
+        <button id="btn-close-detail-modal" class="btn-icon" aria-label="Đóng">&times;</button>
+      </div>
+      <div class="modal-body" id="modal-detail-body">
+        <div style="text-align: center; padding: 24px; color: var(--color-text-muted);">Đang tải chi tiết...</div>
+      </div>
+      <div class="modal-footer" style="display: flex; justify-content: space-between; align-items: center;">
+        <a id="btn-view-lots-link" href="#" class="btn btn-primary" style="display: inline-flex; align-items: center; gap: 8px;">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m7.5 4.27 9 5.15"/><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/></svg>
+          <span>Xem các lô hàng</span>
+        </a>
+        <button type="button" id="btn-dismiss-detail-modal" class="btn btn-outline">Đóng</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/app-shell.js?v=20261014"></script>
+  <script>
+    let currentUser = null;
+    let productsList = [];
+    let editingProductId = null;
+
+    // Khởi tạo trang an toàn, không treo loading
+    async function initPage() {
+      setupEventListeners();
+
+      try {
+        if (typeof window.initAppShell === "function") {
+          currentUser = await initAppShell({ activeNav: "products" });
+        } else if (typeof window.getAgriUserCache === "function") {
+          currentUser = window.getAgriUserCache();
+        }
+
+        if (currentUser) {
+          const canWriteProduct = (typeof window.hasPermission === "function")
+            ? window.hasPermission(currentUser.roleId, "product.write")
+            : currentUser.roleId === "admin";
+
+          if (canWriteProduct) {
+            const adminActions = document.getElementById("admin-actions");
+            if (adminActions) adminActions.style.display = "flex";
+          }
+        }
+      } catch (err) {
+        console.warn("Lỗi khởi tạo App Shell trên trang sản phẩm:", err);
+      }
+
+      await loadProducts();
+    }
+
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", initPage);
+    } else {
+      initPage();
+    }
+
+    async function loadProducts() {
+      try {
+        const res = await fetch("/api/products");
+        if (!res.ok) throw new Error("Không thể tải danh sách sản phẩm.");
+        const data = await res.json();
+        productsList = data.products || [];
+        renderProducts(productsList);
+      } catch (err) {
+        showBanner("error", err.message);
+      } finally {
+        document.getElementById("products-loading").style.display = "none";
+      }
+    }
+
+    function renderProducts(list) {
+      const grid = document.getElementById("product-grid");
+      const empty = document.getElementById("products-empty");
+      const countEl = document.getElementById("product-count");
+
+      countEl.textContent = list.length;
+
+      if (!list || list.length === 0) {
+        grid.style.display = "none";
+        empty.style.display = "block";
+        return;
+      }
+
+      empty.style.display = "none";
+      grid.style.display = "grid";
+      grid.innerHTML = "";
+
+      const isAdmin = currentUser && currentUser.roleId === "admin";
+
+      list.forEach((p) => {
+        const card = document.createElement("div");
+        card.className = "product-card";
+
+        const iconEmoji = getProductEmoji(p.name);
+        const unitName = formatUnit(p.unit);
+
+        card.innerHTML = `
+          <div>
+            <div class="product-header">
+              <div class="product-icon">${iconEmoji}</div>
+              <div>
+                <div class="product-title">${escapeHtml(p.name)}</div>
+                <div style="font-size: 0.75rem; color: var(--color-text-light); font-family: monospace;">${escapeHtml(p.id)}</div>
+              </div>
+            </div>
+          </div>
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 1rem; padding-top: 0.75rem; border-top: 1px dashed var(--color-border); gap: 8px;">
+            <div style="display: flex; align-items: center; gap: 6px;">
+              <span style="font-size: 0.8rem; color: var(--color-text-muted);">Đơn vị:</span>
+              <span class="unit-tag">${escapeHtml(unitName)}</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 6px;">
+              <button type="button" class="btn btn-outline btn-sm btn-view-product" data-id="${escapeHtml(p.id)}" style="padding: 4px 10px; font-size: 0.8rem; cursor: pointer; border-radius: var(--radius-sm); font-weight: 600;" title="Xem chi tiết quy chuẩn sản phẩm ${escapeHtml(p.name)}">
+                Chi tiết
+              </button>
+
+              <div class="dropdown-menu-wrapper">
+                <button type="button" class="btn-icon-kebab" data-id="${escapeHtml(p.id)}" title="Thao tác khác" aria-label="Thao tác khác">•••</button>
+                <div class="dropdown-popover" id="dropdown-${escapeHtml(p.id)}">
+                  <a href="/lots.html?productId=${encodeURIComponent(p.id)}" class="dropdown-item">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m7.5 4.27 9 5.15"/><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg>
+                    <span>Xem các lô hàng</span>
+                  </a>
+                  <button type="button" class="dropdown-item btn-menu-detail" data-id="${escapeHtml(p.id)}">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="m10 15 5-3-5-3v6Z"/></svg>
+                    <span>Chi tiết quy chuẩn</span>
+                  </button>
+                  <button type="button" class="dropdown-item btn-menu-copy" data-id="${escapeHtml(p.id)}">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                    <span>Sao chép mã SP</span>
+                  </button>
+                  ${isAdmin ? `
+                    <div class="dropdown-divider"></div>
+                    <button type="button" class="dropdown-item btn-menu-edit" data-id="${escapeHtml(p.id)}" data-name="${escapeHtml(p.name)}" data-unit="${escapeHtml(p.unit)}">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>
+                      <span>Chỉnh sửa</span>
+                    </button>
+                  ` : ""}
+                </div>
+              </div>
+            </div>
+          </div>
+        `;
+        grid.appendChild(card);
+      });
+
+      // Gắn sự kiện cho các nút trong grid
+      grid.querySelectorAll(".btn-view-product, .btn-menu-detail").forEach((btn) => {
+        btn.addEventListener("click", (e) => {
+          e.stopPropagation();
+          closeAllDropdowns();
+          showProductDetailModal(btn.dataset.id);
+        });
+      });
+
+      grid.querySelectorAll(".btn-menu-copy").forEach((btn) => {
+        btn.addEventListener("click", (e) => {
+          e.stopPropagation();
+          closeAllDropdowns();
+          copyToClipboard(btn.dataset.id);
+        });
+      });
+
+      grid.querySelectorAll(".btn-icon-kebab").forEach((btn) => {
+        btn.addEventListener("click", (e) => {
+          e.stopPropagation();
+          toggleDropdown(btn.dataset.id);
+        });
+      });
+
+      if (isAdmin) {
+        grid.querySelectorAll(".btn-menu-edit").forEach((btn) => {
+          btn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            closeAllDropdowns();
+            openEditModal(btn.dataset.id, btn.dataset.name, btn.dataset.unit);
+          });
+        });
+      }
+    }
+
+    function toggleDropdown(id) {
+      const popover = document.getElementById(`dropdown-${id}`);
+      const wasActive = popover && popover.classList.contains("active");
+      closeAllDropdowns();
+      if (!wasActive && popover) {
+        popover.classList.add("active");
+      }
+    }
+
+    function closeAllDropdowns() {
+      document.querySelectorAll(".dropdown-popover.active").forEach((p) => p.classList.remove("active"));
+    }
+
+    async function showProductDetailModal(productId) {
+      const modal = document.getElementById("modal-detail-product");
+      const body = document.getElementById("modal-detail-body");
+      const viewLotsLink = document.getElementById("btn-view-lots-link");
+
+      modal.style.display = "flex";
+      viewLotsLink.href = `/lots.html?productId=${encodeURIComponent(productId)}`;
+      body.innerHTML = `<div style="text-align: center; padding: 24px; color: var(--color-text-muted);">Đang tải thông tin chi tiết...</div>`;
+
+      try {
+        const res = await fetch(`/api/products/${encodeURIComponent(productId)}`);
+        if (!res.ok) throw new Error("Không thể tải thông tin chi tiết sản phẩm.");
+        const data = await res.json();
+        const p = data.product || {};
+        const lotsCount = data.lotsCount !== undefined ? data.lotsCount : 0;
+        const iconEmoji = getProductEmoji(p.name);
+        const unitName = formatUnit(p.unit);
+        const createdDate = p.created_at ? new Date(p.created_at).toLocaleDateString("vi-VN") : "Quy chuẩn ban đầu";
+
+        body.innerHTML = `
+          <div style="text-align: center; margin-bottom: 20px;">
+            <div style="font-size: 3rem; margin-bottom: 8px;">${iconEmoji}</div>
+            <h3 style="font-size: 20px; font-weight: 700; color: var(--color-text-main); margin-bottom: 4px;">${escapeHtml(p.name)}</h3>
+            <span class="unit-tag" style="font-size: 13px; padding: 4px 12px;">Đơn vị: ${escapeHtml(unitName)}</span>
+          </div>
+
+          <div style="background: var(--color-surface-subtle); border-radius: var(--radius-md); padding: 14px 16px; border: 1px solid var(--color-border); display: flex; flex-direction: column; gap: 10px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; font-size: 13px;">
+              <span style="color: var(--color-text-muted); font-weight: 500;">Mã sản phẩm:</span>
+              <div style="display: flex; align-items: center; gap: 6px;">
+                <code style="background: #ffffff; padding: 2px 6px; border-radius: 4px; border: 1px solid var(--color-border); font-size: 12px;">${escapeHtml(p.id)}</code>
+                <button type="button" class="btn btn-outline btn-sm" onclick="copyToClipboard('${escapeHtml(p.id)}')" style="padding: 2px 6px; font-size: 11px;">Sao chép</button>
+              </div>
+            </div>
+
+            <div style="display: flex; justify-content: space-between; align-items: center; font-size: 13px;">
+              <span style="color: var(--color-text-muted); font-weight: 500;">Quy chuẩn đơn vị:</span>
+              <span style="font-weight: 600; color: var(--color-text-main);">${escapeHtml(unitName)}</span>
+            </div>
+
+            <div style="display: flex; justify-content: space-between; align-items: center; font-size: 13px;">
+              <span style="color: var(--color-text-muted); font-weight: 500;">Ngày đưa vào quy chuẩn:</span>
+              <span style="font-weight: 600; color: var(--color-text-main);">${createdDate}</span>
+            </div>
+
+            <div style="display: flex; justify-content: space-between; align-items: center; font-size: 13px;">
+              <span style="color: var(--color-text-muted); font-weight: 500;">Tổng số lô đã thu hoạch:</span>
+              <span style="font-weight: 700; color: var(--color-primary);">${lotsCount} lô hàng</span>
+            </div>
+          </div>
+        `;
+      } catch (err) {
+        body.innerHTML = `<div class="alert alert-danger" style="margin: 0;">${escapeHtml(err.message)}</div>`;
+      }
+    }
+
+    function closeDetailModal() {
+      const modal = document.getElementById("modal-detail-product");
+      if (modal) modal.style.display = "none";
+    }
+
+    async function copyToClipboard(text) {
+      if (!text) return;
+      let copied = false;
+      try {
+        if (window.isSecureContext && navigator.clipboard && navigator.clipboard.writeText) {
+          await navigator.clipboard.writeText(text);
+          copied = true;
+        } else {
+          const textarea = document.createElement("textarea");
+          textarea.value = text;
+          textarea.style.position = "fixed";
+          textarea.style.opacity = "0";
+          document.body.appendChild(textarea);
+          textarea.focus();
+          textarea.select();
+          copied = document.execCommand("copy");
+          textarea.remove();
+        }
+      } catch (err) {
+        console.error("Không thể sao chép mã sản phẩm:", err);
+      }
+
+      if (!copied) {
+        try {
+          const textarea = document.createElement("textarea");
+          textarea.value = text;
+          textarea.style.position = "fixed";
+          textarea.style.opacity = "0";
+          document.body.appendChild(textarea);
+          textarea.focus();
+          textarea.select();
+          copied = document.execCommand("copy");
+          textarea.remove();
+        } catch (fallbackErr) {
+          console.error("Fallback copy thất bại:", fallbackErr);
+        }
+      }
+
+      if (copied) {
+        showBanner("success", `✓ Đã sao chép mã "${text}" vào bộ nhớ tạm.`);
+      } else {
+        showBanner("error", "Không thể sao chép tự động.");
+      }
+    }
+
+    function openAddModal() {
+      editingProductId = null;
+      document.querySelector(".modal-title").textContent = "Thêm sản phẩm mới";
+      document.getElementById("btn-submit-product").textContent = "Lưu sản phẩm";
+      document.getElementById("form-add-product").reset();
+      document.getElementById("form-error").style.display = "none";
+      updateRadioVisual();
+      document.getElementById("modal-add-product").style.display = "flex";
+      document.getElementById("product-name").focus();
+    }
+
+    function openEditModal(id, name, unit) {
+      editingProductId = id;
+      document.querySelector(".modal-title").textContent = "Chỉnh sửa sản phẩm";
+      document.getElementById("btn-submit-product").textContent = "Cập nhật sản phẩm";
+      document.getElementById("product-name").value = name;
+      const targetRadio = document.querySelector(`input[name="unit"][value="${unit}"]`);
+      if (targetRadio) {
+        targetRadio.checked = true;
+      }
+      document.getElementById("form-error").style.display = "none";
+      updateRadioVisual();
+      document.getElementById("modal-add-product").style.display = "flex";
+      document.getElementById("product-name").focus();
+    }
+
+    function closeModal() {
+      document.getElementById("modal-add-product").style.display = "none";
+      editingProductId = null;
+    }
+
+    function updateRadioVisual() {
+      document.querySelectorAll(".unit-option-label").forEach((lbl) => lbl.classList.remove("active"));
+      const checked = document.querySelector('input[name="unit"]:checked');
+      if (checked && checked.parentElement) {
+        checked.parentElement.classList.add("active");
+      }
+    }
+
+    function setupEventListeners() {
+      // Search filter
+      document.getElementById("search-input").addEventListener("input", (e) => {
+        const query = e.target.value.toLowerCase().trim();
+        const filtered = productsList.filter(
+          (p) => p.name.toLowerCase().includes(query) || formatUnit(p.unit).toLowerCase().includes(query)
+        );
+        renderProducts(filtered);
+      });
+
+      // Modal controls
+      const modal = document.getElementById("modal-add-product");
+      const openBtn = document.getElementById("btn-open-modal");
+      const closeBtn = document.getElementById("btn-close-modal");
+      const cancelBtn = document.getElementById("btn-cancel-modal");
+
+      if (openBtn) {
+        openBtn.addEventListener("click", openAddModal);
+      }
+
+      closeBtn.addEventListener("click", closeModal);
+      cancelBtn.addEventListener("click", closeModal);
+      modal.addEventListener("click", (e) => {
+        if (e.target === modal) closeModal();
+      });
+
+      // CSV Modal controls
+      const csvModal = document.getElementById("modal-import-csv");
+      const openCsvBtn = document.getElementById("btn-open-csv-modal");
+      const closeCsvBtn = document.getElementById("btn-close-csv-modal");
+      const cancelCsvBtn = document.getElementById("btn-cancel-csv-modal");
+      const csvFileInput = document.getElementById("product-csv-file");
+      const csvDropzone = document.getElementById("product-csv-dropzone");
+      const csvSelectedBox = document.getElementById("product-csv-selected");
+      const csvFilenameEl = document.getElementById("product-csv-filename");
+      const csvRemoveBtn = document.getElementById("btn-remove-product-csv");
+      const csvSubmitBtn = document.getElementById("btn-submit-csv");
+      const csvErrorBox = document.getElementById("product-csv-error-box");
+      const csvErrorTbody = document.getElementById("product-csv-error-tbody");
+      const downloadSampleBtn = document.getElementById("btn-download-product-csv-sample");
+
+      let selectedCsvText = "";
+
+      function openCsvModal() {
+        resetCsvModal();
+        csvModal.style.display = "flex";
+      }
+
+      function closeCsvModal() {
+        csvModal.style.display = "none";
+        resetCsvModal();
+      }
+
+      function resetCsvModal() {
+        selectedCsvText = "";
+        csvFileInput.value = "";
+        csvSelectedBox.style.display = "none";
+        csvDropzone.style.display = "flex";
+        csvErrorBox.style.display = "none";
+        csvErrorTbody.innerHTML = "";
+        csvSubmitBtn.disabled = true;
+        csvSubmitBtn.textContent = "Tiến hành nhập";
+      }
+
+      if (openCsvBtn) openCsvBtn.addEventListener("click", openCsvModal);
+      if (closeCsvBtn) closeCsvBtn.addEventListener("click", closeCsvModal);
+      if (cancelCsvBtn) cancelCsvBtn.addEventListener("click", closeCsvModal);
+      if (csvModal) {
+        csvModal.addEventListener("click", (e) => {
+          if (e.target === csvModal) closeCsvModal();
+        });
+      }
+
+      // Drag and drop
+      if (csvDropzone) {
+        csvDropzone.addEventListener("click", () => csvFileInput.click());
+        csvDropzone.addEventListener("dragover", (e) => {
+          e.preventDefault();
+          csvDropzone.classList.add("dragover");
+        });
+        csvDropzone.addEventListener("dragleave", () => {
+          csvDropzone.classList.remove("dragover");
+        });
+        csvDropzone.addEventListener("drop", (e) => {
+          e.preventDefault();
+          csvDropzone.classList.remove("dragover");
+          if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+            handleCsvFile(e.dataTransfer.files[0]);
+          }
+        });
+      }
+
+      if (csvFileInput) {
+        csvFileInput.addEventListener("change", (e) => {
+          if (e.target.files && e.target.files.length > 0) {
+            handleCsvFile(e.target.files[0]);
+          }
+        });
+      }
+
+      if (csvRemoveBtn) {
+        csvRemoveBtn.addEventListener("click", resetCsvModal);
+      }
+
+      function handleCsvFile(file) {
+        if (!file.name.toLowerCase().endsWith(".csv")) {
+          alert("Vui lòng chọn tệp có định dạng .csv");
+          return;
+        }
+
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          selectedCsvText = e.target.result;
+          csvFilenameEl.textContent = `${file.name} (${(file.size / 1024).toFixed(1)} KB)`;
+          csvDropzone.style.display = "none";
+          csvSelectedBox.style.display = "flex";
+          csvErrorBox.style.display = "none";
+          csvSubmitBtn.disabled = false;
+        };
+        reader.readAsText(file, "UTF-8");
+      }
+
+      // Tải CSV mẫu
+      if (downloadSampleBtn) {
+        downloadSampleBtn.addEventListener("click", () => {
+          const sampleCsvContent = "\uFEFFname,unit\nKhoai tây Đà Lạt,tan\nDưa leo baby,kg\nBưởi da xanh Bến Tre,thung";
+          const blob = new Blob([sampleCsvContent], { type: "text/csv;charset=utf-8;" });
+          const url = URL.createObjectURL(blob);
+          const link = document.createElement("a");
+          link.setAttribute("href", url);
+          link.setAttribute("download", "mau_danh_muc_san_pham.csv");
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+        });
+      }
+
+      // Submit CSV Import
+      document.getElementById("form-import-csv").addEventListener("submit", async (e) => {
+        e.preventDefault();
+        if (!selectedCsvText || !selectedCsvText.trim()) {
+          alert("Vui lòng chọn tệp CSV có nội dung hợp lệ.");
+          return;
+        }
+
+        csvSubmitBtn.disabled = true;
+        csvSubmitBtn.textContent = "Đang xử lý nhập dữ liệu...";
+        csvErrorBox.style.display = "none";
+        csvErrorTbody.innerHTML = "";
+
+        try {
+          const res = await fetch("/api/products/import-csv", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ csvContent: selectedCsvText }),
+          });
+
+          const data = await res.json();
+
+          if (!res.ok) {
+            // Hiển thị lỗi dòng và cột
+            if (data.errors && Array.isArray(data.errors) && data.errors.length > 0) {
+              csvErrorTbody.innerHTML = data.errors
+                .map(
+                  (err) => `
+                <tr>
+                  <td><span class="csv-badge-row">Dòng ${escapeHtml(err.row)}</span></td>
+                  <td><span class="csv-badge-col">${escapeHtml(err.column)}</span></td>
+                  <td>${escapeHtml(err.message)}</td>
+                </tr>
+              `
+                )
+                .join("");
+              csvErrorBox.style.display = "block";
+            } else {
+              csvErrorTbody.innerHTML = `<tr><td colspan="3">${escapeHtml(data.message || "Lỗi xử lý file.")}</td></tr>`;
+              csvErrorBox.style.display = "block";
+            }
+            return;
+          }
+
+          // Thành công
+          closeCsvModal();
+          showBanner("success", `✓ ${data.message}`);
+          await loadProducts();
+        } catch (err) {
+          csvErrorTbody.innerHTML = `<tr><td colspan="3">${escapeHtml(err.message || "Lỗi kết nối máy chủ.")}</td></tr>`;
+          csvErrorBox.style.display = "block";
+        } finally {
+          csvSubmitBtn.disabled = false;
+          csvSubmitBtn.textContent = "Tiến hành nhập";
+        }
+      });
+
+
+      // Detail Modal controls
+      const detailModal = document.getElementById("modal-detail-product");
+      const closeDetailBtn = document.getElementById("btn-close-detail-modal");
+      const dismissDetailBtn = document.getElementById("btn-dismiss-detail-modal");
+
+      if (closeDetailBtn) closeDetailBtn.addEventListener("click", closeDetailModal);
+      if (dismissDetailBtn) dismissDetailBtn.addEventListener("click", closeDetailModal);
+      if (detailModal) {
+        detailModal.addEventListener("click", (e) => {
+          if (e.target === detailModal) closeDetailModal();
+        });
+      }
+
+      // Radio button active styling
+      document.querySelectorAll('input[name="unit"]').forEach((radio) => {
+        radio.addEventListener("change", updateRadioVisual);
+      });
+
+      // Submit form thêm/sửa sản phẩm
+      document.getElementById("form-add-product").addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const name = document.getElementById("product-name").value.trim();
+        const unit = document.querySelector('input[name="unit"]:checked')?.value;
+        const errEl = document.getElementById("form-error");
+        const submitBtn = document.getElementById("btn-submit-product");
+
+        errEl.style.display = "none";
+        submitBtn.disabled = true;
+        submitBtn.textContent = editingProductId ? "Đang cập nhật..." : "Đang lưu...";
+
+        try {
+          const url = editingProductId ? `/api/products/${editingProductId}` : "/api/products";
+          const method = editingProductId ? "PUT" : "POST";
+
+          const res = await fetch(url, {
+            method,
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ name, unit }),
+          });
+
+          const data = await res.json();
+
+          if (!res.ok) {
+            errEl.textContent = data.message || "Lỗi thao tác sản phẩm.";
+            errEl.style.display = "block";
+            return;
+          }
+
+          closeModal();
+          const actionText = editingProductId ? "Cập nhật" : "Thêm";
+          showBanner("success", `✓ ${actionText} sản phẩm "${data.product.name}" (${formatUnit(data.product.unit)}) thành công.`);
+          await loadProducts();
+        } catch (err) {
+          errEl.textContent = err.message || "Không thể kết nối đến máy chủ.";
+          errEl.style.display = "block";
+        } finally {
+          submitBtn.disabled = false;
+          submitBtn.textContent = editingProductId ? "Cập nhật sản phẩm" : "Lưu sản phẩm";
+        }
+      });
+    }
+
+    function formatRole(role) {
+      const map = {
+        admin: "Quản trị viên",
+        org_admin: "Quản trị tổ chức",
+        producer: "Nông hộ / Sản xuất",
+        cooperative: "Hợp tác xã",
+        inspector: "Cán bộ kiểm tra",
+        transporter: "Đơn vị vận chuyển",
+        distributor: "Nhà phân phối",
+      };
+      return map[role] || role;
+    }
+
+    function formatUnit(unit) {
+      const map = {
+        kg: "kg (Kilogram)",
+        tan: "tấn (Tấn)",
+        thung: "thùng (Thùng)",
+      };
+      return map[unit] || unit;
+    }
+
+    function getProductEmoji(name) {
+      const n = (name || "").toLowerCase();
+      if (n.includes("cà chua")) return "🍅";
+      if (n.includes("chè") || n.includes("trà")) return "🍵";
+      if (n.includes("rau") || n.includes("cải")) return "🥬";
+      if (n.includes("khoai")) return "🥔";
+      if (n.includes("dưa")) return "🥒";
+      if (n.includes("chuối")) return "🍌";
+      if (n.includes("xoài")) return "🥭";
+      if (n.includes("thóc") || n.includes("gạo")) return "🌾";
+      return "🌱";
+    }
+
+    function showBanner(type, message) {
+      const banner = document.getElementById("alert-banner");
+      banner.className = `alert alert-${type === "success" ? "success" : "danger"}`;
+      banner.textContent = message;
+      banner.style.display = "block";
+      setTimeout(() => {
+        banner.style.display = "none";
+      }, 5000);
+    }
+
+    function escapeHtml(str) {
+      if (!str) return "";
+      return String(str)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+    }
+  </script>
+</body>
+</html>

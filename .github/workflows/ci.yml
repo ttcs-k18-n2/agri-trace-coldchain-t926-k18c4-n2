@@ -1,0 +1,120 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+      - "feature/**"
+      - "fix/**"
+      - "fix-*"
+      - "docs/**"
+      - "s18**"
+      - "s26**"
+      - "s-**"
+      - "s**"
+      - "kết-hợp**"
+      - "Hợp-thể**"
+      - "hợp-thể**"
+  pull_request:
+    branches:
+      - main
+      - develop
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Prepare environment file
+        run: cp .env.example .env
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: "npm"
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci --prefix backend
+
+      - name: Validate Docker Compose configuration
+        run: docker compose config
+
+      - name: Build Docker images
+        run: docker compose build --no-cache
+
+  lint:
+    name: lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: "npm"
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci --prefix backend
+
+      - name: Run lint / syntax checks
+        run: npm run lint --prefix backend
+
+      - name: Run dependency security audit
+        run: npm audit --audit-level=high --prefix backend
+
+  test:
+    name: test
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: agri_trace
+          POSTGRES_USER: agri_migration
+          POSTGRES_PASSWORD: migration_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U agri_migration -d agri_trace"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: "npm"
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci --prefix backend
+
+      - name: Run database migrations
+        env:
+          MIGRATION_DATABASE_URL: postgresql://agri_migration:migration_password@localhost:5432/agri_trace
+          DATABASE_URL: postgresql://agri_migration:migration_password@localhost:5432/agri_trace
+        run: npm run migrate --prefix backend
+
+      - name: Run automated tests with coverage
+        env:
+          NODE_ENV: test
+          DATABASE_URL: postgresql://agri_app:app_password@localhost:5432/agri_trace
+          MIGRATION_DATABASE_URL: postgresql://agri_migration:migration_password@localhost:5432/agri_trace
+          SESSION_SECRET: test-ci-session-secret-key-32-chars-long
+        run: npm test --prefix backend
