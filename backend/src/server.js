@@ -6771,7 +6771,7 @@ app.get(
 );
 
 /**
- * Danh mục thùng lạnh tiêu chuẩn chuỗi lạnh phục vụ S-40
+ * Danh mục thùng lạnh tiêu chuẩn chuỗi lạnh phục vụ S-40 (Jira N2-211)
  */
 app.get(
   "/api/cold-containers",
