@@ -102,6 +102,44 @@ test("S-29: Migration 019 creates idx_lots_status and idx_lots_org_status with r
   );
 });
 
+test("S-34: Migration 023 creates recall_orders table with rollback and NFR compliance", () => {
+  const fs = require("node:fs");
+  const path = require("node:path");
+
+  const upPath = path.resolve(__dirname, "../../db/migrations/023_recall_orders.sql");
+  const downPath = path.resolve(__dirname, "../../db/migrations/down/023_recall_orders.down.sql");
+
+  assert.ok(fs.existsSync(upPath), "Migration 023 UP file must exist");
+  assert.ok(fs.existsSync(downPath), "Migration 023 DOWN file must exist");
+
+  const upSql = fs.readFileSync(upPath, "utf-8");
+  const downSql = fs.readFileSync(downPath, "utf-8");
+
+  assert.match(
+    upSql,
+    /CREATE\s+TABLE\s+(IF\s+NOT\s+EXISTS\s+)?recall_orders/i,
+    "Migration 023 must create recall_orders table"
+  );
+  assert.match(upSql, /lot_id/i);
+  assert.match(upSql, /reason/i);
+  assert.match(upSql, /severity/i);
+  assert.match(upSql, /status/i);
+  assert.match(upSql, /created_by/i);
+
+  // NFR: Không có cột snapshot cứng
+  assert.doesNotMatch(
+    upSql,
+    /descendant_lots/i,
+    "Migration 023 MUST NOT contain fixed descendant_lots column (NFR real-time BFS)"
+  );
+
+  assert.match(
+    downSql,
+    /DROP\s+TABLE\s+(IF\s+EXISTS\s+)?recall_orders/i,
+    "Migration 023 rollback must drop table recall_orders"
+  );
+});
+
 if (process.env.DATABASE_URL) {
   test("migrate: up and down work with database", async () => {
     const upRes = await runMigrations("up");

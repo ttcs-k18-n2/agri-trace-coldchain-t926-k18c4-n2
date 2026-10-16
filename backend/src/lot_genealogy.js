@@ -850,6 +850,63 @@ async function traceLotDescendants({
         const initQty = lotObj ? (lotObj.initialQuantity !== undefined ? lotObj.initialQuantity : lotObj.initial_quantity) : null;
         const remQty = lotObj ? (lotObj.remainingQuantity !== undefined ? lotObj.remainingQuantity : lotObj.remaining_quantity) : null;
 
+        // Lấy chi tiết quan hệ cha (Kiểm tra lô gộp đa nguồn theo AC2)
+        const childParentRelations = [];
+        const seenParentRels = new Set();
+        if (pool && typeof pool.query === "function") {
+          try {
+            const pRes = await pool.query(
+              `SELECT parent_batch_id, relation_type, quantity
+               FROM batch_relations
+               WHERE child_batch_id = $1`,
+              [childId]
+            );
+            for (const r of pRes.rows) {
+              if (r.parent_batch_id && !seenParentRels.has(r.parent_batch_id)) {
+                seenParentRels.add(r.parent_batch_id);
+                childParentRelations.push({
+                  parentBatchId: r.parent_batch_id,
+                  relationType: r.relation_type || "MERGE",
+                  quantity: r.quantity !== null && r.quantity !== undefined ? Number(r.quantity) : null,
+                });
+              }
+            }
+          } catch (err) {
+            if (err.code !== "42P01") {
+              throw new Error(`Lỗi truy vấn quan hệ cha của lô con ${childId}: ${err.message}`);
+            }
+          }
+        }
+        if (Array.isArray(inMemoryBatchRelations)) {
+          for (const r of inMemoryBatchRelations) {
+            const c = r.childBatchId || r.child_batch_id;
+            const p = r.parentBatchId || r.parent_batch_id;
+            if (c === childId && p && !seenParentRels.has(p)) {
+              seenParentRels.add(p);
+              childParentRelations.push({
+                parentBatchId: p,
+                relationType: r.relationType || r.relation_type || "MERGE",
+                quantity: r.quantity !== null && r.quantity !== undefined ? Number(r.quantity) : null,
+              });
+            }
+          }
+        }
+        // Kiểm tra thêm parent_lot_id nếu chưa có
+        const directP = lotObj ? (lotObj.parentLotId || lotObj.parent_lot_id) : null;
+        if (directP && !seenParentRels.has(directP)) {
+          seenParentRels.add(directP);
+          childParentRelations.push({
+            parentBatchId: directP,
+            relationType: "SPLIT",
+            quantity: initQty !== null && initQty !== undefined ? Number(initQty) : null,
+          });
+        }
+
+        const isMultiSourceMerge = childParentRelations.length >= 2;
+        const sourcesCount = childParentRelations.length;
+        const mergedSources = childParentRelations;
+        const mergeNotes = isMultiSourceMerge ? "Lô gộp từ nhiều nguồn" : null;
+
         const descendantInfo = {
           id: childId,
           code: childId,
@@ -875,6 +932,10 @@ async function traceLotDescendants({
           distance,
           path: newPath,
           parentLotId: parentId,
+          isMultiSourceMerge,
+          sourcesCount,
+          mergedSources,
+          notes: mergeNotes,
           harvestedAt: lotObj ? (lotObj.harvestedAt || lotObj.harvested_at || null) : null,
           createdAt: lotObj ? (lotObj.createdAt || lotObj.created_at || null) : null,
         };
