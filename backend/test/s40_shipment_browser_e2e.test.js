@@ -1128,12 +1128,12 @@ test("S-40 Mocked Browser E2E Coverage (Isolated with Fixtures, Zero Shared Post
       const zeroCard = cardsData.find(c => c.code === "SHP-TELEMETRY-ZERO");
       assert.ok(zeroCard, "Measured 0 card must exist");
       assert.equal(zeroCard.tempVal, "0.0°C", "Measured 0 must display '0.0°C', not 4.2");
-      assert.match(zeroCard.tempDisplayClass, /temp-normal/);
+      assert.match(zeroCard.tempDisplayClass, /temp-measured/);
 
       const negCard = cardsData.find(c => c.code === "SHP-TELEMETRY-NEG");
       assert.ok(negCard, "Negative temp card must exist");
       assert.equal(negCard.tempVal, "-3.5°C", "Negative temp must display '-3.5°C'");
-      assert.match(negCard.tempDisplayClass, /temp-warning/);
+      assert.match(negCard.tempDisplayClass, /temp-measured/);
 
       // 5.2 Modal Detail Verification for Absent Telemetry (Never fake healthy status)
       await client.evaluate(`(() => {
@@ -1168,7 +1168,7 @@ test("S-40 Mocked Browser E2E Coverage (Isolated with Fixtures, Zero Shared Post
         document.getElementById("detailContentArea")?.innerText || ""
       `);
       assert.match(zeroModalContent, /0\.0°C/, "Modal must show '0.0°C' for measured 0");
-      assert.match(zeroModalContent, /Bình thường/, "Modal should show 'Bình thường' for normal temp 0");
+      assert.doesNotMatch(zeroModalContent, /Bình thường/, "Must NOT invent 'Bình thường' without domain status");
       assert.match(zeroModalContent, /Thời điểm ghi nhận:/, "Modal must show 'Thời điểm ghi nhận:'");
       assert.doesNotMatch(zeroModalContent, /4\.2°C/, "Must never invent 4.2°C");
     });

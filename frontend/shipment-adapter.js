@@ -239,6 +239,9 @@
       current_temperature: currentTemperature,
       lastTemperatureAt: lastTemperatureAt,
       last_temperature_at: lastTemperatureAt,
+      temperatureStatus: raw.temperatureStatus || raw.temperature_status || raw.tempStatus || raw.sensorStatus || null,
+      temperature_status: raw.temperatureStatus || raw.temperature_status || raw.tempStatus || raw.sensorStatus || null,
+      sensorStatus: raw.temperatureStatus || raw.temperature_status || raw.tempStatus || raw.sensorStatus || null,
       status: (raw.status || "IN_TRANSIT").toUpperCase(), // IN_TRANSIT, COMPLETED, SCHEDULED, ALERT
       origin: originLoc,
       originLocationId: originLoc,

@@ -316,7 +316,7 @@
                 <span class="container-temp-range">${escapeHtml(s.containerTempRange)}</span>
               </div>
             </div>
-            <div class="temp-display ${getTempStatusClass(s.currentTemp)}">
+            <div class="temp-display ${getTempStatusClass(s.currentTemp, s.temperatureStatus || s.domainStatus || s.sensorStatus)}">
               <span class="temp-val">${s.currentTemp != null && Number.isFinite(s.currentTemp) ? s.currentTemp.toFixed(1) + "°C" : "Chưa có dữ liệu"}</span>
               <span class="temp-label">${s.lastTemperatureAt ? ("Đo lúc: " + formatDateTime(s.lastTemperatureAt)) : "Nhiệt độ đo"}</span>
             </div>
@@ -396,13 +396,40 @@
     });
   }
 
-  function getTempStatusClass(temp) {
+  function getTempStatusClass(temp, domainStatus) {
     if (temp == null || !Number.isFinite(temp)) return "temp-unknown";
-    if (temp < 0 || temp > 10) return "temp-warning";
-    return "temp-normal";
+    if (domainStatus) {
+      const s = String(domainStatus).toUpperCase();
+      if (s === "ALERT" || s === "WARNING" || s === "VIOLATION") return "temp-warning";
+      if (s === "NORMAL" || s === "HEALTHY" || s === "OK") return "temp-normal";
+    }
+    // Không tự ý bịa normal/warning khi backend chưa có cấu hình ngưỡng (S-43)
+    return "temp-measured";
   }
 
-  function getSensorStatusInfo(temp) {
+  function getSensorStatusInfo(temp, domainStatus) {
+    if (domainStatus) {
+      const s = String(domainStatus).toUpperCase();
+      if (s === "ALERT" || s === "WARNING" || s === "VIOLATION") {
+        return {
+          label: "Cảnh báo nhiệt độ",
+          badgeClass: "badge-status-alert",
+          color: "var(--color-warning, #f59e0b)",
+        };
+      }
+      if (s === "NORMAL" || s === "HEALTHY" || s === "OK") {
+        return {
+          label: "Bình thường",
+          badgeClass: "badge-status-running",
+          color: "var(--color-success, #10b981)",
+        };
+      }
+      return {
+        label: String(domainStatus),
+        badgeClass: "badge-status-default",
+        color: "var(--color-text-main, #0f172a)",
+      };
+    }
     if (temp == null || !Number.isFinite(temp)) {
       return {
         label: "Chưa có dữ liệu",
@@ -410,17 +437,10 @@
         color: "var(--color-text-muted, #64748b)",
       };
     }
-    if (temp < 0 || temp > 10) {
-      return {
-        label: "Cảnh báo nhiệt độ",
-        badgeClass: "badge-status-alert",
-        color: "var(--color-warning, #f59e0b)",
-      };
-    }
     return {
-      label: "Bình thường",
-      badgeClass: "badge-status-running",
-      color: "var(--color-success, #10b981)",
+      label: "Chưa có cấu hình ngưỡng",
+      badgeClass: "badge-status-default",
+      color: "var(--color-text-muted, #64748b)",
     };
   }
 
@@ -853,9 +873,11 @@
           <div class="detail-grid">
             <div class="detail-field"><span class="df-label">Mã thùng:</span> <strong class="df-val">${escapeHtml(s.containerId)}</strong></div>
             <div class="detail-field"><span class="df-label">Dải nhiệt chuẩn:</span> <strong class="df-val badge-temp-range">${escapeHtml(s.containerTempRange)}</strong></div>
-            <div class="detail-field"><span class="df-label">Nhiệt độ hiện tại:</span> <strong class="df-val ${getTempStatusClass(s.currentTemp)}">${s.currentTemp != null && Number.isFinite(s.currentTemp) ? s.currentTemp.toFixed(1) + "°C" : "Chưa có dữ liệu"}</strong></div>
-            <div class="detail-field"><span class="df-label">Tình trạng cảm biến:</span> <span class="df-val" style="color: ${getSensorStatusInfo(s.currentTemp).color}; font-weight:600;">${getSensorStatusInfo(s.currentTemp).label}</span></div>
+            <div class="detail-field"><span class="df-label">Nhiệt độ hiện tại:</span> <strong class="df-val ${getTempStatusClass(s.currentTemp, s.temperatureStatus || s.domainStatus || s.sensorStatus)}">${s.currentTemp != null && Number.isFinite(s.currentTemp) ? s.currentTemp.toFixed(1) + "°C" : "Chưa có dữ liệu"}</strong></div>
             <div class="detail-field"><span class="df-label">Thời điểm ghi nhận:</span> <span class="df-val">${s.lastTemperatureAt ? formatDateTime(s.lastTemperatureAt) : "Chưa có dữ liệu"}</span></div>
+            ${(s.temperatureStatus || s.sensorStatus) ? `
+              <div class="detail-field"><span class="df-label">Trạng thái cảm biến:</span> <span class="df-val" style="color: ${getSensorStatusInfo(s.currentTemp, s.temperatureStatus || s.sensorStatus).color}; font-weight:600;">${escapeHtml(getSensorStatusInfo(s.currentTemp, s.temperatureStatus || s.sensorStatus).label)}</span></div>
+            ` : ""}
           </div>
         </div>
 

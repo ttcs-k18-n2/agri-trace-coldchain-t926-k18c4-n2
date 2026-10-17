@@ -109,7 +109,7 @@ test("S-41 Telemetry Normalizer: Documented casing and real latest timestamp", (
   assert.equal(camelContract.lastTemperatureAt, recordedTime);
 });
 
-test("S-41 UI Telemetry Helpers: Never fakes healthy status when data is missing", () => {
+test("S-41 UI Telemetry Helpers: Truthful status without invented 0..10C thresholds", () => {
   const { getTempStatusClass, getSensorStatusInfo } = ShipmentsUI;
 
   // When temperature is missing (null / undefined / NaN)
@@ -122,21 +122,27 @@ test("S-41 UI Telemetry Helpers: Never fakes healthy status when data is missing
   assert.notEqual(missingSensor.label, "Bình thường");
   assert.equal(missingSensor.badgeClass, "badge-status-default");
 
-  // When temperature is measured 0
-  assert.equal(getTempStatusClass(0), "temp-normal");
+  // When temperature is measured (0, negative, or positive) WITHOUT domain status:
+  // Must NOT invent temp-normal or temp-warning (no hardcoded 0..10C thresholds)
+  assert.equal(getTempStatusClass(0), "temp-measured");
+  assert.notEqual(getTempStatusClass(0), "temp-normal");
+  assert.notEqual(getTempStatusClass(0), "temp-warning");
+
+  assert.equal(getTempStatusClass(-3.5), "temp-measured");
+  assert.notEqual(getTempStatusClass(-3.5), "temp-warning");
+
+  assert.equal(getTempStatusClass(12.0), "temp-measured");
+  assert.notEqual(getTempStatusClass(12.0), "temp-warning");
+
   const zeroSensor = getSensorStatusInfo(0);
-  assert.equal(zeroSensor.label, "Bình thường");
-  assert.equal(zeroSensor.badgeClass, "badge-status-running");
+  assert.notEqual(zeroSensor.label, "Bình thường", "Must NOT invent 'Bình thường' without domain status");
+  assert.notEqual(zeroSensor.label, "Cảnh báo nhiệt độ");
 
-  // When temperature is negative or exceeding range (alert)
-  assert.equal(getTempStatusClass(-3.5), "temp-warning");
-  const warnSensor = getSensorStatusInfo(-3.5);
-  assert.equal(warnSensor.label, "Cảnh báo nhiệt độ");
-  assert.equal(warnSensor.badgeClass, "badge-status-alert");
-
-  assert.equal(getTempStatusClass(12.0), "temp-warning");
-  const hotSensor = getSensorStatusInfo(12.0);
-  assert.equal(hotSensor.label, "Cảnh báo nhiệt độ");
+  // When actual backend/configured domain status IS present:
+  assert.equal(getTempStatusClass(12.0, "ALERT"), "temp-warning");
+  assert.equal(getTempStatusClass(4.0, "NORMAL"), "temp-normal");
+  assert.equal(getSensorStatusInfo(12.0, "ALERT").label, "Cảnh báo nhiệt độ");
+  assert.equal(getSensorStatusInfo(4.0, "NORMAL").label, "Bình thường");
 });
 
 test("S-41 UI HTML Rendering: shipments.html has proper CSS classes and semantic telemetry placeholders", () => {
