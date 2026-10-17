@@ -147,17 +147,17 @@ test("Story S-49: Trang công khai cảnh báo thu hồi và vi phạm chuỗi l
     assert.equal(lot.recall.isRecalled, false, "Không có lệnh thu hồi");
     assert.equal(lot.coldChain.hasViolation, true, "Phải ghi nhận hasViolation = true");
     assert.equal(lot.coldChain.violationCount, 1, "Số lần vi phạm là 1");
-    assert.equal(lot.coldChain.peakTemperature, 14.5, "Nhiệt độ đỉnh là 14.5°C");
-    assert.equal(lot.coldChain.durationMinutes, 45, "Thời gian vi phạm là 45 phút");
-    assert.ok(lot.coldChain.message.includes("14.5°C"), "Thông báo phải có nhiệt độ đỉnh");
+    assert.equal(lot.coldChain.peakTemperature, undefined, "Bảo mật S-49: Không công khai số đo nhiệt độ chi tiết");
+    assert.equal(lot.coldChain.durationMinutes, undefined, "Bảo mật S-49: Không công khai thời lượng vi phạm nội bộ");
+    assert.ok(lot.coldChain.message.includes("sự cố"), "Thông báo phải mang tính trung tính");
     assert.equal(lot.safetyStatus, "TEMPERATURE_VIOLATED", "safetyStatus phải là TEMPERATURE_VIOLATED");
 
     // Kiểm tra timeline có mốc cảnh báo vi phạm
     const journey = res.body.journey;
     const violationStep = journey.find((s) => s.hasViolation === true);
     assert.ok(violationStep, "Hành trình phải chứa mốc sự kiện vi phạm nhiệt độ");
-    assert.ok(violationStep.description.includes("14.5°C"));
-    assert.ok(violationStep.warning);
+    assert.ok(violationStep.warning, "Phải có nội dung warning");
+    assert.equal(violationStep.description.includes("14.5°C"), false, "Không để lộ nhiệt độ số đo chi tiết trong mô tả hành trình");
   });
 
   await t.test("TC06: Lô hàng bị CẢ HAI sự cố: Thu hồi VÀ Vi phạm chuỗi lạnh", async () => {
