@@ -178,6 +178,8 @@
       auditLogs: "navAuditLogs",
       recallProgress: "navRecallProgress",
       recallForm: "navRecallForm",
+      shipments: "navShipments",
+      coldShipments: "navShipments",
     };
 
     let targetId = navMap[activeKey];
@@ -190,6 +192,7 @@
       else if (path.includes("audit")) targetId = "navAuditLogs";
       else if (path.includes("recall-progress")) targetId = "navRecallProgress";
       else if (path.includes("recall-form")) targetId = "navRecallForm";
+      else if (path.includes("shipment")) targetId = "navShipments";
     }
 
     if (targetId) {

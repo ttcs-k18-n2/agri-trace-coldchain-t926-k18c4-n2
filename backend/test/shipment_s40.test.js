@@ -745,5 +745,229 @@ test("S-40 (Jira N2-211): Mở chuyến vận chuyển gắn nhiều lô và m�
     assert.ok(Array.isArray(authContainers.body.containers));
     assert.ok(authContainers.body.containers.some((c) => c.id === "CONT-COLD-01"));
   });
+
+  await t.test("11. Fixes S40: Custom code, departure time, lot safety checks, container in-use status", async () => {
+    setupLots();
+
+    // 11.1 Tạo chuyến với mã tùy chỉnh (custom code) và thời gian khởi hành (departureTime)
+    const customDeparture = "2026-10-18T05:30:00.000Z";
+    const customRes = await request(
+      server,
+      {
+        hostname: "127.0.0.1",
+        port,
+        path: "/api/shipments",
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Cookie: producerCookie,
+        },
+      },
+      {
+        code: "SHP-CUSTOM-2026-001",
+        coldBoxId: "CONT-COLD-02",
+        lotIds: ["LOT-S40-01"],
+        origin: "Nông trường Mộc Châu",
+        destination: "Hà Nội",
+        departureTime: customDeparture,
+      }
+    );
+
+    assert.equal(customRes.status, 201, "Tạo chuyến với mã tùy chỉnh thành công");
+    assert.equal(customRes.body.shipment.id, "SHP-CUSTOM-2026-001");
+    assert.equal(customRes.body.shipment.code, "SHP-CUSTOM-2026-001");
+    assert.equal(new Date(customRes.body.shipment.departureTime).toISOString(), customDeparture);
+
+    // 11.2 Kiểm tra chặn mã chuyến trùng lặp (409 SHIPMENT_CODE_ALREADY_EXISTS)
+    const dupCodeRes = await request(
+      server,
+      {
+        hostname: "127.0.0.1",
+        port,
+        path: "/api/shipments",
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Cookie: producerCookie,
+        },
+      },
+      {
+        code: "SHP-CUSTOM-2026-001",
+        coldBoxId: "CONT-COLD-03",
+        lotIds: ["LOT-S40-02"],
+      }
+    );
+    assert.equal(dupCodeRes.status, 409, "Mã chuyến trùng lặp phải trả về 409");
+    assert.equal(dupCodeRes.body.error, "SHIPMENT_CODE_ALREADY_EXISTS");
+
+    // 11.3 Kiểm tra endpoint cold-containers phản ánh container đang bận
+    const containersRes = await request(server, {
+      hostname: "127.0.0.1",
+      port,
+      path: "/api/cold-containers",
+      method: "GET",
+      headers: { Cookie: producerCookie },
+    });
+    assert.equal(containersRes.status, 200);
+    const box2 = containersRes.body.containers.find((c) => c.id === "CONT-COLD-02");
+    assert.ok(box2, "CONT-COLD-02 có trong danh sách");
+    assert.equal(box2.inUse, true, "CONT-COLD-02 đang trong chuyến vận chuyển nên inUse = true");
+
+    // 11.4 Kiểm tra từ chối lô hàng đã bị thu hồi / có sự cố (400 LOT_RECALLED_OR_INCIDENT)
+    inMemoryLots.push({
+      id: "LOT-RECALLED-01",
+      name: "Lô Rau có sự cố",
+      status: "Có sự cố",
+      organizationId: "org-001",
+      remainingQuantity: 100,
+    });
+    const recallRes = await request(
+      server,
+      {
+        hostname: "127.0.0.1",
+        port,
+        path: "/api/shipments",
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Cookie: producerCookie,
+        },
+      },
+      {
+        coldBoxId: "CONT-COLD-03",
+        lotIds: ["LOT-RECALLED-01"],
+      }
+    );
+    assert.equal(recallRes.status, 400, "Lô có sự cố phải bị từ chối");
+    assert.equal(recallRes.body.error, "LOT_RECALLED_OR_INCIDENT");
+
+    // 11.5 Kiểm tra từ chối lô hàng đã bán hết / tiêu thụ (400 LOT_ALREADY_CONSUMED)
+    inMemoryLots.push({
+      id: "LOT-CONSUMED-01",
+      name: "Lô Dưa lưới đã bán hết",
+      status: "CONSUMED",
+      organizationId: "org-001",
+      remainingQuantity: 0,
+    });
+    const consumedRes = await request(
+      server,
+      {
+        hostname: "127.0.0.1",
+        port,
+        path: "/api/shipments",
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Cookie: producerCookie,
+        },
+      },
+      {
+        coldBoxId: "CONT-COLD-03",
+        lotIds: ["LOT-CONSUMED-01"],
+      }
+    );
+    assert.equal(consumedRes.status, 400, "Lô đã tiêu thụ phải bị từ chối");
+    assert.equal(consumedRes.body.error, "LOT_ALREADY_CONSUMED");
+
+    // 11.6 Kiểm tra lô còn 25 kg hiển thị đúng 25 kg và tạo chuyến bình thường
+    inMemoryLots.push({
+      id: "LOT-25KG-VALID",
+      name: "Lô Bơ Sáp 25kg",
+      status: "Đã thu hoạch",
+      organizationId: "org-001",
+      remainingQuantity: 25,
+      initialQuantity: 100,
+    });
+    const lotsListRes = await request(server, {
+      hostname: "127.0.0.1",
+      port,
+      path: "/api/organization/lots",
+      method: "GET",
+      headers: { Cookie: producerCookie },
+    });
+    assert.equal(lotsListRes.status, 200);
+    const found25 = lotsListRes.body.lots.find((l) => l.id === "LOT-25KG-VALID");
+    assert.ok(found25);
+    assert.equal(found25.remainingQuantity, 25, "Lô còn 25 kg hiển thị đúng 25 kg trong API");
+    assert.equal(found25.current_quantity, 25);
+
+    const create25Res = await request(
+      server,
+      {
+        hostname: "127.0.0.1",
+        port,
+        path: "/api/shipments",
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Cookie: producerCookie,
+        },
+      },
+      {
+        coldBoxId: "CONT-CHILL-01",
+        lotIds: ["LOT-25KG-VALID"],
+        origin: "Đắk Lắk",
+        destination: "Hà Nội",
+      }
+    );
+    assert.equal(create25Res.status, 201, "Lô có khối lượng hợp lệ (25 kg) vẫn tạo chuyến bình thường");
+
+    // 11.7 Kiểm tra lô 0 kg (status bình thường nhưng remaining = 0) bị chặn ở backend
+    inMemoryLots.push({
+      id: "LOT-ZERO-WEIGHT",
+      name: "Lô Dưa chuột hết hàng",
+      status: "Đã thu hoạch",
+      organizationId: "org-001",
+      remainingQuantity: 0,
+      initialQuantity: 100,
+    });
+    const createZeroRes = await request(
+      server,
+      {
+        hostname: "127.0.0.1",
+        port,
+        path: "/api/shipments",
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Cookie: producerCookie,
+        },
+      },
+      {
+        coldBoxId: "CONT-FREEZE-01",
+        lotIds: ["LOT-ZERO-WEIGHT"],
+      }
+    );
+    assert.equal(createZeroRes.status, 400, "Lô 0 kg phải bị chặn ở backend");
+    assert.equal(createZeroRes.body.error, "LOT_ALREADY_CONSUMED");
+
+    // 11.8 Kiểm tra lô trạng thái 'Đã bán hết' bị chặn
+    inMemoryLots.push({
+      id: "LOT-SOLD-OUT",
+      name: "Lô Cà rốt đã bán hết",
+      status: "Đã bán hết",
+      organizationId: "org-001",
+      remainingQuantity: 0,
+    });
+    const createSoldRes = await request(
+      server,
+      {
+        hostname: "127.0.0.1",
+        port,
+        path: "/api/shipments",
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Cookie: producerCookie,
+        },
+      },
+      {
+        coldBoxId: "CONT-FREEZE-01",
+        lotIds: ["LOT-SOLD-OUT"],
+      }
+    );
+    assert.equal(createSoldRes.status, 400, "Lô Đã bán hết phải bị chặn");
+    assert.equal(createSoldRes.body.error, "LOT_ALREADY_CONSUMED");
+  });
 });
 

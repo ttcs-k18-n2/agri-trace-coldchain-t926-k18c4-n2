@@ -481,6 +481,9 @@
       align-items: center;
       justify-content: center;
       padding: 16px;
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+      overscroll-behavior: contain;
       animation: fadeIn 0.15s ease-out;
     }
 
@@ -495,17 +498,28 @@
       box-shadow: var(--shadow-modal);
       width: 100%;
       max-width: 760px;
-      max-height: 90vh;
+      max-height: calc(100vh - 32px);
+      max-height: calc(100dvh - 32px);
       display: flex;
       flex-direction: column;
       overflow: hidden;
       border: 1px solid var(--color-border);
       animation: modalSlide 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+      margin: auto;
+      position: relative;
     }
 
     @keyframes modalSlide {
       from { transform: translateY(16px) scale(0.98); }
       to { transform: translateY(0) scale(1); }
+    }
+
+    #formCreateShipment {
+      display: flex;
+      flex-direction: column;
+      flex: 1;
+      min-height: 0;
+      overflow: hidden;
     }
 
     .modal-header {
@@ -515,6 +529,7 @@
       align-items: center;
       justify-content: space-between;
       background: var(--color-surface-subtle);
+      flex-shrink: 0;
     }
 
     .modal-title {
@@ -550,7 +565,11 @@
     .modal-body {
       padding: 24px;
       overflow-y: auto;
+      overflow-x: hidden;
       flex: 1;
+      min-height: 0;
+      overscroll-behavior: contain;
+      -webkit-overflow-scrolling: touch;
     }
 
     .modal-footer {
@@ -561,6 +580,7 @@
       justify-content: flex-end;
       gap: 12px;
       background: var(--color-surface-subtle);
+      flex-shrink: 0;
     }
 
     /* Multi-lot Selector in Modal */
@@ -831,6 +851,25 @@
     }
 
     /* Responsive Breakpoints */
+    @media (max-height: 800px) {
+      .modal-card {
+        max-height: calc(100vh - 16px);
+        max-height: calc(100dvh - 16px);
+      }
+      .modal-body {
+        padding: 16px 20px;
+      }
+      .modal-header {
+        padding: 12px 20px;
+      }
+      .modal-footer {
+        padding: 12px 20px;
+      }
+      .lot-table-scroll {
+        max-height: 150px;
+      }
+    }
+
     @media (max-width: 1024px) {
       .kpi-cards-grid {
         grid-template-columns: repeat(2, 1fr);
@@ -1069,6 +1108,8 @@
 
       <form id="formCreateShipment">
         <div class="modal-body">
+          <div id="modalCreateAlert" class="alert-box alert-error" style="display: none; margin-bottom: 16px;"></div>
+
           <!-- 1. Mã chuyến vận chuyển -->
           <div class="form-group" style="margin-bottom: 18px;">
             <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px;">

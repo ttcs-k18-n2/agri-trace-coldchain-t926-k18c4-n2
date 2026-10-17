@@ -180,10 +180,33 @@ async function createShipment({
     };
   }
 
-  const shipmentId = "shp-" + crypto.randomUUID().slice(0, 8);
+  const rawShipmentId = data.id || data.code || data.shipmentCode;
+  let shipmentId;
+  if (typeof rawShipmentId === "string" && rawShipmentId.trim()) {
+    const cleanId = rawShipmentId.trim();
+    if (cleanId.length < 3 || cleanId.length > 50 || !/^[A-Za-z0-9_-]+$/.test(cleanId)) {
+      return {
+        status: 400,
+        error: "INVALID_SHIPMENT_CODE",
+        message: "Mã chuyến vận chuyển phải từ 3 đến 50 ký tự và chỉ chứa chữ cái, số, dấu gạch ngang (-) hoặc gạch dưới (_).",
+      };
+    }
+    shipmentId = cleanId;
+  } else {
+    shipmentId = "shp-" + crypto.randomUUID().slice(0, 8);
+  }
+
   const now = new Date();
   const nowIso = now.toISOString();
-  const startedAtDate = (data.startedAt || data.started_at) ? new Date(data.startedAt || data.started_at) : now;
+  const rawStartedAt = data.startedAt || data.started_at || data.departureTime || data.departure_time;
+  const startedAtDate = rawStartedAt ? new Date(rawStartedAt) : now;
+  if (isNaN(startedAtDate.getTime())) {
+    return {
+      status: 400,
+      error: "INVALID_DEPARTURE_TIME",
+      message: "Thời gian khởi hành không đúng định dạng.",
+    };
+  }
   const startedAtIso = startedAtDate.toISOString();
 
   // 3. Thực thi với PostgreSQL Transaction
@@ -194,6 +217,20 @@ async function createShipment({
     try {
       if (shouldManageTx) {
         await dbClient.query("BEGIN");
+      }
+
+      // 3.0 Kiểm tra mã chuyến đã tồn tại trong hệ thống chưa (nếu chỉ định mã)
+      const existingShipRes = await dbClient.query(
+        "SELECT id FROM shipments WHERE id = $1 LIMIT 1",
+        [shipmentId]
+      );
+      if (existingShipRes.rows.length > 0) {
+        if (shouldManageTx) await dbClient.query("ROLLBACK");
+        return {
+          status: 409,
+          error: "SHIPMENT_CODE_ALREADY_EXISTS",
+          message: `Mã chuyến vận chuyển '${shipmentId}' đã tồn tại trong hệ thống.`,
+        };
       }
 
       // 3.1 Khóa và kiểm tra thông tin các lô hàng theo thứ tự sắp xếp cố định (tránh Deadlock)
@@ -243,16 +280,18 @@ async function createShipment({
         };
       }
 
-      // 3.3 Kiểm tra trạng thái đã tiêu thụ của lô hàng
+      // 3.3 Kiểm tra trạng thái đã tiêu thụ hoặc sự cố của lô hàng
       const consumedLots = lotsRes.rows.filter((l) => {
         const remainingVal = Number(
           l.remaining_quantity !== null && l.remaining_quantity !== undefined
             ? l.remaining_quantity
-            : l.initial_quantity || 0
+            : (l.initial_quantity !== null && l.initial_quantity !== undefined ? l.initial_quantity : 0)
         );
         return (
           l.status === "Đã bán hết" ||
           l.status === "Đã tiêu thụ" ||
+          l.status === "CONSUMED" ||
+          isNaN(remainingVal) ||
           remainingVal <= 0
         );
       });
@@ -263,6 +302,19 @@ async function createShipment({
           error: "LOT_ALREADY_CONSUMED",
           message: `Lô hàng đã được bán hết hoặc tiêu thụ, không thể đưa vào chuyến vận chuyển: ${consumedLots.map((l) => l.id).join(", ")}`,
           consumedLots: consumedLots.map((l) => l.id),
+        };
+      }
+
+      const recalledLots = lotsRes.rows.filter((l) => {
+        return l.status === "Có sự cố" || l.status === "RECALLED";
+      });
+      if (recalledLots.length > 0) {
+        if (shouldManageTx) await dbClient.query("ROLLBACK");
+        return {
+          status: 400,
+          error: "LOT_RECALLED_OR_INCIDENT",
+          message: `Lô hàng đang trong trạng thái có sự cố hoặc thu hồi, không thể đưa vào chuyến vận chuyển: ${recalledLots.map((l) => l.id).join(", ")}`,
+          recalledLots: recalledLots.map((l) => l.id),
         };
       }
 
@@ -466,7 +518,8 @@ async function createShipment({
         destination: shipRow.destination_location_id,
         notes: shipRow.notes,
         createdByUserId: shipRow.created_by_user_id,
-        startedAt: shipRow.started_at ? new Date(shipRow.started_at).toISOString() : nowIso,
+        startedAt: shipRow.started_at ? new Date(shipRow.started_at).toISOString() : startedAtIso,
+        departureTime: shipRow.started_at ? new Date(shipRow.started_at).toISOString() : startedAtIso,
         completedAt: null,
         createdAt: shipRow.created_at ? new Date(shipRow.created_at).toISOString() : nowIso,
         updatedAt: shipRow.updated_at ? new Date(shipRow.updated_at).toISOString() : nowIso,
@@ -502,8 +555,19 @@ async function createShipment({
       }
       if (
         txErr.code === "23505" ||
-        (txErr.message && (txErr.message.includes("idx_unique_active_shipment_per_lot") || txErr.message.includes("idx_unique_active_shipment_per_cold_box")))
+        (txErr.message && (
+          txErr.message.includes("idx_unique_active_shipment_per_lot") ||
+          txErr.message.includes("idx_unique_active_shipment_per_cold_box") ||
+          txErr.message.includes("shipments_pkey")
+        ))
       ) {
+        if (txErr.constraint === "shipments_pkey" || (txErr.message && txErr.message.includes("shipments_pkey"))) {
+          return {
+            status: 409,
+            error: "SHIPMENT_CODE_ALREADY_EXISTS",
+            message: `Mã chuyến vận chuyển '${shipmentId}' đã tồn tại trong hệ thống.`,
+          };
+        }
         if (txErr.message && txErr.message.includes("idx_unique_active_shipment_per_cold_box")) {
           return {
             status: 409,
@@ -527,6 +591,14 @@ async function createShipment({
 
   // 4. In-Memory Execution Path (Hỗ trợ môi trường test không có PostgreSQL)
   return await withLotLocks(sortedLotIds, async () => {
+    if (inMemoryShipments.some((s) => s.id === shipmentId || s.code === shipmentId)) {
+      return {
+        status: 409,
+        error: "SHIPMENT_CODE_ALREADY_EXISTS",
+        message: `Mã chuyến vận chuyển '${shipmentId}' đã tồn tại trong hệ thống.`,
+      };
+    }
+
     const foundLots = inMemoryLots.filter((l) => sortedLotIds.includes(l.id));
     const foundLotMap = new Map(foundLots.map((l) => [l.id, l]));
 
@@ -566,13 +638,19 @@ async function createShipment({
     // Kiểm tra đã tiêu thụ
     const consumedLots = foundLots.filter((l) => {
       const remainingVal = Number(
-        l.remainingQuantity !== undefined
+        l.remainingQuantity !== undefined && l.remainingQuantity !== null
           ? l.remainingQuantity
-          : (l.remaining_quantity !== undefined ? l.remaining_quantity : (l.initialQuantity || l.initial_quantity || 0))
+          : (l.remaining_quantity !== undefined && l.remaining_quantity !== null
+              ? l.remaining_quantity
+              : (l.current_quantity !== undefined && l.current_quantity !== null
+                  ? l.current_quantity
+                  : (l.initialQuantity || l.initial_quantity || l.quantity || 0)))
       );
       return (
         l.status === "Đã bán hết" ||
         l.status === "Đã tiêu thụ" ||
+        l.status === "CONSUMED" ||
+        isNaN(remainingVal) ||
         remainingVal <= 0
       );
     });
@@ -582,6 +660,18 @@ async function createShipment({
         error: "LOT_ALREADY_CONSUMED",
         message: `Lô hàng đã được bán hết hoặc tiêu thụ, không thể đưa vào chuyến vận chuyển: ${consumedLots.map((l) => l.id).join(", ")}`,
         consumedLots: consumedLots.map((l) => l.id),
+      };
+    }
+
+    const recalledLots = foundLots.filter((l) => {
+      return l.status === "Có sự cố" || l.status === "RECALLED";
+    });
+    if (recalledLots.length > 0) {
+      return {
+        status: 400,
+        error: "LOT_RECALLED_OR_INCIDENT",
+        message: `Lô hàng đang trong trạng thái có sự cố hoặc thu hồi, không thể đưa vào chuyến vận chuyển: ${recalledLots.map((l) => l.id).join(", ")}`,
+        recalledLots: recalledLots.map((l) => l.id),
       };
     }
 
@@ -659,6 +749,7 @@ async function createShipment({
       createdByUserId: userId,
       completedByUserId: null,
       startedAt: startedAtIso,
+      departureTime: startedAtIso,
       completedAt: null,
       createdAt: nowIso,
       updatedAt: nowIso,
@@ -1171,7 +1262,7 @@ async function getShipments({
 
     if (cleanSearch) {
       params.push(`%${cleanSearch}%`);
-      conditions.push(`(s.id ILIKE $${params.length} OR s.cold_box_id ILIKE $${params.length} OR s.vehicle_plate ILIKE $${params.length} OR s.driver_name ILIKE $${params.length})`);
+      conditions.push(`(s.id ILIKE $${params.length} OR s.cold_box_id ILIKE $${params.length} OR s.vehicle_plate ILIKE $${params.length} OR s.driver_name ILIKE $${params.length} OR s.origin_location_id ILIKE $${params.length} OR s.destination_location_id ILIKE $${params.length} OR EXISTS (SELECT 1 FROM shipment_lots sl_srch WHERE sl_srch.shipment_id = s.id AND sl_srch.lot_id ILIKE $${params.length}))`);
     }
 
     const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
@@ -1219,6 +1310,7 @@ async function getShipments({
       lots: r.lots,
       lotIds: Array.isArray(r.lots) ? r.lots.map((l) => l.lotId) : [],
       startedAt: r.started_at ? new Date(r.started_at).toISOString() : null,
+      departureTime: r.started_at ? new Date(r.started_at).toISOString() : null,
       completedAt: r.completed_at ? new Date(r.completed_at).toISOString() : null,
       createdAt: r.created_at ? new Date(r.created_at).toISOString() : null,
       currentTemperature:
@@ -1291,12 +1383,19 @@ async function getShipments({
 
   if (cleanSearch) {
     const q = cleanSearch.toLowerCase();
-    filtered = filtered.filter((s) =>
-      (s.id && s.id.toLowerCase().includes(q)) ||
-      (s.coldBoxId && s.coldBoxId.toLowerCase().includes(q)) ||
-      (s.vehiclePlate && s.vehiclePlate.toLowerCase().includes(q)) ||
-      (s.driverName && s.driverName.toLowerCase().includes(q))
-    );
+    filtered = filtered.filter((s) => {
+      const attached = inMemoryShipmentLots.filter((sl) => sl.shipmentId === s.id);
+      return (
+        (s.id && s.id.toLowerCase().includes(q)) ||
+        (s.code && s.code.toLowerCase().includes(q)) ||
+        (s.coldBoxId && s.coldBoxId.toLowerCase().includes(q)) ||
+        (s.vehiclePlate && s.vehiclePlate.toLowerCase().includes(q)) ||
+        (s.driverName && s.driverName.toLowerCase().includes(q)) ||
+        (s.originLocationId && s.originLocationId.toLowerCase().includes(q)) ||
+        (s.destinationLocationId && s.destinationLocationId.toLowerCase().includes(q)) ||
+        attached.some((sl) => sl.lotId.toLowerCase().includes(q))
+      );
+    });
   }
 
   const total = filtered.length;
@@ -1304,7 +1403,7 @@ async function getShipments({
     const attached = inMemoryShipmentLots.filter((sl) => sl.shipmentId === s.id);
     return {
       ...s,
-      code: s.id,
+      code: s.code || s.id,
       containerId: s.coldBoxId,
       origin: s.originLocationId,
       destination: s.destinationLocationId,
@@ -1312,6 +1411,7 @@ async function getShipments({
       lotCount: attached.length,
       lots: attached.map((sl) => ({ lotId: sl.lotId, status: sl.status, isActive: sl.isActive })),
       lotIds: attached.map((sl) => sl.lotId),
+      departureTime: s.departureTime || s.startedAt || null,
       currentTemperature:
         s.currentTemperature !== undefined && s.currentTemperature !== null
           ? Number(s.currentTemperature)
@@ -1418,6 +1518,7 @@ async function getShipmentById({
       createdByUserId: ship.created_by_user_id,
       completedByUserId: ship.completed_by_user_id,
       startedAt: ship.started_at ? new Date(ship.started_at).toISOString() : null,
+      departureTime: ship.started_at ? new Date(ship.started_at).toISOString() : null,
       completedAt: ship.completed_at ? new Date(ship.completed_at).toISOString() : null,
       createdAt: ship.created_at ? new Date(ship.created_at).toISOString() : null,
       updatedAt: ship.updated_at ? new Date(ship.updated_at).toISOString() : null,
@@ -1485,10 +1586,12 @@ async function getShipmentById({
   const orgMap = await getOrganizationMap(null, inMemoryOrgs);
   const shipmentPayload = {
     ...ship,
-    code: ship.id,
+    code: ship.code || ship.id,
     containerId: ship.coldBoxId,
     origin: ship.originLocationId,
     destination: ship.destinationLocationId,
+    startedAt: ship.startedAt || null,
+    departureTime: ship.departureTime || ship.startedAt || null,
     currentTemperature: ship.currentTemperature !== undefined ? ship.currentTemperature : null,
     lastTemperatureAt: ship.lastTemperatureAt || null,
     appliedTempMin: ship.appliedTempMin !== undefined ? ship.appliedTempMin : null,

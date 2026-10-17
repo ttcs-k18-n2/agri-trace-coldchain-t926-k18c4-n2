@@ -28,6 +28,7 @@
     elements.btnToggleSandbox = document.getElementById("btnToggleSandbox");
     elements.contractNoticeBanner = document.getElementById("contractNoticeBanner");
     elements.alertBanner = document.getElementById("alertBanner");
+    elements.modalCreateAlert = document.getElementById("modalCreateAlert");
 
     // KPI Summary
     elements.kpiTotal = document.getElementById("kpiTotal");
@@ -84,7 +85,7 @@
     if (typeof window.createFormErrorHandler === "function") {
       formErrorHandler = window.createFormErrorHandler({
         scope: elements.formCreateShipment,
-        globalAlert: elements.alertBanner,
+        globalAlert: elements.modalCreateAlert || elements.alertBanner,
         fields: {
           shipmentCode: { input: elements.inputShipmentCode, error: document.getElementById("error-shipment-code") },
           containerId: { input: elements.selectContainer, error: document.getElementById("error-container") },
@@ -459,7 +460,14 @@
       availableContainers.forEach((c) => {
         const opt = document.createElement("option");
         opt.value = c.id;
-        opt.textContent = `${c.id} - ${c.name} (${c.tempMin}°C đến ${c.tempMax}°C)`;
+        const isBusy = c.inUse || c.status === "IN_USE";
+        if (isBusy) {
+          opt.textContent = `${c.id} - ${c.name} [Đang bận trên chuyến khác]`;
+          opt.disabled = true;
+          opt.style.color = "#94a3b8";
+        } else {
+          opt.textContent = `${c.id} - ${c.name} (${c.tempMin}°C đến ${c.tempMax}°C)`;
+        }
         elements.selectContainer.appendChild(opt);
       });
     } catch {
@@ -485,13 +493,15 @@
       return;
     }
 
+    const isBusy = container.inUse || container.status === "IN_USE";
+
     elements.containerInfoBox.style.display = "block";
     elements.containerInfoBox.innerHTML = `
       <div class="container-spec-grid">
         <div class="spec-item"><span class="spec-label">Dung tích:</span> <strong>${container.capacityLiters || 50} Lít</strong></div>
         <div class="spec-item"><span class="spec-label">Dải nhiệt chuẩn:</span> <strong class="badge-temp-range">${container.tempMin}°C ~ ${container.tempMax}°C</strong></div>
         <div class="spec-item"><span class="spec-label">Cảm biến nhiệt:</span> <span>${escapeHtml(container.sensorModel || "IoT Standard")}</span></div>
-        <div class="spec-item"><span class="spec-label">Trạng thái:</span> <span class="badge-status-running" style="font-size:11px; padding:2px 8px;">Sẵn sàng hoạt động</span></div>
+        <div class="spec-item"><span class="spec-label">Trạng thái:</span> <span class="${isBusy ? "badge-status-recalled" : "badge-status-running"}" style="font-size:11px; padding:2px 8px;">${isBusy ? "Đang sử dụng trên chuyến khác" : "Sẵn sàng hoạt động"}</span></div>
       </div>
     `;
 
@@ -534,13 +544,22 @@
 
     lotsToRender.forEach((lot) => {
       const tr = document.createElement("tr");
-      tr.className = selectedLotIds.has(lot.id) ? "row-selected" : "";
-
       const isChecked = selectedLotIds.has(lot.id);
+      const qty = lot.current_quantity != null ? Number(lot.current_quantity) : (lot.remaining_quantity != null ? Number(lot.remaining_quantity) : (lot.quantity != null ? Number(lot.quantity) : 0));
+      const isOutOfStock = isNaN(qty) || qty <= 0;
+
+      if (isChecked) {
+        tr.classList.add("row-selected");
+      }
+      if (isOutOfStock) {
+        tr.classList.add("row-disabled");
+        tr.style.opacity = "0.6";
+        tr.style.cursor = "not-allowed";
+      }
 
       tr.innerHTML = `
         <td style="text-align: center; width: 40px;">
-          <input type="checkbox" class="lot-checkbox" data-id="${escapeHtml(lot.id)}" ${isChecked ? "checked" : ""}>
+          <input type="checkbox" class="lot-checkbox" data-id="${escapeHtml(lot.id)}" ${isChecked ? "checked" : ""} ${isOutOfStock ? "disabled" : ""}>
         </td>
         <td>
           <strong class="lot-code-label">${escapeHtml(lot.id)}</strong>
@@ -548,18 +567,21 @@
         </td>
         <td>${escapeHtml(lot.product_name)}</td>
         <td style="text-align: right; font-weight: 600;">
-          ${Number(lot.current_quantity).toLocaleString("vi-VN")} ${escapeHtml(lot.unit)}
+          ${Number(qty).toLocaleString("vi-VN")} ${escapeHtml(lot.unit)}
         </td>
         <td>
-          <span class="badge-status-completed" style="font-size: 11px; padding: 2px 7px;">${escapeHtml(lot.status)}</span>
+          <span class="${isOutOfStock ? "badge-status-recalled" : "badge-status-completed"}" style="font-size: 11px; padding: 2px 7px;">
+            ${isOutOfStock ? "Hết hàng (0 kg)" : escapeHtml(lot.status)}
+          </span>
         </td>
       `;
 
-      // Click row toggles checkbox
+      // Click row toggles checkbox only if not out of stock
       tr.addEventListener("click", (e) => {
+        if (isOutOfStock) return;
         if (e.target.type !== "checkbox") {
           const cb = tr.querySelector(".lot-checkbox");
-          if (cb) {
+          if (cb && !cb.disabled) {
             cb.checked = !cb.checked;
             handleLotCheckToggle(lot.id, cb.checked, tr);
           }
@@ -569,6 +591,10 @@
       const cb = tr.querySelector(".lot-checkbox");
       if (cb) {
         cb.addEventListener("change", () => {
+          if (isOutOfStock) {
+            cb.checked = false;
+            return;
+          }
           handleLotCheckToggle(lot.id, cb.checked, tr);
         });
       }
@@ -580,6 +606,15 @@
   }
 
   function handleLotCheckToggle(lotId, checked, rowEl) {
+    const lot = availableLots.find((l) => l.id === lotId);
+    const qty = lot ? (lot.current_quantity != null ? Number(lot.current_quantity) : 0) : 0;
+    if (checked && qty <= 0) {
+      if (formErrorHandler) {
+        formErrorHandler.showErrors({ lotIds: `Lô hàng ${lotId} không còn khối lượng khả dụng (0 kg), không thể chọn.` });
+      }
+      return;
+    }
+
     if (checked) {
       selectedLotIds.add(lotId);
       if (rowEl) rowEl.classList.add("row-selected");
@@ -654,6 +689,10 @@
   function openCreateModal() {
     if (!elements.modalCreateShipment) return;
 
+    if (elements.modalCreateAlert) {
+      elements.modalCreateAlert.style.display = "none";
+      elements.modalCreateAlert.textContent = "";
+    }
     if (formErrorHandler) formErrorHandler.clear();
     selectedLotIds.clear();
 
@@ -682,6 +721,10 @@
     if (!elements.modalCreateShipment) return;
     elements.modalCreateShipment.style.display = "none";
     document.body.style.overflow = "";
+    if (elements.modalCreateAlert) {
+      elements.modalCreateAlert.style.display = "none";
+      elements.modalCreateAlert.textContent = "";
+    }
     if (formErrorHandler) formErrorHandler.clear();
   }
 
@@ -697,6 +740,10 @@
       return;
     }
 
+    if (elements.modalCreateAlert) {
+      elements.modalCreateAlert.style.display = "none";
+      elements.modalCreateAlert.textContent = "";
+    }
     if (formErrorHandler) formErrorHandler.clear();
 
     const shipmentCode = elements.inputShipmentCode ? elements.inputShipmentCode.value.trim() : "";
@@ -744,8 +791,8 @@
         if (res.isForbidden) {
           showAlert(res.message || "Tài khoản của bạn không có quyền mở chuyến vận chuyển.", "error");
         } else if (res.isConflict) {
-          showAlert(res.message || "Một hoặc nhiều lô hàng đã được gắn vào chuyến vận chuyển khác.", "error");
-        } else if (res.errors && formErrorHandler) {
+          showAlert(res.message || "Một hoặc nhiều lô hàng hoặc thùng lạnh đã được gắn vào chuyến vận chuyển khác.", "error");
+        } else if (res.errors && Object.keys(res.errors).length > 0 && formErrorHandler) {
           formErrorHandler.showErrors(res.errors);
         } else {
           showAlert(res.message || "Không thể tạo chuyến vận chuyển.", "error");
@@ -937,16 +984,31 @@
    * Alert Banner Helper
    */
   function showAlert(msg, type = "info") {
-    if (!elements.alertBanner) return;
-    elements.alertBanner.className = `alert-box alert-${type}`;
-    elements.alertBanner.textContent = msg;
-    elements.alertBanner.style.display = "block";
-    elements.alertBanner.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    // 1. Cập nhật banner chính trên trang
+    if (elements.alertBanner) {
+      elements.alertBanner.className = `alert-box alert-${type}`;
+      elements.alertBanner.textContent = msg;
+      elements.alertBanner.style.display = "block";
+      elements.alertBanner.scrollIntoView({ behavior: "smooth", block: "nearest" });
 
-    if (type === "success") {
-      setTimeout(() => {
-        if (elements.alertBanner) elements.alertBanner.style.display = "none";
-      }, 5000);
+      if (type === "success") {
+        setTimeout(() => {
+          if (elements.alertBanner) elements.alertBanner.style.display = "none";
+        }, 5000);
+      }
+    }
+
+    // 2. Nếu modal tạo chuyến đang mở, hiển thị thêm ngay trong hộp alert bên trong modal
+    if (
+      elements.modalCreateShipment &&
+      elements.modalCreateShipment.style.display === "flex" &&
+      elements.modalCreateAlert &&
+      (type === "error" || type === "warning")
+    ) {
+      elements.modalCreateAlert.className = `alert-box alert-${type}`;
+      elements.modalCreateAlert.textContent = msg;
+      elements.modalCreateAlert.style.display = "block";
+      elements.modalCreateAlert.scrollIntoView({ behavior: "smooth", block: "nearest" });
     }
   }
 
@@ -1000,10 +1062,29 @@
    * Chọn tất cả hoặc bỏ chọn tất cả lô
    */
   function selectAllLots() {
-    availableLots.forEach(l => selectedLotIds.add(l.id));
+    const query = elements.lotSearchInput ? elements.lotSearchInput.value.toLowerCase().trim() : "";
+    const targetLots = (query
+      ? availableLots.filter(l =>
+          l.id.toLowerCase().includes(query) ||
+          (l.name && l.name.toLowerCase().includes(query)) ||
+          (l.product_name && l.product_name.toLowerCase().includes(query))
+        )
+      : availableLots
+    ).filter(l => {
+      const q = l.current_quantity != null ? Number(l.current_quantity) : (l.remaining_quantity != null ? Number(l.remaining_quantity) : (l.quantity != null ? Number(l.quantity) : 0));
+      return q > 0;
+    });
+
+    targetLots.forEach(l => selectedLotIds.add(l.id));
     if (elements.lotsTableBody) {
-      elements.lotsTableBody.querySelectorAll("tr").forEach(tr => tr.classList.add("row-selected"));
-      elements.lotsTableBody.querySelectorAll(".lot-checkbox").forEach(cb => { cb.checked = true; });
+      elements.lotsTableBody.querySelectorAll(".lot-checkbox").forEach(cb => {
+        const lotId = cb.getAttribute("data-id");
+        if (targetLots.some(l => l.id === lotId) && !cb.disabled) {
+          cb.checked = true;
+          const tr = cb.closest("tr");
+          if (tr) tr.classList.add("row-selected");
+        }
+      });
     }
     updateSelectedLotsSummary();
     if (formErrorHandler) formErrorHandler.clearFieldError("lotIds");

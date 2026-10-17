@@ -478,6 +478,21 @@
     const lotIds = Array.isArray(payload.lotIds) ? payload.lotIds.filter(Boolean) : [];
     if (!lotIds || lotIds.length === 0) {
       errors.lotIds = "Vui lòng chọn ít nhất một lô hàng đính kèm vào chuyến vận chuyển.";
+    } else if (Array.isArray(payload.selectedLotsList) && payload.selectedLotsList.length > 0) {
+      const invalidLots = payload.selectedLotsList.filter((l) => {
+        const qty = l.remainingQuantity !== undefined && l.remainingQuantity !== null
+          ? Number(l.remainingQuantity)
+          : (l.remaining_quantity !== undefined && l.remaining_quantity !== null
+            ? Number(l.remaining_quantity)
+            : (l.current_quantity !== undefined && l.current_quantity !== null
+              ? Number(l.current_quantity)
+              : (l.quantity != null ? Number(l.quantity) : 0)));
+        const st = String(l.status || "").toUpperCase();
+        return qty <= 0 || isNaN(qty) || st === "CONSUMED" || st === "RECALLED" || l.status === "Đã bán hết" || l.status === "Đã tiêu thụ" || l.status === "Có sự cố";
+      });
+      if (invalidLots.length > 0) {
+        errors.lotIds = `Lô hàng ${invalidLots.map((l) => l.id).join(", ")} không còn khối lượng khả dụng (0 kg) hoặc đã kết thúc, không thể đưa vào chuyến.`;
+      }
     }
 
     // 4. Điểm xuất phát (Origin)
@@ -578,15 +593,16 @@
           success: false,
           isConflict: true,
           error: errJson.error || "LOT_ALREADY_IN_ACTIVE_SHIPMENT",
-          message: errJson.message || "Một hoặc nhiều lô hàng đã được gắn vào chuyến vận chuyển đang hoạt động khác.",
+          message: errJson.message || "Một hoặc nhiều lô hàng hoặc thùng lạnh đã được gắn vào chuyến vận chuyển đang hoạt động khác.",
         };
       }
 
-      if (res.status === 400 || res.status === 422) {
+      if (res.status === 400 || res.status === 404 || res.status === 422) {
         const errJson = await res.json().catch(() => ({}));
         return {
           success: false,
-          errors: errJson.errors || {},
+          errors: (errJson.errors && Object.keys(errJson.errors).length > 0) ? errJson.errors : null,
+          error: errJson.error,
           message: errJson.message || "Dữ liệu không hợp lệ theo quy định máy chủ.",
         };
       }
@@ -812,19 +828,48 @@
       if (res.ok) {
         const data = await res.json();
         const lots = Array.isArray(data.lots) ? data.lots : (Array.isArray(data) ? data : []);
-        // Lọc các lô còn khả dụng (chưa tiêu thụ hết)
-        const availableLots = lots.filter(l => l.status !== "CONSUMED" && l.status !== "RECALLED");
+        // Lọc các lô còn khả dụng (chưa tiêu thụ hết và không có sự cố/thu hồi)
+        const availableLots = lots.filter((l) => {
+          if (!l) return false;
+          const status = String(l.status || "").toUpperCase();
+          if (status === "CONSUMED" || status === "RECALLED") return false;
+          if (l.status === "Đã bán hết" || l.status === "Đã tiêu thụ" || l.status === "Có sự cố") return false;
+
+          const remaining = l.remainingQuantity !== undefined && l.remainingQuantity !== null
+            ? Number(l.remainingQuantity)
+            : (l.remaining_quantity !== undefined && l.remaining_quantity !== null
+              ? Number(l.remaining_quantity)
+              : (l.current_quantity !== undefined && l.current_quantity !== null
+                ? Number(l.current_quantity)
+                : (l.quantity !== undefined && l.quantity !== null ? Number(l.quantity) : null)));
+
+          if (remaining === null || isNaN(remaining) || remaining <= 0) return false;
+          return true;
+        });
         return {
           success: true,
-          lots: availableLots.map(l => ({
-            id: l.id,
-            name: l.name || l.id,
-            product_name: l.product_name || l.productName || "Nông sản sạch",
-            current_quantity: l.current_quantity != null ? l.current_quantity : (l.remaining_quantity != null ? l.remaining_quantity : (l.quantity || 0)),
-            unit: l.unit || "kg",
-            status: l.status || "ACTIVE",
-            harvested_at: l.harvested_at || l.harvestDate || l.created_at,
-          })),
+          lots: availableLots.map((l) => {
+            const qty = l.remainingQuantity !== undefined && l.remainingQuantity !== null
+              ? Number(l.remainingQuantity)
+              : (l.remaining_quantity !== undefined && l.remaining_quantity !== null
+                ? Number(l.remaining_quantity)
+                : (l.current_quantity !== undefined && l.current_quantity !== null
+                  ? Number(l.current_quantity)
+                  : (l.quantity != null ? Number(l.quantity) : 0)));
+            const unit = l.productUnit || l.product_unit || l.unit || "kg";
+            return {
+              id: l.id,
+              name: l.name || l.id,
+              product_name: l.product_name || l.productName || "Nông sản sạch",
+              current_quantity: qty,
+              remaining_quantity: qty,
+              remainingQuantity: qty,
+              initial_quantity: l.initialQuantity !== undefined ? Number(l.initialQuantity) : (l.initial_quantity !== undefined ? Number(l.initial_quantity) : qty),
+              unit: unit,
+              status: l.status || "ACTIVE",
+              harvested_at: l.harvested_at || l.harvestDate || l.created_at,
+            };
+          }),
         };
       }
 
