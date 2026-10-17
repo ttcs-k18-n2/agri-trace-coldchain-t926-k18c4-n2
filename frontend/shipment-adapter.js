@@ -182,6 +182,51 @@
       ? raw.lotIds
       : lots.map(l => (typeof l === "object" ? (l.id || l.lotId || l.lot_id || l.code) : l)).filter(Boolean);
 
+    // Xử lý trung thực số đo nhiệt độ và thời điểm đo (S-41 truthful telemetry)
+    // Hỗ trợ đầy đủ các cách đặt tên theo tài liệu và thực tế backend: current_temperature, currentTemperature,...
+    // Tuyệt đối không fallback sang giá trị giả định (không fake 4.2), bảo toàn số 0 và nhiệt độ âm
+    let currentTemperature = null;
+    const tempCandidates = [
+      raw.current_temperature,
+      raw.currentTemperature,
+      raw.current_temp,
+      raw.currentTemp,
+      raw.temperature,
+      raw.latestTemperature,
+    ];
+    for (const cand of tempCandidates) {
+      if (cand !== undefined && cand !== null && cand !== "") {
+        const num = Number(cand);
+        if (Number.isFinite(num)) {
+          currentTemperature = num;
+          break;
+        }
+      }
+    }
+
+    let lastTemperatureAt = null;
+    const timeCandidates = [
+      raw.last_temperature_at,
+      raw.lastTemperatureAt,
+      raw.latestRecordedAt,
+      raw.recordedAt,
+      raw.recorded_at,
+      raw.lastTempAt,
+    ];
+    for (const cand of timeCandidates) {
+      if (cand !== undefined && cand !== null && cand !== "") {
+        try {
+          const d = new Date(cand);
+          if (!isNaN(d.getTime())) {
+            lastTemperatureAt = d.toISOString();
+            break;
+          }
+        } catch {
+          // Bỏ qua giá trị ngày giờ không hợp lệ
+        }
+      }
+    }
+
     return {
       id: raw.id || raw.shipmentId || raw.code,
       code: raw.code || raw.shipmentCode || raw.id,
@@ -189,7 +234,14 @@
       coldBoxId: coldBox,
       containerName: (raw.container && raw.container.name) || raw.containerName || coldBox || "Thùng lạnh tiêu chuẩn",
       containerTempRange: raw.containerTempRange || (raw.container ? `${raw.container.tempMin}°C - ${raw.container.tempMax}°C` : "2°C - 8°C"),
-      currentTemp: typeof raw.currentTemp === "number" ? raw.currentTemp : (raw.current_temp || 4.2),
+      currentTemp: currentTemperature,
+      currentTemperature: currentTemperature,
+      current_temperature: currentTemperature,
+      lastTemperatureAt: lastTemperatureAt,
+      last_temperature_at: lastTemperatureAt,
+      temperatureStatus: raw.temperatureStatus || raw.temperature_status || raw.tempStatus || raw.sensorStatus || null,
+      temperature_status: raw.temperatureStatus || raw.temperature_status || raw.tempStatus || raw.sensorStatus || null,
+      sensorStatus: raw.temperatureStatus || raw.temperature_status || raw.tempStatus || raw.sensorStatus || null,
       status: (raw.status || "IN_TRANSIT").toUpperCase(), // IN_TRANSIT, COMPLETED, SCHEDULED, ALERT
       origin: originLoc,
       originLocationId: originLoc,
@@ -568,7 +620,8 @@
             vehiclePlate: bodyData.vehiclePlate,
             notes: bodyData.notes,
             status: "IN_TRANSIT",
-            currentTemp: 3.8,
+            currentTemperature: null,
+            lastTemperatureAt: null,
             createdAt: new Date().toISOString(),
           });
           list.unshift(newShipment);
@@ -614,7 +667,8 @@
           vehiclePlate: bodyData.vehiclePlate,
           notes: bodyData.notes,
           status: "IN_TRANSIT",
-          currentTemp: 4.0,
+          currentTemperature: null,
+          lastTemperatureAt: null,
           createdAt: new Date().toISOString(),
         });
         list.unshift(newShipment);
