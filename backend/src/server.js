@@ -81,6 +81,7 @@ const {
   getShipmentById,
   getActiveShipmentForLot,
 } = require("./shipment_service");
+const { getRecallOrderWithLiveDescendants } = require("./recall_service");
 const app = express();
 const PORT = Number(process.env.PORT || 3000);
 
@@ -183,6 +184,7 @@ const inMemoryOrganizations = [
 
 const inMemoryTransfers = [];
 const inMemoryBatchRelations = [];
+const inMemoryRecallOrders = [];
 
 async function getPendingTransferForLot(lotId) {
   if (pool) {
@@ -546,7 +548,7 @@ app.use(attachAuthContext);
  * Middleware phân quyền và mặc định từ chối route chưa khai báo quyền (T-11)
  * @param {string[]} allowedRoles - Danh sách vai trò được phép truy cập
  */
-function requirePermission(allowedRoles = []) {
+function requirePermission(allowedRoles = [], options = {}) {
   return (req, res, next) => {
     if (!req.auth || !req.auth.userId) {
       if (req.accepts("html") && !req.accepts("json")) {
@@ -564,17 +566,20 @@ function requirePermission(allowedRoles = []) {
     }
 
     const { roleId, isInspector } = req.auth;
+    const allowInspectorWrite = options.allowInspectorWrite === true || req.path.startsWith("/api/recalls");
 
-    // Cán bộ kiểm tra chỉ được đọc (GET / HEAD), không được ghi (POST, PUT, DELETE, PATCH)
-    if (isInspector && ["POST", "PUT", "PATCH", "DELETE"].includes(req.method)) {
+    // Cán bộ kiểm tra chỉ được đọc (GET / HEAD), trừ các thao tác mở/quản lý lệnh thu hồi chuyên biệt (S-33 / S-34)
+    if (isInspector && ["POST", "PUT", "PATCH", "DELETE"].includes(req.method) && !allowInspectorWrite) {
       return res.status(403).json({
         message: "Cán bộ kiểm tra chỉ có quyền đọc dữ liệu, không được phép thực hiện thao tác ghi.",
       });
     }
 
-    // Cán bộ kiểm tra được đọc mọi tổ chức ở các route đọc
-    if (isInspector && ["GET", "HEAD"].includes(req.method)) {
-      return next();
+    // Cán bộ kiểm tra được đọc mọi tổ chức ở các route đọc hoặc route thu hồi được cấp phép
+    if (isInspector && (["GET", "HEAD"].includes(req.method) || allowInspectorWrite)) {
+      if (allowedRoles.includes("inspector")) {
+        return next();
+      }
     }
 
     // Admin hệ thống có toàn quyền
@@ -3561,6 +3566,10 @@ app.get(
           productUnit: item.productUnit,
           farmName: item.farmName,
           parentLotId: item.parentLotId,
+          isMultiSourceMerge: item.isMultiSourceMerge || false,
+          sourcesCount: item.sourcesCount || 0,
+          mergedSources: item.mergedSources || [],
+          notes: item.notes || null,
           distance: item.distance,
           path: item.path,
         })),
@@ -6696,6 +6705,10 @@ app.get(
           initialQuantity: d.initialQuantity,
           productUnit: d.productUnit,
           distance: d.distance,
+          isMultiSourceMerge: d.isMultiSourceMerge || false,
+          sourcesCount: d.sourcesCount || 0,
+          mergedSources: d.mergedSources || [],
+          notes: d.notes || null,
         })),
       });
     } catch (err) {
@@ -6705,6 +6718,255 @@ app.get(
           message: err.message,
           cycleLotId: err.cycleLotId || null,
         });
+      }
+      return res.status(500).json({ message: err.message });
+    }
+  }
+);
+
+/**
+ * ==============================================================================
+ * QUẢN LÝ LỆNH THU HỒI NÔNG SẢN (Story S-33 / S-34)
+ * ==============================================================================
+ */
+
+// POST /api/recalls: Mở lệnh thu hồi (RBAC: Inspector, Admin)
+app.post(
+  "/api/recalls",
+  requirePermission(["inspector", "admin"]),
+  async (req, res) => {
+    try {
+      const { lotId, reason, severity = "HIGH" } = req.body;
+      if (!lotId || !String(lotId).trim()) {
+        return res.status(400).json({ error: "MISSING_LOT_ID", message: "Mã lô hàng (lotId) là bắt buộc." });
+      }
+      if (!reason || !String(reason).trim()) {
+        return res.status(400).json({ error: "MISSING_REASON", message: "Lý do thu hồi (reason) là bắt buộc." });
+      }
+
+      const validSeverities = ["LOW", "MEDIUM", "HIGH", "CRITICAL"];
+      const upperSeverity = String(severity).toUpperCase();
+      if (!validSeverities.includes(upperSeverity)) {
+        return res.status(400).json({
+          error: "INVALID_SEVERITY",
+          message: `Mức độ nghiêm trọng không hợp lệ. Cho phép: ${validSeverities.join(", ")}`,
+        });
+      }
+
+      // Kiểm tra lô hàng tồn tại
+      let lot = null;
+      if (pool) {
+        const lotRes = await scopedQueryById(pool, req.auth, "lots", lotId);
+        lot = lotRes.rows[0] || null;
+      } else {
+        lot = inMemoryLots.find((l) => l.id === lotId) || null;
+      }
+
+      if (!lot) {
+        return res.status(404).json({ error: "LOT_NOT_FOUND", message: `Không tìm thấy lô hàng với mã: ${lotId}` });
+      }
+
+      const lotOrgId = lot.organization_id || lot.organizationId;
+      const recallOrderId = `REC-${new Date().toISOString().slice(0, 10).replace(/-/g, "")}-${crypto.randomBytes(3).toString("hex").toUpperCase()}`;
+      const now = new Date();
+
+      if (pool) {
+        const client = await pool.connect();
+        try {
+          await client.query("BEGIN");
+
+          await client.query(
+            `INSERT INTO recall_orders (id, lot_id, reason, severity, status, created_by, created_at, updated_at)
+             VALUES ($1, $2, $3, $4, 'OPEN', $5, $6, $6)`,
+            [recallOrderId, lotId, reason, upperSeverity, req.auth.email, now]
+          );
+
+          // Cập nhật trạng thái lô hàng gốc thành 'Có sự cố' (S-33)
+          await client.query("UPDATE lots SET status = 'Có sự cố' WHERE id = $1 AND organization_id = $2", [lotId, lotOrgId]);
+
+          // Ghi nhận sự kiện RECALL_ORDER_CREATED vào chuỗi hash-chain batch_events (K-01 / S-10)
+          const recallEvent = await appendBatchEvent(client, {
+            batchId: lotId,
+            eventType: "RECALL_ORDER_CREATED",
+            payload: {
+              recallOrderId,
+              lotId,
+              reason,
+              severity: upperSeverity,
+              status: "OPEN",
+              createdBy: req.auth.email,
+              step: `Mở lệnh thu hồi khẩn cấp: ${reason}`,
+            },
+            organizationId: lotOrgId,
+            actorUserId: req.auth.userId,
+            occurredAt: now,
+          });
+
+          // Ghi audit log (S-31 Atomicity)
+          await recordAuditLog({
+            client,
+            pool,
+            inMemoryLogs: inMemoryAuditLogs,
+            actorUserId: req.auth.userId,
+            actorEmail: req.auth.email,
+            organizationId: lotOrgId,
+            action: "RECALL_ORDER_CREATED",
+            resourceType: "recall_order",
+            resourceId: recallOrderId,
+            ipAddress: req.ip,
+            userAgent: req.get("User-Agent"),
+            details: { recallOrderId, lotId, reason, severity: upperSeverity },
+          });
+
+          await client.query("COMMIT");
+
+          return res.status(201).json({
+            message: "Mở lệnh thu hồi thành công.",
+            recallOrder: {
+              id: recallOrderId,
+              lotId,
+              reason,
+              severity: upperSeverity,
+              status: "OPEN",
+              createdBy: req.auth.email,
+              createdAt: now.toISOString(),
+              updatedAt: now.toISOString(),
+            },
+            event: recallEvent,
+          });
+        } catch (dbErr) {
+          await client.query("ROLLBACK");
+          throw dbErr;
+        } finally {
+          client.release();
+        }
+      } else {
+        // In-memory fallback
+        const newOrder = {
+          id: recallOrderId,
+          lotId,
+          reason,
+          severity: upperSeverity,
+          status: "OPEN",
+          createdBy: req.auth.email,
+          createdAt: now.toISOString(),
+          updatedAt: now.toISOString(),
+        };
+        inMemoryRecallOrders.push(newOrder);
+
+        // Đổi trạng thái lô gốc
+        lot.status = "Có sự cố";
+
+        // Ghi batch_events hash-chain
+        const recallEvent = await appendBatchEvent(null, {
+          batchId: lotId,
+          eventType: "RECALL_ORDER_CREATED",
+          payload: {
+            recallOrderId,
+            lotId,
+            reason,
+            severity: upperSeverity,
+            status: "OPEN",
+            createdBy: req.auth.email,
+            step: `Mở lệnh thu hồi khẩn cấp: ${reason}`,
+          },
+          organizationId: lotOrgId,
+          actorUserId: req.auth.userId,
+          occurredAt: now,
+        });
+
+        await recordAuditLog({
+          pool: null,
+          inMemoryLogs: inMemoryAuditLogs,
+          actorUserId: req.auth.userId,
+          actorEmail: req.auth.email,
+          organizationId: lotOrgId,
+          action: "RECALL_ORDER_CREATED",
+          resourceType: "recall_order",
+          resourceId: recallOrderId,
+          ipAddress: req.ip,
+          userAgent: req.get("User-Agent"),
+          details: { recallOrderId, lotId, reason, severity: upperSeverity },
+        });
+
+        return res.status(201).json({
+          message: "Mở lệnh thu hồi thành công.",
+          recallOrder: newOrder,
+          event: recallEvent,
+        });
+      }
+    } catch (err) {
+      return res.status(500).json({ message: err.message });
+    }
+  }
+);
+
+// GET /api/recalls/:id: Chi tiết lệnh thu hồi & Hậu duệ trực tiếp
+app.get(
+  "/api/recalls/:id",
+  requirePermission(["inspector", "admin"]),
+  async (req, res) => {
+    try {
+      const recallOrderId = req.params.id;
+      const report = await getRecallOrderWithLiveDescendants({
+        recallOrderId,
+        pool,
+        inMemoryRecallOrders,
+        inMemoryLots,
+        inMemoryBatchRelations,
+        inMemoryBatchEvents,
+        inMemoryOrgs,
+        inMemoryProducts,
+        inMemoryFarms,
+        inMemoryLocations,
+      });
+
+      return res.status(200).json(report);
+    } catch (err) {
+      if (err.statusCode === 404) {
+        return res.status(404).json({ error: "NOT_FOUND", message: err.message });
+      }
+      return res.status(500).json({ message: err.message });
+    }
+  }
+);
+
+// GET /api/recalls/:id/descendants: Danh sách hậu duệ thu hồi qua nhiều nguồn gộp (Live BFS)
+app.get(
+  "/api/recalls/:id/descendants",
+  requirePermission(["inspector", "admin"]),
+  async (req, res) => {
+    try {
+      const recallOrderId = req.params.id;
+      const report = await getRecallOrderWithLiveDescendants({
+        recallOrderId,
+        pool,
+        inMemoryRecallOrders,
+        inMemoryLots,
+        inMemoryBatchRelations,
+        inMemoryBatchEvents,
+        inMemoryOrgs,
+        inMemoryProducts,
+        inMemoryFarms,
+        inMemoryLocations,
+      });
+
+      return res.status(200).json({
+        recallId: report.recallOrder.id,
+        rootLotId: report.recallOrder.lotId,
+        descendantCount: report.descendantCount,
+        descendantIds: report.descendantIds,
+        descendants: report.descendants,
+        totalRecallQuantity: report.quarantineSummary.totalQuarantineQuantity,
+        quarantineSummary: report.quarantineSummary,
+        quarantineInventoryLots: report.quarantineInventoryLots,
+        consumedLots: report.consumedLots,
+        locationSummary: report.locationSummary,
+        generatedAt: report.calculatedAt,
+      });
+    } catch (err) {
+      if (err.statusCode === 404) {
+        return res.status(404).json({ error: "NOT_FOUND", message: err.message });
       }
       return res.status(500).json({ message: err.message });
     }
@@ -6927,6 +7189,16 @@ async function start() {
     inMemoryFarms,
   });
 
+  // Kích hoạt seed S-39 tự động khi khởi động backend để luôn sẵn sàng 15 lô R01..R15
+  seedS39InMemory({
+    inMemoryLots,
+    inMemoryBatchRelations,
+    inMemoryBatchEvents,
+    inMemoryOrgs,
+    inMemoryProducts,
+    inMemoryFarms,
+  });
+
   // Khởi động job rà soát bàn giao quá hạn định kỳ (S-24 / T-56)
   startTransferOverdueJob({ pool, inMemoryTransfers });
 
@@ -7027,5 +7299,7 @@ module.exports = {
       inMemoryProducts,
       inMemoryFarms,
     }),
+  inMemoryRecallOrders,
+  getRecallOrderWithLiveDescendants,
 };
 

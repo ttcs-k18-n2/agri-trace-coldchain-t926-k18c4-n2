@@ -132,6 +132,44 @@ test("S-60: Migration 023 creates public_map_areas table and index with rollback
   );
 });
 
+test("S-34: Migration 023 creates recall_orders table with rollback and NFR compliance", () => {
+  const fs = require("node:fs");
+  const path = require("node:path");
+
+  const upPath = path.resolve(__dirname, "../../db/migrations/023_recall_orders.sql");
+  const downPath = path.resolve(__dirname, "../../db/migrations/down/023_recall_orders.down.sql");
+
+  assert.ok(fs.existsSync(upPath), "Migration 023 UP file must exist");
+  assert.ok(fs.existsSync(downPath), "Migration 023 DOWN file must exist");
+
+  const upSql = fs.readFileSync(upPath, "utf-8");
+  const downSql = fs.readFileSync(downPath, "utf-8");
+
+  assert.match(
+    upSql,
+    /CREATE\s+TABLE\s+(IF\s+NOT\s+EXISTS\s+)?recall_orders/i,
+    "Migration 023 must create recall_orders table"
+  );
+  assert.match(upSql, /lot_id/i);
+  assert.match(upSql, /reason/i);
+  assert.match(upSql, /severity/i);
+  assert.match(upSql, /status/i);
+  assert.match(upSql, /created_by/i);
+
+  // NFR: Không có cột snapshot cứng
+  assert.doesNotMatch(
+    upSql,
+    /descendant_lots/i,
+    "Migration 023 MUST NOT contain fixed descendant_lots column (NFR real-time BFS)"
+  );
+
+  assert.match(
+    downSql,
+    /DROP\s+TABLE\s+(IF\s+EXISTS\s+)?recall_orders/i,
+    "Migration 023 rollback must drop table recall_orders"
+  );
+});
+
 test("S-40: Migration 024 creates shipments and shipment_lots tables with rollback adhering to project convention", () => {
   const fs = require("node:fs");
   const path = require("node:path");
@@ -292,7 +330,7 @@ test("S-40: Mock migration runner - already-applied 024 upgrade path applies onl
     "013_transfers", "014_transfer_overdue", "015_batch_events_timeline_index",
     "016_lots_parent_lineage", "017_batch_relations", "018_grant_agri_app_permissions",
     "019_lot_consumed_status", "020_locations", "021_audit_logs",
-    "022_consumed_lot_constraints", "023_public_map_areas",
+    "022_consumed_lot_constraints", "023_public_map_areas", "023_recall_orders",
     "024_lot_custom_coordinates", "024_shipments"
   ];
   const appliedMigrations = [...existingApplied];
