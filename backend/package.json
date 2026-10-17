@@ -21,7 +21,8 @@
     "bcryptjs": "^3.0.2",
     "express": "^5.1.0",
     "express-session": "^1.18.2",
-    "pg": "^8.13.1"
+    "pg": "^8.13.1",
+    "qrcode": "^1.5.4"
   },
   "devDependencies": {
     "eslint": "^9.39.5",
