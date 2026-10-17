@@ -23,6 +23,7 @@ const {
   fetchAllLotsRaw,
 } = require("./lot_access");
 const { seedS22InMemory } = require("../scripts/seed_s22");
+const { seedS39InMemory } = require("../scripts/seed_s39");
 const { markOverdueTransfers, startTransferOverdueJob } = require("./transfer_overdue_job");
 const {
   isValidQuantity,
@@ -6820,6 +6821,7 @@ module.exports = {
   collectAncestorLotIds,
   collectDescendantLotIds,
   seedS22InMemory,
+  seedS39InMemory,
   traceLotOrigins,
   traceLotDescendants,
   getPublicLotMapData,
@@ -6836,6 +6838,15 @@ module.exports = {
   clearLotOriginsCache,
   seedS22Data: () =>
     seedS22InMemory({
+      inMemoryLots,
+      inMemoryBatchRelations,
+      inMemoryBatchEvents,
+      inMemoryOrgs,
+      inMemoryProducts,
+      inMemoryFarms,
+    }),
+  seedS39Data: () =>
+    seedS39InMemory({
       inMemoryLots,
       inMemoryBatchRelations,
       inMemoryBatchEvents,
