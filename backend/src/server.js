@@ -166,9 +166,9 @@ const inMemoryOrgs = [
 ];
 
 const inMemoryProducts = [
-  { id: "PROD-TOMATO", name: "Cà chua", unit: "kg" },
-  { id: "PROD-TEA", name: "Chè", unit: "kg" },
-  { id: "PROD-VEGETABLE", name: "Rau cải", unit: "kg" },
+  { id: "PROD-TOMATO", name: "Cà chua", unit: "kg", tempMin: 2.0, tempMax: 8.0, delayMinutes: 30, temp_min: 2.0, temp_max: 8.0, delay_minutes: 30 },
+  { id: "PROD-TEA", name: "Chè", unit: "kg", tempMin: 5.0, tempMax: 12.0, delayMinutes: 45, temp_min: 5.0, temp_max: 12.0, delay_minutes: 45 },
+  { id: "PROD-VEGETABLE", name: "Rau cải", unit: "kg", tempMin: 1.0, tempMax: 6.0, delayMinutes: 20, temp_min: 1.0, temp_max: 6.0, delay_minutes: 20 },
 ];
 const inMemoryFarms = [
   { id: "FARM-001", name: "Thửa đồi chè La Bằng 01", area: 2.5, coordinates: "21.5645, 105.6789", organizationId: "org-001" },
@@ -891,8 +891,19 @@ app.get(
   async (req, res) => {
     if (pool) {
       try {
-        const result = await pool.query("SELECT id, name, unit, created_at FROM products ORDER BY name ASC");
-        return res.status(200).json({ products: result.rows });
+        const result = await pool.query(
+          "SELECT id, name, unit, temp_min, temp_max, delay_minutes, created_at FROM products ORDER BY name ASC"
+        );
+        const products = result.rows.map((r) => ({
+          ...r,
+          temp_min: r.temp_min !== null ? Number(r.temp_min) : null,
+          temp_max: r.temp_max !== null ? Number(r.temp_max) : null,
+          delay_minutes: r.delay_minutes !== null ? Number(r.delay_minutes) : null,
+          tempMin: r.temp_min !== null ? Number(r.temp_min) : null,
+          tempMax: r.temp_max !== null ? Number(r.temp_max) : null,
+          delayMinutes: r.delay_minutes !== null ? Number(r.delay_minutes) : null,
+        }));
+        return res.status(200).json({ products });
       } catch (err) {
         return res.status(500).json({ message: err.message });
       }
@@ -915,19 +926,29 @@ app.get(
     if (pool) {
       try {
         const result = await pool.query(
-          "SELECT id, name, unit, created_at FROM products WHERE id = $1",
+          "SELECT id, name, unit, temp_min, temp_max, delay_minutes, created_at FROM products WHERE id = $1",
           [id]
         );
         if (result.rows.length === 0) {
           return res.status(404).json({ message: "Không tìm thấy sản phẩm." });
         }
+        const r = result.rows[0];
+        const product = {
+          ...r,
+          temp_min: r.temp_min !== null ? Number(r.temp_min) : null,
+          temp_max: r.temp_max !== null ? Number(r.temp_max) : null,
+          delay_minutes: r.delay_minutes !== null ? Number(r.delay_minutes) : null,
+          tempMin: r.temp_min !== null ? Number(r.temp_min) : null,
+          tempMax: r.temp_max !== null ? Number(r.temp_max) : null,
+          delayMinutes: r.delay_minutes !== null ? Number(r.delay_minutes) : null,
+        };
         const lotsCountRes = await pool.query(
           "SELECT COUNT(*)::int as count FROM lots WHERE product_id = $1",
           [id]
         );
         const lotsCount = lotsCountRes.rows[0] ? lotsCountRes.rows[0].count : 0;
         return res.status(200).json({
-          product: result.rows[0],
+          product,
           lotsCount,
         });
       } catch (err) {
@@ -968,6 +989,46 @@ app.post(
 
     const prodId = req.body.id || `PROD-${crypto.randomBytes(4).toString("hex").toUpperCase()}`;
 
+    // Story S-44: Hỗ trợ cấu hình ngưỡng nhiệt độ và độ trễ theo sản phẩm
+    const rawMin = req.body.tempMin !== undefined ? req.body.tempMin : req.body.temp_min;
+    const rawMax = req.body.tempMax !== undefined ? req.body.tempMax : req.body.temp_max;
+    const rawDelay = req.body.delayMinutes !== undefined ? req.body.delayMinutes : req.body.delay_minutes;
+
+    let tempMin = null;
+    let tempMax = null;
+    let delayMinutes = null;
+
+    if (rawMin !== undefined && rawMin !== null && rawMin !== "") {
+      const parsedMin = Number(rawMin);
+      if (!Number.isFinite(parsedMin) || parsedMin < -999.99 || parsedMin > 999.99) {
+        return res.status(400).json({ error: "INVALID_TEMP_MIN", message: "Ngưỡng nhiệt độ dưới phải là số hữu hạn hợp lệ (-999.99 đến 999.99)." });
+      }
+      tempMin = parsedMin;
+    }
+
+    if (rawMax !== undefined && rawMax !== null && rawMax !== "") {
+      const parsedMax = Number(rawMax);
+      if (!Number.isFinite(parsedMax) || parsedMax < -999.99 || parsedMax > 999.99) {
+        return res.status(400).json({ error: "INVALID_TEMP_MAX", message: "Ngưỡng nhiệt độ trên phải là số hữu hạn hợp lệ (-999.99 đến 999.99)." });
+      }
+      tempMax = parsedMax;
+    }
+
+    if (tempMin !== null && tempMax !== null && tempMin >= tempMax) {
+      return res.status(400).json({
+        error: "INVALID_TEMPERATURE_RANGE",
+        message: "Ngưỡng nhiệt độ dưới phải nhỏ hơn ngưỡng nhiệt độ trên.",
+      });
+    }
+
+    if (rawDelay !== undefined && rawDelay !== null && rawDelay !== "") {
+      const parsedDelay = Number(rawDelay);
+      if (!Number.isInteger(parsedDelay) || parsedDelay < 0) {
+        return res.status(400).json({ error: "INVALID_DELAY_MINUTES", message: "Độ trễ cảnh báo phải là số nguyên không âm (phút)." });
+      }
+      delayMinutes = parsedDelay;
+    }
+
     if (pool) {
       try {
         const dupCheck = await pool.query(
@@ -979,12 +1040,24 @@ app.post(
         }
 
         const insertRes = await pool.query(
-          "INSERT INTO products (id, name, unit) VALUES ($1, $2, $3) RETURNING id, name, unit, created_at",
-          [prodId, cleanName, unit]
+          `INSERT INTO products (id, name, unit, temp_min, temp_max, delay_minutes)
+           VALUES ($1, $2, $3, $4, $5, $6)
+           RETURNING id, name, unit, temp_min, temp_max, delay_minutes, created_at`,
+          [prodId, cleanName, unit, tempMin, tempMax, delayMinutes]
         );
+        const r = insertRes.rows[0];
+        const product = {
+          ...r,
+          temp_min: r.temp_min !== null ? Number(r.temp_min) : null,
+          temp_max: r.temp_max !== null ? Number(r.temp_max) : null,
+          delay_minutes: r.delay_minutes !== null ? Number(r.delay_minutes) : null,
+          tempMin: r.temp_min !== null ? Number(r.temp_min) : null,
+          tempMax: r.temp_max !== null ? Number(r.temp_max) : null,
+          delayMinutes: r.delay_minutes !== null ? Number(r.delay_minutes) : null,
+        };
         return res.status(201).json({
           message: "Thêm sản phẩm thành công.",
-          product: insertRes.rows[0],
+          product,
         });
       } catch (err) {
         if (err.code === "23505") {
@@ -1000,7 +1073,18 @@ app.post(
       return res.status(409).json({ message: "Sản phẩm với tên này đã tồn tại." });
     }
 
-    const newProd = { id: prodId, name: cleanName, unit, created_at: new Date().toISOString() };
+    const newProd = {
+      id: prodId,
+      name: cleanName,
+      unit,
+      tempMin,
+      tempMax,
+      delayMinutes,
+      temp_min: tempMin,
+      temp_max: tempMax,
+      delay_minutes: delayMinutes,
+      created_at: new Date().toISOString(),
+    };
     inMemoryProducts.push(newProd);
 
     return res.status(201).json({
@@ -1130,8 +1214,8 @@ app.post(
 
 
 /**
- * Chỉnh sửa sản phẩm (T-17, S-07)
- * Chỉ tài khoản Admin mới có quyền cập nhật tên hoặc đơn vị tính.
+ * Chỉnh sửa sản phẩm (T-17, S-07, S-44)
+ * Chỉ tài khoản Admin mới có quyền cập nhật thông tin sản phẩm và cấu hình nhiệt độ.
  */
 app.put(
   "/api/products/:id",
@@ -1140,14 +1224,64 @@ app.put(
     const { id } = req.params;
     const { name, unit } = req.body;
 
-    if (!name || !name.trim()) {
-      return res.status(400).json({ message: "Tên sản phẩm không được để trống." });
+    const rawMin = req.body.tempMin !== undefined ? req.body.tempMin : req.body.temp_min;
+    const rawMax = req.body.tempMax !== undefined ? req.body.tempMax : req.body.temp_max;
+    const rawDelay = req.body.delayMinutes !== undefined ? req.body.delayMinutes : req.body.delay_minutes;
+
+    const hasNameOrUnit = name !== undefined || unit !== undefined;
+    let cleanName = null;
+    let cleanUnit = null;
+
+    if (hasNameOrUnit) {
+      if (!name || typeof name !== "string" || !name.trim()) {
+        return res.status(400).json({ message: "Tên sản phẩm không được để trống." });
+      }
+      cleanName = name.trim();
+      const validUnits = ["kg", "tan", "thung"];
+      if (!unit || !validUnits.includes(unit)) {
+        return res.status(400).json({ message: "Đơn vị không hợp lệ. Chỉ chấp nhận: kg, tan, thung." });
+      }
+      cleanUnit = unit;
     }
 
-    const cleanName = name.trim();
-    const validUnits = ["kg", "tan", "thung"];
-    if (!unit || !validUnits.includes(unit)) {
-      return res.status(400).json({ message: "Đơn vị không hợp lệ. Chỉ chấp nhận: kg, tan, thung." });
+    let tempMin = undefined;
+    let tempMax = undefined;
+    let delayMinutes = undefined;
+
+    if (rawMin !== undefined) {
+      if (rawMin === null || rawMin === "") {
+        tempMin = null;
+      } else {
+        const parsedMin = Number(rawMin);
+        if (!Number.isFinite(parsedMin) || parsedMin < -999.99 || parsedMin > 999.99) {
+          return res.status(400).json({ error: "INVALID_TEMP_MIN", message: "Ngưỡng nhiệt độ dưới phải là số hữu hạn hợp lệ (-999.99 đến 999.99)." });
+        }
+        tempMin = parsedMin;
+      }
+    }
+
+    if (rawMax !== undefined) {
+      if (rawMax === null || rawMax === "") {
+        tempMax = null;
+      } else {
+        const parsedMax = Number(rawMax);
+        if (!Number.isFinite(parsedMax) || parsedMax < -999.99 || parsedMax > 999.99) {
+          return res.status(400).json({ error: "INVALID_TEMP_MAX", message: "Ngưỡng nhiệt độ trên phải là số hữu hạn hợp lệ (-999.99 đến 999.99)." });
+        }
+        tempMax = parsedMax;
+      }
+    }
+
+    if (rawDelay !== undefined) {
+      if (rawDelay === null || rawDelay === "") {
+        delayMinutes = null;
+      } else {
+        const parsedDelay = Number(rawDelay);
+        if (!Number.isInteger(parsedDelay) || parsedDelay < 0) {
+          return res.status(400).json({ error: "INVALID_DELAY_MINUTES", message: "Độ trễ cảnh báo phải là số nguyên không âm (phút)." });
+        }
+        delayMinutes = parsedDelay;
+      }
     }
 
     if (pool) {
@@ -1156,23 +1290,56 @@ app.put(
         if (!checkExist.row) {
           return res.status(404).json({ message: "Không tìm thấy sản phẩm." });
         }
+        const existing = checkExist.row;
 
-        const dupCheck = await pool.query(
-          "SELECT id FROM products WHERE LOWER(name) = LOWER($1) AND id != $2",
-          [cleanName, id]
-        );
-        if (dupCheck.rows.length > 0) {
-          return res.status(409).json({ message: "Sản phẩm với tên này đã tồn tại." });
+        if (cleanName) {
+          const dupCheck = await pool.query(
+            "SELECT id FROM products WHERE LOWER(name) = LOWER($1) AND id != $2",
+            [cleanName, id]
+          );
+          if (dupCheck.rows.length > 0) {
+            return res.status(409).json({ message: "Sản phẩm với tên này đã tồn tại." });
+          }
         }
 
+        const effectiveMin = tempMin !== undefined ? tempMin : (existing.temp_min !== null ? Number(existing.temp_min) : null);
+        const effectiveMax = tempMax !== undefined ? tempMax : (existing.temp_max !== null ? Number(existing.temp_max) : null);
+
+        if (effectiveMin !== null && effectiveMax !== null && effectiveMin >= effectiveMax) {
+          return res.status(400).json({
+            error: "INVALID_TEMPERATURE_RANGE",
+            message: "Ngưỡng nhiệt độ dưới phải nhỏ hơn ngưỡng nhiệt độ trên.",
+          });
+        }
+
+        const finalName = cleanName || existing.name;
+        const finalUnit = cleanUnit || existing.unit;
+        const finalMin = tempMin !== undefined ? tempMin : existing.temp_min;
+        const finalMax = tempMax !== undefined ? tempMax : existing.temp_max;
+        const finalDelay = delayMinutes !== undefined ? delayMinutes : existing.delay_minutes;
+
         const updateRes = await pool.query(
-          "UPDATE products SET name = $1, unit = $2 WHERE id = $3 RETURNING id, name, unit, created_at",
-          [cleanName, unit, id]
+          `UPDATE products
+           SET name = $1, unit = $2, temp_min = $3, temp_max = $4, delay_minutes = $5
+           WHERE id = $6
+           RETURNING id, name, unit, temp_min, temp_max, delay_minutes, created_at`,
+          [finalName, finalUnit, finalMin, finalMax, finalDelay, id]
         );
+
+        const r = updateRes.rows[0];
+        const product = {
+          ...r,
+          temp_min: r.temp_min !== null ? Number(r.temp_min) : null,
+          temp_max: r.temp_max !== null ? Number(r.temp_max) : null,
+          delay_minutes: r.delay_minutes !== null ? Number(r.delay_minutes) : null,
+          tempMin: r.temp_min !== null ? Number(r.temp_min) : null,
+          tempMax: r.temp_max !== null ? Number(r.temp_max) : null,
+          delayMinutes: r.delay_minutes !== null ? Number(r.delay_minutes) : null,
+        };
 
         return res.status(200).json({
           message: "Cập nhật sản phẩm thành công.",
-          product: updateRes.rows[0],
+          product,
         });
       } catch (err) {
         if (err.code === "23505") {
@@ -1188,18 +1355,146 @@ app.put(
       return res.status(404).json({ message: "Không tìm thấy sản phẩm." });
     }
 
-    const dup = inMemoryProducts.find(
-      (p) => p.id !== id && p.name.toLowerCase() === cleanName.toLowerCase()
-    );
-    if (dup) {
-      return res.status(409).json({ message: "Sản phẩm với tên này đã tồn tại." });
+    if (cleanName) {
+      const dup = inMemoryProducts.find(
+        (p) => p.id !== id && p.name.toLowerCase() === cleanName.toLowerCase()
+      );
+      if (dup) {
+        return res.status(409).json({ message: "Sản phẩm với tên này đã tồn tại." });
+      }
+      prod.name = cleanName;
     }
 
-    prod.name = cleanName;
-    prod.unit = unit;
+    if (cleanUnit) {
+      prod.unit = cleanUnit;
+    }
+
+    const effectiveMin = tempMin !== undefined ? tempMin : (prod.tempMin ?? prod.temp_min ?? null);
+    const effectiveMax = tempMax !== undefined ? tempMax : (prod.tempMax ?? prod.temp_max ?? null);
+    if (effectiveMin !== null && effectiveMax !== null && effectiveMin >= effectiveMax) {
+      return res.status(400).json({
+        error: "INVALID_TEMPERATURE_RANGE",
+        message: "Ngưỡng nhiệt độ dưới phải nhỏ hơn ngưỡng nhiệt độ trên.",
+      });
+    }
+
+    if (tempMin !== undefined) {
+      prod.tempMin = tempMin;
+      prod.temp_min = tempMin;
+    }
+    if (tempMax !== undefined) {
+      prod.tempMax = tempMax;
+      prod.temp_max = tempMax;
+    }
+    if (delayMinutes !== undefined) {
+      prod.delayMinutes = delayMinutes;
+      prod.delay_minutes = delayMinutes;
+    }
 
     return res.status(200).json({
       message: "Cập nhật sản phẩm thành công.",
+      product: prod,
+    });
+  }
+);
+
+/**
+ * Cập nhật cấu hình ngưỡng nhiệt độ và độ trễ theo sản phẩm (Story S-44 / N2-219)
+ */
+app.put(
+  ["/api/products/:id/temperature-config", "/api/products/:id/thresholds"],
+  requirePermission(["admin"]),
+  async (req, res) => {
+    const { id } = req.params;
+    const rawMin = req.body.tempMin !== undefined ? req.body.tempMin : req.body.temp_min;
+    const rawMax = req.body.tempMax !== undefined ? req.body.tempMax : req.body.temp_max;
+    const rawDelay = req.body.delayMinutes !== undefined ? req.body.delayMinutes : req.body.delay_minutes;
+
+    let tempMin = null;
+    let tempMax = null;
+    let delayMinutes = null;
+
+    if (rawMin !== undefined && rawMin !== null && rawMin !== "") {
+      const parsedMin = Number(rawMin);
+      if (!Number.isFinite(parsedMin) || parsedMin < -999.99 || parsedMin > 999.99) {
+        return res.status(400).json({ error: "INVALID_TEMP_MIN", message: "Ngưỡng nhiệt độ dưới phải là số hữu hạn hợp lệ (-999.99 đến 999.99)." });
+      }
+      tempMin = parsedMin;
+    }
+
+    if (rawMax !== undefined && rawMax !== null && rawMax !== "") {
+      const parsedMax = Number(rawMax);
+      if (!Number.isFinite(parsedMax) || parsedMax < -999.99 || parsedMax > 999.99) {
+        return res.status(400).json({ error: "INVALID_TEMP_MAX", message: "Ngưỡng nhiệt độ trên phải là số hữu hạn hợp lệ (-999.99 đến 999.99)." });
+      }
+      tempMax = parsedMax;
+    }
+
+    if (tempMin !== null && tempMax !== null && tempMin >= tempMax) {
+      return res.status(400).json({
+        error: "INVALID_TEMPERATURE_RANGE",
+        message: "Ngưỡng nhiệt độ dưới phải nhỏ hơn ngưỡng nhiệt độ trên.",
+      });
+    }
+
+    if (rawDelay !== undefined && rawDelay !== null && rawDelay !== "") {
+      const parsedDelay = Number(rawDelay);
+      if (!Number.isInteger(parsedDelay) || parsedDelay < 0) {
+        return res.status(400).json({ error: "INVALID_DELAY_MINUTES", message: "Độ trễ cảnh báo phải là số nguyên không âm (phút)." });
+      }
+      delayMinutes = parsedDelay;
+    }
+
+    if (pool) {
+      try {
+        const checkExist = await scopedQueryById(pool, req.auth, "products", id);
+        if (!checkExist.row) {
+          return res.status(404).json({ message: "Không tìm thấy sản phẩm." });
+        }
+
+        const updateRes = await pool.query(
+          `UPDATE products
+           SET temp_min = $1, temp_max = $2, delay_minutes = $3
+           WHERE id = $4
+           RETURNING id, name, unit, temp_min, temp_max, delay_minutes, created_at`,
+          [tempMin, tempMax, delayMinutes, id]
+        );
+
+        const r = updateRes.rows[0];
+        const product = {
+          ...r,
+          temp_min: r.temp_min !== null ? Number(r.temp_min) : null,
+          temp_max: r.temp_max !== null ? Number(r.temp_max) : null,
+          delay_minutes: r.delay_minutes !== null ? Number(r.delay_minutes) : null,
+          tempMin: r.temp_min !== null ? Number(r.temp_min) : null,
+          tempMax: r.temp_max !== null ? Number(r.temp_max) : null,
+          delayMinutes: r.delay_minutes !== null ? Number(r.delay_minutes) : null,
+        };
+
+        return res.status(200).json({
+          message: "Cập nhật cấu hình nhiệt độ sản phẩm thành công.",
+          product,
+        });
+      } catch (err) {
+        return res.status(500).json({ message: err.message });
+      }
+    }
+
+    // In-memory fallback
+    const prod = inMemoryProducts.find((p) => p.id === id);
+    if (!prod) {
+      return res.status(404).json({ message: "Không tìm thấy sản phẩm." });
+    }
+
+    prod.tempMin = tempMin;
+    prod.temp_min = tempMin;
+    prod.tempMax = tempMax;
+    prod.temp_max = tempMax;
+    prod.delayMinutes = delayMinutes;
+    prod.delay_minutes = delayMinutes;
+
+    return res.status(200).json({
+      message: "Cập nhật cấu hình nhiệt độ sản phẩm thành công.",
       product: prod,
     });
   }
@@ -7875,6 +8170,7 @@ app.post(
         data: req.body,
         inMemoryLots,
         inMemoryOrgs,
+        inMemoryProducts,
         ipAddress: req.ip,
         userAgent: req.get("User-Agent"),
       });

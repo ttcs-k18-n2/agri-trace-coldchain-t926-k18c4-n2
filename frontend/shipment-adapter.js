@@ -233,7 +233,15 @@
       containerId: coldBox,
       coldBoxId: coldBox,
       containerName: (raw.container && raw.container.name) || raw.containerName || coldBox || "Thùng lạnh tiêu chuẩn",
-      containerTempRange: raw.containerTempRange || (raw.container ? `${raw.container.tempMin}°C - ${raw.container.tempMax}°C` : "2°C - 8°C"),
+      containerTempRange: (raw.appliedTempMin != null && raw.appliedTempMax != null)
+        ? `${raw.appliedTempMin}°C - ${raw.appliedTempMax}°C`
+        : (raw.applied_temp_min != null && raw.applied_temp_max != null)
+          ? `${raw.applied_temp_min}°C - ${raw.applied_temp_max}°C`
+          : (raw.containerTempRange || (raw.container ? `${raw.container.tempMin}°C - ${raw.container.tempMax}°C` : "2°C - 8°C")),
+      appliedTempMin: raw.appliedTempMin !== undefined ? raw.appliedTempMin : (raw.applied_temp_min !== undefined ? raw.applied_temp_min : null),
+      appliedTempMax: raw.appliedTempMax !== undefined ? raw.appliedTempMax : (raw.applied_temp_max !== undefined ? raw.applied_temp_max : null),
+      appliedDelayMinutes: raw.appliedDelayMinutes !== undefined ? raw.appliedDelayMinutes : (raw.applied_delay_minutes !== undefined ? raw.applied_delay_minutes : null),
+      temperatureConfig: raw.temperatureConfig || raw.temperature_config || null,
       currentTemp: currentTemperature,
       currentTemperature: currentTemperature,
       current_temperature: currentTemperature,
