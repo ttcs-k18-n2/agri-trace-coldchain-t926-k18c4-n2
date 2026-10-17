@@ -1,0 +1,747 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AGRI TRACEABILITY - Giám sát chuỗi lạnh & Vi phạm ngưỡng (S-43)</title>
+  <link rel="stylesheet" href="/styles.css?v=20261017">
+
+  <style>
+    .coldchain-container {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 32px 20px 80px 20px;
+    }
+
+    .page-header {
+      margin-bottom: 24px;
+    }
+
+    .page-title {
+      font-size: 26px;
+      font-weight: 700;
+      color: var(--color-text-main);
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 6px;
+    }
+
+    .page-subtitle {
+      font-size: 14px;
+      color: var(--color-text-muted);
+      line-height: 1.5;
+    }
+
+    /* KPI Metrics Cards */
+    .metrics-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+
+    .metric-card {
+      background: var(--liquid-glass-bg);
+      backdrop-filter: var(--liquid-glass-blur);
+      -webkit-backdrop-filter: var(--liquid-glass-blur);
+      border: var(--liquid-glass-border);
+      border-radius: var(--radius-lg);
+      padding: 18px;
+      box-shadow: var(--liquid-glass-shadow);
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .metric-card::before {
+      content: "";
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 4px;
+      height: 100%;
+      background: var(--color-primary);
+    }
+
+    .metric-card.warn::before { background: #f59e0b; }
+    .metric-card.danger::before { background: #ef4444; }
+    .metric-card.info::before { background: #3b82f6; }
+
+    .metric-label {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--color-text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    .metric-value {
+      font-size: 24px;
+      font-weight: 800;
+      color: var(--color-text-main);
+    }
+
+    .metric-desc {
+      font-size: 12px;
+      color: var(--color-text-muted);
+    }
+
+    /* Main Dashboard Cards */
+    .dashboard-card {
+      background: var(--liquid-glass-bg);
+      backdrop-filter: var(--liquid-glass-blur);
+      -webkit-backdrop-filter: var(--liquid-glass-blur);
+      border: var(--liquid-glass-border);
+      border-radius: var(--radius-xl);
+      padding: 24px;
+      margin-bottom: 24px;
+      box-shadow: var(--liquid-glass-shadow);
+    }
+
+    .card-title {
+      font-size: 17px;
+      font-weight: 700;
+      color: var(--color-text-main);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 16px;
+    }
+
+    /* Scenario selector tabs */
+    .scenario-tabs {
+      display: flex;
+      gap: 8px;
+      overflow-x: auto;
+      padding-bottom: 8px;
+      margin-bottom: 16px;
+    }
+
+    .scenario-btn {
+      padding: 8px 14px;
+      border: 1px solid var(--color-border);
+      background: rgba(255, 255, 255, 0.6);
+      border-radius: var(--radius-md);
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      color: var(--color-text-main);
+      white-space: nowrap;
+      transition: all 0.2s ease;
+    }
+
+    .scenario-btn:hover {
+      background: rgba(36, 138, 61, 0.08);
+      border-color: var(--color-primary);
+    }
+
+    .scenario-btn.active {
+      background: var(--color-primary);
+      color: #fff;
+      border-color: var(--color-primary);
+    }
+
+    /* Chart Canvas Container */
+    .chart-container {
+      background: #ffffff;
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-md);
+      padding: 16px;
+      margin-bottom: 16px;
+      position: relative;
+    }
+
+    .chart-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 12px;
+      font-size: 13px;
+      font-weight: 600;
+    }
+
+    .chart-legend {
+      display: flex;
+      gap: 16px;
+      font-size: 12px;
+    }
+
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .legend-color {
+      width: 12px;
+      height: 12px;
+      border-radius: 2px;
+    }
+
+    /* SVG Chart */
+    .svg-chart {
+      width: 100%;
+      height: 240px;
+    }
+
+    /* Control bar */
+    .control-bar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+      margin-bottom: 16px;
+    }
+
+    .btn-action {
+      padding: 9px 16px;
+      font-size: 13px;
+      font-weight: 600;
+      border-radius: var(--radius-md);
+      border: none;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      transition: all 0.2s ease;
+    }
+
+    .btn-primary {
+      background: var(--color-primary);
+      color: #fff;
+    }
+    .btn-primary:hover {
+      filter: brightness(0.92);
+    }
+
+    .btn-secondary {
+      background: #f1f5f9;
+      color: #334155;
+      border: 1px solid #cbd5e1;
+    }
+    .btn-secondary:hover {
+      background: #e2e8f0;
+    }
+
+    /* Table */
+    .data-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+
+    .data-table th {
+      text-align: left;
+      padding: 10px 12px;
+      background: rgba(0, 0, 0, 0.03);
+      border-bottom: 1px solid var(--color-border);
+      color: var(--color-text-muted);
+      font-size: 11.5px;
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+
+    .data-table td {
+      padding: 12px;
+      border-bottom: 1px solid var(--color-border-subtle);
+      color: var(--color-text-main);
+    }
+
+    .badge-pill {
+      display: inline-block;
+      padding: 3px 8px;
+      border-radius: 9999px;
+      font-size: 11px;
+      font-weight: 700;
+    }
+
+    .badge-violation {
+      background: #fee2e2;
+      color: #b91c1c;
+      border: 1px solid #fca5a5;
+    }
+
+    .badge-safe {
+      background: #dcfce7;
+      color: #15803d;
+      border: 1px solid #86efac;
+    }
+
+    .badge-warning {
+      background: #fef3c7;
+      color: #b45309;
+      border: 1px solid #fde68a;
+    }
+
+    /* Streaming Status Card */
+    .streaming-status-bar {
+      padding: 12px 16px;
+      border-radius: var(--radius-md);
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      font-size: 13px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 16px;
+    }
+
+    .pulse-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: #22c55e;
+      display: inline-block;
+      box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.7);
+      animation: pulse 1.6s infinite;
+    }
+
+    @keyframes pulse {
+      0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.7); }
+      70% { transform: scale(1); box-shadow: 0 0 0 8px rgba(34, 197, 94, 0); }
+      100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(34, 197, 94, 0); }
+    }
+  </style>
+</head>
+<body>
+  <!-- Header / App Shell -->
+  <header class="app-header">
+    <div class="header-container">
+      <a href="/" class="brand-logo">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
+        </svg>
+        <span>AgriTrace</span>
+      </a>
+
+      <nav class="nav-links">
+        <a href="/lots.html" class="nav-item" id="navLots">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"></rect><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"></path></svg>
+          <span>Lô nông sản</span>
+        </a>
+        <a href="/farms.html" class="nav-item" id="navFarms">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+          <span>Thửa đất</span>
+        </a>
+        <a href="/products.html" class="nav-item" id="navProducts">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
+          <span>Sản phẩm</span>
+        </a>
+        <a href="/cold-chain-monitoring.html" class="nav-item active" id="navColdChain" aria-current="page">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 14.76V3.5a2.5 2.5 0 0 0-5 0v11.26a4.5 4.5 0 1 0 5 0z"/></svg>
+          <span>Chuỗi lạnh S-43</span>
+        </a>
+        <a href="/integrity.html" class="nav-item" id="navIntegrity">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg>
+          <span>Toàn vẹn</span>
+        </a>
+        <a href="/audit-logs.html" class="nav-item" id="navAuditLogs">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+          <span>Nhật ký</span>
+        </a>
+        <a href="/public-trace.html" class="nav-item" id="navPublicTrace">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"></polygon><line x1="8" y1="2" x2="8" y2="18"></line><line x1="16" y1="6" x2="16" y2="22"></line></svg>
+          <span>Bản đồ</span>
+        </a>
+      </nav>
+
+      <div class="user-controls">
+        <div class="user-pill" id="userPill">
+          <div class="user-avatar" id="userAvatar"><span class="skeleton-shimmer skeleton-avatar"></span></div>
+          <div class="user-meta">
+            <span class="user-email" id="userEmail"><span class="skeleton-shimmer skeleton-text"></span></span>
+            <div class="user-badges">
+              <span class="badge-org" id="userOrg"><span class="skeleton-shimmer skeleton-badge"></span></span>
+              <span class="badge-role" id="userRole"><span class="skeleton-shimmer skeleton-badge"></span></span>
+            </div>
+          </div>
+        </div>
+        <button id="logout" class="btn-logout" title="Đăng xuất">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+            <polyline points="16 17 21 12 16 7"></polyline>
+            <line x1="21" y1="12" x2="9" y2="12"></line>
+          </svg>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Container -->
+  <main class="coldchain-container">
+    <div class="page-header">
+      <h1 class="page-title">
+        <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="var(--color-primary)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M14 14.76V3.5a2.5 2.5 0 0 0-5 0v11.26a4.5 4.5 0 1 0 5 0z"/>
+        </svg>
+        Giám sát chuỗi lạnh & Phát hiện vi phạm ngưỡng (S-43)
+      </h1>
+      <p class="page-subtitle">
+        Tự động phát hiện vi phạm nhiệt độ kéo dài trên 30 phút, gộp các lần vượt cách nhau dưới 5 phút, loại bỏ cảnh báo giả khi mở cửa xe ngắn (Chức năng dành riêng cho Cán bộ kiểm tra và Quản lý chuỗi lạnh).
+      </p>
+    </div>
+
+    <!-- KPI Metric Cards -->
+    <div class="metrics-grid">
+      <div class="metric-card">
+        <div class="metric-label">Ngưỡng nhiệt độ an toàn</div>
+        <div class="metric-value">≤ 8.0 °C</div>
+        <div class="metric-desc">Tiêu chuẩn chuỗi lạnh rau củ quả & thực phẩm</div>
+      </div>
+      <div class="metric-card warn">
+        <div class="metric-label">Độ trễ xác nhận vi phạm</div>
+        <div class="metric-value">> 30 phút</div>
+        <div class="metric-desc">Vượt ngắn ≤ 30 phút tự động bỏ qua (không vi phạm)</div>
+      </div>
+      <div class="metric-card info">
+        <div class="metric-label">Quy tắc gộp vi phạm</div>
+        <div class="metric-value">< 5 phút</div>
+        <div class="metric-desc">Cách nhau < 5 phút gộp làm 1; ≥ 5 phút tính là 2</div>
+      </div>
+      <div class="metric-card danger">
+        <div class="metric-label">Vi phạm đã phát hiện</div>
+        <div class="metric-value" id="kpiViolationsCount">0</div>
+        <div class="metric-desc" id="kpiViolationsSub">Đang phân tích kịch bản</div>
+      </div>
+    </div>
+
+    <!-- Scenario Simulator Panel -->
+    <div class="dashboard-card">
+      <div class="card-title">
+        <span>Đối chiếu 5 kịch bản chuẩn mẫu S-42</span>
+        <button class="btn-action btn-primary" id="btnVerifyAll">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"></polyline></svg>
+          Chạy đối chiếu cả 5 kịch bản (Verify All)
+        </button>
+      </div>
+
+      <div class="scenario-tabs" id="scenarioTabs">
+        <button class="scenario-btn active" data-scenario="scenario1">KB 1: Mở cửa ngắn (0 VP)</button>
+        <button class="scenario-btn" data-scenario="scenario2">KB 2: Hỏng lạnh liên tục (1 VP)</button>
+        <button class="scenario-btn" data-scenario="scenario3">KB 3: Gộp khoảng cách < 5p (1 VP)</button>
+        <button class="scenario-btn" data-scenario="scenario4">KB 4: Cách xa ≥ 5p (2 VP)</button>
+        <button class="scenario-btn" data-scenario="scenario5">KB 5: Một ngắn một dài (1 VP)</button>
+      </div>
+
+      <div class="streaming-status-bar">
+        <div style="display:flex; align-items:center; gap:10px;">
+          <span class="pulse-dot"></span>
+          <span id="streamingStatusText">Đang hiển thị kịch bản 1: Mở cửa xe ngắn (12 phút, không vi phạm)</span>
+        </div>
+        <div style="font-weight:700; color:var(--color-primary);" id="scenarioExpectationBadge">
+          Kỳ vọng: 0 vi phạm | Thực tế: 0 vi phạm (ĐẠT)
+        </div>
+      </div>
+
+      <!-- Chart View -->
+      <div class="chart-container">
+        <div class="chart-header">
+          <span id="chartTitle">Biểu đồ diễn biến nhiệt độ (°C) theo thời gian</span>
+          <div class="chart-legend">
+            <div class="legend-item"><div class="legend-color" style="background:#22c55e;"></div> An toàn (≤ 8°C)</div>
+            <div class="legend-item"><div class="legend-color" style="background:#f59e0b;"></div> Vượt ngắn (Bỏ qua)</div>
+            <div class="legend-item"><div class="legend-color" style="background:#ef4444;"></div> Vi phạm (> 30 phút)</div>
+            <div class="legend-item"><div class="legend-color" style="background:#dc2626; height:2px; width:16px;"></div> Ngưỡng 8°C</div>
+          </div>
+        </div>
+        <svg class="svg-chart" id="tempSvgChart" viewBox="0 0 800 240"></svg>
+      </div>
+
+      <!-- Action Buttons -->
+      <div class="control-bar">
+        <button class="btn-action btn-secondary" id="btnSimulateStream">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+          Mô phỏng truyền luồng từng điểm (Streaming)
+        </button>
+        <button class="btn-action btn-secondary" id="btnResetSimulation">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path></svg>
+          Đặt lại
+        </button>
+      </div>
+
+      <!-- Violations Result Table -->
+      <div style="margin-top: 20px;">
+        <h3 style="font-size:15px; font-weight:700; margin-bottom:10px; color:var(--color-text-main);">
+          Bảng chi tiết vi phạm được phát hiện
+        </h3>
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Mã vi phạm</th>
+              <th>Thời điểm bắt đầu</th>
+              <th>Thời điểm kết thúc</th>
+              <th>Nhiệt độ đỉnh</th>
+              <th>Thời lượng</th>
+              <th>Số đợt gộp</th>
+              <th>Trạng thái</th>
+            </tr>
+          </thead>
+          <tbody id="violationsTableBody">
+            <tr>
+              <td colspan="7" style="text-align:center; color:var(--color-text-muted); padding:24px;">
+                Không có vi phạm nào được ghi nhận cho kịch bản này (An toàn).
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </main>
+
+  <script src="/app-shell.js?v=20261017"></script>
+  <script>
+    // Dữ liệu 5 kịch bản mẫu S-42 phía client để render tức thì
+    const S42_CLIENT_SCENARIOS = {
+      scenario1: {
+        name: "Kịch bản 1: Mở cửa xe ngắn (Bốc xếp nhanh - Không vi phạm)",
+        desc: "Xe mở cửa bốc xếp trong 12 phút, nhiệt độ lên 10.5°C rồi hạ về 3.8°C. Không quá 30 phút.",
+        expected: 0,
+        readings: [
+          { minute: 0, temp: 4.0 }, { minute: 5, temp: 4.2 }, { minute: 10, temp: 9.2 },
+          { minute: 15, temp: 10.5 }, { minute: 22, temp: 8.5 }, { minute: 23, temp: 6.0 },
+          { minute: 30, temp: 4.0 }, { minute: 40, temp: 3.8 }
+        ]
+      },
+      scenario2: {
+        name: "Kịch bản 2: Sự cố hỏng máy lạnh liên tục (1 vi phạm đơn lẻ)",
+        desc: "Hỏng máy lạnh, nhiệt độ vượt 8°C duy trì liên tục suốt 45 phút, đạt đỉnh 14.5°C.",
+        expected: 1,
+        expectedPeak: 14.5,
+        expectedDuration: 45,
+        readings: [
+          { minute: 0, temp: 4.0 }, { minute: 5, temp: 4.5 }, { minute: 10, temp: 9.0 },
+          { minute: 20, temp: 12.0 }, { minute: 30, temp: 14.5 }, { minute: 40, temp: 13.0 },
+          { minute: 50, temp: 10.0 }, { minute: 55, temp: 8.5 }, { minute: 56, temp: 6.5 },
+          { minute: 65, temp: 4.0 }
+        ]
+      },
+      scenario3: {
+        name: "Kịch bản 3: Hai lần vượt cách nhau dưới 5 phút (Gộp thành 1 vi phạm)",
+        desc: "Lần 1 vượt 20 phút (đỉnh 10.2°C). Nghỉ 3 phút (< 5 phút) ở 7.5°C. Lần 2 vượt 22 phút (đỉnh 11.8°C). Gộp thành 1 đợt 45 phút > 30 phút.",
+        expected: 1,
+        expectedPeak: 11.8,
+        expectedDuration: 45,
+        readings: [
+          { minute: 0, temp: 4.0 }, { minute: 10, temp: 9.0 }, { minute: 20, temp: 10.2 },
+          { minute: 30, temp: 8.8 }, { minute: 31, temp: 7.5 }, { minute: 32, temp: 7.4 },
+          { minute: 34, temp: 9.5 }, { minute: 45, temp: 11.8 }, { minute: 55, temp: 8.9 },
+          { minute: 56, temp: 5.0 }, { minute: 65, temp: 4.0 }
+        ]
+      },
+      scenario4: {
+        name: "Kịch bản 4: Hai lần vượt cách xa nhau ≥ 5 phút (Không gộp - 2 vi phạm)",
+        desc: "Lần 1 vượt 40 phút (đỉnh 13.0°C). Nghỉ 25 phút (≥ 5 phút). Lần 2 vượt 35 phút (đỉnh 12.2°C). Cả hai đều > 30 phút -> 2 vi phạm.",
+        expected: 2,
+        readings: [
+          { minute: 0, temp: 4.0 }, { minute: 10, temp: 9.0 }, { minute: 25, temp: 13.0 },
+          { minute: 50, temp: 8.8 }, { minute: 51, temp: 4.5 }, { minute: 60, temp: 4.0 },
+          { minute: 74, temp: 4.2 }, { minute: 75, temp: 9.5 }, { minute: 90, temp: 12.2 },
+          { minute: 110, temp: 8.5 }, { minute: 111, temp: 4.0 }, { minute: 120, temp: 3.8 }
+        ]
+      },
+      scenario5: {
+        name: "Kịch bản 5: Hai lần cách xa nhau, một lần ngắn ≤ 30 phút, một lần dài > 30 phút",
+        desc: "Lần 1 ngắn 15 phút (đỉnh 9.5°C). Nghỉ 20 phút (≥ 5 phút). Lần 2 dài 50 phút (đỉnh 15.0°C). Lần 1 bỏ qua, chỉ tính lần 2 -> 1 vi phạm.",
+        expected: 1,
+        expectedPeak: 15.0,
+        expectedDuration: 50,
+        readings: [
+          { minute: 0, temp: 4.0 }, { minute: 10, temp: 8.8 }, { minute: 18, temp: 9.5 },
+          { minute: 25, temp: 8.6 }, { minute: 26, temp: 4.0 }, { minute: 44, temp: 4.2 },
+          { minute: 45, temp: 9.2 }, { minute: 70, temp: 15.0 }, { minute: 95, temp: 8.7 },
+          { minute: 96, temp: 4.5 }, { minute: 105, temp: 4.0 }
+        ]
+      }
+    };
+
+    let currentScenarioKey = "scenario1";
+    let streamingInterval = null;
+
+    function renderScenario(key) {
+      currentScenarioKey = key;
+      const sc = S42_CLIENT_SCENARIOS[key];
+      if (!sc) return;
+
+      document.querySelectorAll(".scenario-btn").forEach(b => {
+        b.classList.toggle("active", b.getAttribute("data-scenario") === key);
+      });
+
+      document.getElementById("streamingStatusText").textContent = sc.name;
+
+      // Đánh giá kịch bản qua thuật toán
+      evaluateAndRenderChart(sc);
+    }
+
+    async function evaluateAndRenderChart(sc) {
+      const baseTime = new Date("2026-10-17T08:00:00.000Z").getTime();
+      const payloadReadings = sc.readings.map(r => ({
+        recordedAt: new Date(baseTime + r.minute * 60 * 1000).toISOString(),
+        temperature: r.temp,
+        minute: r.minute
+      }));
+
+      try {
+        const res = await fetch("/api/cold-chain/evaluate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            threshold: 8.0,
+            minDurationMinutes: 30,
+            mergeGapMinutes: 5,
+            readings: payloadReadings
+          })
+        });
+
+        const data = await res.json();
+        const violations = data.violations || [];
+
+        // Cập nhật KPI & Badge
+        document.getElementById("kpiViolationsCount").textContent = violations.length;
+        document.getElementById("kpiViolationsSub").textContent = `Kỳ vọng: ${sc.expected} | Thực tế: ${violations.length}`;
+
+        const isMatch = violations.length === sc.expected;
+        const badge = document.getElementById("scenarioExpectationBadge");
+        badge.textContent = `Kỳ vọng: ${sc.expected} vi phạm | Thực tế: ${violations.length} vi phạm (${isMatch ? "ĐẠT CHUẨN 100%" : "CHƯA KHỚP"})`;
+        badge.style.color = isMatch ? "var(--color-primary)" : "#dc2626";
+
+        renderSvgChart(sc.readings, violations);
+        renderViolationsTable(violations);
+      } catch (err) {
+        console.error("Lỗi evaluate:", err);
+      }
+    }
+
+    function renderSvgChart(points, violations) {
+      const svg = document.getElementById("tempSvgChart");
+      const width = 800;
+      const height = 240;
+      const padL = 45;
+      const padR = 25;
+      const padT = 20;
+      const padB = 35;
+
+      const maxMin = Math.max(...points.map(p => p.minute), 60);
+      const minTemp = 0;
+      const maxTemp = 20;
+
+      const scaleX = (m) => padL + (m / maxMin) * (width - padL - padR);
+      const scaleY = (t) => height - padB - ((t - minTemp) / (maxTemp - minTemp)) * (height - padT - padB);
+
+      let svgHtml = "";
+
+      // 1. Grid lines
+      for (let t = 0; t <= 20; t += 5) {
+        const y = scaleY(t);
+        svgHtml += `<line x1="${padL}" y1="${y}" x2="${width - padR}" y2="${y}" stroke="#e2e8f0" stroke-width="1" />`;
+        svgHtml += `<text x="${padL - 8}" y="${y + 4}" font-size="11" fill="#64748b" text-anchor="end">${t}°C</text>`;
+      }
+
+      // 2. Ngưỡng 8°C (Threshold line)
+      const threshY = scaleY(8.0);
+      svgHtml += `<line x1="${padL}" y1="${threshY}" x2="${width - padR}" y2="${threshY}" stroke="#dc2626" stroke-width="2" stroke-dasharray="4 4" />`;
+      svgHtml += `<text x="${width - padR - 5}" y="${threshY - 6}" font-size="11" font-weight="700" fill="#dc2626" text-anchor="end">Ngưỡng an toàn 8.0°C</text>`;
+
+      // 3. Shaded zones cho vi phạm
+      const baseMs = new Date("2026-10-17T08:00:00.000Z").getTime();
+      for (const v of violations) {
+        const startMin = (new Date(v.startTime).getTime() - baseMs) / (60 * 1000);
+        const endMin = (new Date(v.endTime).getTime() - baseMs) / (60 * 1000);
+        const x1 = scaleX(startMin);
+        const x2 = scaleX(endMin);
+        svgHtml += `<rect x="${x1}" y="${padT}" width="${Math.max(x2 - x1, 4)}" height="${height - padT - padB}" fill="rgba(239, 68, 68, 0.18)" rx="4" />`;
+        svgHtml += `<text x="${(x1 + x2) / 2}" y="${padT + 15}" font-size="11" font-weight="700" fill="#b91c1c" text-anchor="middle">Vi phạm (${v.durationMinutes}p / ${v.peakTemperature}°C)</text>`;
+      }
+
+      // 4. Polyline nhiệt độ
+      const polyPoints = points.map(p => `${scaleX(p.minute)},${scaleY(p.temp)}`).join(" ");
+      svgHtml += `<polyline points="${polyPoints}" fill="none" stroke="#2563eb" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" />`;
+
+      // 5. Data Points
+      points.forEach(p => {
+        const cx = scaleX(p.minute);
+        const cy = scaleY(p.temp);
+        const isOver = p.temp > 8.0;
+        const color = isOver ? "#ef4444" : "#22c55e";
+        svgHtml += `<circle cx="${cx}" cy="${cy}" r="4.5" fill="${color}" stroke="#ffffff" stroke-width="1.5" />`;
+        svgHtml += `<text x="${cx}" y="${cy - 7}" font-size="10" font-weight="600" fill="${color}" text-anchor="middle">${p.temp}°</text>`;
+      });
+
+      // 6. Trục thời gian X
+      for (let m = 0; m <= maxMin; m += 20) {
+        const x = scaleX(m);
+        svgHtml += `<text x="${x}" y="${height - 12}" font-size="11" fill="#64748b" text-anchor="middle">${m}p</text>`;
+      }
+
+      svg.innerHTML = svgHtml;
+    }
+
+    function renderViolationsTable(violations) {
+      const tbody = document.getElementById("violationsTableBody");
+      if (!violations || violations.length === 0) {
+        tbody.innerHTML = `
+          <tr>
+            <td colspan="7" style="text-align:center; color:var(--color-primary); padding:24px; font-weight:600;">
+              ✔ Không phát hiện vi phạm kéo dài (Mọi lần tăng nhiệt đều ≤ 30 phút hoặc trong ngưỡng an toàn).
+            </td>
+          </tr>
+        `;
+        return;
+      }
+
+      tbody.innerHTML = violations.map(v => `
+        <tr>
+          <td><span style="font-family:monospace; font-weight:700;">${v.id}</span></td>
+          <td>${new Date(v.startTime).toLocaleTimeString("vi-VN")}</td>
+          <td>${new Date(v.endTime).toLocaleTimeString("vi-VN")}</td>
+          <td><span class="badge-pill badge-violation">${v.peakTemperature} °C</span></td>
+          <td><strong>${v.durationMinutes} phút</strong></td>
+          <td><span class="badge-pill badge-warning">${v.excursionsCount || 1} đợt gộp</span></td>
+          <td><span class="badge-pill badge-violation">VI PHẠM XÁC NHẬN</span></td>
+        </tr>
+      `).join("");
+    }
+
+    // Đăng ký sự kiện
+    document.getElementById("scenarioTabs").addEventListener("click", (e) => {
+      const btn = e.target.closest(".scenario-btn");
+      if (btn) {
+        const key = btn.getAttribute("data-scenario");
+        renderScenario(key);
+      }
+    });
+
+    document.getElementById("btnVerifyAll").addEventListener("click", async () => {
+      try {
+        const res = await fetch("/api/cold-chain/scenarios/verify", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({})
+        });
+        const data = await res.json();
+        if (data.allPassed) {
+          alert("🎉 XÁC NHẬN HOÀN TOÀN: Toàn bộ 5/5 kịch bản mẫu S-42 đều đạt tiêu chuẩn chấp nhận 100%!");
+        } else {
+          alert("Một số kịch bản chưa đạt yêu cầu. Kiểm tra log.");
+        }
+      } catch (err) {
+        alert("Lỗi khi kiểm chứng: " + err.message);
+      }
+    });
+
+    document.getElementById("btnSimulateStream").addEventListener("click", () => {
+      alert("Đang khởi chạy luồng đo streaming cho " + S42_CLIENT_SCENARIOS[currentScenarioKey].name);
+      evaluateAndRenderChart(S42_CLIENT_SCENARIOS[currentScenarioKey]);
+    });
+
+    document.getElementById("btnResetSimulation").addEventListener("click", () => {
+      renderScenario("scenario1");
+    });
+
+    // Khởi tạo
+    renderScenario("scenario1");
+  </script>
+</body>
+</html>

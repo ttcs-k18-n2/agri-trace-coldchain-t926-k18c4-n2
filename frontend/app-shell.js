@@ -28,6 +28,7 @@
     navAuditLogs: ["inspector", "admin"],
     navAudit: ["inspector", "admin"],
     navPublicTrace: ["producer", "cooperative", "transporter", "distributor", "inspector", "org_admin", "admin", "warehouse", "processing", "retailer"],
+    navColdChain: ["producer", "cooperative", "transporter", "distributor", "inspector", "org_admin", "admin", "warehouse", "processing", "retailer"],
   };
 
   function hasPermission(roleId, action) {

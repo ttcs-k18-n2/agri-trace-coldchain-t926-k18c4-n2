@@ -132,9 +132,49 @@ test("S-60: Migration 023 creates public_map_areas table and index with rollback
   );
 });
 
+test("S-43: Migration 025 creates temperature_readings and temperature_violations with rollback", () => {
+  const fs = require("node:fs");
+  const path = require("node:path");
+
+  const upPath = path.resolve(__dirname, "../../db/migrations/025_cold_chain_threshold_monitoring.sql");
+  const downPath = path.resolve(__dirname, "../../db/migrations/down/025_cold_chain_threshold_monitoring.down.sql");
+
+  assert.ok(fs.existsSync(upPath), "Migration 025 UP file must exist");
+  assert.ok(fs.existsSync(downPath), "Migration 025 DOWN file must exist");
+
+  const upSql = fs.readFileSync(upPath, "utf-8");
+  const downSql = fs.readFileSync(downPath, "utf-8");
+
+  assert.match(
+    upSql,
+    /CREATE\s+TABLE\s+(IF\s+NOT\s+EXISTS\s+)?temperature_readings/i,
+    "Migration 025 must create temperature_readings table"
+  );
+  assert.match(
+    upSql,
+    /CREATE\s+TABLE\s+(IF\s+NOT\s+EXISTS\s+)?temperature_violations/i,
+    "Migration 025 must create temperature_violations table"
+  );
+  assert.match(upSql, /threshold_value/i);
+  assert.match(upSql, /peak_temperature/i);
+  assert.match(upSql, /duration_minutes/i);
+
+  assert.match(
+    downSql,
+    /DROP\s+TABLE\s+(IF\s+EXISTS\s+)?temperature_violations/i,
+    "Migration 025 rollback must drop table temperature_violations"
+  );
+  assert.match(
+    downSql,
+    /DROP\s+TABLE\s+(IF\s+EXISTS\s+)?temperature_readings/i,
+    "Migration 025 rollback must drop table temperature_readings"
+  );
+});
+
 if (process.env.DATABASE_URL) {
   test("migrate: up and down work with database", async () => {
     const upRes = await runMigrations("up");
     assert.equal(upRes.status, "ok");
   });
 }
+

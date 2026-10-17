@@ -71,6 +71,19 @@ const {
   recordAuditLog,
   getAuditLogs,
 } = require("./audit_logger");
+const {
+  ColdChainViolationDetector,
+  S42_SCENARIOS,
+  buildScenarioReadings,
+  verifyS42Scenarios,
+  recordReading,
+  getViolations,
+  getReadings,
+  evaluateSeriesDirect,
+  inMemoryReadings,
+  inMemoryViolations,
+  streamingDetectors,
+} = require("./cold_chain_violation_service");
 const app = express();
 const PORT = Number(process.env.PORT || 3000);
 
@@ -556,7 +569,10 @@ function requirePermission(allowedRoles = []) {
     const { roleId, isInspector } = req.auth;
 
     // Cán bộ kiểm tra chỉ được đọc (GET / HEAD), không được ghi (POST, PUT, DELETE, PATCH)
-    if (isInspector && ["POST", "PUT", "PATCH", "DELETE"].includes(req.method)) {
+    // Các endpoint tính toán / phân tích thuần túy (không thay đổi dữ liệu) như evaluate chuỗi số đo được phép
+    const isAnalyticalPost =
+      req.path === "/api/cold-chain/evaluate" || req.path === "/api/cold-chain/scenarios/verify";
+    if (isInspector && ["POST", "PUT", "PATCH", "DELETE"].includes(req.method) && !isAnalyticalPost) {
       return res.status(403).json({
         message: "Cán bộ kiểm tra chỉ có quyền đọc dữ liệu, không được phép thực hiện thao tác ghi.",
       });
@@ -6729,6 +6745,138 @@ app.get(
   }
 );
 
+/**
+ * ==============================================================================
+ * GIÁM SÁT CHUỖI LẠNH & PHÁT HIỆN VI PHẠM NGƯỠNG (Story S-43 / Jira N2-111)
+ * ==============================================================================
+ */
+
+// Ghi nhận số đo nhiệt độ chuỗi lạnh (Telemetry)
+app.post(
+  "/api/cold-chain/readings",
+  requirePermission(["transporter", "producer", "cooperative", "distributor", "org_admin", "admin"]),
+  async (req, res) => {
+    try {
+      const result = await recordReading({
+        pool,
+        authContext: req.auth,
+        data: req.body,
+      });
+      return res.status(result.status || 200).json(result);
+    } catch (err) {
+      return res.status(500).json({ error: "INTERNAL_SERVER_ERROR", message: err.message });
+    }
+  }
+);
+
+// Lấy lịch sử số đo nhiệt độ
+app.get(
+  "/api/cold-chain/readings",
+  requirePermission(["inspector", "transporter", "producer", "cooperative", "distributor", "org_admin", "admin"]),
+  async (req, res) => {
+    try {
+      const { shipmentId, coldBoxId, limit } = req.query;
+      const result = await getReadings({
+        pool,
+        authContext: req.auth,
+        shipmentId,
+        coldBoxId,
+        limit,
+      });
+      return res.status(200).json(result);
+    } catch (err) {
+      return res.status(500).json({ error: "INTERNAL_SERVER_ERROR", message: err.message });
+    }
+  }
+);
+
+// Lấy danh sách vi phạm ngưỡng đã phát hiện (Cán bộ kiểm tra đọc toàn quyền)
+app.get(
+  "/api/cold-chain/violations",
+  requirePermission(["inspector", "transporter", "producer", "cooperative", "distributor", "org_admin", "admin"]),
+  async (req, res) => {
+    try {
+      const { shipmentId, coldBoxId, limit, offset } = req.query;
+      const result = await getViolations({
+        pool,
+        authContext: req.auth,
+        shipmentId,
+        coldBoxId,
+        limit,
+        offset,
+      });
+      return res.status(200).json(result);
+    } catch (err) {
+      return res.status(500).json({ error: "INTERNAL_SERVER_ERROR", message: err.message });
+    }
+  }
+);
+
+// Đánh giá trực tiếp chuỗi số đo nhiệt độ theo yêu cầu (On-demand Evaluation)
+app.post(
+  "/api/cold-chain/evaluate",
+  requirePermission(["inspector", "transporter", "producer", "cooperative", "distributor", "org_admin", "admin"]),
+  async (req, res) => {
+    try {
+      const { readings, threshold, minDurationMinutes, mergeGapMinutes } = req.body || {};
+      if (!Array.isArray(readings)) {
+        return res.status(400).json({
+          error: "INVALID_READINGS_ARRAY",
+          message: "Danh sách số đo readings phải là một mảng.",
+        });
+      }
+      const result = evaluateSeriesDirect(readings, {
+        threshold,
+        minDurationMinutes,
+        mergeGapMinutes,
+      });
+      return res.status(200).json(result);
+    } catch (err) {
+      return res.status(500).json({ error: "INTERNAL_SERVER_ERROR", message: err.message });
+    }
+  }
+);
+
+// Danh mục 5 kịch bản mẫu S-42
+app.get(
+  "/api/cold-chain/scenarios",
+  requirePermission(["inspector", "transporter", "producer", "cooperative", "distributor", "org_admin", "admin"]),
+  async (_req, res) => {
+    return res.status(200).json({
+      success: true,
+      scenarios: Object.entries(S42_SCENARIOS).map(([key, sc]) => ({
+        key,
+        id: sc.id,
+        name: sc.name,
+        description: sc.description,
+        expectedViolationsCount: sc.expectedViolationsCount,
+        readingsCount: sc.readings.length,
+      })),
+    });
+  }
+);
+
+// Chạy đối chiếu và kiểm chứng toàn bộ 5 kịch bản S-42
+app.post(
+  "/api/cold-chain/scenarios/verify",
+  requirePermission(["inspector", "transporter", "producer", "cooperative", "distributor", "org_admin", "admin"]),
+  async (req, res) => {
+    try {
+      const options = req.body || {};
+      const result = verifyS42Scenarios(options);
+      return res.status(200).json({
+        success: true,
+        message: result.allPassed
+          ? "Tất cả 5 kịch bản S-42 đều đạt tiêu chuẩn chấp nhận 100%!"
+          : "Một số kịch bản chưa đạt yêu cầu.",
+        ...result,
+      });
+    } catch (err) {
+      return res.status(500).json({ error: "INTERNAL_SERVER_ERROR", message: err.message });
+    }
+  }
+);
+
 async function start() {
   await seedDemoUser();
   seedDemoEvents();
@@ -6834,6 +6982,17 @@ module.exports = {
   CycleDetectedError,
   lotOriginsCache,
   clearLotOriginsCache,
+  ColdChainViolationDetector,
+  S42_SCENARIOS,
+  buildScenarioReadings,
+  verifyS42Scenarios,
+  recordReading,
+  getViolations,
+  getReadings,
+  evaluateSeriesDirect,
+  inMemoryReadings,
+  inMemoryViolations,
+  streamingDetectors,
   seedS22Data: () =>
     seedS22InMemory({
       inMemoryLots,
