@@ -499,7 +499,6 @@ async function getPublicLotMapData(options = {}) {
   // Nếu lô gốc không gắn farm hoặc danh sách rỗng, tạo mốc mặc định an toàn
   if (origins.length === 0) {
     origins.push({
-      originLotId: lotRecord.id,
       farmName: lotRecord.farmName || "Khu vực sản xuất ban đầu",
       area: lotRecord.farmArea || null,
       organizationName: lotRecord.organizationName,
@@ -589,7 +588,7 @@ async function getPublicLotMapData(options = {}) {
         locObj = await getLocationById(pool, inMemoryLocations, locId);
       }
 
-      const locName = locObj ? locObj.name : (ev.payload.locationName || `Kho #${locId}`);
+      const locName = locObj ? locObj.name : (ev.payload.locationName || "Điểm lưu kho bảo quản");
       const locAddress = locObj ? locObj.address : (ev.payload.address || null);
       const locType = locObj ? locObj.locationType : (ev.payload.locationType || "warehouse");
       const locCoords = locObj ? parseCoordinates(locObj.coordinates) : parseCoordinates(ev.payload.coordinates);
@@ -649,7 +648,7 @@ async function getPublicLotMapData(options = {}) {
 
       const curCoords = curLoc ? parseCoordinates(curLoc.coordinates) : parseCoordinates(lotRecord.locationCoordinates);
       const locType = curLoc ? curLoc.locationType : (lotRecord.locationType || "store");
-      const locName = curLoc ? curLoc.name : (lotRecord.locationName || `Kho #${lotRecord.locationId}`);
+      const locName = curLoc ? curLoc.name : (lotRecord.locationName || "Điểm lưu kho bảo quản");
 
       // Lấy thời gian từ sự kiện chuyển kho thực tế thay vì lấy ngày tạo lô (Issue 11)
       const locEvent = [...rawEvents].reverse().find(
@@ -802,7 +801,7 @@ async function getPublicLotMapData(options = {}) {
   const verifiedCount = journey.filter((s) => s.hasCoordinates && s.verified).length;
   const unlocatedCount = journey.length - verifiedCount;
 
-  return {
+  const rawData = {
     lot: {
       code: lotRecord.code || lotRecord.id,
       name: lotRecord.name,
@@ -826,11 +825,143 @@ async function getPublicLotMapData(options = {}) {
       disclaimer: "Tọa độ vùng trồng hiển thị theo tâm khu vực hành chính (xã/phường) nhằm bảo vệ quyền riêng tư nông hộ. Các tuyến đường trên bản đồ mang tính chất sơ đồ hóa chuỗi cung ứng, không phải định vị GPS thời gian thực.",
     },
   };
+
+  return sanitizePublicTracePayload(rawData);
+}
+
+/**
+ * Hàm lọc an toàn dữ liệu công khai theo cơ chế Whitelisting nghiêm ngặt (Story S-48)
+ * Loại bỏ toàn bộ các trường nội bộ, số điện thoại, thông tin định danh người dùng, biển số xe,
+ * và các thông tin nhạy cảm khác trước khi trả về cho người tiêu dùng.
+ */
+function sanitizePublicTracePayload(data) {
+  if (!data || typeof data !== "object") return data;
+
+  const sanitizeObject = (obj, allowedKeys) => {
+    if (!obj || typeof obj !== "object") return null;
+    const sanitized = {};
+    for (const key of allowedKeys) {
+      if (obj[key] !== undefined) {
+        sanitized[key] = obj[key];
+      }
+    }
+    return sanitized;
+  };
+
+  const sanitizeCoords = (coords) => {
+    if (!coords || typeof coords !== "object") return null;
+    const lat = Number(coords.lat);
+    const lng = Number(coords.lng);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+    return { lat, lng };
+  };
+
+  const lot = sanitizeObject(data.lot, [
+    "code",
+    "name",
+    "status",
+    "productName",
+    "productUnit",
+    "organizationName",
+    "harvestedAt",
+    "isMerged",
+    "recall",
+    "coldChain",
+    "safetyStatus",
+  ]);
+
+  const origins = Array.isArray(data.origins)
+    ? data.origins.map((orig) => {
+        const item = sanitizeObject(orig, [
+          "farmName",
+          "area",
+          "organizationName",
+          "regionName",
+          "commune",
+          "district",
+          "province",
+          "coordinates",
+          "hasCoordinates",
+          "verified",
+          "harvestedAt",
+        ]);
+        if (item && item.coordinates) {
+          item.coordinates = sanitizeCoords(item.coordinates);
+        }
+        return item;
+      })
+    : [];
+
+  const journey = Array.isArray(data.journey)
+    ? data.journey.map((stop) => {
+        const item = sanitizeObject(stop, [
+          "step",
+          "type",
+          "typeLabel",
+          "title",
+          "locationName",
+          "organizationName",
+          "address",
+          "coordinates",
+          "hasCoordinates",
+          "verified",
+          "occurredAt",
+          "description",
+          "isOrigin",
+          "isTransfer",
+          "isCurrentLocation",
+          "hasViolation",
+          "warning",
+        ]);
+        if (item && item.coordinates) {
+          item.coordinates = sanitizeCoords(item.coordinates);
+        }
+        return item;
+      })
+    : [];
+
+  const routes = Array.isArray(data.routes)
+    ? data.routes.map((rt) => {
+        const item = sanitizeObject(rt, [
+          "fromStep",
+          "toStep",
+          "fromTitle",
+          "toTitle",
+          "isSchematic",
+          "coordinates",
+        ]);
+        if (item && Array.isArray(item.coordinates)) {
+          item.coordinates = item.coordinates
+            .filter((pair) => Array.isArray(pair) && pair.length === 2)
+            .map(([lng, lat]) => [Number(lng), Number(lat)]);
+        }
+        return item;
+      })
+    : [];
+
+  const summary = sanitizeObject(data.summary, [
+    "totalOrigins",
+    "totalStops",
+    "verifiedStops",
+    "unverifiedStops",
+    "hasUnlocatedStops",
+    "isSchematic",
+    "disclaimer",
+  ]);
+
+  return {
+    lot,
+    origins,
+    journey,
+    routes,
+    summary,
+  };
 }
 
 module.exports = {
   getPublicLotMapData,
   resolveRepresentativeArea,
   parseCoordinates,
+  sanitizePublicTracePayload,
   DEFAULT_MAP_AREAS,
 };

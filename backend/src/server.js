@@ -671,7 +671,12 @@ app.get("/api/health", checkHealth);
  * - Tuyệt đối không trả về số điện thoại, mã định danh người dùng nội bộ, hay dữ liệu nhạy cảm.
  */
 app.get(
-  ["/api/public/lots/:code/map", "/api/public/lots/:code/public-map"],
+  [
+    "/api/public/lots/:code",
+    "/api/public/lots/:code/map",
+    "/api/public/lots/:code/public-map",
+    "/api/public/lots/:code/trace",
+  ],
   async (req, res) => {
     const clientIp = req.ip || req.socket.remoteAddress || "127.0.0.1";
     if (!checkPublicMapRateLimit(clientIp)) {
