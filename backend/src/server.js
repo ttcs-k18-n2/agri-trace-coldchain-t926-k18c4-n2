@@ -1510,7 +1510,11 @@ app.get(
               JOIN lots m_pl ON m_parents.pr_id = m_pl.id
               LEFT JOIN products m_pp ON m_pl.product_id = m_pp.id
               LEFT JOIN organizations m_po ON m_pl.organization_id = m_po.id
-            ), '[]'::json) AS parent_lots_json
+            ), '[]'::json) AS parent_lots_json,
+            EXISTS (
+              SELECT 1 FROM batch_events be
+              WHERE be.batch_id = l.id AND be.event_type = 'TEMPERATURE_VIOLATION'
+            ) AS has_temperature_violation
           FROM lots l
           LEFT JOIN farms f ON l.farm_id = f.id
           LEFT JOIN products p ON l.product_id = p.id
@@ -1673,6 +1677,7 @@ app.get(
           locationType: row.location_type || null,
           accessType,
           ancestors,
+          hasTemperatureViolation: Boolean(row.has_temperature_violation),
         };
       } else {
         const access = await evaluateLotAccess({
@@ -1834,30 +1839,28 @@ app.get(
           locationType: rawLot.locationType || (inMemoryLocations && (inMemoryLocations.find(loc => loc.id === (rawLot.locationId || rawLot.location_id))?.locationType || inMemoryLocations.find(loc => loc.id === (rawLot.locationId || rawLot.location_id))?.location_type)) || null,
           accessType: access.accessType,
           ancestors: access.ancestors,
+          hasTemperatureViolation: (inMemoryBatchEvents || []).some(
+            (e) => e.batchId === rawLot.id && e.eventType === "TEMPERATURE_VIOLATION"
+          ),
         };
       }
 
       const isCurrentHolder = Boolean(callerOrgId && lot && (lot.organizationId === callerOrgId || lot.organization_id === callerOrgId));
-      const pendingTransfer = await getPendingTransferForLot(lot.id);
-      const isRecipient = Boolean(callerOrgId && pendingTransfer && (pendingTransfer.toOrganizationId === callerOrgId || pendingTransfer.to_organization_id === callerOrgId));
+      let pendingTransfer = null;
 
-      if (isGlobal || isCurrentHolder || isRecipient || !pool) {
-        lot.pendingTransfer = pendingTransfer;
-      } else {
-        lot.pendingTransfer = null;
+      if (isGlobal || isCurrentHolder || !pool) {
+        pendingTransfer = await getPendingTransferForLot(lot.id);
+      } else if (lot.accessType === "PAST_HOLDER") {
+        pendingTransfer = await getPendingTransferForLot(lot.id);
+        if (pendingTransfer && pendingTransfer.toOrganizationId !== callerOrgId && pendingTransfer.to_organization_id !== callerOrgId) {
+          pendingTransfer = null;
+        }
       }
 
-      // S-45: Đánh dấu nếu lô hàng từng có vi phạm nhiệt độ chuỗi lạnh
-      if (pool) {
-        const violCheck = await pool.query(
-          `SELECT 1 FROM batch_events WHERE batch_id = $1 AND event_type = 'TEMPERATURE_VIOLATION' LIMIT 1`,
-          [lot.id]
-        );
-        lot.hasTemperatureViolation = violCheck.rows.length > 0;
-      } else {
-        lot.hasTemperatureViolation = (inMemoryBatchEvents || []).some(
-          (e) => e.batchId === lot.id && e.eventType === "TEMPERATURE_VIOLATION"
-        );
+      lot.pendingTransfer = pendingTransfer;
+
+      if (lot.hasTemperatureViolation === undefined) {
+        lot.hasTemperatureViolation = false;
       }
 
       return res.status(200).json({ lot });
