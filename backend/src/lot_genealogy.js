@@ -487,6 +487,7 @@ async function traceLotDescendants({
   startLotId,
   inMemoryLots = [],
   inMemoryBatchRelations = [],
+  inMemoryBatchEvents = [],
   _inMemoryBatchEvents = [],
   inMemoryOrgs = [],
   inMemoryProducts = [],
@@ -494,11 +495,27 @@ async function traceLotDescendants({
   inMemoryLocations = [],
   maxDepth = null,
 }) {
+  const batchEventsList = Array.isArray(inMemoryBatchEvents) && inMemoryBatchEvents.length > 0
+    ? inMemoryBatchEvents
+    : (Array.isArray(_inMemoryBatchEvents) ? _inMemoryBatchEvents : []);
+
   if (!startLotId) {
     return {
       rootLotId: null,
       descendantIds: [],
       descendants: [],
+      locationSummary: [],
+      recallSummary: {
+        totalLots: 0,
+        totalRecallableQuantity: 0,
+        totalConsumedQuantity: 0,
+        totalInitialQuantity: 0,
+        recallablePercentage: 0,
+        consumedPercentage: 0,
+      },
+      totalRecallableQuantity: 0,
+      totalConsumedQuantity: 0,
+      totalInitialQuantity: 0,
       levels: [],
       graph: { nodes: [], edges: [] },
     };
@@ -580,35 +597,6 @@ async function traceLotDescendants({
   }
 
   const rootLot = lotsMap.get(startLotId) || null;
-  // Pre-index in-memory relations by child and parent for fast lookup
-  const inMemoryRelationsByChild = new Map();
-  const inMemoryRelationsByParent = new Map();
-  if (Array.isArray(inMemoryBatchRelations)) {
-    for (const r of inMemoryBatchRelations) {
-      const c = r.childBatchId || r.child_batch_id;
-      const p = r.parentBatchId || r.parent_batch_id;
-      if (c && p) {
-        if (!inMemoryRelationsByChild.has(c)) {
-          inMemoryRelationsByChild.set(c, []);
-        }
-        inMemoryRelationsByChild.get(c).push({
-          parentBatchId: p,
-          relationType: r.relationType || r.relation_type || "MERGE",
-          quantity: r.quantity !== null && r.quantity !== undefined ? Number(r.quantity) : null,
-        });
-
-        if (!inMemoryRelationsByParent.has(p)) {
-          inMemoryRelationsByParent.set(p, []);
-        }
-        inMemoryRelationsByParent.get(p).push({
-          parentBatchId: p,
-          childBatchId: c,
-          relationType: r.relationType || r.relation_type || "SPLIT",
-          quantity: r.quantity !== null && r.quantity !== undefined ? Number(r.quantity) : null,
-        });
-      }
-    }
-  }
 
   // 2. Chuẩn bị BFS duyệt theo tầng
   let currentLevelQueue = [{ lotId: startLotId, path: [startLotId] }];
@@ -818,37 +806,6 @@ async function traceLotDescendants({
     }
     detectCycle3Color(startLotId, fullAdjacencyMap);
 
-    // Thu thập các quan hệ cha theo tầng (Batch 1 query cho cả tầng thay vì N+1 queries per child)
-    const levelCandidateChildIds = Array.from(
-      new Set(rawRelationsFromParents.map((r) => r.childBatchId).filter(Boolean))
-    );
-    const parentRelationsByChild = new Map();
-    if (levelCandidateChildIds.length > 0 && pool && typeof pool.query === "function") {
-      try {
-        const pRes = await pool.query(
-          `SELECT parent_batch_id, child_batch_id, relation_type, quantity
-           FROM batch_relations
-           WHERE child_batch_id = ANY($1::text[])`,
-          [levelCandidateChildIds]
-        );
-        for (const r of pRes.rows) {
-          const cId = r.child_batch_id;
-          if (!parentRelationsByChild.has(cId)) {
-            parentRelationsByChild.set(cId, []);
-          }
-          parentRelationsByChild.get(cId).push({
-            parentBatchId: r.parent_batch_id,
-            relationType: r.relation_type || "MERGE",
-            quantity: r.quantity !== null && r.quantity !== undefined ? Number(r.quantity) : null,
-          });
-        }
-      } catch (err) {
-        if (err.code !== "42P01") {
-          throw new Error(`Lỗi truy vấn quan hệ cha của các lô con theo tầng: ${err.message}`);
-        }
-      }
-    }
-
     // Duyệt từng node cha trong hàng đợi tầng hiện tại để kiểm tra chu trình và mở rộng cạnh
     const nextLevelQueue = [];
     const levelLots = [];
@@ -910,32 +867,42 @@ async function traceLotDescendants({
         const initQty = lotObj ? (lotObj.initialQuantity !== undefined ? lotObj.initialQuantity : lotObj.initial_quantity) : null;
         const remQty = lotObj ? (lotObj.remainingQuantity !== undefined ? lotObj.remainingQuantity : lotObj.remaining_quantity) : null;
 
-        // Lấy chi tiết quan hệ cha (Kiểm tra lô gộp đa nguồn theo AC2 - Sử dụng quan hệ đã batch theo tầng)
+        // Lấy chi tiết quan hệ cha (Kiểm tra lô gộp đa nguồn theo AC2)
         const childParentRelations = [];
         const seenParentRels = new Set();
-
-        const dbParentRels = parentRelationsByChild.get(childId);
-        if (Array.isArray(dbParentRels)) {
-          for (const r of dbParentRels) {
-            if (r.parentBatchId && !seenParentRels.has(r.parentBatchId)) {
-              seenParentRels.add(r.parentBatchId);
-              childParentRelations.push({
-                parentBatchId: r.parentBatchId,
-                relationType: r.relationType || "MERGE",
-                quantity: r.quantity !== null && r.quantity !== undefined ? Number(r.quantity) : null,
-              });
+        if (pool && typeof pool.query === "function") {
+          try {
+            const pRes = await pool.query(
+              `SELECT parent_batch_id, relation_type, quantity
+               FROM batch_relations
+               WHERE child_batch_id = $1`,
+              [childId]
+            );
+            for (const r of pRes.rows) {
+              if (r.parent_batch_id && !seenParentRels.has(r.parent_batch_id)) {
+                seenParentRels.add(r.parent_batch_id);
+                childParentRelations.push({
+                  parentBatchId: r.parent_batch_id,
+                  relationType: r.relation_type || "MERGE",
+                  quantity: r.quantity !== null && r.quantity !== undefined ? Number(r.quantity) : null,
+                });
+              }
+            }
+          } catch (err) {
+            if (err.code !== "42P01") {
+              throw new Error(`Lỗi truy vấn quan hệ cha của lô con ${childId}: ${err.message}`);
             }
           }
         }
-
-        const memParentRels = inMemoryRelationsByChild.get(childId);
-        if (Array.isArray(memParentRels)) {
-          for (const r of memParentRels) {
-            if (r.parentBatchId && !seenParentRels.has(r.parentBatchId)) {
-              seenParentRels.add(r.parentBatchId);
+        if (Array.isArray(inMemoryBatchRelations)) {
+          for (const r of inMemoryBatchRelations) {
+            const c = r.childBatchId || r.child_batch_id;
+            const p = r.parentBatchId || r.parent_batch_id;
+            if (c === childId && p && !seenParentRels.has(p)) {
+              seenParentRels.add(p);
               childParentRelations.push({
-                parentBatchId: r.parentBatchId,
-                relationType: r.relationType || "MERGE",
+                parentBatchId: p,
+                relationType: r.relationType || r.relation_type || "MERGE",
                 quantity: r.quantity !== null && r.quantity !== undefined ? Number(r.quantity) : null,
               });
             }
@@ -1007,9 +974,125 @@ async function traceLotDescendants({
     currentLevelQueue = nextLevelQueue;
   }
 
-  // Thống kê tổng hợp vị trí và khối lượng hậu duệ (Story S-27)
+  // 3. Tính toán consumedQuantity chính xác theo quy tắc S-35 / Jira N2-201:
+  // - Xác định các lô có con trong đồ thị hậu duệ
+  // - Nếu lô có con trong đồ thị hậu duệ: consumedQuantity = 0 (hoặc từ sự kiện LOT_CONSUMED)
+  // - Chỉ với lô lá (leaf lot): consumedQuantity = initialQuantity - remainingQuantity
+  const descendantIdsSet = new Set(allDescendantsList.map((d) => d.id));
+  const lotsWithChildrenInDescendants = new Set();
+
+  for (const edge of graphEdges) {
+    if (descendantIdsSet.has(edge.target)) {
+      lotsWithChildrenInDescendants.add(edge.source);
+    }
+  }
+
+  for (const [pId, targets] of fullAdjacencyMap.entries()) {
+    if (Array.isArray(targets) && targets.some((t) => descendantIdsSet.has(t))) {
+      lotsWithChildrenInDescendants.add(pId);
+    }
+  }
+
+  if (Array.isArray(inMemoryBatchRelations)) {
+    for (const rel of inMemoryBatchRelations) {
+      const pId = rel.parentBatchId || rel.parent_batch_id;
+      const cId = rel.childBatchId || rel.child_batch_id;
+      if (pId && cId && descendantIdsSet.has(cId)) {
+        lotsWithChildrenInDescendants.add(pId);
+      }
+    }
+  }
+
+  for (const [id, lot] of lotsMap.entries()) {
+    const pId = lot.parentLotId || lot.parent_lot_id;
+    if (pId && descendantIdsSet.has(id)) {
+      lotsWithChildrenInDescendants.add(pId);
+    }
+  }
+
+  // Thu thập sự kiện LOT_CONSUMED từ database hoặc in-memory nếu có
+  const allLotIdsForEvents = [startLotId, ...allDescendantsList.map((d) => d.id)];
+  const eventConsumedMap = new Map();
+
+  if (pool && typeof pool.query === "function" && allLotIdsForEvents.length > 0) {
+    try {
+      const evRes = await pool.query(
+        `SELECT batch_id, payload FROM batch_events WHERE event_type = 'LOT_CONSUMED' AND batch_id = ANY($1::text[])`,
+        [allLotIdsForEvents]
+      );
+      for (const r of evRes.rows) {
+        const bId = r.batch_id;
+        let q = 0;
+        if (r.payload) {
+          const p = typeof r.payload === "string" ? JSON.parse(r.payload) : r.payload;
+          q = Number(p.consumedQuantity || p.consumed_quantity || p.previousRemainingQuantity || 0);
+        }
+        eventConsumedMap.set(bId, Number(((eventConsumedMap.get(bId) || 0) + q).toFixed(3)));
+      }
+    } catch (err) {
+      if (err.code !== "42P01") {
+        // ignore if table doesn't exist
+      }
+    }
+  }
+
+  if (Array.isArray(batchEventsList)) {
+    for (const e of batchEventsList) {
+      const evType = e.eventType || e.event_type;
+      const bId = e.batchId || e.batch_id;
+      if (evType === "LOT_CONSUMED" && bId) {
+        let q = 0;
+        if (e.payload) {
+          q = Number(e.payload.consumedQuantity || e.payload.consumed_quantity || e.payload.previousRemainingQuantity || 0);
+        }
+        eventConsumedMap.set(bId, Number(((eventConsumedMap.get(bId) || 0) + q).toFixed(3)));
+      }
+    }
+  }
+
+  // Cập nhật consumedQuantity cho từng lô hậu duệ
+  for (const d of allDescendantsList) {
+    const hasChildren = lotsWithChildrenInDescendants.has(d.id);
+    const eventConsumed = eventConsumedMap.get(d.id) || 0;
+    const numInitQty = d.initialQuantity !== null && d.initialQuantity !== undefined ? Number(d.initialQuantity) : null;
+    const numRemQty = d.remainingQuantity !== null && d.remainingQuantity !== undefined ? Number(d.remainingQuantity) : null;
+
+    let consumedQty = 0;
+    if (hasChildren) {
+      consumedQty = eventConsumed > 0 ? Number(eventConsumed.toFixed(3)) : 0;
+    } else {
+      if (numInitQty !== null && numRemQty !== null) {
+        consumedQty = Number(Math.max(0, numInitQty - numRemQty).toFixed(3));
+      } else if (d.status === "Đã bán hết" || d.status === "Đã tiêu thụ") {
+        consumedQty = numInitQty !== null ? numInitQty : (eventConsumed > 0 ? eventConsumed : 0);
+      } else if (eventConsumed > 0) {
+        consumedQty = Number(eventConsumed.toFixed(3));
+      } else {
+        consumedQty = 0;
+      }
+    }
+    d.consumedQuantity = consumedQty;
+  }
+
+  // Cập nhật consumedQuantity vào levels
+  for (const lvl of levels) {
+    if (Array.isArray(lvl.lots)) {
+      for (const item of lvl.lots) {
+        const found = allDescendantsList.find((d) => d.id === item.id);
+        if (found) {
+          item.consumedQuantity = found.consumedQuantity;
+        }
+      }
+    }
+  }
+
+  // Thống kê tổng hợp vị trí và khối lượng hậu duệ (Story S-27, S-35 / N2-103)
   // Nhóm theo cặp (locationId, productUnit) để tránh gộp nhầm kho trùng tên và cộng sai đơn vị
   const locationSummaryMap = new Map();
+  let overallRecallableMilli = 0;
+  let overallConsumedMilli = 0;
+  let overallInitialMilli = 0;
+
   for (const d of allDescendantsList) {
     const locIdKey = d.locationId ? String(d.locationId) : "unassigned";
     const unitKey = (d.productUnit || "kg").trim().toLowerCase();
@@ -1027,21 +1110,74 @@ async function traceLotDescendants({
       totalLots: 0,
       lotsCount: 0,
       totalRemainingQuantity: 0,
+      totalConsumedQuantity: 0,
+      totalInitialQuantity: 0,
     };
     existing.totalLots += 1;
     existing.lotsCount += 1;
     existing.totalRemainingQuantity = Number(
       ((existing.totalRemainingQuantity) + Number(d.remainingQuantity || 0)).toFixed(3)
     );
+    existing.totalConsumedQuantity = Number(
+      ((existing.totalConsumedQuantity) + Number(d.consumedQuantity || 0)).toFixed(3)
+    );
+    existing.totalInitialQuantity = Number(
+      ((existing.totalInitialQuantity) + Number(d.initialQuantity || 0)).toFixed(3)
+    );
     locationSummaryMap.set(groupKey, existing);
+
+    overallRecallableMilli += Math.round(Number(d.remainingQuantity || 0) * 1000);
+    overallConsumedMilli += Math.round(Number(d.consumedQuantity || 0) * 1000);
+    overallInitialMilli += Math.round(Number(d.initialQuantity || 0) * 1000);
   }
 
-  // 3. Xây dựng đồ thị Nodes & Edges
+  const totalRecallableQuantity = Number((overallRecallableMilli / 1000).toFixed(3));
+  const totalConsumedQuantity = Number((overallConsumedMilli / 1000).toFixed(3));
+  const totalInitialQuantity = Number(((overallRecallableMilli + overallConsumedMilli) / 1000).toFixed(3));
+
+  const totalBase = totalInitialQuantity > 0 ? totalInitialQuantity : (totalRecallableQuantity + totalConsumedQuantity);
+  const recallablePercentage = totalBase > 0
+    ? Number(((totalRecallableQuantity / totalBase) * 100).toFixed(1))
+    : 0;
+  const consumedPercentage = totalBase > 0
+    ? Number(((totalConsumedQuantity / totalBase) * 100).toFixed(1))
+    : 0;
+
+  const recallSummary = {
+    totalLots: allDescendantsList.length,
+    totalRecallableQuantity,
+    totalConsumedQuantity,
+    totalInitialQuantity,
+    recallablePercentage,
+    consumedPercentage,
+  };
+
+  const rootInitQ = rootLot ? (rootLot.initialQuantity !== undefined ? Number(rootLot.initialQuantity) : Number(rootLot.initial_quantity)) : null;
+  const rootRemQ = rootLot ? (rootLot.remainingQuantity !== undefined ? Number(rootLot.remainingQuantity) : Number(rootLot.remaining_quantity)) : null;
+  const rootHasChildren = lotsWithChildrenInDescendants.has(startLotId) || allDescendantsList.length > 0;
+  let rootConsQ = 0;
+  if (rootHasChildren) {
+    rootConsQ = eventConsumedMap.get(startLotId) || 0;
+  } else {
+    if (rootInitQ !== null && rootRemQ !== null) {
+      rootConsQ = Number(Math.max(0, rootInitQ - rootRemQ).toFixed(3));
+    } else if (rootLot && (rootLot.status === "Đã bán hết" || rootLot.status === "Đã tiêu thụ")) {
+      rootConsQ = rootInitQ !== null ? rootInitQ : (eventConsumedMap.get(startLotId) || 0);
+    } else {
+      rootConsQ = eventConsumedMap.get(startLotId) || 0;
+    }
+  }
+
+  // 4. Xây dựng đồ thị Nodes & Edges
   const allNodeIds = Array.from(globalVisited);
   const graphNodes = allNodeIds.map((id) => {
     const l = lotsMap.get(id);
     const isRoot = id === startLotId;
     const descInfo = allDescendantsList.find((d) => d.id === id);
+    const initQ = descInfo ? descInfo.initialQuantity : (l ? (l.initialQuantity !== undefined ? Number(l.initialQuantity) : Number(l.initial_quantity)) : null);
+    const remQ = descInfo ? descInfo.remainingQuantity : (l ? (l.remainingQuantity !== undefined ? Number(l.remainingQuantity) : Number(l.remaining_quantity)) : null);
+    const consQ = descInfo ? descInfo.consumedQuantity : (isRoot ? rootConsQ : 0);
+
     return {
       id,
       name: l ? l.name : id,
@@ -1054,7 +1190,9 @@ async function traceLotDescendants({
       organizationName: l ? orgMap[l.organizationId || l.organization_id] : null,
       locationId: descInfo ? descInfo.locationId : (l ? (l.locationId || l.location_id) : null),
       locationName: descInfo ? descInfo.locationName : null,
-      remainingQuantity: l ? (l.remainingQuantity !== undefined ? Number(l.remainingQuantity) : Number(l.remaining_quantity)) : null,
+      initialQuantity: initQ,
+      remainingQuantity: remQ,
+      consumedQuantity: consQ,
     };
   });
 
@@ -1067,14 +1205,21 @@ async function traceLotDescendants({
           status: rootLot.status,
           organizationId: rootLot.organizationId || rootLot.organization_id,
           organizationName: orgMap[rootLot.organizationId || rootLot.organization_id],
-          initialQuantity: rootLot.initialQuantity !== undefined ? Number(rootLot.initialQuantity) : Number(rootLot.initial_quantity),
-          remainingQuantity: rootLot.remainingQuantity !== undefined ? Number(rootLot.remainingQuantity) : Number(rootLot.remaining_quantity),
+          locationId: rootLot.locationId || rootLot.location_id || null,
+          locationName: locationMap.get(rootLot.locationId || rootLot.location_id)?.name || null,
+          initialQuantity: rootInitQ,
+          remainingQuantity: rootRemQ,
+          consumedQuantity: rootConsQ,
         }
       : null,
     descendantCount: allDescendantsList.length,
     descendantIds: allDescendantsList.map((d) => d.id),
     descendants: allDescendantsList,
     locationSummary: Array.from(locationSummaryMap.values()),
+    recallSummary,
+    totalRecallableQuantity,
+    totalConsumedQuantity,
+    totalInitialQuantity,
     levels,
     maxDistance: levels.length,
     truncated: isTruncated,

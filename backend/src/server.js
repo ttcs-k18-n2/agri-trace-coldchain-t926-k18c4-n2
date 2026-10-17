@@ -3648,6 +3648,7 @@ app.get(
           status: item.status,
           remainingQuantity: item.remainingQuantity,
           initialQuantity: item.initialQuantity,
+          consumedQuantity: item.consumedQuantity,
           productName: item.productName,
           productUnit: item.productUnit,
           farmName: item.farmName,
@@ -3662,12 +3663,26 @@ app.get(
       }));
 
       const targetLotObj = lotsMap.get(lotId) || null;
+      let rootInitQty = null;
+      let rootRemQty = null;
+      let rootConsQty = null;
+      if (detailedDescendants.rootLot) {
+        rootInitQty = detailedDescendants.rootLot.initialQuantity;
+        rootRemQty = detailedDescendants.rootLot.remainingQuantity;
+        rootConsQty = detailedDescendants.rootLot.consumedQuantity;
+      } else if (targetLotObj) {
+        rootInitQty = targetLotObj.initialQuantity !== undefined ? Number(targetLotObj.initialQuantity) : (targetLotObj.initial_quantity !== undefined ? Number(targetLotObj.initial_quantity) : null);
+        rootRemQty = targetLotObj.remainingQuantity !== undefined ? Number(targetLotObj.remainingQuantity) : (targetLotObj.remaining_quantity !== undefined ? Number(targetLotObj.remaining_quantity) : null);
+      }
+
       const startLot = {
         id: lotId,
         name: targetLotObj ? targetLotObj.name : lotId,
         organizationId: targetLotObj ? (targetLotObj.organizationId || targetLotObj.organization_id) : null,
         status: targetLotObj ? targetLotObj.status : null,
-        remainingQuantity: targetLotObj ? (targetLotObj.remainingQuantity !== undefined ? Number(targetLotObj.remainingQuantity) : Number(targetLotObj.remaining_quantity)) : null,
+        remainingQuantity: rootRemQty,
+        initialQuantity: rootInitQty,
+        consumedQuantity: rootConsQty,
       };
 
       const finalDescendantIds = Array.from(descendantSet);
@@ -3697,6 +3712,17 @@ app.get(
         truncationReason: detailedDescendants.truncationReason || null,
         warning: detailedDescendants.warning || null,
         executionTimeMs,
+        recallSummary: detailedDescendants.recallSummary || {
+          totalLots: totalDescendants,
+          totalRecallableQuantity: 0,
+          totalConsumedQuantity: 0,
+          totalInitialQuantity: 0,
+          recallablePercentage: 0,
+          consumedPercentage: 0,
+        },
+        totalRecallableQuantity: detailedDescendants.totalRecallableQuantity !== undefined ? detailedDescendants.totalRecallableQuantity : 0,
+        totalConsumedQuantity: detailedDescendants.totalConsumedQuantity !== undefined ? detailedDescendants.totalConsumedQuantity : 0,
+        totalInitialQuantity: detailedDescendants.totalInitialQuantity !== undefined ? detailedDescendants.totalInitialQuantity : 0,
       });
     } catch (err) {
       if (err instanceof CycleDetectedError || err.name === "CycleDetectedError") {
@@ -6805,6 +6831,7 @@ app.get(
           locationName: d.locationName,
           remainingQuantity: d.remainingQuantity,
           initialQuantity: d.initialQuantity,
+          consumedQuantity: d.consumedQuantity,
           productUnit: d.productUnit,
           distance: d.distance,
           isMultiSourceMerge: d.isMultiSourceMerge || false,
@@ -6812,6 +6839,10 @@ app.get(
           mergedSources: d.mergedSources || [],
           notes: d.notes || null,
         })),
+        recallSummary: result.recallSummary,
+        totalRecallableQuantity: result.totalRecallableQuantity,
+        totalConsumedQuantity: result.totalConsumedQuantity,
+        totalInitialQuantity: result.totalInitialQuantity,
       });
     } catch (err) {
       if (err instanceof CycleDetectedError || err.name === "CycleDetectedError") {
@@ -7325,29 +7356,27 @@ async function getAffectedLotsForRecallAndOrg(order, userOrgId) {
     }
 
     let consumedQty = null;
-    if (lot.consumed_quantity !== undefined && lot.consumed_quantity !== null) {
-      consumedQty = Number(lot.consumed_quantity);
-    } else if (lot.consumedQuantity !== undefined && lot.consumedQuantity !== null) {
-      consumedQty = Number(lot.consumedQuantity);
-    } else if (raw && raw.consumed_quantity !== undefined && raw.consumed_quantity !== null) {
+    let initQty = null;
+    if (lot.initial_quantity !== undefined && lot.initial_quantity !== null) {
+      initQty = Number(lot.initial_quantity);
+    } else if (lot.initialQuantity !== undefined && lot.initialQuantity !== null) {
+      initQty = Number(lot.initialQuantity);
+    } else if (raw && raw.initial_quantity !== undefined && raw.initial_quantity !== null) {
+      initQty = Number(raw.initial_quantity);
+    } else if (raw && raw.initialQuantity !== undefined && raw.initialQuantity !== null) {
+      initQty = Number(raw.initialQuantity);
+    }
+
+    if (raw && raw.consumed_quantity !== undefined && raw.consumed_quantity !== null) {
       consumedQty = Number(raw.consumed_quantity);
     } else if (raw && raw.consumedQuantity !== undefined && raw.consumedQuantity !== null) {
       consumedQty = Number(raw.consumedQuantity);
-    } else {
-      let initQty = null;
-      if (lot.initial_quantity !== undefined && lot.initial_quantity !== null) {
-        initQty = Number(lot.initial_quantity);
-      } else if (lot.initialQuantity !== undefined && lot.initialQuantity !== null) {
-        initQty = Number(lot.initialQuantity);
-      } else if (raw && raw.initial_quantity !== undefined && raw.initial_quantity !== null) {
-        initQty = Number(raw.initial_quantity);
-      } else if (raw && raw.initialQuantity !== undefined && raw.initialQuantity !== null) {
-        initQty = Number(raw.initialQuantity);
-      }
-
-      if (initQty !== null && remQty !== null && !Number.isNaN(initQty) && !Number.isNaN(remQty)) {
-        consumedQty = Math.max(0, Number((initQty - remQty).toFixed(3)));
-      }
+    } else if (initQty !== null && remQty !== null && !Number.isNaN(initQty) && !Number.isNaN(remQty)) {
+      consumedQty = Math.max(0, Number((initQty - remQty).toFixed(3)));
+    } else if (lot.consumed_quantity !== undefined && lot.consumed_quantity !== null) {
+      consumedQty = Number(lot.consumed_quantity);
+    } else if (lot.consumedQuantity !== undefined && lot.consumedQuantity !== null) {
+      consumedQty = Number(lot.consumedQuantity);
     }
     if (consumedQty !== null && !Number.isNaN(consumedQty)) {
       formattedLot.consumed_quantity = consumedQty;
