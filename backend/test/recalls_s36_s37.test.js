@@ -15,6 +15,7 @@ const {
   inMemoryOrganizations,
   inMemoryRecallOrders,
   inMemoryRecallAcknowledgments,
+  setDatabasePool,
 } = require("../src/server");
 
 async function loginAs(email, password = "Password123!") {
@@ -441,4 +442,232 @@ test("S-36 & S-37: Recall acknowledgments and progress tracking", async (t) => {
     assert.ok(pendingIds.includes("ORG-S37-5"));
   });
 });
+
+test("N2-107: S-36/37 Pending recall contract repair - affected_lots and pool isolation", async (t) => {
+  const passwordHash = await hashPassword("Password123!");
+
+  const testOrgProd = "ORG-N107-PROD";
+  const testOrgDist = "ORG-N107-DIST";
+  const testOrgStore = "ORG-N107-STORE";
+  const testOrgOther = "ORG-N107-OTHER";
+
+  const orgs = [
+    { id: testOrgProd, name: "Trang trại N107" },
+    { id: testOrgDist, name: "Tổng kho N107" },
+    { id: testOrgStore, name: "Cửa hàng N107" },
+    { id: testOrgOther, name: "Tổ chức Ngoài N107" },
+  ];
+
+  for (const o of orgs) {
+    if (!inMemoryOrgs.some((x) => x.id === o.id)) inMemoryOrgs.push(o);
+    if (inMemoryOrganizations && !inMemoryOrganizations.some((x) => x.id === o.id)) {
+      inMemoryOrganizations.push(o);
+    }
+  }
+
+  users.set("prod_n107@test.vn", {
+    id: "usr-n107-prod",
+    email: "prod_n107@test.vn",
+    passwordHash,
+    failedCount: 0,
+    lockedUntil: null,
+    organizationId: testOrgProd,
+    roleId: "producer",
+  });
+
+  users.set("dist_n107@test.vn", {
+    id: "usr-n107-dist",
+    email: "dist_n107@test.vn",
+    passwordHash,
+    failedCount: 0,
+    lockedUntil: null,
+    organizationId: testOrgDist,
+    roleId: "distributor",
+  });
+
+  users.set("store_n107@test.vn", {
+    id: "usr-n107-store",
+    email: "store_n107@test.vn",
+    passwordHash,
+    failedCount: 0,
+    lockedUntil: null,
+    organizationId: testOrgStore,
+    roleId: "distributor",
+  });
+
+  users.set("other_n107@test.vn", {
+    id: "usr-n107-other",
+    email: "other_n107@test.vn",
+    passwordHash,
+    failedCount: 0,
+    lockedUntil: null,
+    organizationId: testOrgOther,
+    roleId: "distributor",
+  });
+
+  const rootLotId = "LOT-N107-001";
+  const childLotId = "LOT-N107-002";
+  const grandChildLotId = "LOT-N107-003";
+
+  inMemoryLots.push({
+    id: rootLotId,
+    code: "CODE-N107-001",
+    name: "Lô Bưởi da xanh gốc",
+    status: "Đã thu hoạch",
+    organizationId: testOrgProd,
+    initialQuantity: 1000,
+    remainingQuantity: 200,
+    locationName: "Vườn Bưởi Bến Tre",
+    productUnit: "kg",
+    createdAt: new Date().toISOString(),
+  });
+
+  inMemoryLots.push({
+    id: childLotId,
+    code: "CODE-N107-002",
+    name: "Lô Bưởi phân phối",
+    status: "Đã nhập kho",
+    organizationId: testOrgDist,
+    initialQuantity: 500,
+    remainingQuantity: 300,
+    locationName: "Tổng kho Long An",
+    productUnit: "kg",
+    createdAt: new Date().toISOString(),
+  });
+
+  // Grandchild lot belongs to testOrgStore, with no code property set (tests fallback to id)
+  inMemoryLots.push({
+    id: grandChildLotId,
+    name: "Lô Bưởi bán lẻ",
+    status: "Đang lưu kho",
+    organizationId: testOrgStore,
+    initialQuantity: 200,
+    remainingQuantity: 50,
+    productUnit: "kg",
+    createdAt: new Date().toISOString(),
+  });
+
+  // Lineage: rootLot -> childLot (SPLIT), childLot -> grandChildLot (SPLIT)
+  // Also add duplicate relation to test deduplication by lot ID
+  inMemoryBatchRelations.push({
+    parentBatchId: rootLotId,
+    childBatchId: childLotId,
+    relationType: "SPLIT",
+    quantity: 500,
+    organizationId: testOrgProd,
+  });
+  inMemoryBatchRelations.push({
+    parentBatchId: childLotId,
+    childBatchId: grandChildLotId,
+    relationType: "SPLIT",
+    quantity: 200,
+    organizationId: testOrgDist,
+  });
+  // Duplicate link: childLotId -> grandChildLotId again
+  inMemoryBatchRelations.push({
+    parentBatchId: childLotId,
+    childBatchId: grandChildLotId,
+    relationType: "SPLIT",
+    quantity: 50,
+    organizationId: testOrgDist,
+  });
+
+  const recallId = "REC-N107-TEST-999";
+  inMemoryRecallOrders.push({
+    id: recallId,
+    lotId: rootLotId,
+    reason: "Phát hiện sâu đục quả",
+    severity: "CRITICAL",
+    status: "OPEN",
+    createdBy: "usr-n107-prod",
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  });
+
+  const distAgent = await loginAs("dist_n107@test.vn");
+  const storeAgent = await loginAs("store_n107@test.vn");
+  const otherAgent = await loginAs("other_n107@test.vn");
+
+  await t.test("a) Authenticated organization receives its own affected_lots in GET /api/recalls/pending", async () => {
+    const res = await distAgent.get("/api/recalls/pending");
+    assert.equal(res.status, 200);
+    assert.ok(Array.isArray(res.body));
+
+    const item = res.body.find((r) => r.recall_id === recallId);
+    assert.ok(item, "distributor must find pending recall order");
+    assert.equal(item.recall_id, recallId);
+    assert.equal(item.reason, "Phát hiện sâu đục quả");
+    assert.ok(Array.isArray(item.affected_lots), "affected_lots must be an array");
+    assert.equal(item.affected_lots.length, 1, "distributor must only have 1 affected lot");
+
+    const lot = item.affected_lots[0];
+    assert.equal(lot.id, childLotId);
+    assert.equal(lot.code, "CODE-N107-002");
+    assert.equal(lot.name, "Lô Bưởi phân phối");
+    assert.equal(lot.status, "Đã nhập kho");
+    assert.equal(lot.location_name, "Tổng kho Long An");
+    assert.equal(lot.remaining_quantity, 300);
+    assert.equal(lot.consumed_quantity, 200); // 500 - 300
+
+    // Also check storeAgent receives grandChildLotId with fallback code and deduplicated
+    const storeRes = await storeAgent.get("/api/recalls/pending");
+    assert.equal(storeRes.status, 200);
+    const storeItem = storeRes.body.find((r) => r.recall_id === recallId);
+    assert.ok(storeItem);
+    assert.ok(Array.isArray(storeItem.affected_lots));
+    assert.equal(storeItem.affected_lots.length, 1, "Deduplication must ensure exactly 1 lot despite duplicate relations");
+
+    const storeLot = storeItem.affected_lots[0];
+    assert.equal(storeLot.id, grandChildLotId);
+    assert.equal(storeLot.code, grandChildLotId, "code must fallback to id when not explicitly set");
+    assert.equal(storeLot.name, "Lô Bưởi bán lẻ");
+    assert.equal(storeLot.status, "Đang lưu kho");
+    assert.equal(storeLot.remaining_quantity, 50);
+    assert.equal(storeLot.consumed_quantity, 150); // 200 - 50
+  });
+
+  await t.test("b) Unrelated organization receives empty list / no unauthorized affected lots", async () => {
+    const res = await otherAgent.get("/api/recalls/pending");
+    assert.equal(res.status, 200);
+    assert.ok(Array.isArray(res.body));
+    assert.deepEqual(res.body, [], "Unrelated organization must receive empty list");
+  });
+
+  await t.test("c) When pool is active, empty DB result does not leak in-memory orders", async () => {
+    // Add an in-memory open recall order targeted at testOrgDist
+    const ghostRecallId = "REC-GHOST-LEAK-001";
+    inMemoryRecallOrders.push({
+      id: ghostRecallId,
+      status: "OPEN",
+      reason: "Ghost leak order",
+      targetOrganizationIds: [testOrgDist],
+      createdAt: new Date().toISOString(),
+    });
+
+    // Configure mock pool returning empty rows
+    const mockPool = {
+      query: async () => ({ rows: [] }),
+    };
+    setDatabasePool(mockPool);
+
+    try {
+      const res = await distAgent.get("/api/recalls/pending");
+      assert.equal(res.status, 200);
+      assert.ok(Array.isArray(res.body));
+      assert.deepEqual(res.body, [], "When pool is configured, empty DB must not fall back to inMemoryRecallOrders");
+    } finally {
+      // Restore pool to null and remove ghost order
+      setDatabasePool(null);
+      const ghostIdx = inMemoryRecallOrders.findIndex((o) => o.id === ghostRecallId);
+      if (ghostIdx >= 0) inMemoryRecallOrders.splice(ghostIdx, 1);
+    }
+
+    // Verify after restoring pool, in-memory orders work again
+    const restoredRes = await distAgent.get("/api/recalls/pending");
+    assert.equal(restoredRes.status, 200);
+    const restoredItem = restoredRes.body.find((r) => r.recall_id === recallId);
+    assert.ok(restoredItem, "In-memory orders work when !pool");
+  });
+});
+
 

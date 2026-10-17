@@ -6548,6 +6548,162 @@ async function getRootLotForRecall(order) {
   return null;
 }
 
+async function getAffectedLotsForRecallAndOrg(order, userOrgId) {
+  if (!order || !userOrgId) return [];
+
+  const rootLotId = order.lotId || order.lot_id;
+  if (!rootLotId) return [];
+
+  let descendants = [];
+  let rootLot = null;
+  try {
+    const traceRes = await traceLotDescendants({
+      pool,
+      startLotId: rootLotId,
+      inMemoryLots,
+      inMemoryBatchRelations,
+      inMemoryBatchEvents,
+      inMemoryOrgs,
+      inMemoryProducts,
+      inMemoryFarms,
+      inMemoryLocations,
+    });
+    descendants = traceRes.descendants || [];
+    rootLot = traceRes.rootLot || null;
+  } catch {
+    descendants = [];
+  }
+
+  const rawRootLot = await getRootLotForRecall(order);
+
+  const candidateLots = [];
+  if (rawRootLot) {
+    const rootOrg = rawRootLot.organization_id || rawRootLot.organizationId;
+    if (rootOrg === userOrgId) {
+      candidateLots.push({ lot: rawRootLot, isRoot: true });
+    }
+  } else if (rootLot) {
+    const rootOrg = rootLot.organization_id || rootLot.organizationId;
+    if (rootOrg === userOrgId) {
+      candidateLots.push({ lot: rootLot, isRoot: true });
+    }
+  }
+
+  for (const d of descendants) {
+    const dOrg = d.organizationId || d.organization_id;
+    if (dOrg === userOrgId) {
+      candidateLots.push({ lot: d, isRoot: false });
+    }
+  }
+
+  const affectedLots = [];
+  const seenLotIds = new Set();
+
+  for (const item of candidateLots) {
+    const lot = item.lot;
+    const lotId = String(lot.id);
+    if (!lotId || seenLotIds.has(lotId)) {
+      continue;
+    }
+    seenLotIds.add(lotId);
+
+    let raw = null;
+    if (item.isRoot && rawRootLot) {
+      raw = rawRootLot;
+    } else if (Array.isArray(inMemoryLots)) {
+      raw = inMemoryLots.find((l) => l.id === lotId) || null;
+    }
+
+    const code = (raw && raw.code) ? String(raw.code) : (lot.code ? String(lot.code) : lotId);
+
+    const formattedLot = {
+      id: lotId,
+      code,
+    };
+
+    const name = (raw && raw.name !== undefined) ? raw.name : lot.name;
+    if (name !== undefined && name !== null) {
+      formattedLot.name = String(name);
+    }
+
+    const status = (raw && raw.status !== undefined) ? raw.status : lot.status;
+    if (status !== undefined && status !== null) {
+      formattedLot.status = String(status);
+    }
+
+    let locationName = null;
+    if (raw && (raw.location_name || raw.locationName)) {
+      locationName = raw.location_name || raw.locationName;
+    } else if (lot.location_name || lot.locationName) {
+      locationName = lot.location_name || lot.locationName;
+    } else {
+      const locId = (raw && (raw.location_id || raw.locationId)) || lot.location_id || lot.locationId;
+      if (locId) {
+        const loc = await getLocationById(pool, inMemoryLocations, locId);
+        if (loc && loc.name) {
+          locationName = loc.name;
+        }
+      }
+    }
+    if (!locationName && lot.location && lot.location.name) {
+      locationName = lot.location.name;
+    }
+    if (!locationName && lot.locationName && lot.locationName !== "Kho lưu trữ mặc định") {
+      locationName = lot.locationName;
+    }
+    if (locationName !== null && locationName !== undefined) {
+      formattedLot.location_name = String(locationName);
+    }
+
+    let remQty = null;
+    if (lot.remaining_quantity !== undefined && lot.remaining_quantity !== null) {
+      remQty = Number(lot.remaining_quantity);
+    } else if (lot.remainingQuantity !== undefined && lot.remainingQuantity !== null) {
+      remQty = Number(lot.remainingQuantity);
+    } else if (raw && raw.remaining_quantity !== undefined && raw.remaining_quantity !== null) {
+      remQty = Number(raw.remaining_quantity);
+    } else if (raw && raw.remainingQuantity !== undefined && raw.remainingQuantity !== null) {
+      remQty = Number(raw.remainingQuantity);
+    }
+    if (remQty !== null && !Number.isNaN(remQty)) {
+      formattedLot.remaining_quantity = remQty;
+    }
+
+    let consumedQty = null;
+    if (lot.consumed_quantity !== undefined && lot.consumed_quantity !== null) {
+      consumedQty = Number(lot.consumed_quantity);
+    } else if (lot.consumedQuantity !== undefined && lot.consumedQuantity !== null) {
+      consumedQty = Number(lot.consumedQuantity);
+    } else if (raw && raw.consumed_quantity !== undefined && raw.consumed_quantity !== null) {
+      consumedQty = Number(raw.consumed_quantity);
+    } else if (raw && raw.consumedQuantity !== undefined && raw.consumedQuantity !== null) {
+      consumedQty = Number(raw.consumedQuantity);
+    } else {
+      let initQty = null;
+      if (lot.initial_quantity !== undefined && lot.initial_quantity !== null) {
+        initQty = Number(lot.initial_quantity);
+      } else if (lot.initialQuantity !== undefined && lot.initialQuantity !== null) {
+        initQty = Number(lot.initialQuantity);
+      } else if (raw && raw.initial_quantity !== undefined && raw.initial_quantity !== null) {
+        initQty = Number(raw.initial_quantity);
+      } else if (raw && raw.initialQuantity !== undefined && raw.initialQuantity !== null) {
+        initQty = Number(raw.initialQuantity);
+      }
+
+      if (initQty !== null && remQty !== null && !Number.isNaN(initQty) && !Number.isNaN(remQty)) {
+        consumedQty = Math.max(0, Number((initQty - remQty).toFixed(3)));
+      }
+    }
+    if (consumedQty !== null && !Number.isNaN(consumedQty)) {
+      formattedLot.consumed_quantity = consumedQty;
+    }
+
+    affectedLots.push(formattedLot);
+  }
+
+  return affectedLots;
+}
+
 // 0. API: Lấy danh sách lệnh thu hồi đang chờ xác nhận của tổ chức đăng nhập (S-36 Alert)
 // (Đăng ký trước GET /api/recalls/:id để tránh bị nuốt bởi route có params :id)
 app.get(
@@ -6579,9 +6735,7 @@ app.get(
         } catch (err) {
           if (err.code !== "42P01") throw err;
         }
-      }
-
-      if (openOrders.length === 0 && Array.isArray(inMemoryRecallOrders)) {
+      } else if (Array.isArray(inMemoryRecallOrders)) {
         openOrders = inMemoryRecallOrders.filter((o) => o.status === "OPEN");
       }
 
@@ -6602,12 +6756,14 @@ app.get(
 
         const ackOrgIds = new Set(acks.map((a) => a.organizationId || a.organization_id));
         const pendingCount = expectedOrgIds.filter((id) => !ackOrgIds.has(id)).length;
+        const affectedLots = await getAffectedLotsForRecallAndOrg(order, userOrgId);
 
         pendingRecalls.push({
           recall_id: order.id,
           reason: order.reason,
           created_at: order.created_at || order.createdAt,
           pending_organizations_count: pendingCount,
+          affected_lots: affectedLots,
         });
       }
 
@@ -7143,4 +7299,5 @@ module.exports = {
   getExpectedOrganizationsForRecall,
   getAcknowledgmentsForRecall,
   getRootLotForRecall,
+  getAffectedLotsForRecallAndOrg,
 };
