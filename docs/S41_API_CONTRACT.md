@@ -81,8 +81,8 @@ CREATE INDEX IF NOT EXISTS idx_shipment_temperatures_recorded_at ON shipment_tem
 | Trường | Kiểu dữ liệu | Bắt buộc | Mô tả |
 |---|---|:---:|---|
 | `coldBoxId` | `string` | **Có** | Mã thùng lạnh (hỗ trợ bí danh `cold_box_id`, `coldBoxCode`, `code`) |
-| `timestamp` | `string` (ISO-8601) | **Có** | Thời điểm ghi nhận số đo (hỗ trợ bí danh `recordedAt`, `measuredAt`) |
-| `temperature` | `number` (hữu hạn) | **Có** | Giá trị nhiệt độ đo được tính theo độ C (hỗ trợ bí danh `value`) |
+| `timestamp` | `string` (ISO-8601) | **Có** | Chuỗi thời gian chuẩn ISO-8601/RFC 3339 (ví dụ: `2026-10-17T12:00:00.000Z`). Từ chối số nguyên/Unix epoch, boolean, object, và các mốc thời gian vượt quá ngưỡng máy chủ (chống future poisoning). Hỗ trợ bí danh `recordedAt`, `measuredAt`. |
+| `temperature` | `number` (hữu hạn) | **Có** | Giá trị nhiệt độ đo được tính theo độ C trong phạm vi lưu trữ PostgreSQL `NUMERIC(5, 2)` (-999.99 đến 999.99). Hỗ trợ số âm, số 0 và số thập phân (hỗ trợ bí danh `value`). |
 
 #### Phản hồi thành công: Số đo mới hơn được lưu (HTTP 200)
 ```json
@@ -103,7 +103,7 @@ CREATE INDEX IF NOT EXISTS idx_shipment_temperatures_recorded_at ON shipment_tem
 }
 ```
 
-#### Phản hồi thành công: Số đo cũ hơn hoặc bằng số đo đã lưu (HTTP 200 - Bỏ qua cập nhật hiện hành)
+#### Phản hồi thành công: Số đo cũ hơn, bằng số đã lưu, hoặc đến trễ từ chuyến trước khi tái sử dụng thùng lạnh (HTTP 200 - Bỏ qua cập nhật hiện hành)
 ```json
 {
   "status": 200,
@@ -121,6 +121,7 @@ CREATE INDEX IF NOT EXISTS idx_shipment_temperatures_recorded_at ON shipment_tem
   }
 }
 ```
+*Lưu ý:* Khi thùng lạnh được tái sử dụng cho chuyến mới, mọi gói tin đến trễ có mốc thời gian trước thời điểm chuyến mới bắt đầu (`started_at`) sẽ được hệ thống phản hồi `acknowledged: true, ignored: true` với thông điệp `"Số đo ghi nhận trước thời điểm chuyến vận chuyển bắt đầu, bỏ qua ghi nhận."` để không làm ô nhiễm dữ liệu của chuyến mới.
 
 ### 4.2 Lấy lịch sử số đo nhiệt độ của chuyến
 - **Phương thức:** `GET`
@@ -162,11 +163,12 @@ CREATE INDEX IF NOT EXISTS idx_shipment_temperatures_recorded_at ON shipment_tem
 | Mã HTTP | Mã lỗi (`error`) | Mô tả nguyên nhân | Xử lý khuyến nghị phía gọi |
 |:---:|---|---|---|
 | `400` | `MISSING_COLD_BOX_CODE` | Không truyền mã thùng lạnh trong body hoặc params. | Bổ sung `coldBoxId`. |
-| `400` | `INVALID_TEMPERATURE` | Giá trị nhiệt độ bị thiếu, không phải số hoặc là `NaN`/`Infinity`. | Truyền số thực hữu hạn (ví dụ: `4.5`). |
-| `400` | `INVALID_TIMESTAMP` | Thời điểm đo bị thiếu hoặc sai định dạng thời gian. | Sử dụng định dạng ISO-8601 hợp lệ. |
+| `400` | `INVALID_TEMPERATURE` | Giá trị nhiệt độ bị thiếu, không phải số, là `NaN`/`Infinity`, hoặc vượt quá giới hạn lưu trữ PostgreSQL NUMERIC(5, 2) (-999.99 đến 999.99). | Truyền số thực hữu hạn trong phạm vi cho phép (ví dụ: `4.5`). |
+| `400` | `INVALID_TIMESTAMP` | Thời điểm đo bị thiếu, sai kiểu dữ liệu (boolean, number, object), sai định dạng ISO-8601, hoặc vượt quá ngưỡng thời gian máy chủ (future poisoning). | Sử dụng chuỗi định dạng ISO-8601 hợp lệ (`YYYY-MM-DDTHH:mm:ss.sssZ`). |
 | `400` | `SHIPMENT_ALREADY_ENDED` | Chuyến vận chuyển của thùng lạnh đã kết thúc (`COMPLETED` hoặc `CANCELLED`). | Không gửi số đo cho chuyến đã dỡ hàng xong. |
 | `401` | `UNAUTHORIZED` | Chưa đăng nhập hoặc cookie phiên đã hết hạn. | Thực hiện đăng nhập `/api/login` trước khi gọi. |
 | `403` | `INSPECTOR_FORBIDDEN` | Cán bộ kiểm tra cố gắng thực hiện thao tác ghi số đo. | Cán bộ kiểm tra chỉ có quyền đọc. |
-| `403` | `FORBIDDEN_SHIPMENT_ACCESS` | Người gọi thuộc tổ chức khác với tổ chức quản lý chuyến. | Chỉ gửi số đo cho chuyến thuộc tổ chức của mình. |
+| `403` | `FORBIDDEN_SHIPMENT_ACCESS` | Người gọi thuộc tổ chức khác với tổ chức quản lý chuyến (hoặc cố tình giả mạo body tổ chức). | Chỉ gửi số đo cho chuyến thuộc tổ chức của mình. |
 | `404` | `NO_ACTIVE_SHIPMENT` | Thùng lạnh không có chuyến vận chuyển nào đang hoạt động (`IN_TRANSIT`). | Mở chuyến vận chuyển (`POST /api/shipments`) trước khi ghi số đo. |
 | `500` | `INTERNAL_SERVER_ERROR` | Lỗi máy chủ hoặc mất kết nối cơ sở dữ liệu. | Thử lại sau với cơ chế back-off. |
+

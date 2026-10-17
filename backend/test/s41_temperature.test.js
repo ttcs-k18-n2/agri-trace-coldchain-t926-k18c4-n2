@@ -729,4 +729,282 @@ test("S-41 (Jira N2-109): Ghi nhận nhiệt độ theo thời gian cho chuyến
     assert.equal(inspectorGet.status, 200);
     assert.equal(inspectorGet.body.count, 2);
   });
+
+  await t.test("TC-S41-11: Chống ô nhiễm gói tin đến trễ khi tái sử dụng thùng lạnh (Cold box reuse delayed packet protection)", async () => {
+    resetState();
+    inMemoryLots.push({
+      id: "LOT-TEMP-02",
+      name: "Lô Dâu tây lạnh #2",
+      status: "Đã thu hoạch",
+      organizationId: "org-001",
+      organization_id: "org-001",
+      remainingQuantity: 50,
+      initialQuantity: 50,
+    });
+
+
+    // 1. Tạo và hoàn thành chuyến A với thùng lạnh CB-REUSE-99
+    const createResA = await request(
+      server,
+      {
+        hostname: "127.0.0.1",
+        port,
+        path: "/api/shipments",
+        method: "POST",
+        headers: { "Content-Type": "application/json", Cookie: producerCookie },
+      },
+      {
+        coldBoxId: "CB-REUSE-99",
+        lotIds: ["LOT-TEMP-01"],
+      }
+    );
+    const shipmentAId = createResA.body.shipment.id;
+
+    // Kết thúc chuyến A
+    const compResA = await request(
+      server,
+      {
+        hostname: "127.0.0.1",
+        port,
+        path: `/api/shipments/${shipmentAId}/complete`,
+        method: "POST",
+        headers: { "Content-Type": "application/json", Cookie: producerCookie },
+      },
+      {}
+    );
+    assert.equal(compResA.status, 200);
+
+    // 2. Mở chuyến B mới với cùng thùng lạnh CB-REUSE-99
+    const createResB = await request(
+      server,
+      {
+        hostname: "127.0.0.1",
+        port,
+        path: "/api/shipments",
+        method: "POST",
+        headers: { "Content-Type": "application/json", Cookie: producerCookie },
+      },
+      {
+        coldBoxId: "CB-REUSE-99",
+        lotIds: ["LOT-TEMP-02"],
+      }
+    );
+    assert.equal(createResB.status, 201);
+    const shipmentBId = createResB.body.shipment.id;
+
+    // Thời điểm bắt đầu của chuyến B (tạo lúc now, trong test giả định chuỗi thời gian)
+    // Giả sử chuyến B vừa được tạo (startedAt là thời điểm hiện tại).
+    // Giả lập gói tin đến trễ từ chuyến A: có timestamp 1 giờ trước khi B bắt đầu (khi B chưa có mẫu nào)
+    const delayedTimestampA = new Date(Date.now() - 3600000).toISOString();
+
+    const postDelayedA = await request(
+      server,
+      {
+        hostname: "127.0.0.1",
+        port,
+        path: "/api/shipments/temperatures",
+        method: "POST",
+        headers: { "Content-Type": "application/json", Cookie: producerCookie },
+      },
+      {
+        coldBoxId: "CB-REUSE-99",
+        timestamp: delayedTimestampA,
+        temperature: 9.9,
+      }
+    );
+
+    // Gói tin trễ từ A phải được acknowledge nhưng ignored: true, KHÔNG được gắn vào chuyến B
+    assert.equal(postDelayedA.status, 200);
+    assert.equal(postDelayedA.body.acknowledged, true);
+    assert.equal(postDelayedA.body.ignored, true);
+    assert.equal(postDelayedA.body.data.latestTemperature, null);
+
+    // Kiểm tra lịch sử chuyến B: phải hoàn toàn sạch sẽ (0 bản ghi)
+    const getHistBEmpty = await request(
+      server,
+      {
+        hostname: "127.0.0.1",
+        port,
+        path: `/api/shipments/${shipmentBId}/temperatures`,
+        method: "GET",
+        headers: { Cookie: producerCookie },
+      }
+    );
+    assert.equal(getHistBEmpty.status, 200);
+    assert.equal(getHistBEmpty.body.count, 0);
+
+    // 3. Gửi số đo hợp lệ của chuyến B (timestamp hiện tại)
+    const validTimestampB = new Date().toISOString();
+    const postValidB = await request(
+      server,
+      {
+        hostname: "127.0.0.1",
+        port,
+        path: "/api/shipments/temperatures",
+        method: "POST",
+        headers: { "Content-Type": "application/json", Cookie: producerCookie },
+      },
+      {
+        coldBoxId: "CB-REUSE-99",
+        timestamp: validTimestampB,
+        temperature: 4.2,
+      }
+    );
+    assert.equal(postValidB.status, 200);
+    assert.equal(postValidB.body.acknowledged, true);
+    assert.equal(postValidB.body.ignored, false);
+    assert.equal(postValidB.body.data.temperature, 4.2);
+
+    // 4. Lại nhận thêm một gói tin đến trễ từ chuyến A (thời gian trước khi B bắt đầu)
+    const anotherDelayedA = new Date(Date.now() - 7200000).toISOString();
+    const postDelayedA2 = await request(
+      server,
+      {
+        hostname: "127.0.0.1",
+        port,
+        path: "/api/shipments/temperatures",
+        method: "POST",
+        headers: { "Content-Type": "application/json", Cookie: producerCookie },
+      },
+      {
+        coldBoxId: "CB-REUSE-99",
+        timestamp: anotherDelayedA,
+        temperature: 15.0,
+      }
+    );
+    assert.equal(postDelayedA2.status, 200);
+    assert.equal(postDelayedA2.body.acknowledged, true);
+    assert.equal(postDelayedA2.body.ignored, true);
+    assert.equal(postDelayedA2.body.data.latestTemperature, 4.2);
+
+    // Kiểm tra lịch sử chuyến B: vẫn chỉ có đúng 1 bản ghi hợp lệ của B
+    const getHistBFinal = await request(
+      server,
+      {
+        hostname: "127.0.0.1",
+        port,
+        path: `/api/shipments/${shipmentBId}/temperatures`,
+        method: "GET",
+        headers: { Cookie: producerCookie },
+      }
+    );
+    assert.equal(getHistBFinal.status, 200);
+    assert.equal(getHistBFinal.body.count, 1);
+    assert.equal(getHistBFinal.body.temperatures[0].temperature, 4.2);
+  });
+
+  await t.test("TC-S41-12: Kiểm tra giới hạn số PostgreSQL NUMERIC(5, 2) và chống future poisoning", async () => {
+    resetState();
+
+    const createRes = await request(
+      server,
+      {
+        hostname: "127.0.0.1",
+        port,
+        path: "/api/shipments",
+        method: "POST",
+        headers: { "Content-Type": "application/json", Cookie: producerCookie },
+      },
+      {
+        coldBoxId: "CB-NUM-01",
+        lotIds: ["LOT-TEMP-01"],
+      }
+    );
+    assert.equal(createRes.status, 201);
+
+    // A. Tràn giới hạn NUMERIC(5, 2): giá trị >= 1000 hoặc <= -1000 phải trả 400 INVALID_TEMPERATURE (thay vì 500)
+    const overflowHigh = await request(
+      server,
+      {
+        hostname: "127.0.0.1",
+        port,
+        path: "/api/shipments/temperatures",
+        method: "POST",
+        headers: { "Content-Type": "application/json", Cookie: producerCookie },
+      },
+      {
+        coldBoxId: "CB-NUM-01",
+        timestamp: new Date().toISOString(),
+        temperature: 1000.0,
+      }
+    );
+    assert.equal(overflowHigh.status, 400);
+    assert.equal(overflowHigh.body.error, "INVALID_TEMPERATURE");
+
+    const overflowLow = await request(
+      server,
+      {
+        hostname: "127.0.0.1",
+        port,
+        path: "/api/shipments/temperatures",
+        method: "POST",
+        headers: { "Content-Type": "application/json", Cookie: producerCookie },
+      },
+      {
+        coldBoxId: "CB-NUM-01",
+        timestamp: new Date().toISOString(),
+        temperature: -1000.0,
+      }
+    );
+    assert.equal(overflowLow.status, 400);
+    assert.equal(overflowLow.body.error, "INVALID_TEMPERATURE");
+
+    // B. Giá trị cực hạn hợp lệ trong dải NUMERIC(5, 2) (-999.99 và 999.99)
+    const boundaryValid = await request(
+      server,
+      {
+        hostname: "127.0.0.1",
+        port,
+        path: "/api/shipments/temperatures",
+        method: "POST",
+        headers: { "Content-Type": "application/json", Cookie: producerCookie },
+      },
+      {
+        coldBoxId: "CB-NUM-01",
+        timestamp: new Date().toISOString(),
+        temperature: -99.5,
+      }
+    );
+    assert.equal(boundaryValid.status, 200);
+    assert.equal(boundaryValid.body.acknowledged, true);
+
+    // C. Timestamp là số (number) thay vì string ISO-8601 -> phải từ chối 400 INVALID_TIMESTAMP
+    const numericTimestamp = await request(
+      server,
+      {
+        hostname: "127.0.0.1",
+        port,
+        path: "/api/shipments/temperatures",
+        method: "POST",
+        headers: { "Content-Type": "application/json", Cookie: producerCookie },
+      },
+      {
+        coldBoxId: "CB-NUM-01",
+        timestamp: Date.now(),
+        temperature: 4.0,
+      }
+    );
+    assert.equal(numericTimestamp.status, 400);
+    assert.equal(numericTimestamp.body.error, "INVALID_TIMESTAMP");
+
+    // D. Chống future poisoning: thời điểm đo vượt quá xa trong tương lai (ví dụ: năm 2099)
+    const futurePoisoning = await request(
+      server,
+      {
+        hostname: "127.0.0.1",
+        port,
+        path: "/api/shipments/temperatures",
+        method: "POST",
+        headers: { "Content-Type": "application/json", Cookie: producerCookie },
+      },
+      {
+        coldBoxId: "CB-NUM-01",
+        timestamp: "2099-01-01T00:00:00.000Z",
+        temperature: 4.0,
+      }
+    );
+    assert.equal(futurePoisoning.status, 400);
+    assert.equal(futurePoisoning.body.error, "INVALID_TIMESTAMP");
+  });
 });
+

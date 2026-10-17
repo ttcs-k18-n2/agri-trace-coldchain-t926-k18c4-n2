@@ -1517,16 +1517,36 @@ async function recordShipmentTemperature({
     };
   }
 
-  // 3. Kiểm tra thời điểm đo
-  if (!rawTimestamp || typeof rawTimestamp === "boolean") {
+  // Đảm bảo kiểu số NUMERIC(5, 2) của PostgreSQL tiếp nhận giá trị hợp lệ (-999.99 đến 999.99)
+  // và trả 400 rõ ràng thay vì lỗi cơ sở dữ liệu 500
+  if (numTemp > 999.99 || numTemp < -999.99) {
     return {
       status: 400,
-      error: "INVALID_TIMESTAMP",
-      message: "Thời điểm đo nhiệt độ là bắt buộc.",
+      error: "INVALID_TEMPERATURE",
+      message: "Giá trị nhiệt độ vượt quá giới hạn lưu trữ (-999.99 đến 999.99).",
     };
   }
 
-  const dateObj = new Date(rawTimestamp);
+  // 3. Kiểm tra thời điểm đo: bắt buộc là chuỗi hợp lệ ISO-8601, từ chối boolean, số, object
+  if (!rawTimestamp || typeof rawTimestamp !== "string" || !rawTimestamp.trim()) {
+    return {
+      status: 400,
+      error: "INVALID_TIMESTAMP",
+      message: "Thời điểm đo nhiệt độ là bắt buộc và phải là chuỗi định dạng ISO-8601.",
+    };
+  }
+
+  const trimmedTimestamp = rawTimestamp.trim();
+  const isoPattern = /^\d{4}-\d{2}-\d{2}[T\s]\d{2}:\d{2}(:\d{2}(\.\d{1,6})?)?(Z|[+-]\d{2}(:?\d{2})?)?$/i;
+  if (!isoPattern.test(trimmedTimestamp)) {
+    return {
+      status: 400,
+      error: "INVALID_TIMESTAMP",
+      message: "Thời điểm đo không đúng định dạng thời gian ISO-8601 hợp lệ.",
+    };
+  }
+
+  const dateObj = new Date(trimmedTimestamp);
   if (isNaN(dateObj.getTime())) {
     return {
       status: 400,
@@ -1537,6 +1557,16 @@ async function recordShipmentTemperature({
 
   const recordedAtIso = dateObj.toISOString();
   const incomingTime = dateObj.getTime();
+
+  // Chống future poisoning: Cho phép sai lệch đồng hồ tối đa 24 giờ
+  const MAX_FUTURE_SKEW_MS = 24 * 60 * 60 * 1000;
+  if (incomingTime > Date.now() + MAX_FUTURE_SKEW_MS) {
+    return {
+      status: 400,
+      error: "INVALID_TIMESTAMP",
+      message: "Thời điểm đo không thể vượt quá thời gian hiện tại của hệ thống (chống future poisoning).",
+    };
+  }
 
   // 4. Kiểm tra xác thực và phân quyền
   const userId = authContext ? authContext.userId || authContext.id : null;
@@ -1590,7 +1620,7 @@ async function recordShipmentTemperature({
 
       // 5.1 Khóa và tìm chuyến đang hoạt động liên kết với thùng lạnh này
       const shipRes = await dbClient.query(
-        `SELECT id, cold_box_id, status, organization_id, current_temperature, last_temperature_at
+        `SELECT id, cold_box_id, status, organization_id, current_temperature, last_temperature_at, started_at, created_at
          FROM shipments
          WHERE cold_box_id = $1 AND status = 'IN_TRANSIT'
          ORDER BY created_at DESC
@@ -1644,27 +1674,40 @@ async function recordShipmentTemperature({
         };
       }
 
-      // 5.3 So sánh mốc thời gian với số đo mới nhất đã lưu
+      // 5.3 Ranh giới bắt đầu vòng đời chuyến vận chuyển (Lifecycle start boundary)
+      const shipmentStartAt = shipment.started_at || shipment.created_at;
+      const shipmentStartTime = shipmentStartAt
+        ? new Date(shipmentStartAt).getTime()
+        : null;
+
+      // 5.4 So sánh mốc thời gian với số đo mới nhất đã lưu và ranh giới bắt đầu chuyến
       const lastTempAt = shipment.last_temperature_at
         ? new Date(shipment.last_temperature_at).getTime()
         : null;
 
-      if (lastTempAt !== null && incomingTime <= lastTempAt) {
-        // Số đo CŨ HƠN HOẶC BẰNG: bỏ qua không ghi đè, trả về 200 acknowledged
+      const isBeforeStart =
+        shipmentStartTime !== null && incomingTime < shipmentStartTime;
+      const isOlderOrEqual = lastTempAt !== null && incomingTime <= lastTempAt;
+
+      if (isBeforeStart || isOlderOrEqual) {
+        // Số đo CŨ HƠN HOẶC TRƯỚC THỜI ĐIỂM BẮT ĐẦU: bỏ qua không ghi đè, trả về 200 acknowledged
         if (shouldManageTx) await dbClient.query("COMMIT");
         return {
           status: 200,
           success: true,
           acknowledged: true,
           ignored: true,
-          message: "Số đo cũ hơn hoặc bằng số đo mới nhất đã lưu, bỏ qua ghi nhận.",
+          message: isBeforeStart
+            ? "Số đo ghi nhận trước thời điểm chuyến vận chuyển bắt đầu, bỏ qua ghi nhận."
+            : "Số đo cũ hơn hoặc bằng số đo mới nhất đã lưu, bỏ qua ghi nhận.",
           data: {
             shipmentId: shipment.id,
             coldBoxId: cleanColdBoxId,
             temperature: numTemp,
             recordedAt: recordedAtIso,
             latestTemperature:
-              shipment.current_temperature !== null
+              shipment.current_temperature !== null &&
+              shipment.current_temperature !== undefined
                 ? Number(shipment.current_temperature)
                 : null,
             latestRecordedAt: shipment.last_temperature_at
@@ -1766,24 +1809,41 @@ async function recordShipmentTemperature({
       };
     }
 
+    // Ranh giới bắt đầu vòng đời chuyến vận chuyển
+    const shipmentStartAt =
+      activeShipment.startedAt ||
+      activeShipment.started_at ||
+      activeShipment.createdAt ||
+      activeShipment.created_at;
+    const shipmentStartTime = shipmentStartAt
+      ? new Date(shipmentStartAt).getTime()
+      : null;
+
     const lastTempAt = activeShipment.lastTemperatureAt
       ? new Date(activeShipment.lastTemperatureAt).getTime()
       : null;
 
-    if (lastTempAt !== null && incomingTime <= lastTempAt) {
+    const isBeforeStart =
+      shipmentStartTime !== null && incomingTime < shipmentStartTime;
+    const isOlderOrEqual = lastTempAt !== null && incomingTime <= lastTempAt;
+
+    if (isBeforeStart || isOlderOrEqual) {
       return {
         status: 200,
         success: true,
         acknowledged: true,
         ignored: true,
-        message: "Số đo cũ hơn hoặc bằng số đo mới nhất đã lưu, bỏ qua ghi nhận.",
+        message: isBeforeStart
+          ? "Số đo ghi nhận trước thời điểm chuyến vận chuyển bắt đầu, bỏ qua ghi nhận."
+          : "Số đo cũ hơn hoặc bằng số đo mới nhất đã lưu, bỏ qua ghi nhận.",
         data: {
           shipmentId: activeShipment.id,
           coldBoxId: cleanColdBoxId,
           temperature: numTemp,
           recordedAt: recordedAtIso,
           latestTemperature:
-            activeShipment.currentTemperature !== undefined
+            activeShipment.currentTemperature !== undefined &&
+            activeShipment.currentTemperature !== null
               ? activeShipment.currentTemperature
               : null,
           latestRecordedAt: activeShipment.lastTemperatureAt || null,

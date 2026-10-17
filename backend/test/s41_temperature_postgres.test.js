@@ -402,6 +402,72 @@ test("S-41 PostgreSQL Integration Suite (Story S-41 / Jira N2-109)", async (t) =
       }
     }
   );
+
+  // --- SUBTEST 5: Cold Box Reuse & Delayed Packet Pollution Defense ---
+  await t.test(
+    "TC-S41-PG-05: Real PostgreSQL cold box reuse delayed packet protection and numeric bounds",
+    { skip: !isPostgresAvailable },
+    async () => {
+      const client = await pool.connect();
+      const coldBox = "CB-PG-REUSE-01";
+      const orgId = "org-trans";
+      const authContext = { userId: "usr-trans", roleId: "transporter", organizationId: orgId };
+
+      try {
+        // Complete shipment A
+        const shipAId = "shp-pg-reuse-a";
+        await pool.query(
+          `INSERT INTO shipments (id, cold_box_id, status, organization_id, started_at, completed_at, created_at, updated_at)
+           VALUES ($1, $2, 'COMPLETED', $3, NOW() - INTERVAL '2 hours', NOW() - INTERVAL '1 hour', NOW() - INTERVAL '2 hours', NOW() - INTERVAL '1 hour')
+           ON CONFLICT (id) DO NOTHING`,
+          [shipAId, coldBox, orgId]
+        );
+
+        // Start shipment B
+        const shipBId = "shp-pg-reuse-b";
+        await pool.query(
+          `INSERT INTO shipments (id, cold_box_id, status, organization_id, started_at, created_at, updated_at)
+           VALUES ($1, $2, 'IN_TRANSIT', $3, NOW() - INTERVAL '10 minutes', NOW() - INTERVAL '10 minutes', NOW() - INTERVAL '10 minutes')
+           ON CONFLICT (id) DO NOTHING`,
+          [shipBId, coldBox, orgId]
+        );
+
+        // Delayed packet from A (30 minutes ago, before B started 10 minutes ago)
+        const delayedRes = await recordShipmentTemperature({
+          pool,
+          authContext,
+          data: {
+            coldBoxId: coldBox,
+            temperature: 8.5,
+            timestamp: new Date(Date.now() - 30 * 60 * 1000).toISOString(),
+          },
+        });
+        assert.equal(delayedRes.status, 200);
+        assert.equal(delayedRes.acknowledged, true);
+        assert.equal(delayedRes.ignored, true);
+
+        // Verify B's current_temperature is STILL NULL and no rows inserted for B
+        const bCheck = await pool.query("SELECT current_temperature, last_temperature_at FROM shipments WHERE id = $1", [shipBId]);
+        assert.equal(bCheck.rows[0].current_temperature, null);
+        assert.equal(bCheck.rows[0].last_temperature_at, null);
+
+        // Numeric overflow check: 1000.0 returns 400 instead of PG numeric overflow 500
+        const overflowRes = await recordShipmentTemperature({
+          pool,
+          authContext,
+          data: {
+            coldBoxId: coldBox,
+            temperature: 1000.0,
+            timestamp: new Date().toISOString(),
+          },
+        });
+        assert.equal(overflowRes.status, 400);
+        assert.equal(overflowRes.error, "INVALID_TEMPERATURE");
+      } finally {
+        client.release();
+      }
+    }
+  );
 });
 
 // =========================================================================
@@ -691,4 +757,74 @@ test("S-41 Portable Logic Verification Suite (In-Memory & HTTP Endpoints)", asyn
     assert.ok(Array.isArray(resGetHist.body.temperatures));
     assert.ok(resGetHist.body.count >= 1);
   });
+
+  await t.test("TC-S41-PORTABLE-05: Cold box reuse delayed packet protection and storage boundary checks", async () => {
+    // 1. Create and complete Shipment A with CB-REUSE-PORT
+    await recordShipmentTemperature({
+      authContext: { userId: "usr-trans", roleId: "transporter", organizationId: "org-trans" },
+      data: { coldBoxId: "CB-REUSE-PORT", temperature: 5.0, timestamp: new Date(Date.now() - 10000).toISOString() },
+    });
+    // Complete any active shipment on CB-REUSE-PORT
+    inMemoryShipments.push({
+      id: "shp-reuse-a",
+      coldBoxId: "CB-REUSE-PORT",
+      status: "COMPLETED",
+      organizationId: "org-trans",
+      startedAt: new Date(Date.now() - 3600000).toISOString(),
+      createdAt: new Date(Date.now() - 3600000).toISOString(),
+    });
+
+    // 2. Start new Shipment B on CB-REUSE-PORT
+    const nowB = Date.now();
+    const shipB = {
+      id: "shp-reuse-b",
+      coldBoxId: "CB-REUSE-PORT",
+      status: "IN_TRANSIT",
+      organizationId: "org-trans",
+      startedAt: new Date(nowB).toISOString(),
+      createdAt: new Date(nowB).toISOString(),
+      currentTemperature: null,
+      lastTemperatureAt: null,
+    };
+    inMemoryShipments.unshift(shipB);
+
+    // 3. Delayed packet from A (10 minutes before B started)
+    const delayedFromA = await recordShipmentTemperature({
+      authContext: { userId: "usr-trans", roleId: "transporter", organizationId: "org-trans" },
+      data: {
+        coldBoxId: "CB-REUSE-PORT",
+        temperature: 9.9,
+        timestamp: new Date(nowB - 600000).toISOString(),
+      },
+    });
+    assert.equal(delayedFromA.status, 200);
+    assert.equal(delayedFromA.acknowledged, true);
+    assert.equal(delayedFromA.ignored, true);
+    assert.equal(shipB.currentTemperature, null);
+
+    // 4. Numeric overflow prevention: 1000.0 returns 400
+    const resOverflow = await recordShipmentTemperature({
+      authContext: { userId: "usr-trans", roleId: "transporter", organizationId: "org-trans" },
+      data: {
+        coldBoxId: "CB-REUSE-PORT",
+        temperature: 1000.0,
+        timestamp: new Date(nowB + 1000).toISOString(),
+      },
+    });
+    assert.equal(resOverflow.status, 400);
+    assert.equal(resOverflow.error, "INVALID_TEMPERATURE");
+
+    // 5. Future poisoning: timestamp > 24h ahead returns 400
+    const resFuture = await recordShipmentTemperature({
+      authContext: { userId: "usr-trans", roleId: "transporter", organizationId: "org-trans" },
+      data: {
+        coldBoxId: "CB-REUSE-PORT",
+        temperature: 4.0,
+        timestamp: new Date(Date.now() + 86400000 * 2).toISOString(),
+      },
+    });
+    assert.equal(resFuture.status, 400);
+    assert.equal(resFuture.error, "INVALID_TIMESTAMP");
+  });
 });
+
