@@ -366,7 +366,7 @@ test("S-40: Mock migration runner - already-applied 024 upgrade path applies onl
     "019_lot_consumed_status", "020_locations", "021_audit_logs",
     "022_consumed_lot_constraints", "023_public_map_areas", "023_recall_orders",
     "024_lot_custom_coordinates", "024_recall_acknowledgments", "024_shipments", "026_shipment_temperatures",
-    "027_shipment_temperature_violations", "028_product_temperature_thresholds"
+    "027_shipment_temperature_violations", "028_product_temperature_thresholds", "029_public_cache_and_rate_limits"
   ];
   const appliedMigrations = [...existingApplied];
 
@@ -630,6 +630,30 @@ test("S-44: Migration 028 creates product temperature thresholds and shipment co
   assert.match(downSql, /DROP\s+COLUMN\s+(IF\s+EXISTS\s+)?temp_max/i, "Migration 028 rollback must drop temp_max");
   assert.match(downSql, /DROP\s+COLUMN\s+(IF\s+EXISTS\s+)?delay_minutes/i, "Migration 028 rollback must drop delay_minutes");
   assert.ok(!/DROP\s+TABLE\s+(IF\s+EXISTS\s+)?(products|shipments)\b/i.test(downSql), "Migration 028 rollback must NEVER drop products or shipments table");
+});
+
+test("S-50: Migration 029 creates public lot cache and rate limit tables with rollback", () => {
+  const fs = require("node:fs");
+  const path = require("node:path");
+
+  const upPath = path.resolve(__dirname, "../../db/migrations/029_public_cache_and_rate_limits.sql");
+  const downPath = path.resolve(__dirname, "../../db/migrations/down/029_public_cache_and_rate_limits.down.sql");
+
+  assert.ok(fs.existsSync(upPath), "Migration 029 UP file must exist");
+  assert.ok(fs.existsSync(downPath), "Migration 029 DOWN file must exist");
+
+  const upSql = fs.readFileSync(upPath, "utf-8");
+  const downSql = fs.readFileSync(downPath, "utf-8");
+
+  // UP: creates tables
+  assert.match(upSql, /CREATE\s+TABLE\s+(IF\s+NOT\s+EXISTS\s+)?public_lot_cache/i, "Migration 029 must create public_lot_cache table");
+  assert.match(upSql, /CREATE\s+TABLE\s+(IF\s+NOT\s+EXISTS\s+)?public_lot_rate_limits/i, "Migration 029 must create public_lot_rate_limits table");
+  assert.match(upSql, /CREATE\s+TABLE\s+(IF\s+NOT\s+EXISTS\s+)?public_blocked_ips/i, "Migration 029 must create public_blocked_ips table");
+
+  // DOWN: drops tables
+  assert.match(downSql, /DROP\s+TABLE\s+(IF\s+EXISTS\s+)?public_lot_cache/i, "Migration 029 rollback must drop public_lot_cache");
+  assert.match(downSql, /DROP\s+TABLE\s+(IF\s+EXISTS\s+)?public_lot_rate_limits/i, "Migration 029 rollback must drop public_lot_rate_limits");
+  assert.match(downSql, /DROP\s+TABLE\s+(IF\s+EXISTS\s+)?public_blocked_ips/i, "Migration 029 rollback must drop public_blocked_ips");
 });
 
 if (process.env.DATABASE_URL) {
