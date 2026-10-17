@@ -71,6 +71,15 @@ const {
   recordAuditLog,
   getAuditLogs,
 } = require("./audit_logger");
+const {
+  inMemoryShipments,
+  inMemoryShipmentLots,
+  createShipment,
+  completeShipment,
+  getShipments,
+  getShipmentById,
+  getActiveShipmentForLot,
+} = require("./shipment_service");
 const app = express();
 const PORT = Number(process.env.PORT || 3000);
 
@@ -6729,6 +6738,163 @@ app.get(
   }
 );
 
+/**
+ * S-40 (Jira N2-211): Mở chuyến vận chuyển gắn nhiều lô và một thùng lạnh
+ */
+app.post(
+  "/api/shipments",
+  requirePermission(["producer", "cooperative", "transporter", "distributor", "org_admin", "admin"]),
+  async (req, res) => {
+    try {
+      const result = await createShipment({
+        pool,
+        authContext: req.auth,
+        data: req.body,
+        inMemoryLots,
+        inMemoryOrgs,
+        ipAddress: req.ip,
+        userAgent: req.get("User-Agent"),
+      });
+      return res.status(result.status || (result.success ? 201 : 400)).json(result);
+    } catch (err) {
+      return res.status(500).json({ error: "INTERNAL_SERVER_ERROR", message: err.message });
+    }
+  }
+);
+
+app.get(
+  "/api/shipments",
+  requirePermission(["producer", "cooperative", "transporter", "distributor", "inspector", "org_admin", "admin"]),
+  async (req, res) => {
+    try {
+      const result = await getShipments({
+        pool,
+        authContext: req.auth,
+        filters: req.query,
+        inMemoryOrgs,
+      });
+      return res.status(200).json(result);
+    } catch (err) {
+      return res.status(500).json({ error: "INTERNAL_SERVER_ERROR", message: err.message });
+    }
+  }
+);
+
+app.get(
+  "/api/shipments/:id",
+  requirePermission(["producer", "cooperative", "transporter", "distributor", "inspector", "org_admin", "admin"]),
+  async (req, res) => {
+    try {
+      const result = await getShipmentById({
+        pool,
+        authContext: req.auth,
+        shipmentId: req.params.id,
+        inMemoryOrgs,
+      });
+      return res.status(result.status || 200).json(result);
+    } catch (err) {
+      return res.status(500).json({ error: "INTERNAL_SERVER_ERROR", message: err.message });
+    }
+  }
+);
+
+app.post(
+  ["/api/shipments/:id/complete", "/api/shipments/:id/end"],
+  requirePermission(["producer", "cooperative", "transporter", "distributor", "org_admin", "admin"]),
+  async (req, res) => {
+    try {
+      const result = await completeShipment({
+        pool,
+        authContext: req.auth,
+        shipmentId: req.params.id,
+        data: req.body,
+        inMemoryOrgs,
+        ipAddress: req.ip,
+        userAgent: req.get("User-Agent"),
+      });
+      return res.status(result.status || 200).json(result);
+    } catch (err) {
+      return res.status(500).json({ error: "INTERNAL_SERVER_ERROR", message: err.message });
+    }
+  }
+);
+
+app.get(
+  "/api/lots/:id/active-shipment",
+  requirePermission(["producer", "cooperative", "transporter", "distributor", "inspector", "org_admin", "admin"]),
+  async (req, res) => {
+    try {
+      const result = await getActiveShipmentForLot({
+        pool,
+        lotId: req.params.id,
+      });
+      return res.status(200).json(result);
+    } catch (err) {
+      return res.status(500).json({ error: "INTERNAL_SERVER_ERROR", message: err.message });
+    }
+  }
+);
+
+/**
+ * Danh mục thùng lạnh tiêu chuẩn chuỗi lạnh phục vụ S-40 (Jira N2-211)
+ */
+app.get(
+  "/api/cold-containers",
+  requirePermission(["producer", "cooperative", "transporter", "distributor", "inspector", "org_admin", "admin"]),
+  async (_req, res) => {
+    return res.status(200).json({
+      success: true,
+      containers: [
+        {
+          id: "CONT-COLD-01",
+          name: "Thùng lạnh chuyên dụng 50L (Vắc-xin & Nông sản nhạy cảm)",
+          tempMin: 2,
+          tempMax: 8,
+          capacityLiters: 50,
+          sensorModel: "IoT DHT22 Pro",
+          status: "READY",
+        },
+        {
+          id: "CONT-COLD-02",
+          name: "Thùng lạnh siêu tốc 120L (Rau củ quả tươi cao cấp)",
+          tempMin: 0,
+          tempMax: 4,
+          capacityLiters: 120,
+          sensorModel: "PT100 Industrial",
+          status: "READY",
+        },
+        {
+          id: "CONT-FREEZE-01",
+          name: "Thùng đông sâu 200L (Thủy hải sản & Đông lạnh)",
+          tempMin: -20,
+          tempMax: -10,
+          capacityLiters: 200,
+          sensorModel: "K-Type Thermocouple",
+          status: "READY",
+        },
+        {
+          id: "CONT-CHILL-01",
+          name: "Thùng mát tiêu chuẩn 80L (Trái cây ôn đới & Nấm)",
+          tempMin: 8,
+          tempMax: 15,
+          capacityLiters: 80,
+          sensorModel: "Sensirion SHT30",
+          status: "READY",
+        },
+        {
+          id: "CBX-001",
+          name: "Thùng lạnh mẫu tiêu chuẩn S-40",
+          tempMin: 2,
+          tempMax: 4,
+          capacityLiters: 60,
+          sensorModel: "Sensirion SHT35 Pro",
+          status: "READY",
+        },
+      ],
+    });
+  }
+);
+
 async function start() {
   await seedDemoUser();
   seedDemoEvents();
@@ -6834,6 +7000,13 @@ module.exports = {
   CycleDetectedError,
   lotOriginsCache,
   clearLotOriginsCache,
+  inMemoryShipments,
+  inMemoryShipmentLots,
+  createShipment,
+  completeShipment,
+  getShipments,
+  getShipmentById,
+  getActiveShipmentForLot,
   seedS22Data: () =>
     seedS22InMemory({
       inMemoryLots,
