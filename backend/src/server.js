@@ -84,7 +84,10 @@ const {
   recordShipmentTemperature,
   getShipmentTemperatures,
 } = require("./shipment_service");
-const { getRecallOrderWithLiveDescendants } = require("./recall_service");
+const {
+  getRecallOrderWithLiveDescendants,
+  checkLotRecallStatus,
+} = require("./recall_service");
 const app = express();
 const PORT = Number(process.env.PORT || 3000);
 
@@ -1943,6 +1946,23 @@ app.post(
           });
         }
 
+        // Story S-38: Lô đang trong lệnh thu hồi hoặc đã đánh dấu có sự cố bị chặn tách
+        const recallCheck = await checkLotRecallStatus({
+          lotId: parentLotId,
+          lot: parentLot,
+          pool,
+          inMemoryRecallOrders,
+          inMemoryLots,
+        });
+        if (recallCheck.isBlocked) {
+          await client.query("ROLLBACK");
+          return res.status(400).json({
+            error: recallCheck.blockReason,
+            recallOrderId: recallCheck.recallOrderId,
+            message: recallCheck.message,
+          });
+        }
+
         const parentRemaining = Number(parentLot.remaining_quantity);
         const parentRemainingMilli = toMilliUnits(parentRemaining, true);
         if (totalSplitMilli > parentRemainingMilli) {
@@ -2182,6 +2202,22 @@ app.post(
         return res.status(400).json({
           error: "LOT_ALREADY_CONSUMED",
           message: "Không thể tách lô hàng đã bán hết cho người tiêu dùng.",
+        });
+      }
+
+      // Story S-38: Lô đang trong lệnh thu hồi hoặc đã đánh dấu có sự cố bị chặn tách
+      const recallCheck = await checkLotRecallStatus({
+        lotId: parentLotId,
+        lot: parentLot,
+        pool: null,
+        inMemoryRecallOrders,
+        inMemoryLots,
+      });
+      if (recallCheck.isBlocked) {
+        return res.status(400).json({
+          error: recallCheck.blockReason,
+          recallOrderId: recallCheck.recallOrderId,
+          message: recallCheck.message,
         });
       }
 
@@ -2580,6 +2616,26 @@ app.post(
           });
         }
 
+        // Story S-38: Lô đang trong lệnh thu hồi hoặc đã đánh dấu có sự cố bị chặn gộp
+        for (const lotObj of fetchedLots) {
+          const recallCheck = await checkLotRecallStatus({
+            lotId: lotObj.id,
+            lot: lotObj,
+            pool,
+            inMemoryRecallOrders,
+            inMemoryLots,
+          });
+          if (recallCheck.isBlocked) {
+            await client.query("ROLLBACK");
+            return res.status(400).json({
+              error: recallCheck.blockReason,
+              recallOrderId: recallCheck.recallOrderId,
+              lotId: lotObj.id,
+              message: recallCheck.message,
+            });
+          }
+        }
+
         // Kiểm tra xem có lô nào đang trong quá trình chuyển giao PENDING không
         const pendingCheck = await client.query(
           "SELECT lot_id FROM lot_transfers WHERE lot_id = ANY($1::text[]) AND status = 'PENDING'",
@@ -2773,6 +2829,25 @@ app.post(
           error: validation.error,
           message: validation.message,
         });
+      }
+
+      // Story S-38: Lô đang trong lệnh thu hồi hoặc đã đánh dấu có sự cố bị chặn gộp
+      for (const lotObj of fetchedLots) {
+        const recallCheck = await checkLotRecallStatus({
+          lotId: lotObj.id,
+          lot: lotObj,
+          pool: null,
+          inMemoryRecallOrders,
+          inMemoryLots,
+        });
+        if (recallCheck.isBlocked) {
+          return res.status(400).json({
+            error: recallCheck.blockReason,
+            recallOrderId: recallCheck.recallOrderId,
+            lotId: lotObj.id,
+            message: recallCheck.message,
+          });
+        }
       }
 
       // Kiểm tra chuyển giao đang chờ
@@ -4698,6 +4773,22 @@ app.post(
 
       if (!lot) {
         return res.status(404).json({ message: "Không tìm thấy lô hàng." });
+      }
+
+      // Story S-38: Lô đang trong lệnh thu hồi hoặc đã đánh dấu có sự cố bị chặn bàn giao
+      const recallCheck = await checkLotRecallStatus({
+        lotId,
+        lot,
+        pool,
+        inMemoryRecallOrders,
+        inMemoryLots,
+      });
+      if (recallCheck.isBlocked) {
+        return res.status(400).json({
+          error: recallCheck.blockReason,
+          recallOrderId: recallCheck.recallOrderId,
+          message: recallCheck.message,
+        });
       }
 
       const lotRemainingVal = Number(lot.remainingQuantity !== undefined ? lot.remainingQuantity : (lot.remaining_quantity !== undefined ? lot.remaining_quantity : (lot.initialQuantity || lot.initial_quantity || 0)));
@@ -8084,5 +8175,6 @@ module.exports = {
     }),
   inMemoryRecallOrders,
   getRecallOrderWithLiveDescendants,
+  checkLotRecallStatus,
 };
 

@@ -1011,7 +1011,8 @@
 
       const isInspectorOrAdmin = currentUser && ["inspector", "admin"].includes(currentUser.roleId);
       const isConsumed = lot.status === "Đã bán hết" || lot.status === "Đã tiêu thụ";
-      const canTransfer = currentUser && !isConsumed && (
+      const isRecalledOrIncident = lot.status === "Có sự cố" || lot.status === "Đang thu hồi" || lot.status === "Đã thu hồi" || Boolean(lot.activeRecallOrder);
+      const canTransfer = currentUser && !isConsumed && !isRecalledOrIncident && (
         currentUser.roleId === "admin" ||
         (currentUser.organizationId === (lot.organizationId || lot.organization_id) && !["inspector"].includes(currentUser.roleId))
       );
