@@ -188,6 +188,7 @@ const inMemoryOrganizations = [
 const inMemoryTransfers = [];
 const inMemoryBatchRelations = [];
 const inMemoryRecallOrders = [];
+const inMemoryRecallAcknowledgments = [];
 
 async function getPendingTransferForLot(lotId) {
   if (pool) {
@@ -6904,6 +6905,434 @@ app.post(
   }
 );
 
+// --- S-36 & S-37: Recall helpers, acknowledgments & progress tracking ---
+
+async function getRecallOrderById(recallId) {
+  if (!recallId) return null;
+  const strId = String(recallId).trim();
+  if (pool && typeof pool.query === "function") {
+    try {
+      const res = await pool.query(
+        `SELECT id, lot_id, reason, severity, status, created_by, created_at, updated_at
+         FROM recall_orders
+         WHERE id = $1`,
+        [strId]
+      );
+      if (res.rows[0]) {
+        const r = res.rows[0];
+        return {
+          id: r.id,
+          lotId: r.lot_id,
+          lot_id: r.lot_id,
+          reason: r.reason,
+          severity: r.severity,
+          status: r.status,
+          createdBy: r.created_by,
+          created_by: r.created_by,
+          createdAt: r.created_at,
+          created_at: r.created_at,
+          updatedAt: r.updated_at,
+          updated_at: r.updated_at,
+        };
+      }
+    } catch (err) {
+      if (err.code !== "42P01") throw err;
+    }
+  }
+
+  if (Array.isArray(inMemoryRecallOrders)) {
+    const found = inMemoryRecallOrders.find((o) => String(o.id) === strId);
+    if (found) {
+      return {
+        id: found.id,
+        lotId: found.lotId || found.lot_id,
+        lot_id: found.lotId || found.lot_id,
+        reason: found.reason,
+        severity: found.severity || "HIGH",
+        status: found.status || "OPEN",
+        createdBy: found.createdBy || found.created_by,
+        created_by: found.createdBy || found.created_by,
+        createdAt: found.createdAt || found.created_at || new Date().toISOString(),
+        created_at: found.createdAt || found.created_at || new Date().toISOString(),
+        updatedAt: found.updatedAt || found.updated_at || new Date().toISOString(),
+        updated_at: found.updatedAt || found.updated_at || new Date().toISOString(),
+        targetOrganizationIds: found.targetOrganizationIds || found.target_organization_ids || null,
+      };
+    }
+  }
+  return null;
+}
+
+async function getExpectedOrganizationsForRecall(order) {
+  if (!order) return [];
+  if (Array.isArray(order.targetOrganizationIds) && order.targetOrganizationIds.length > 0) {
+    return Array.from(new Set(order.targetOrganizationIds));
+  }
+  if (Array.isArray(order.target_organization_ids) && order.target_organization_ids.length > 0) {
+    return Array.from(new Set(order.target_organization_ids));
+  }
+
+  const rootLotId = order.lotId || order.lot_id;
+  if (!rootLotId) return [];
+
+  let descendants = [];
+  let rootLot = null;
+  try {
+    const traceRes = await traceLotDescendants({
+      pool,
+      startLotId: rootLotId,
+      inMemoryLots,
+      inMemoryBatchRelations,
+      inMemoryBatchEvents,
+      inMemoryOrgs,
+      inMemoryProducts,
+      inMemoryFarms,
+      inMemoryLocations,
+    });
+    descendants = traceRes.descendants || [];
+    rootLot = traceRes.rootLot || null;
+  } catch {
+    descendants = [];
+  }
+
+  if (!rootLot) {
+    if (pool && typeof pool.query === "function") {
+      try {
+        const lr = await scopedQueryById(pool, { isInspector: true }, "lots", rootLotId);
+        rootLot = lr.rows[0] || null;
+      } catch {
+        // ignore
+      }
+    }
+
+    if (!rootLot && Array.isArray(inMemoryLots)) {
+      rootLot = inMemoryLots.find((l) => l.id === rootLotId) || null;
+    }
+  }
+
+  const orgSet = new Set();
+  for (const d of descendants) {
+    const orgId = d.organizationId || d.organization_id;
+    if (orgId) {
+      orgSet.add(orgId);
+    }
+  }
+
+  if (orgSet.size === 0 && rootLot) {
+    const rootOrg = rootLot.organizationId || rootLot.organization_id;
+    if (rootOrg) orgSet.add(rootOrg);
+  }
+
+  return Array.from(orgSet);
+}
+
+async function getOrganizationName(orgId) {
+  if (!orgId) return "";
+  if (pool && typeof pool.query === "function") {
+    try {
+      const res = await pool.query("SELECT name FROM organizations WHERE id = $1", [orgId]);
+      if (res.rows[0] && res.rows[0].name) {
+        return res.rows[0].name;
+      }
+    } catch {
+      // ignore
+    }
+  }
+  if (Array.isArray(inMemoryOrgs)) {
+    const found = inMemoryOrgs.find((o) => o.id === orgId);
+    if (found && found.name) return found.name;
+  }
+  if (Array.isArray(inMemoryOrganizations)) {
+    const found = inMemoryOrganizations.find((o) => o.id === orgId);
+    if (found && found.name) return found.name;
+  }
+  return orgId;
+}
+
+async function getAcknowledgmentsForRecall(recallId) {
+  if (!recallId) return [];
+  const strId = String(recallId).trim();
+  if (pool && typeof pool.query === "function") {
+    try {
+      const res = await pool.query(
+        "SELECT * FROM recall_acknowledgments WHERE recall_id = $1 ORDER BY created_at DESC",
+        [strId]
+      );
+      return res.rows.map((r) => ({
+        id: r.id,
+        recall_id: r.recall_id,
+        recallId: r.recall_id,
+        organization_id: r.organization_id,
+        organizationId: r.organization_id,
+        org_name: r.org_name,
+        orgName: r.org_name,
+        status: r.status,
+        note: r.note,
+        created_by_user_id: r.created_by_user_id,
+        createdByUserId: r.created_by_user_id,
+        created_at: r.created_at,
+        createdAt: r.created_at,
+      }));
+    } catch (err) {
+      if (err.code !== "42P01") throw err;
+    }
+  }
+
+  if (Array.isArray(inMemoryRecallAcknowledgments)) {
+    return inMemoryRecallAcknowledgments
+      .filter((a) => String(a.recallId || a.recall_id) === strId)
+      .sort((a, b) => new Date(b.createdAt || b.created_at) - new Date(a.createdAt || a.created_at));
+  }
+
+  return [];
+}
+
+async function getRootLotForRecall(order) {
+  const rootLotId = order.lotId || order.lot_id;
+  if (!rootLotId) return null;
+  if (pool && typeof pool.query === "function") {
+    try {
+      const lr = await scopedQueryById(pool, { isInspector: true }, "lots", rootLotId);
+      if (lr.rows[0]) return lr.rows[0];
+    } catch {
+      // ignore
+    }
+  }
+
+  if (Array.isArray(inMemoryLots)) {
+    return inMemoryLots.find((l) => l.id === rootLotId) || null;
+  }
+  return null;
+}
+
+async function getAffectedLotsForRecallAndOrg(order, userOrgId) {
+  if (!order || !userOrgId) return [];
+
+  const rootLotId = order.lotId || order.lot_id;
+  if (!rootLotId) return [];
+
+  let descendants = [];
+  let rootLot = null;
+  try {
+    const traceRes = await traceLotDescendants({
+      pool,
+      startLotId: rootLotId,
+      inMemoryLots,
+      inMemoryBatchRelations,
+      inMemoryBatchEvents,
+      inMemoryOrgs,
+      inMemoryProducts,
+      inMemoryFarms,
+      inMemoryLocations,
+    });
+    descendants = traceRes.descendants || [];
+    rootLot = traceRes.rootLot || null;
+  } catch {
+    descendants = [];
+  }
+
+  const rawRootLot = await getRootLotForRecall(order);
+
+  const candidateLots = [];
+  if (rawRootLot) {
+    const rootOrg = rawRootLot.organization_id || rawRootLot.organizationId;
+    if (rootOrg === userOrgId) {
+      candidateLots.push({ lot: rawRootLot, isRoot: true });
+    }
+  } else if (rootLot) {
+    const rootOrg = rootLot.organization_id || rootLot.organizationId;
+    if (rootOrg === userOrgId) {
+      candidateLots.push({ lot: rootLot, isRoot: true });
+    }
+  }
+
+  for (const d of descendants) {
+    const dOrg = d.organizationId || d.organization_id;
+    if (dOrg === userOrgId) {
+      candidateLots.push({ lot: d, isRoot: false });
+    }
+  }
+
+  const affectedLots = [];
+  const seenLotIds = new Set();
+
+  for (const item of candidateLots) {
+    const lot = item.lot;
+    const lotId = String(lot.id);
+    if (!lotId || seenLotIds.has(lotId)) {
+      continue;
+    }
+    seenLotIds.add(lotId);
+
+    let raw = null;
+    if (item.isRoot && rawRootLot) {
+      raw = rawRootLot;
+    } else if (Array.isArray(inMemoryLots)) {
+      raw = inMemoryLots.find((l) => l.id === lotId) || null;
+    }
+
+    const code = (raw && raw.code) ? String(raw.code) : (lot.code ? String(lot.code) : lotId);
+
+    const formattedLot = {
+      id: lotId,
+      code,
+    };
+
+    const name = (raw && raw.name !== undefined) ? raw.name : lot.name;
+    if (name !== undefined && name !== null) {
+      formattedLot.name = String(name);
+    }
+
+    const status = (raw && raw.status !== undefined) ? raw.status : lot.status;
+    if (status !== undefined && status !== null) {
+      formattedLot.status = String(status);
+    }
+
+    let locationName = null;
+    if (raw && (raw.location_name || raw.locationName)) {
+      locationName = raw.location_name || raw.locationName;
+    } else if (lot.location_name || lot.locationName) {
+      locationName = lot.location_name || lot.locationName;
+    } else {
+      const locId = (raw && (raw.location_id || raw.locationId)) || lot.location_id || lot.locationId;
+      if (locId) {
+        const loc = await getLocationById(pool, inMemoryLocations, locId);
+        if (loc && loc.name) {
+          locationName = loc.name;
+        }
+      }
+    }
+    if (!locationName && lot.location && lot.location.name) {
+      locationName = lot.location.name;
+    }
+    if (!locationName && lot.locationName && lot.locationName !== "Kho lưu trữ mặc định") {
+      locationName = lot.locationName;
+    }
+    if (locationName !== null && locationName !== undefined) {
+      formattedLot.location_name = String(locationName);
+    }
+
+    let remQty = null;
+    if (lot.remaining_quantity !== undefined && lot.remaining_quantity !== null) {
+      remQty = Number(lot.remaining_quantity);
+    } else if (lot.remainingQuantity !== undefined && lot.remainingQuantity !== null) {
+      remQty = Number(lot.remainingQuantity);
+    } else if (raw && raw.remaining_quantity !== undefined && raw.remaining_quantity !== null) {
+      remQty = Number(raw.remaining_quantity);
+    } else if (raw && raw.remainingQuantity !== undefined && raw.remainingQuantity !== null) {
+      remQty = Number(raw.remainingQuantity);
+    }
+    if (remQty !== null && !Number.isNaN(remQty)) {
+      formattedLot.remaining_quantity = remQty;
+    }
+
+    let consumedQty = null;
+    if (lot.consumed_quantity !== undefined && lot.consumed_quantity !== null) {
+      consumedQty = Number(lot.consumed_quantity);
+    } else if (lot.consumedQuantity !== undefined && lot.consumedQuantity !== null) {
+      consumedQty = Number(lot.consumedQuantity);
+    } else if (raw && raw.consumed_quantity !== undefined && raw.consumed_quantity !== null) {
+      consumedQty = Number(raw.consumed_quantity);
+    } else if (raw && raw.consumedQuantity !== undefined && raw.consumedQuantity !== null) {
+      consumedQty = Number(raw.consumedQuantity);
+    } else {
+      let initQty = null;
+      if (lot.initial_quantity !== undefined && lot.initial_quantity !== null) {
+        initQty = Number(lot.initial_quantity);
+      } else if (lot.initialQuantity !== undefined && lot.initialQuantity !== null) {
+        initQty = Number(lot.initialQuantity);
+      } else if (raw && raw.initial_quantity !== undefined && raw.initial_quantity !== null) {
+        initQty = Number(raw.initial_quantity);
+      } else if (raw && raw.initialQuantity !== undefined && raw.initialQuantity !== null) {
+        initQty = Number(raw.initialQuantity);
+      }
+
+      if (initQty !== null && remQty !== null && !Number.isNaN(initQty) && !Number.isNaN(remQty)) {
+        consumedQty = Math.max(0, Number((initQty - remQty).toFixed(3)));
+      }
+    }
+    if (consumedQty !== null && !Number.isNaN(consumedQty)) {
+      formattedLot.consumed_quantity = consumedQty;
+    }
+
+    affectedLots.push(formattedLot);
+  }
+
+  return affectedLots;
+}
+
+// 0. API: Lấy danh sách lệnh thu hồi đang chờ xác nhận của tổ chức đăng nhập (S-36 Alert)
+// (Đăng ký trước GET /api/recalls/:id để tránh bị nuốt bởi route có params :id)
+app.get(
+  "/api/recalls/pending",
+  requirePermission(["producer", "cooperative", "transporter", "distributor", "org_admin", "admin", "inspector"]),
+  async (req, res) => {
+    try {
+      const userOrgId = req.auth.organizationId;
+      if (!userOrgId) {
+        return res.status(200).json([]);
+      }
+
+      let openOrders = [];
+      if (pool && typeof pool.query === "function") {
+        try {
+          const resOrders = await pool.query(
+            "SELECT * FROM recall_orders WHERE status = 'OPEN' ORDER BY created_at DESC"
+          );
+          openOrders = resOrders.rows.map((r) => ({
+            id: r.id,
+            lotId: r.lot_id,
+            lot_id: r.lot_id,
+            reason: r.reason,
+            severity: r.severity,
+            status: r.status,
+            createdBy: r.created_by,
+            createdAt: r.created_at,
+          }));
+        } catch (err) {
+          if (err.code !== "42P01") throw err;
+        }
+      } else if (Array.isArray(inMemoryRecallOrders)) {
+        openOrders = inMemoryRecallOrders.filter((o) => o.status === "OPEN");
+      }
+
+      const pendingRecalls = [];
+      for (const order of openOrders) {
+        const expectedOrgIds = await getExpectedOrganizationsForRecall(order);
+        if (!expectedOrgIds.includes(userOrgId)) {
+          continue;
+        }
+
+        const acks = await getAcknowledgmentsForRecall(order.id);
+        const alreadyAcked = acks.some(
+          (a) => (a.organizationId || a.organization_id) === userOrgId
+        );
+        if (alreadyAcked) {
+          continue;
+        }
+
+        const ackOrgIds = new Set(acks.map((a) => a.organizationId || a.organization_id));
+        const pendingCount = expectedOrgIds.filter((id) => !ackOrgIds.has(id)).length;
+        const affectedLots = await getAffectedLotsForRecallAndOrg(order, userOrgId);
+
+        pendingRecalls.push({
+          recall_id: order.id,
+          reason: order.reason,
+          created_at: order.created_at || order.createdAt,
+          pending_organizations_count: pendingCount,
+          affected_lots: affectedLots,
+        });
+      }
+
+      return res.status(200).json(pendingRecalls);
+    } catch (error) {
+      console.error("Lỗi khi lấy danh sách thu hồi chờ xác nhận:", error);
+      return res.status(500).json({ error: "Lỗi server khi lấy dữ liệu thu hồi chờ xử lý" });
+    }
+  }
+);
+
+
 // GET /api/recalls/:id: Chi tiết lệnh thu hồi & Hậu duệ trực tiếp
 app.get(
   "/api/recalls/:id",
@@ -6972,6 +7401,289 @@ app.get(
         return res.status(404).json({ error: "NOT_FOUND", message: err.message });
       }
       return res.status(500).json({ message: err.message });
+    }
+  }
+);
+
+// 1. API: Theo dõi tiến độ thu hồi (S-37)
+app.get(
+  "/api/recalls/:recallId/progress",
+  requirePermission(["producer", "cooperative", "transporter", "distributor", "org_admin", "admin", "inspector"]),
+  async (req, res) => {
+    const recallId = req.params.recallId || req.params.id;
+
+    try {
+      const order = await getRecallOrderById(recallId);
+      if (!order) {
+        return res.status(404).json({ error: "NOT_FOUND", message: "Không tìm thấy lệnh thu hồi." });
+      }
+
+      const isInspectorOrAdmin =
+        req.auth.isInspector || ["inspector", "admin"].includes(req.auth.roleId);
+      const userOrgId = req.auth.organizationId;
+      const expectedOrgIds = await getExpectedOrganizationsForRecall(order);
+      const rootLot = await getRootLotForRecall(order);
+
+      const isAllowed =
+        isInspectorOrAdmin ||
+        expectedOrgIds.includes(userOrgId) ||
+        order.createdBy === userOrgId ||
+        (rootLot && (rootLot.organizationId === userOrgId || rootLot.organization_id === userOrgId));
+
+      if (!isAllowed) {
+        return res.status(403).json({
+          error: "FORBIDDEN",
+          message: "Bạn không có quyền xem tiến độ của lệnh thu hồi này.",
+        });
+      }
+
+      const acks = await getAcknowledgmentsForRecall(recallId);
+      const ackOrgIds = new Set(acks.map((a) => a.organizationId || a.organization_id));
+      const acknowledgedCount = ackOrgIds.size;
+      const expectedCount = expectedOrgIds.length;
+
+      const pendingOrgIds = expectedOrgIds.filter((id) => !ackOrgIds.has(id));
+      const pendingOrganizations = await Promise.all(
+        pendingOrgIds.map(async (id) => ({
+          id,
+          name: await getOrganizationName(id),
+        }))
+      );
+
+      return res.status(200).json({
+        recall_id: order.id,
+        acknowledged_count: acknowledgedCount,
+        expected_count: expectedCount,
+        total_expected: expectedCount,
+        pending_organizations: pendingOrganizations,
+        status: order.status,
+      });
+    } catch (error) {
+      console.error("Lỗi khi tính tiến độ thu hồi:", error);
+      return res.status(500).json({ error: "Lỗi server khi tính tiến độ" });
+    }
+  }
+);
+
+// 2. API: Gửi xác nhận thu hồi từ tổ chức được phân quyền (S-36)
+app.post(
+  "/api/recalls/:recallId/acknowledgments",
+  requirePermission(["producer", "cooperative", "transporter", "distributor", "org_admin", "admin"]),
+  async (req, res) => {
+    const recallId = req.params.recallId || req.params.id;
+    const userOrgId = req.auth.organizationId;
+
+    if (!userOrgId) {
+      return res.status(403).json({ error: "FORBIDDEN", message: "Yêu cầu ngữ cảnh tổ chức." });
+    }
+
+    try {
+      const order = await getRecallOrderById(recallId);
+      if (!order) {
+        return res.status(404).json({ error: "NOT_FOUND", message: "Không tìm thấy lệnh thu hồi." });
+      }
+
+      const expectedOrgIds = await getExpectedOrganizationsForRecall(order);
+      if (!expectedOrgIds.includes(userOrgId)) {
+        return res.status(403).json({
+          error: "FORBIDDEN",
+          message: "Tổ chức của bạn không thuộc danh sách cần xác nhận cho lệnh thu hồi này.",
+        });
+      }
+
+      const acks = await getAcknowledgmentsForRecall(recallId);
+      const alreadyAcked = acks.some(
+        (a) => (a.organizationId || a.organization_id) === userOrgId
+      );
+      if (alreadyAcked) {
+        return res.status(409).json({
+          error: "ALREADY_ACKNOWLEDGED",
+          message: "Tổ chức đã gửi xác nhận cho lệnh thu hồi này.",
+        });
+      }
+
+      const note = req.body && req.body.note ? String(req.body.note).trim() : null;
+      const status = req.body && req.body.status ? String(req.body.status) : "ACKNOWLEDGED";
+      const orgName = await getOrganizationName(userOrgId);
+      const userId = req.auth.userId || req.auth.id || "user";
+      const now = new Date();
+
+      if (pool && typeof pool.query === "function") {
+        const client = await pool.connect();
+        try {
+          await client.query("BEGIN");
+          const insertRes = await client.query(
+            `INSERT INTO recall_acknowledgments (
+              recall_id, organization_id, org_name, status, note, created_by_user_id, created_at
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7)
+            RETURNING *`,
+            [String(recallId), userOrgId, orgName, status, note, userId, now]
+          );
+          const ackRow = insertRes.rows[0];
+
+          const countRes = await client.query(
+            "SELECT COUNT(DISTINCT organization_id) as count FROM recall_acknowledgments WHERE recall_id = $1",
+            [String(recallId)]
+          );
+          const totalAcks = parseInt(countRes.rows[0].count, 10);
+
+          if (totalAcks >= expectedOrgIds.length) {
+            await client.query(
+              "UPDATE recall_orders SET status = 'COMPLETED', updated_at = $1 WHERE id = $2",
+              [now, String(recallId)]
+            );
+            order.status = "COMPLETED";
+            order.updatedAt = now.toISOString();
+
+            const rootLotId = order.lotId || order.lot_id;
+            const rootLot = await getRootLotForRecall(order);
+            const lotOrgId = (rootLot && (rootLot.organization_id || rootLot.organizationId)) || userOrgId;
+
+            await appendBatchEvent(client, {
+              batchId: rootLotId,
+              eventType: "RECALL_COMPLETED",
+              payload: {
+                recallId: order.id,
+                reason: order.reason,
+                acknowledgedCount: totalAcks,
+                expectedCount: expectedOrgIds.length,
+                completedAt: now.toISOString(),
+              },
+              organizationId: lotOrgId,
+              actorUserId: userId,
+              occurredAt: now,
+            });
+          }
+
+          await client.query("COMMIT");
+          return res.status(201).json({
+            message: "Đã lưu phản hồi thành công",
+            data: {
+              id: ackRow.id,
+              recall_id: ackRow.recall_id,
+              organization_id: ackRow.organization_id,
+              org_name: ackRow.org_name,
+              status: ackRow.status,
+              note: ackRow.note,
+              created_at: ackRow.created_at,
+            },
+          });
+        } catch (dbErr) {
+          await client.query("ROLLBACK");
+          if (dbErr.code === "23505") {
+            return res.status(409).json({
+              error: "ALREADY_ACKNOWLEDGED",
+              message: "Tổ chức đã gửi xác nhận cho lệnh thu hồi này.",
+            });
+          }
+          throw dbErr;
+        } finally {
+          client.release();
+        }
+      }
+
+      // In-memory fallback
+      const newAck = {
+        id: inMemoryRecallAcknowledgments.length + 1,
+        recallId: String(recallId),
+        recall_id: String(recallId),
+        organizationId: userOrgId,
+        organization_id: userOrgId,
+        orgName,
+        org_name: orgName,
+        status,
+        note,
+        createdByUserId: userId,
+        created_by_user_id: userId,
+        createdAt: now.toISOString(),
+        created_at: now.toISOString(),
+      };
+      inMemoryRecallAcknowledgments.push(newAck);
+
+      // Check if last required acknowledgment
+      const acksForOrder = inMemoryRecallAcknowledgments.filter(
+        (a) => String(a.recallId || a.recall_id) === String(recallId)
+      );
+      const ackOrgIds = new Set(acksForOrder.map((a) => a.organizationId || a.organization_id));
+      if (ackOrgIds.size >= expectedOrgIds.length) {
+        order.status = "COMPLETED";
+        order.updatedAt = now.toISOString();
+
+        // Also update object inside inMemoryRecallOrders if reference differed
+        const memOrder = inMemoryRecallOrders.find((o) => String(o.id) === String(recallId));
+        if (memOrder) {
+          memOrder.status = "COMPLETED";
+          memOrder.updatedAt = now.toISOString();
+        }
+
+        const rootLotId = order.lotId || order.lot_id;
+        const rootLot = await getRootLotForRecall(order);
+        const lotOrgId = (rootLot && (rootLot.organization_id || rootLot.organizationId)) || userOrgId;
+
+        await appendBatchEvent(null, {
+          batchId: rootLotId,
+          eventType: "RECALL_COMPLETED",
+          payload: {
+            recallId: order.id,
+            reason: order.reason,
+            acknowledgedCount: ackOrgIds.size,
+            expectedCount: expectedOrgIds.length,
+            completedAt: now.toISOString(),
+          },
+          organizationId: lotOrgId,
+          actorUserId: userId,
+          occurredAt: now,
+        });
+      }
+
+      return res.status(201).json({
+        message: "Đã lưu phản hồi thành công",
+        data: newAck,
+      });
+    } catch (error) {
+      console.error("Lỗi khi lưu phản hồi thu hồi:", error);
+      return res.status(500).json({ error: "Lỗi server khi lưu phản hồi" });
+    }
+  }
+);
+
+// 3. API: Lấy danh sách các đơn vị đã xác nhận (S-36)
+app.get(
+  "/api/recalls/:recallId/acknowledgments",
+  requirePermission(["producer", "cooperative", "transporter", "distributor", "org_admin", "admin", "inspector"]),
+  async (req, res) => {
+    const recallId = req.params.recallId || req.params.id;
+
+    try {
+      const order = await getRecallOrderById(recallId);
+      if (!order) {
+        return res.status(404).json({ error: "NOT_FOUND", message: "Không tìm thấy lệnh thu hồi." });
+      }
+
+      const isInspectorOrAdmin =
+        req.auth.isInspector || ["inspector", "admin"].includes(req.auth.roleId);
+      const userOrgId = req.auth.organizationId;
+      const expectedOrgIds = await getExpectedOrganizationsForRecall(order);
+      const rootLot = await getRootLotForRecall(order);
+
+      const isAllowed =
+        isInspectorOrAdmin ||
+        expectedOrgIds.includes(userOrgId) ||
+        order.createdBy === userOrgId ||
+        (rootLot && (rootLot.organizationId === userOrgId || rootLot.organization_id === userOrgId));
+
+      if (!isAllowed) {
+        return res.status(403).json({
+          error: "FORBIDDEN",
+          message: "Bạn không có quyền xem phản hồi của lệnh thu hồi này.",
+        });
+      }
+
+      const acks = await getAcknowledgmentsForRecall(recallId);
+      return res.status(200).json(acks);
+    } catch (error) {
+      console.error("Lỗi khi lấy danh sách phản hồi:", error);
+      return res.status(500).json({ error: "Lỗi server khi lấy dữ liệu phản hồi" });
     }
   }
 );
@@ -7275,6 +7987,11 @@ if (require.main === module) {
 }
 
 module.exports = {
+  inMemoryRecallAcknowledgments,
+  getExpectedOrganizationsForRecall,
+  getAcknowledgmentsForRecall,
+  getRootLotForRecall,
+  getAffectedLotsForRecallAndOrg,
   app,
   users,
   inMemoryLots,

@@ -172,6 +172,38 @@ test("S-34: Migration 023 creates recall_orders table with rollback and NFR comp
   );
 });
 
+test("S-36/S-37: Migration 024 creates recall_acknowledgments with FK, UNIQUE constraint and rollback", () => {
+  const fs = require("node:fs");
+  const path = require("node:path");
+
+  const upPath = path.resolve(__dirname, "../../db/migrations/024_recall_acknowledgments.sql");
+  const downPath = path.resolve(__dirname, "../../db/migrations/down/024_recall_acknowledgments.down.sql");
+
+  assert.ok(fs.existsSync(upPath), "Migration 024 UP file must exist");
+  assert.ok(fs.existsSync(downPath), "Migration 024 DOWN file must exist");
+
+  const upSql = fs.readFileSync(upPath, "utf-8");
+  const downSql = fs.readFileSync(downPath, "utf-8");
+
+  assert.match(
+    upSql,
+    /CREATE\s+TABLE\s+(IF\s+NOT\s+EXISTS\s+)?recall_acknowledgments/i,
+    "Migration 024 must create recall_acknowledgments table"
+  );
+  assert.match(upSql, /recall_id\s+VARCHAR\(64\)/i);
+  assert.match(upSql, /REFERENCES\s+recall_orders\s*\(\s*id\s*\)/i);
+  assert.match(upSql, /REFERENCES\s+organizations\s*\(\s*id\s*\)/i);
+  assert.match(upSql, /UNIQUE\s*\(\s*recall_id\s*,\s*organization_id\s*\)/i);
+  assert.match(upSql, /CREATE\s+INDEX\s+(IF\s+NOT\s+EXISTS\s+)?idx_recall_acknowledgments_recall_id/i);
+  assert.match(upSql, /CREATE\s+INDEX\s+(IF\s+NOT\s+EXISTS\s+)?idx_recall_acknowledgments_org_id/i);
+
+  assert.match(
+    downSql,
+    /DROP\s+TABLE\s+(IF\s+EXISTS\s+)?recall_acknowledgments/i,
+    "Migration 024 rollback must drop table recall_acknowledgments"
+  );
+});
+
 test("S-40: Migration 024 creates shipments and shipment_lots tables with rollback adhering to project convention", () => {
   const fs = require("node:fs");
   const path = require("node:path");
@@ -333,7 +365,7 @@ test("S-40: Mock migration runner - already-applied 024 upgrade path applies onl
     "016_lots_parent_lineage", "017_batch_relations", "018_grant_agri_app_permissions",
     "019_lot_consumed_status", "020_locations", "021_audit_logs",
     "022_consumed_lot_constraints", "023_public_map_areas", "023_recall_orders",
-    "024_lot_custom_coordinates", "024_shipments", "026_shipment_temperatures"
+    "024_lot_custom_coordinates", "024_recall_acknowledgments", "024_shipments", "026_shipment_temperatures"
   ];
   const appliedMigrations = [...existingApplied];
 

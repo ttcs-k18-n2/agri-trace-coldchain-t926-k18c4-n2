@@ -849,9 +849,9 @@ test("S-40 Mocked Browser E2E Coverage (Isolated with Fixtures, Zero Shared Post
   let client = null;
 
   try {
-    // Wait for Chrome CDP readiness
-    await waitForHttpReady(`http://127.0.0.1:${cdpPort}/json/version`, 50);
-    const tabs = await waitForHttpReady(`http://127.0.0.1:${cdpPort}/json/list`, 30);
+    // Wait for Chrome CDP readiness (120 retries * 150ms = 18s for resilient CI runner startup)
+    await waitForHttpReady(`http://127.0.0.1:${cdpPort}/json/version`, 120);
+    const tabs = await waitForHttpReady(`http://127.0.0.1:${cdpPort}/json/list`, 60);
     const pageTab = tabs.find((t) => t.type === "page");
     assert.ok(pageTab, "Chrome page tab must be available");
 
