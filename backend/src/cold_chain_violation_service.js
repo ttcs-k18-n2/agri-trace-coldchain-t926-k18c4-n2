@@ -1,5 +1,6 @@
 const crypto = require("node:crypto");
-const { inMemoryShipments } = require("./shipment_service");
+const { appendBatchEvent, inMemoryBatchEvents } = require("./event_repository");
+const { inMemoryShipments, inMemoryShipmentLots } = require("./shipment_service");
 
 const DEFAULT_THRESHOLD_TEMP = Number(process.env.COLD_CHAIN_THRESHOLD || 8.0);
 const DEFAULT_MIN_DURATION_MINUTES = 30; // AC1 & AC2: Phải quá 30 phút mới tính là vi phạm
@@ -534,6 +535,236 @@ function verifyS42Scenarios(options = {}) {
 }
 
 /**
+ * Ghi nhận sự kiện TEMPERATURE_VIOLATION vào chuỗi hash-chain của từng lô hàng thuộc chuyến (Story S-45 / N2-113 / N2-221)
+ * - Khi vi phạm kết thúc (status = RESOLVED), mọi lô liên quan phải có sự kiện tương ứng.
+ * - Lưu thông tin thời điểm, thời lượng, nhiệt độ đỉnh, mã vi phạm và mã chuyến.
+ * - Idempotency: Không ghi trùng khi nhận lại cùng một sự kiện vi phạm cho cùng một lô.
+ * - Bảo toàn hash-chain và tính nguyên tử giao dịch.
+ */
+async function recordViolationEventsForShipmentLots({
+  dbClient = null,
+  shipment,
+  violation,
+  coldBoxId = null,
+  organizationId = null,
+}) {
+  if (!shipment || !violation || !violation.id) {
+    return [];
+  }
+
+  const shipmentId = shipment.id || shipment.shipmentId;
+  const shipmentCode = shipment.code || shipmentId;
+  const cBoxId = coldBoxId || shipment.cold_box_id || shipment.coldBoxId || null;
+  const shipOrgId = organizationId || shipment.organization_id || shipment.organizationId;
+
+  const payload = {
+    violationId: violation.id,
+    shipmentId,
+    shipmentCode,
+    coldBoxId: cBoxId,
+    threshold: violation.threshold,
+    startTime: violation.startTime,
+    endTime: violation.endTime,
+    durationMinutes: violation.durationMinutes,
+    durationSeconds: violation.durationSeconds,
+    peakTemperature: violation.peakTemperature,
+    rule: violation.rule,
+    status: violation.status || "RESOLVED",
+  };
+
+  const createdEvents = [];
+
+  if (dbClient && typeof dbClient.query === "function") {
+    // 1. Lấy danh sách tất cả các lô thuộc chuyến vận chuyển (sắp xếp tăng dần theo lot_id để tránh deadlock)
+    const lotsRes = await dbClient.query(
+      `SELECT sl.lot_id, l.organization_id
+       FROM shipment_lots sl
+       JOIN lots l ON sl.lot_id = l.id
+       WHERE sl.shipment_id = $1
+       ORDER BY sl.lot_id ASC`,
+      [shipmentId]
+    );
+
+    for (const row of lotsRes.rows) {
+      const lotId = row.lot_id;
+      const lotOrgId = row.organization_id || shipOrgId;
+
+      // 2. Kiểm tra tính lũy kế (idempotency): Không ghi trùng nếu vi phạm này đã được ghi vào chuỗi của lô
+      const existingCheck = await dbClient.query(
+        `SELECT 1 FROM batch_events
+         WHERE batch_id = $1
+           AND event_type = 'TEMPERATURE_VIOLATION'
+           AND (payload->>'violationId' = $2 OR payload->>'violation_id' = $2)
+         LIMIT 1`,
+        [lotId, violation.id]
+      );
+
+      if (existingCheck.rows.length === 0) {
+        const ev = await appendBatchEvent(dbClient, {
+          batchId: lotId,
+          eventType: "TEMPERATURE_VIOLATION",
+          payload,
+          organizationId: lotOrgId,
+          actorUserId: shipment.created_by_user_id || shipment.createdByUserId || null,
+          occurredAt: violation.endTime || new Date(),
+        });
+        createdEvents.push(ev);
+      }
+    }
+  } else {
+    // In-memory fallback
+    const attached = inMemoryShipmentLots.filter((sl) => sl.shipmentId === shipmentId);
+    for (const sl of attached) {
+      const lotId = sl.lotId;
+      const lotOrgId = sl.lotOrgId || shipOrgId;
+
+      const alreadyRecorded = inMemoryBatchEvents.some(
+        (e) =>
+          e.batchId === lotId &&
+          e.eventType === "TEMPERATURE_VIOLATION" &&
+          (e.payload?.violationId === violation.id || e.payload?.violation_id === violation.id)
+      );
+
+      if (!alreadyRecorded) {
+        const ev = await appendBatchEvent(null, {
+          batchId: lotId,
+          eventType: "TEMPERATURE_VIOLATION",
+          payload,
+          organizationId: lotOrgId,
+          actorUserId: shipment.createdByUserId || null,
+          occurredAt: violation.endTime || new Date(),
+        });
+        createdEvents.push(ev);
+      }
+    }
+  }
+
+  return createdEvents;
+}
+
+/**
+ * Hoàn tất và chốt các vi phạm nhiệt độ còn dang dở khi kết thúc chuyến vận chuyển (S-45 / S-43)
+ */
+async function finalizeShipmentViolations({
+  client = null,
+  pool = null,
+  shipment,
+  coldBoxId = null,
+  organizationId = null,
+}) {
+  const dbClient = client || pool;
+  if (!shipment) return [];
+
+  let rawState = shipment.detector_state || shipment.detectorState;
+  if (typeof rawState === "string") {
+    try {
+      rawState = JSON.parse(rawState);
+    } catch {
+      rawState = null;
+    }
+  }
+  if (!rawState) return [];
+
+  const configuredThreshold = Number(process.env.COLD_CHAIN_THRESHOLD || rawState.threshold || DEFAULT_THRESHOLD_TEMP);
+  const detector = ColdChainViolationDetector.fromJSON(rawState, { threshold: configuredThreshold });
+  const finalViolations = detector.finalize();
+
+  const cBoxId = coldBoxId || shipment.cold_box_id || shipment.coldBoxId;
+  const orgId = organizationId || shipment.organization_id || shipment.organizationId;
+  const shipmentId = shipment.id || shipment.shipmentId;
+
+  if (dbClient && typeof dbClient.query === "function") {
+    for (const v of finalViolations) {
+      if (v.status === "RESOLVED") {
+        await dbClient.query(
+          `INSERT INTO temperature_violations (
+            id, shipment_id, cold_box_id, organization_id, threshold_value,
+            start_time, end_time, peak_temperature, duration_minutes, status,
+            excursions_count, details, updated_at
+          ) VALUES (
+            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NOW()
+          )
+          ON CONFLICT (id) DO UPDATE SET
+            end_time = EXCLUDED.end_time,
+            peak_temperature = EXCLUDED.peak_temperature,
+            duration_minutes = EXCLUDED.duration_minutes,
+            status = EXCLUDED.status,
+            excursions_count = EXCLUDED.excursions_count,
+            details = EXCLUDED.details,
+            updated_at = NOW()`,
+          [
+            v.id,
+            shipmentId,
+            cBoxId,
+            orgId,
+            v.threshold,
+            v.startTime,
+            v.endTime,
+            v.peakTemperature,
+            v.durationMinutes,
+            v.status || "RESOLVED",
+            v.excursionsCount || 1,
+            JSON.stringify(v),
+          ]
+        );
+
+        await recordViolationEventsForShipmentLots({
+          dbClient,
+          shipment,
+          violation: v,
+          coldBoxId: cBoxId,
+          organizationId: orgId,
+        });
+      }
+    }
+
+    const boundedState = detector.toBoundedJSON();
+    await dbClient.query(
+      `UPDATE shipments
+       SET detector_state = $2
+       WHERE id = $1`,
+      [shipmentId, JSON.stringify(boundedState)]
+    );
+    shipment.detector_state = boundedState;
+  } else {
+    for (const v of finalViolations) {
+      if (v.status === "RESOLVED") {
+        const existingIdx = inMemoryViolations.findIndex((iv) => iv.id === v.id);
+        const record = {
+          ...v,
+          shipment_id: shipmentId,
+          shipmentId,
+          cold_box_id: cBoxId,
+          coldBoxId: cBoxId,
+          organization_id: orgId,
+          organizationId: orgId,
+          updated_at: new Date().toISOString(),
+        };
+        if (existingIdx !== -1) {
+          inMemoryViolations[existingIdx] = record;
+        } else {
+          inMemoryViolations.push(record);
+        }
+
+        await recordViolationEventsForShipmentLots({
+          dbClient: null,
+          shipment,
+          violation: v,
+          coldBoxId: cBoxId,
+          organizationId: orgId,
+        });
+      }
+    }
+
+    const boundedState = detector.toBoundedJSON();
+    shipment.detector_state = boundedState;
+    shipment.detectorState = boundedState;
+  }
+
+  return finalViolations;
+}
+
+/**
  * Ghi nhận một số đo nhiệt độ mới (API Service Layer)
  */
 
@@ -610,6 +841,18 @@ async function handleAcceptedTemperatureReading({
       );
     }
 
+    for (const v of violationsToPersist) {
+      if (v.status === "RESOLVED") {
+        await recordViolationEventsForShipmentLots({
+          dbClient,
+          shipment,
+          violation: v,
+          coldBoxId: cBoxId,
+          organizationId: orgId,
+        });
+      }
+    }
+
     // 5. Cập nhật trạng thái detector bền vững giới hạn kích thước trên bảng shipments
     const boundedState = detector.toBoundedJSON();
     await dbClient.query(
@@ -638,11 +881,26 @@ async function handleAcceptedTemperatureReading({
       } else {
         inMemoryViolations.push(record);
       }
+
+      if (v.status === "RESOLVED") {
+        await recordViolationEventsForShipmentLots({
+          dbClient: null,
+          shipment,
+          violation: v,
+          coldBoxId: cBoxId,
+          organizationId: orgId,
+        });
+      }
     }
 
     const boundedState = detector.toBoundedJSON();
     shipment.detector_state = boundedState;
     shipment.detectorState = boundedState;
+    const targetInMem = inMemoryShipments.find((s) => s.id === shipmentId);
+    if (targetInMem) {
+      targetInMem.detector_state = boundedState;
+      targetInMem.detectorState = boundedState;
+    }
   }
 
   return {
@@ -1072,6 +1330,8 @@ module.exports = {
   getShipmentViolations,
   getColdBoxViolations,
   evaluateSeriesDirect,
+  recordViolationEventsForShipmentLots,
+  finalizeShipmentViolations,
   inMemoryReadings,
   inMemoryViolations,
   streamingDetectors,

@@ -1838,11 +1838,26 @@ app.get(
       }
 
       const isCurrentHolder = Boolean(callerOrgId && lot && (lot.organizationId === callerOrgId || lot.organization_id === callerOrgId));
-      if (isGlobal || isCurrentHolder || !pool) {
-        const pendingTransfer = await getPendingTransferForLot(lot.id);
+      const pendingTransfer = await getPendingTransferForLot(lot.id);
+      const isRecipient = Boolean(callerOrgId && pendingTransfer && (pendingTransfer.toOrganizationId === callerOrgId || pendingTransfer.to_organization_id === callerOrgId));
+
+      if (isGlobal || isCurrentHolder || isRecipient || !pool) {
         lot.pendingTransfer = pendingTransfer;
       } else {
         lot.pendingTransfer = null;
+      }
+
+      // S-45: Đánh dấu nếu lô hàng từng có vi phạm nhiệt độ chuỗi lạnh
+      if (pool) {
+        const violCheck = await pool.query(
+          `SELECT 1 FROM batch_events WHERE batch_id = $1 AND event_type = 'TEMPERATURE_VIOLATION' LIMIT 1`,
+          [lot.id]
+        );
+        lot.hasTemperatureViolation = violCheck.rows.length > 0;
+      } else {
+        lot.hasTemperatureViolation = (inMemoryBatchEvents || []).some(
+          (e) => e.batchId === lot.id && e.eventType === "TEMPERATURE_VIOLATION"
+        );
       }
 
       return res.status(200).json({ lot });
