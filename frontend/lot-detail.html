@@ -1590,6 +1590,67 @@
         </form>
       </div>
     </div>
+
+    <!-- Modal Mở lệnh thu hồi khẩn cấp (Story S-33 & S-34) -->
+    <div id="openRecallModal" class="modal-backdrop" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.55); z-index: 2100; align-items: center; justify-content: center; padding: 20px; backdrop-filter: blur(2px);">
+      <div class="modal-content" style="background: #fff; border-radius: 16px; width: 100%; max-width: 540px; overflow: hidden; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.25); display: flex; flex-direction: column;">
+        <div style="padding: 20px 24px; border-bottom: 1px solid #fee2e2; display: flex; justify-content: space-between; align-items: center; background: #fff1f2;">
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <div style="width: 38px; height: 38px; border-radius: 10px; background: #fee2e2; color: #dc2626; display: flex; align-items: center; justify-content: center;">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+            </div>
+            <div>
+              <h3 style="font-size: 17px; font-weight: 700; color: #991b1b; margin: 0;">Mở lệnh thu hồi khẩn cấp</h3>
+              <div style="font-size: 12px; color: #b91c1c;">Khoanh vùng và truy vết toàn diện mọi lô hậu duệ (S-33 / S-34)</div>
+            </div>
+          </div>
+          <button type="button" id="btnCloseRecallModal" style="background: none; border: none; font-size: 20px; cursor: pointer; color: #991b1b; line-height: 1;">✕</button>
+        </div>
+
+        <form id="openRecallForm" style="display: flex; flex-direction: column; overflow: hidden; flex: 1;">
+          <div style="padding: 20px 24px; overflow-y: auto;">
+            <div id="recallModalAlert" style="display: none; margin-bottom: 16px;"></div>
+
+            <div style="background: #fff5f5; border: 1px solid #fecaca; border-radius: 10px; padding: 14px 16px; margin-bottom: 16px;">
+              <div style="font-size: 14px; font-weight: 700; color: #991b1b; margin-bottom: 4px;" id="recallModalLotTitle">--</div>
+              <div style="font-size: 13px; color: #7f1d1d;">
+                Mã lô gốc F0: <code id="recallModalLotId" style="font-weight: 700; color: #b91c1c; background: #fee2e2; padding: 1px 6px; border-radius: 4px;">--</code>
+              </div>
+            </div>
+
+            <div style="margin-bottom: 16px;">
+              <label for="recallReason" style="display: block; font-size: 13.5px; font-weight: 600; color: var(--color-text-main); margin-bottom: 6px;">
+                Lý do mở lệnh thu hồi (*):
+              </label>
+              <textarea id="recallReason" class="form-control" rows="3" required placeholder="Ví dụ: Phát hiện dư lượng hoạt chất thuốc bảo vệ thực vật vượt ngưỡng tối đa cho phép theo QCVN..." style="width: 100%; border: 1px solid var(--color-border); border-radius: 8px; padding: 10px 12px; font-size: 13.5px; font-family: inherit; resize: vertical;"></textarea>
+            </div>
+
+            <div style="margin-bottom: 16px;">
+              <label for="recallSeverity" style="display: block; font-size: 13.5px; font-weight: 600; color: var(--color-text-main); margin-bottom: 6px;">
+                Mức độ nghiêm trọng:
+              </label>
+              <select id="recallSeverity" class="form-control" style="width: 100%; height: 40px; border: 1px solid var(--color-border); border-radius: 8px; padding: 0 12px; font-size: 13.5px; font-family: inherit;">
+                <option value="CRITICAL">🔴 Cực kỳ nghiêm trọng (CRITICAL - Thu hồi ngay lập tức)</option>
+                <option value="HIGH" selected>🟠 Nghiêm trọng (HIGH - Nguy cơ an toàn thực phẩm cao)</option>
+                <option value="MEDIUM">🟡 Trung bình (MEDIUM - Cảnh báo và kiểm tra bổ sung)</option>
+                <option value="LOW">🔵 Thấp (LOW - Khuyến cáo nội bộ)</option>
+              </select>
+            </div>
+
+            <div style="background: rgba(239, 68, 68, 0.08); border: 1px solid rgba(239, 68, 68, 0.25); border-radius: 8px; padding: 10px 12px; font-size: 12px; color: #b91c1c; line-height: 1.5;">
+              <strong>Bảo chứng nghiệp vụ (S-33 / S-34):</strong> Lô hàng sẽ chuyển sang trạng thái <code>Có sự cố</code>. Sự kiện <code>RECALL_ORDER_CREATED</code> được đóng gói băm mật mã SHA-256 vào chuỗi sự kiện bất biến. Mọi lô hậu duệ kể cả lô gộp đa nguồn sẽ được tính toán động thời gian thực.
+            </div>
+          </div>
+
+          <div style="display:flex; justify-content:flex-end; gap:10px; padding:16px 24px; border-top:1px solid var(--color-border); background: #fafafa;">
+            <button type="button" id="btnCancelRecall" class="btn btn-secondary" style="height:38px; padding:0 16px;">Hủy bỏ</button>
+            <button type="submit" id="btnSubmitRecall" class="btn btn-primary" style="height:38px; padding:0 20px; background: #dc2626; border-color: #dc2626;">
+              <span>Xác nhận Mở lệnh thu hồi</span>
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
   </main>
 
   <script src="/app-shell.js?v=20261014"></script>
@@ -1817,10 +1878,21 @@
                 </button>
               ` : ""}
 
+              ${isInspectorOrAdmin ? `
+                <button type="button" class="btn btn-danger" id="btnOpenRecallHero" style="height: 32px; padding: 0 14px; font-size: 13px; display: inline-flex; align-items: center; gap: 6px; cursor: pointer; border-radius: var(--radius-sm); background: #dc2626; border-color: #dc2626; color: #fff; font-weight: 600;" title="Mở lệnh thu hồi khẩn cấp cho lô hàng này (S-33 / S-34)">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                  <span>Mở lệnh thu hồi</span>
+                </button>
+              ` : ""}
+
               <div class="dropdown-menu-wrapper">
                 <button type="button" class="btn-icon-kebab" id="btn-hero-more" onclick="toggleHeroDropdown(event)" title="Thao tác khác" aria-label="Thao tác khác">•••</button>
                 <div class="dropdown-popover" id="dropdown-hero-lot">
                   ${isInspectorOrAdmin ? `
+                    <button type="button" class="dropdown-item" id="btnOpenRecallFromDropdown" style="color: #dc2626; font-weight: 600;">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/></svg>
+                      <span>Mở lệnh thu hồi khẩn cấp</span>
+                    </button>
                     <a href="/integrity.html?lotId=${encodeURIComponent(lot.id)}" class="dropdown-item">
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
                       <span>Kiểm tra toàn vẹn</span>
@@ -2615,6 +2687,10 @@
                   </div>
                   <div style="display: flex; align-items: center; gap: 8px;">
                     <span style="font-size: 12px; color: #b91c1c; font-weight: 600;">Danh sách các lô cần cách ly kho</span>
+                    <button type="button" class="btn btn-secondary" id="btnRefreshDescendants" style="height: 30px; padding: 0 10px; font-size: 12px; font-weight: 600; display: inline-flex; align-items: center; gap: 4px; cursor: pointer;" title="Tính toán lại danh sách hậu duệ thời gian thực từ đồ thị">
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+                      <span>Làm mới</span>
+                    </button>
                   </div>
                 </div>
                 <div class="recall-table-wrap">
@@ -2822,10 +2898,26 @@
         btnConsumeHero.addEventListener("click", () => openConsumeLotModal(lot));
       }
 
-      // S-26, S-27, S-28, S-29: Xử lý nút Truy xuôi hậu duệ
+      // S-26, S-27, S-28, S-29, S-34: Xử lý nút Truy xuôi hậu duệ và Làm mới
       const btnTraceForward = document.getElementById("btnExecuteTraceForward");
       if (btnTraceForward) {
         btnTraceForward.addEventListener("click", () => executeTraceForward(lot.id));
+      }
+
+      const btnRefreshDesc = document.getElementById("btnRefreshDescendants");
+      if (btnRefreshDesc) {
+        btnRefreshDesc.addEventListener("click", () => executeTraceForward(lot.id));
+      }
+
+      // S-33 / S-34: Xử lý nút Mở lệnh thu hồi khẩn cấp
+      const btnRecallHero = document.getElementById("btnOpenRecallHero");
+      if (btnRecallHero) {
+        btnRecallHero.addEventListener("click", () => openRecallModalHandler(lot));
+      }
+
+      const btnRecallDropdown = document.getElementById("btnOpenRecallFromDropdown");
+      if (btnRecallDropdown) {
+        btnRecallDropdown.addEventListener("click", () => openRecallModalHandler(lot));
       }
     }
 
@@ -3027,9 +3119,26 @@
           `;
         } else {
           recallTbody.innerHTML = descendants.map((d) => {
-            const isMerge = d.relationType === "MERGE";
-            const badgeClass = isMerge ? "tree-badge-merge" : "tree-badge-split";
-            const badgeText = isMerge ? "GỘP (Đa nguồn)" : "TÁCH LÔ";
+            const isMultiMerge = d.isMultiSourceMerge === true || (Array.isArray(d.mergedSources) && d.mergedSources.length >= 2);
+            const isMerge = d.relationType === "MERGE" || isMultiMerge;
+            
+            let badgeHtml = "";
+            if (isMultiMerge) {
+              const sourcesTooltip = Array.isArray(d.mergedSources) && d.mergedSources.length > 0
+                ? d.mergedSources.map((s) => `${s.parentBatchId} (${s.quantity ? s.quantity + 'kg' : ''})`).join(", ")
+                : "Nhiều nguồn cha";
+              badgeHtml = `
+                <span class="tree-badge-merge" style="background: #ede9fe; color: #6d28d9; border: 1px solid #c4b5fd; font-weight: 700; display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 6px; cursor: help;" title="Lô gộp từ các nguồn: ${escapeHtml(sourcesTooltip)}">
+                  <span>🔀</span>
+                  <span>Gộp đa nguồn (${d.sourcesCount || (d.mergedSources ? d.mergedSources.length : 2)})</span>
+                </span>
+              `;
+            } else if (isMerge) {
+              badgeHtml = `<span class="tree-badge-merge">GỘP LÔ</span>`;
+            } else {
+              badgeHtml = `<span class="tree-badge-split">TÁCH LÔ</span>`;
+            }
+
             const remKg = d.remainingQuantity !== null && d.remainingQuantity !== undefined
               ? `${Number(d.remainingQuantity).toFixed(2)} ${escapeHtml(d.productUnit || "kg")}`
               : "--";
@@ -3043,7 +3152,7 @@
                   ${escapeHtml(d.productName || d.name || d.id)}
                 </td>
                 <td>
-                  <span class="${badgeClass}">${badgeText}</span>
+                  ${badgeHtml}
                 </td>
                 <td>
                   <span style="font-weight: 700; color: #475569;">Tầng ${d.distance || 1}</span>
@@ -3056,7 +3165,7 @@
                   ${d.locationAddress ? `<div style="font-size: 11px; color: #64748b;">${escapeHtml(d.locationAddress)}</div>` : ""}
                 </td>
                 <td>
-                  <span class="status-pill ${d.status === 'Đã thu hoạch' || d.status === 'Đã nhập kho' ? 'success' : 'warning'}" style="font-size: 11px;">
+                  <span class="status-pill ${d.status === 'Đã thu hoạch' || d.status === 'Đã nhập kho' ? 'success' : (d.status === 'Có sự cố' ? 'danger' : 'warning')}" style="font-size: 11px;">
                     ${escapeHtml(d.status || "Đang lưu kho")}
                   </span>
                 </td>
@@ -4949,11 +5058,121 @@
       }
     }
 
+    let targetRecallLot = null;
+
+    function openRecallModalHandler(lot) {
+      targetRecallLot = lot;
+      const modal = document.getElementById("openRecallModal");
+      const alertBox = document.getElementById("recallModalAlert");
+      const titleEl = document.getElementById("recallModalLotTitle");
+      const idEl = document.getElementById("recallModalLotId");
+      const reasonInput = document.getElementById("recallReason");
+      const severityInput = document.getElementById("recallSeverity");
+
+      if (alertBox) {
+        alertBox.style.display = "none";
+        alertBox.textContent = "";
+      }
+      if (titleEl) titleEl.textContent = lot.name || lot.productName || "Lô nông sản";
+      if (idEl) idEl.textContent = lot.id;
+      if (reasonInput) reasonInput.value = "";
+      if (severityInput) severityInput.value = "HIGH";
+
+      if (modal) modal.style.display = "flex";
+    }
+
+    function closeRecallModal() {
+      const modal = document.getElementById("openRecallModal");
+      if (modal) modal.style.display = "none";
+      targetRecallLot = null;
+    }
+
+    function setupRecallModalListeners() {
+      const btnClose = document.getElementById("btnCloseRecallModal");
+      const btnCancel = document.getElementById("btnCancelRecall");
+      const form = document.getElementById("openRecallForm");
+      const btnSubmit = document.getElementById("btnSubmitRecall");
+      const alertBox = document.getElementById("recallModalAlert");
+
+      if (btnClose) btnClose.addEventListener("click", closeRecallModal);
+      if (btnCancel) btnCancel.addEventListener("click", closeRecallModal);
+
+      if (form) {
+        form.addEventListener("submit", async (e) => {
+          e.preventDefault();
+          if (!targetRecallLot) return;
+
+          const lotId = targetRecallLot.id;
+          const reason = document.getElementById("recallReason") ? document.getElementById("recallReason").value.trim() : "";
+          const severity = document.getElementById("recallSeverity") ? document.getElementById("recallSeverity").value : "HIGH";
+
+          if (!reason) {
+            if (alertBox) {
+              alertBox.className = "alert alert-danger";
+              alertBox.style.display = "block";
+              alertBox.textContent = "Vui lòng nhập lý do mở lệnh thu hồi.";
+            }
+            return;
+          }
+
+          if (btnSubmit) {
+            btnSubmit.disabled = true;
+            btnSubmit.innerHTML = `
+              <svg class="spin" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 2a10 10 0 0 1 10 10"/></svg>
+              <span>Đang mở lệnh...</span>
+            `;
+          }
+
+          try {
+            const res = await fetch("/api/recalls", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              credentials: "same-origin",
+              body: JSON.stringify({
+                lotId,
+                reason,
+                severity,
+              }),
+            });
+
+            const data = await res.json();
+            if (!res.ok) {
+              throw new Error(data.message || data.error || "Không thể mở lệnh thu hồi.");
+            }
+
+            closeRecallModal();
+
+            if (typeof window.showToast === "function") {
+              window.showToast(`Đã mở lệnh thu hồi ${data.recallOrder ? data.recallOrder.id : ''}! Trạng thái lô đã chuyển sang "Có sự cố".`, "success");
+            } else {
+              alert(`Thành công: Đã mở lệnh thu hồi ${data.recallOrder ? data.recallOrder.id : ''}!`);
+            }
+
+            await loadLotDetail(lotId);
+            // Tự động kích hoạt hiển thị hậu duệ thu hồi
+            executeTraceForward(lotId);
+          } catch (err) {
+            if (alertBox) {
+              alertBox.className = "alert alert-danger";
+              alertBox.style.display = "block";
+              alertBox.textContent = err.message || "Lỗi khi mở lệnh thu hồi.";
+            }
+          } finally {
+            if (btnSubmit) {
+              btnSubmit.disabled = false;
+              btnSubmit.innerHTML = "<span>Xác nhận Mở lệnh thu hồi</span>";
+            }
+          }
+        });
+      }
+    }
+
     setupTransferModalListeners();
     setupSplitModalListeners();
     setupMergeModalListeners();
     setupConsumeModalListeners();
     setupLocationModalListeners();
+    setupRecallModalListeners();
     initPage();
   </script>
 </body>
