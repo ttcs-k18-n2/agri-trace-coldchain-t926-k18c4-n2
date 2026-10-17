@@ -1044,6 +1044,134 @@ test("S-40 Mocked Browser E2E Coverage (Isolated with Fixtures, Zero Shared Post
       const alertText = await client.waitForText("#alertBanner", "chuyến vận chuyển khác");
       assert.match(alertText, /chuyến vận chuyển khác/);
     });
+
+    // =========================================================================
+    // SCENARIO 5: S-41 Truthful Telemetry Display in Real Browser UI
+    // =========================================================================
+    await t.test("Scenario 5: Truthful Telemetry Display (Missing, 0, Negative, Real Timestamp)", async () => {
+      activeRole = "transporter";
+
+      // Reset and inject shipments with different telemetry states
+      inMemoryShipments.length = 0;
+      inMemoryShipments.push(
+        {
+          id: "SHP-TELEMETRY-ABSENT",
+          code: "SHP-TELEMETRY-ABSENT",
+          containerId: "CONT-COLD-01",
+          coldBoxId: "CONT-COLD-01",
+          containerName: "Thùng lạnh chuyên dụng 50L",
+          containerTempRange: "2°C - 8°C",
+          status: "IN_TRANSIT",
+          origin: "Vườn Mộc Châu",
+          destination: "Kho Hà Nội",
+          departureTime: "2026-10-17T08:00:00.000Z",
+          startedAt: "2026-10-17T08:00:00.000Z",
+          current_temperature: null,
+          last_temperature_at: null,
+          lotIds: ["LOT-S40-001"],
+          lots: [{ lotId: "LOT-S40-001", status: "IN_TRANSIT" }],
+        },
+        {
+          id: "SHP-TELEMETRY-ZERO",
+          code: "SHP-TELEMETRY-ZERO",
+          containerId: "CONT-COLD-02",
+          coldBoxId: "CONT-COLD-02",
+          containerName: "Thùng lạnh siêu tốc 120L",
+          containerTempRange: "0°C - 4°C",
+          status: "IN_TRANSIT",
+          origin: "Nông trường Đà Lạt",
+          destination: "Trung tâm HCM",
+          departureTime: "2026-10-17T09:00:00.000Z",
+          startedAt: "2026-10-17T09:00:00.000Z",
+          current_temperature: 0,
+          last_temperature_at: "2026-10-17T12:00:00.000Z",
+          lotIds: ["LOT-S40-002"],
+          lots: [{ lotId: "LOT-S40-002", status: "IN_TRANSIT" }],
+        },
+        {
+          id: "SHP-TELEMETRY-NEG",
+          code: "SHP-TELEMETRY-NEG",
+          containerId: "CONT-FREEZE-01",
+          coldBoxId: "CONT-FREEZE-01",
+          containerName: "Thùng đông sâu 200L",
+          containerTempRange: "-20°C - -10°C",
+          status: "IN_TRANSIT",
+          origin: "Cảng Cà Mau",
+          destination: "Kho Lạnh Hải Phòng",
+          departureTime: "2026-10-17T07:00:00.000Z",
+          startedAt: "2026-10-17T07:00:00.000Z",
+          current_temperature: -3.5,
+          last_temperature_at: "2026-10-17T12:15:00.000Z",
+          lotIds: ["LOT-S40-003"],
+          lots: [{ lotId: "LOT-S40-003", status: "IN_TRANSIT" }],
+        }
+      );
+
+      await client.navigate(`${baseUrl}/shipments.html`);
+      await client.waitForSelector("#shipmentsContainer .shipment-card");
+
+      // 5.1 Card Telemetry Verification
+      const cardsData = await client.evaluate(`
+        Array.from(document.querySelectorAll("#shipmentsContainer .shipment-card")).map(card => {
+          const code = card.querySelector(".shipment-code-badge")?.textContent?.trim() || "";
+          const tempVal = card.querySelector(".temp-val")?.textContent?.trim() || "";
+          const tempDisplayClass = card.querySelector(".temp-display")?.className || "";
+          return { code, tempVal, tempDisplayClass };
+        })
+      `);
+
+      const absentCard = cardsData.find(c => c.code === "SHP-TELEMETRY-ABSENT");
+      assert.ok(absentCard, "Absent telemetry card must exist");
+      assert.equal(absentCard.tempVal, "Chưa có dữ liệu", "Missing telemetry must display 'Chưa có dữ liệu'");
+      assert.match(absentCard.tempDisplayClass, /temp-unknown/);
+
+      const zeroCard = cardsData.find(c => c.code === "SHP-TELEMETRY-ZERO");
+      assert.ok(zeroCard, "Measured 0 card must exist");
+      assert.equal(zeroCard.tempVal, "0.0°C", "Measured 0 must display '0.0°C', not 4.2");
+      assert.match(zeroCard.tempDisplayClass, /temp-measured/);
+
+      const negCard = cardsData.find(c => c.code === "SHP-TELEMETRY-NEG");
+      assert.ok(negCard, "Negative temp card must exist");
+      assert.equal(negCard.tempVal, "-3.5°C", "Negative temp must display '-3.5°C'");
+      assert.match(negCard.tempDisplayClass, /temp-measured/);
+
+      // 5.2 Modal Detail Verification for Absent Telemetry (Never fake healthy status)
+      await client.evaluate(`(() => {
+        const trigger = document.querySelector('.btn-detail-trigger[data-id="SHP-TELEMETRY-ABSENT"]') || document.querySelector('.btn-view-detail[data-id="SHP-TELEMETRY-ABSENT"]');
+        if (trigger) trigger.click();
+      })()`);
+      await client.waitForSelector("#modalShipmentDetail");
+      const absentDisplay = await client.evaluate('document.getElementById("modalShipmentDetail").style.display');
+      assert.equal(absentDisplay, "flex");
+      await client.waitForText("#detailContentArea", "Thùng lạnh bảo quản");
+
+      const absentModalContent = await client.evaluate(`
+        document.getElementById("detailContentArea")?.innerText || ""
+      `);
+      assert.match(absentModalContent, /Chưa có dữ liệu/, "Modal must show 'Chưa có dữ liệu' for temperature");
+      assert.doesNotMatch(absentModalContent, /Bình thường/, "Must NOT fake 'Bình thường' healthy sensor status when absent");
+
+      // Close modal
+      await client.click("#btnCloseDetailModal");
+
+      // 5.3 Modal Detail Verification for Measured 0 (Preserved actual timestamp)
+      await client.evaluate(`(() => {
+        const trigger = document.querySelector('.btn-detail-trigger[data-id="SHP-TELEMETRY-ZERO"]') || document.querySelector('.btn-view-detail[data-id="SHP-TELEMETRY-ZERO"]');
+        if (trigger) trigger.click();
+      })()`);
+      await client.waitForSelector("#modalShipmentDetail");
+      const zeroDisplay = await client.evaluate('document.getElementById("modalShipmentDetail").style.display');
+      assert.equal(zeroDisplay, "flex");
+      await client.waitForText("#detailContentArea", "Thùng lạnh bảo quản");
+
+      const zeroModalContent = await client.evaluate(`
+        document.getElementById("detailContentArea")?.innerText || ""
+      `);
+      assert.match(zeroModalContent, /0\.0°C/, "Modal must show '0.0°C' for measured 0");
+      assert.doesNotMatch(zeroModalContent, /Bình thường/, "Must NOT invent 'Bình thường' without domain status");
+      assert.match(zeroModalContent, /Thời điểm ghi nhận:/, "Modal must show 'Thời điểm ghi nhận:'");
+      assert.doesNotMatch(zeroModalContent, /4\.2°C/, "Must never invent 4.2°C");
+    });
   } finally {
     if (client) await client.close();
     try {
