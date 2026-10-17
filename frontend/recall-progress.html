@@ -1,0 +1,910 @@
+<!DOCTYPE html>
+<html lang="vi">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tiến Độ Thu Hồi (S-37) - AgriTrace ColdChain</title>
+    <link rel="stylesheet" href="/styles.css">
+    <style>
+        .progress-page {
+            max-width: 860px;
+            margin: 24px auto;
+            padding: 0 16px 48px;
+            font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            color: #0f172a;
+        }
+
+        .progress-card {
+            background: #ffffff;
+            border: 1px solid #e2e8f0;
+            border-radius: 10px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+            padding: 24px 28px;
+            margin-bottom: 20px;
+        }
+
+        .card-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 12px;
+            border-bottom: 1px solid #f1f5f9;
+            padding-bottom: 16px;
+            margin-bottom: 20px;
+        }
+
+        .page-title {
+            font-size: 20px;
+            font-weight: 700;
+            color: #0f172a;
+            margin: 0;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .page-subtitle {
+            font-size: 13.5px;
+            color: #64748b;
+            margin: 6px 0 0;
+        }
+
+        .filter-bar {
+            display: flex;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 10px;
+            padding: 14px 16px;
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+
+        .filter-group {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .filter-group label {
+            font-size: 13.5px;
+            font-weight: 600;
+            color: #334155;
+        }
+
+        .filter-input {
+            width: 110px;
+            padding: 8px 12px;
+            font-size: 14px;
+            border: 1px solid #cbd5e1;
+            border-radius: 6px;
+            background: #ffffff;
+            color: #0f172a;
+        }
+
+        .btn-action {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 8px 16px;
+            font-size: 13.5px;
+            font-weight: 600;
+            border-radius: 6px;
+            border: 1px solid transparent;
+            cursor: pointer;
+            transition: background-color 0.15s, border-color 0.15s;
+            text-decoration: none;
+        }
+
+        .btn-primary {
+            background-color: #0284c7;
+            color: #ffffff;
+        }
+
+        .btn-primary:hover:not(:disabled) {
+            background-color: #0369a1;
+        }
+
+        .btn-success {
+            background-color: #16a34a;
+            color: #ffffff;
+        }
+
+        .btn-success:hover:not(:disabled) {
+            background-color: #15803d;
+        }
+
+        .btn-secondary {
+            background-color: #f1f5f9;
+            color: #334155;
+            border-color: #cbd5e1;
+        }
+
+        .btn-secondary:hover:not(:disabled) {
+            background-color: #e2e8f0;
+        }
+
+        /* AC1: Pending prompt banner */
+        .prompt-banner {
+            border-radius: 8px;
+            padding: 16px 18px;
+            margin-bottom: 20px;
+            display: flex;
+            gap: 14px;
+            align-items: flex-start;
+            font-size: 14px;
+            line-height: 1.5;
+        }
+
+        .prompt-banner-warning {
+            background: #fffbeb;
+            border: 1px solid #fcd34d;
+            color: #92400e;
+        }
+
+        .prompt-banner-error {
+            background: #fef2f2;
+            border: 1px solid #fca5a5;
+            color: #991b1b;
+        }
+
+        .prompt-icon {
+            flex-shrink: 0;
+            width: 22px;
+            height: 22px;
+            margin-top: 1px;
+        }
+
+        .prompt-content {
+            flex: 1;
+        }
+
+        .prompt-title {
+            font-weight: 700;
+            font-size: 14.5px;
+            margin-bottom: 4px;
+        }
+
+        /* Stats Grid */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 14px;
+            margin-bottom: 20px;
+        }
+
+        .stat-card {
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            padding: 14px 16px;
+        }
+
+        .stat-label {
+            font-size: 12.5px;
+            color: #64748b;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.025em;
+            margin-bottom: 6px;
+        }
+
+        .stat-value {
+            font-size: 22px;
+            font-weight: 700;
+            color: #0f172a;
+        }
+
+        .stat-value-highlight {
+            color: #16a34a;
+        }
+
+        .stat-value-pending {
+            color: #d97706;
+        }
+
+        /* AC3: Progress Bar Component */
+        .progress-section {
+            margin-bottom: 24px;
+        }
+
+        .progress-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+            font-size: 13.5px;
+            font-weight: 600;
+            color: #334155;
+        }
+
+        .progress-bg {
+            width: 100%;
+            height: 28px;
+            background-color: #e2e8f0;
+            border-radius: 6px;
+            overflow: hidden;
+            box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.08);
+        }
+
+        .progress-bar {
+            width: 0%;
+            height: 100%;
+            background-color: #16a34a;
+            color: #ffffff;
+            font-size: 13px;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+            transition: width 0.4s ease;
+            white-space: nowrap;
+        }
+
+        /* Pending & Acknowledged Lists */
+        .sub-section {
+            margin-top: 24px;
+            border-top: 1px solid #f1f5f9;
+            padding-top: 18px;
+        }
+
+        .sub-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 12px;
+        }
+
+        .sub-title {
+            font-size: 15px;
+            font-weight: 700;
+            color: #0f172a;
+            margin: 0;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .badge-count {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 9999px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .badge-warning {
+            background: #fef3c7;
+            color: #92400e;
+            border: 1px solid #fde68a;
+        }
+
+        .badge-success {
+            background: #dcfce7;
+            color: #15803d;
+            border: 1px solid #bbf7d0;
+        }
+
+        .badge-status {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .badge-status-received {
+            background: #e0f2fe;
+            color: #0369a1;
+        }
+
+        .badge-status-progress {
+            background: #fef3c7;
+            color: #92400e;
+        }
+
+        .badge-status-taken {
+            background: #dcfce7;
+            color: #15803d;
+        }
+
+        /* Lists and Tables */
+        .pending-list {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 10px;
+        }
+
+        .pending-item {
+            background: #fffbeb;
+            border: 1px solid #fde68a;
+            border-radius: 6px;
+            padding: 12px 14px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+        }
+
+        .pending-name {
+            font-weight: 600;
+            font-size: 13.5px;
+            color: #92400e;
+        }
+
+        .ack-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13.5px;
+            margin-top: 8px;
+        }
+
+        .ack-table th {
+            text-align: left;
+            padding: 10px 12px;
+            background: #f8fafc;
+            color: #475569;
+            font-weight: 600;
+            border-bottom: 2px solid #e2e8f0;
+        }
+
+        .ack-table td {
+            padding: 12px;
+            border-bottom: 1px solid #f1f5f9;
+            color: #1e293b;
+        }
+
+        .ack-table tbody tr:hover {
+            background-color: #f8fafc;
+        }
+
+        .empty-notice {
+            padding: 16px;
+            background: #f8fafc;
+            border: 1px dashed #cbd5e1;
+            border-radius: 6px;
+            font-size: 13.5px;
+            color: #64748b;
+            text-align: center;
+        }
+
+        .spinner {
+            width: 14px;
+            height: 14px;
+            border: 2px solid rgba(0, 0, 0, 0.15);
+            border-top-color: #0284c7;
+            border-radius: 50%;
+            animation: spin 0.7s linear infinite;
+            display: inline-block;
+        }
+
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <!-- AgriTrace App Shell Header -->
+    <header class="app-header">
+        <div class="header-inner">
+            <div class="header-brand">
+                <a href="/lots.html" class="brand-link">
+                    <span class="brand-title">AgriTrace ColdChain</span>
+                </a>
+            </div>
+            <nav class="header-nav">
+                <a href="/lots.html" id="navLots" class="nav-item">Quản lý lô hàng</a>
+                <a href="/farms.html" id="navFarms" class="nav-item">Vùng trồng</a>
+                <a href="/products.html" id="navProducts" class="nav-item">Sản phẩm</a>
+                <a href="/harvest.html" id="navHarvest" class="nav-item">Thu hoạch</a>
+                <a href="/recall-progress.html" id="navRecallProgress" class="nav-item active">Tiến độ thu hồi</a>
+                <a href="/recall-form.html" id="navRecallForm" class="nav-item">Xác nhận thu hồi</a>
+            </nav>
+            <div class="header-user">
+                <span id="userOrg" class="user-org"></span>
+                <span id="userRole" class="user-role"></span>
+                <span id="userEmail" class="user-email"></span>
+                <button type="button" id="logout" class="btn-logout" title="Đăng xuất">Đăng xuất</button>
+            </div>
+        </div>
+    </header>
+
+    <main class="progress-page">
+        <div class="progress-card">
+            <div class="card-header">
+                <div>
+                    <h1 class="page-title">
+                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#0284c7" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                            <line x1="18" y1="20" x2="18" y2="10"/>
+                            <line x1="12" y1="20" x2="12" y2="4"/>
+                            <line x1="6" y1="20" x2="6" y2="14"/>
+                        </svg>
+                        Tiến Độ Đợt Thu Hồi (S-37)
+                    </h1>
+                    <p class="page-subtitle">Theo dõi tỷ lệ xác nhận từ các đơn vị trong chuỗi cung ứng chịu ảnh hưởng của đợt thu hồi.</p>
+                </div>
+                <div>
+                    <a href="/recall-form.html" id="btnGoToForm" class="btn-action btn-success">
+                        + Gửi xác nhận thu hồi (S-36)
+                    </a>
+                </div>
+            </div>
+
+            <!-- Recall Selector Bar -->
+            <div class="filter-bar">
+                <div class="filter-group">
+                    <label for="recall_id_input">Mã Đợt Thu Hồi:</label>
+                    <input type="text" id="recall_id_input" class="filter-input" placeholder="VD: REC-... hoặc 1" value="1" style="width: 140px;">
+                </div>
+                <button type="button" id="btnRefresh" class="btn-action btn-primary">
+                    <span id="refreshBtnText">Tải dữ liệu từ máy chủ</span>
+                </button>
+            </div>
+
+            <!-- AC1: Pending prompt banner for affected logged-in organization -->
+            <div id="pendingAckPrompt" class="prompt-banner prompt-banner-warning" style="display: none;">
+                <svg class="prompt-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+                    <circle cx="12" cy="12" r="10"/>
+                    <line x1="12" y1="8" x2="12" y2="12"/>
+                    <line x1="12" y1="16" x2="12.01" y2="16"/>
+                </svg>
+                <div class="prompt-content">
+                    <div class="prompt-title">
+                        Thông báo khẩn cấp cho đơn vị của bạn
+                        <span class="badge-count badge-warning">Chờ xác nhận</span>
+                    </div>
+                    <div>
+                        Đơn vị <strong id="userPendingOrgName">...</strong> nằm trong danh sách liên đới đợt thu hồi mã <strong id="userPendingRecallId">#1</strong> và hiện <strong>chưa gửi xác nhận</strong>.
+                        <a href="/recall-form.html" id="linkSubmitPending" style="color: #b45309; font-weight: 700; text-decoration: underline; margin-left: 6px;">Bấm vào đây để gửi xác nhận ngay →</a>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Error banner -->
+            <div id="alertError" class="prompt-banner prompt-banner-error" style="display: none;">
+                <svg class="prompt-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+                    <polygon points="7.86 2 16.14 2 22 7.86 22 16.14 16.14 22 7.86 22 2 16.14 2 7.86 7.86 2"/>
+                    <line x1="12" y1="8" x2="12" y2="12"/>
+                    <line x1="12" y1="16" x2="12.01" y2="16"/>
+                </svg>
+                <div class="prompt-content" id="alertErrorMessage">
+                    Lỗi khi tải tiến độ thu hồi từ máy chủ.
+                </div>
+            </div>
+
+            <!-- AC3: Summary Metrics Cards -->
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-label">Mã Đợt Thu Hồi</div>
+                    <div class="stat-value" id="display_id">1</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Cơ sở đã xác nhận</div>
+                    <div class="stat-value stat-value-highlight">
+                        <span id="ack_count">0</span> / <span id="total_expected">0</span>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Tổ chức chưa xác nhận</div>
+                    <div class="stat-value stat-value-pending" id="pending_count">0</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Tỷ lệ hoàn thành</div>
+                    <div class="stat-value" id="progress_percent_label">0%</div>
+                </div>
+            </div>
+
+            <!-- AC3: Progress Bar Component (Preserving #my_progress_bar) -->
+            <div class="progress-section">
+                <div class="progress-header">
+                    <span>Tiến độ xác nhận phản hồi toàn hệ thống</span>
+                    <span id="progressSummaryText">0 / 0 tổ chức</span>
+                </div>
+                <div class="progress-bg">
+                    <div class="progress-bar" id="my_progress_bar" style="width: 0%;">0%</div>
+                </div>
+            </div>
+
+            <!-- AC3: Section for Expected Pending Organizations (Names Pending) -->
+            <div class="sub-section" id="pendingSection">
+                <div class="sub-header">
+                    <h2 class="sub-title">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#d97706" stroke-width="2.2">
+                            <circle cx="12" cy="12" r="10"/>
+                            <polyline points="12 6 12 12 16 14"/>
+                        </svg>
+                        Các tổ chức chưa gửi xác nhận (Pending)
+                    </h2>
+                    <span class="badge-count badge-warning" id="pendingBadgeCount">0 đơn vị</span>
+                </div>
+                <p style="font-size: 13px; color: #64748b; margin: 0 0 12px;">Danh sách các đơn vị trong chuỗi cung ứng dự kiến cần tiếp nhận và phản hồi nhưng chưa gửi xác nhận:</p>
+                <div id="pendingOrgsList" class="pending-list">
+                    <!-- Dynamically populated -->
+                </div>
+            </div>
+
+            <!-- Section for Acknowledged Organizations -->
+            <div class="sub-section" id="acknowledgedSection">
+                <div class="sub-header">
+                    <h2 class="sub-title">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#16a34a" stroke-width="2.2">
+                            <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
+                            <polyline points="22 4 12 14.01 9 11.01"/>
+                        </svg>
+                        Danh sách các đơn vị đã xác nhận
+                    </h2>
+                    <span class="badge-count badge-success" id="ackBadgeCount">0 đơn vị</span>
+                </div>
+                <div style="overflow-x: auto;">
+                    <table class="ack-table" id="ackTable">
+                        <thead>
+                            <tr>
+                                <th>Tổ chức / Đơn vị</th>
+                                <th>Trạng thái xử lý</th>
+                                <th>Ghi chú / Hành động</th>
+                                <th>Thời gian gửi</th>
+                            </tr>
+                        </thead>
+                        <tbody id="acknowledgedOrgsList">
+                            <!-- Dynamically populated -->
+                        </tbody>
+                    </table>
+                </div>
+                <div id="emptyAckNotice" class="empty-notice" style="display: none;">
+                    Chưa có đơn vị nào gửi xác nhận cho đợt thu hồi này.
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script src="/app-shell.js"></script>
+    <script>
+        (function () {
+            // DOM Elements
+            const displayId = document.getElementById('display_id');
+            const ackCount = document.getElementById('ack_count');
+            const totalExpected = document.getElementById('total_expected');
+            const progressBar = document.getElementById('my_progress_bar');
+            const progressPercentLabel = document.getElementById('progress_percent_label');
+            const progressSummaryText = document.getElementById('progressSummaryText');
+            const pendingCount = document.getElementById('pending_count');
+            const pendingBadgeCount = document.getElementById('pendingBadgeCount');
+            const ackBadgeCount = document.getElementById('ackBadgeCount');
+
+            const pendingOrgsList = document.getElementById('pendingOrgsList');
+            const acknowledgedOrgsList = document.getElementById('acknowledgedOrgsList');
+            const emptyAckNotice = document.getElementById('emptyAckNotice');
+
+            const recallIdInput = document.getElementById('recall_id_input');
+            const btnRefresh = document.getElementById('btnRefresh');
+            const refreshBtnText = document.getElementById('refreshBtnText');
+            const btnGoToForm = document.getElementById('btnGoToForm');
+
+            const pendingPrompt = document.getElementById('pendingAckPrompt');
+            const userPendingOrgName = document.getElementById('userPendingOrgName');
+            const userPendingRecallId = document.getElementById('userPendingRecallId');
+            const linkSubmitPending = document.getElementById('linkSubmitPending');
+
+            const alertError = document.getElementById('alertError');
+            const alertErrorMessage = document.getElementById('alertErrorMessage');
+
+            let currentUserOrgCache = null;
+
+            function getQueryParams() {
+                const params = new URLSearchParams(window.location.search);
+                return {
+                    recallId: params.get('recall_id') || params.get('recallId') || params.get('id') || '1'
+                };
+            }
+
+            const q = getQueryParams();
+            if (q.recallId) {
+                recallIdInput.value = q.recallId;
+            }
+
+            function updateGoToFormLink(recallId) {
+                if (btnGoToForm) {
+                    btnGoToForm.href = '/recall-form.html?recall_id=' + encodeURIComponent(recallId || 1);
+                }
+            }
+            updateGoToFormLink(recallIdInput.value || 1);
+
+            recallIdInput.addEventListener('change', function () {
+                const rId = recallIdInput.value.trim() || 1;
+                updateGoToFormLink(rId);
+                loadRecallProgress(rId);
+            });
+
+            btnRefresh.addEventListener('click', function () {
+                const rId = recallIdInput.value.trim() || 1;
+                loadRecallProgress(rId);
+            });
+
+            // Map organization ID to standard name
+            function mapOrgIdToName(orgId) {
+                const map = {
+                    'org-001': 'Nông trại Thái Nguyên',
+                    'org-002': 'Hợp tác xã Rau Sạch Bắc Giang',
+                    'org-003': 'Nhà phân phối Chuỗi Lạnh',
+                    'org-trans': 'Công ty Cổ phần Vận chuyển Chuỗi Lạnh Á Châu',
+                    'org-dist': 'Tổng Công ty Phân phối Nông sản & Bán lẻ',
+                    'org-inspector': 'Cục Kiểm tra An toàn Nông sản',
+                    'org-system': 'Cơ quan Quản lý Chuỗi Lạnh Toàn quốc'
+                };
+                return map[orgId] || orgId;
+            }
+
+            // Get logged in organization
+            async function getCurrentUserOrg() {
+                if (currentUserOrgCache) return currentUserOrgCache;
+                try {
+                    const cachedRaw = sessionStorage.getItem('agriUser');
+                    if (cachedRaw) {
+                        const cached = JSON.parse(cachedRaw);
+                        if (cached && cached.organizationId) {
+                            currentUserOrgCache = {
+                                organizationId: cached.organizationId,
+                                organizationName: mapOrgIdToName(cached.organizationId)
+                            };
+                            return currentUserOrgCache;
+                        }
+                    }
+
+                    const res = await fetch('/api/me', { credentials: 'same-origin' });
+                    if (res.ok) {
+                        const data = await res.json();
+                        const u = data.user || {};
+                        if (u.organizationId) {
+                            currentUserOrgCache = {
+                                organizationId: u.organizationId,
+                                organizationName: mapOrgIdToName(u.organizationId)
+                            };
+                            return currentUserOrgCache;
+                        }
+                    }
+                } catch (e) {
+                    // Non-blocking
+                }
+                return { organizationId: '', organizationName: '' };
+            }
+
+            // Real API Progress Loading (Contract: GET /api/recalls/:id/progress)
+            // Response: { recall_id, acknowledged_count, expected_count, pending_organizations: [{id, name}], status }
+            async function loadRecallProgress(recallId) {
+                recallId = recallId || recallIdInput.value.trim() || 1;
+
+                // UI loading state
+                alertError.style.display = 'none';
+                btnRefresh.disabled = true;
+                refreshBtnText.innerHTML = '<span class="spinner"></span> Đang tải...';
+
+                try {
+                    const [progressRes, acksRes, userOrg] = await Promise.all([
+                        fetch('/api/recalls/' + encodeURIComponent(recallId) + '/progress', { credentials: 'same-origin' }),
+                        fetch('/api/recalls/' + encodeURIComponent(recallId) + '/acknowledgments', { credentials: 'same-origin' }).catch(function () { return null; }),
+                        getCurrentUserOrg()
+                    ]);
+
+                    if (!progressRes.ok) {
+                        if (progressRes.status === 401) {
+                            throw new Error('Phiên làm việc đã hết hạn hoặc chưa đăng nhập (401). Vui lòng đăng nhập lại.');
+                        } else if (progressRes.status === 403) {
+                            throw new Error('Bạn không có quyền xem tiến độ đợt thu hồi này (403 Forbidden).');
+                        } else if (progressRes.status === 404) {
+                            throw new Error('Không tìm thấy đợt thu hồi với mã "' + escapeHtml(recallId) + '" (404 Not Found).');
+                        }
+                        const errData = await progressRes.json().catch(function () { return {}; });
+                        throw new Error(errData.error || errData.message || ('HTTP ' + progressRes.status));
+                    }
+
+                    const progressData = await progressRes.json();
+
+                    let acksData = [];
+                    if (acksRes && acksRes.ok) {
+                        acksData = await acksRes.json().catch(function () { return []; });
+                        if (!Array.isArray(acksData)) acksData = [];
+                    }
+
+                    renderProgressData(progressData, acksData, userOrg);
+
+                } catch (err) {
+                    alertErrorMessage.textContent = 'Lỗi máy chủ khi lấy dữ liệu đợt thu hồi: ' + err.message;
+                    alertError.style.display = 'flex';
+                } finally {
+                    btnRefresh.disabled = false;
+                    refreshBtnText.textContent = 'Tải dữ liệu từ máy chủ';
+                }
+            }
+
+            // Render progress and calculate 3/5 with named pending orgs
+            function renderProgressData(data, acksArg, userOrgArg) {
+                if (!data) return;
+
+                // Handle both signature styles: renderProgressData(progressData, acks, userOrg)
+                // or legacy object signature renderProgressData({ progressData, acknowledgments, ... })
+                let progressData = data;
+                let acks = Array.isArray(acksArg) ? acksArg : [];
+                let userOrg = userOrgArg || currentUserOrgCache || { organizationId: '', organizationName: '' };
+
+                if (data.progressData !== undefined) {
+                    progressData = data.progressData || {};
+                    acks = Array.isArray(data.acknowledgments) ? data.acknowledgments : acks;
+                    if (data.userOrg) {
+                        userOrg = typeof data.userOrg === 'string'
+                            ? { organizationId: data.userOrg, organizationName: data.userOrg }
+                            : data.userOrg;
+                    }
+                }
+
+                const recallId = progressData.recall_id !== undefined ? progressData.recall_id : (progressData.recallId !== undefined ? progressData.recallId : (recallIdInput.value.trim() || '1'));
+                const ackedCount = Number(progressData.acknowledged_count !== undefined ? progressData.acknowledged_count : (progressData.acknowledgedCount || 0));
+                let totalExpectedCount = Number(progressData.expected_count !== undefined ? progressData.expected_count : (progressData.total_expected !== undefined ? progressData.total_expected : (progressData.expectedCount || 0)));
+                const pendingOrgs = Array.isArray(progressData.pending_organizations)
+                    ? progressData.pending_organizations
+                    : (Array.isArray(progressData.pendingOrganizations) ? progressData.pendingOrganizations : []);
+
+                // If totalExpectedCount is not specified or 0, calculate dynamic total from acked + pending
+                if (totalExpectedCount === 0 && (ackedCount > 0 || pendingOrgs.length > 0)) {
+                    totalExpectedCount = ackedCount + pendingOrgs.length;
+                }
+
+                const pendingCountVal = pendingOrgs.length > 0
+                    ? pendingOrgs.length
+                    : Math.max(0, totalExpectedCount - ackedCount);
+
+                const percent = totalExpectedCount > 0 ? Math.round((ackedCount / totalExpectedCount) * 100) : 0;
+
+                // Set Recall ID
+                displayId.textContent = recallId;
+
+                // Update Overview Metrics
+                ackCount.textContent = ackedCount;
+                totalExpected.textContent = totalExpectedCount;
+                pendingCount.textContent = pendingCountVal;
+                progressPercentLabel.textContent = percent + '%';
+                progressSummaryText.textContent = ackedCount + ' / ' + totalExpectedCount + ' tổ chức (' + percent + '%)';
+
+                // Update Progress Bar
+                progressBar.style.width = percent + '%';
+                progressBar.textContent = percent + '% (' + ackedCount + '/' + totalExpectedCount + ')';
+
+                // Update Badges
+                pendingBadgeCount.textContent = pendingCountVal + ' đơn vị';
+                ackBadgeCount.textContent = (acks.length > 0 ? acks.length : ackedCount) + ' đơn vị';
+
+                // Render Named Pending Organizations
+                pendingOrgsList.innerHTML = '';
+                if (pendingOrgs.length === 0) {
+                    if (totalExpectedCount > 0 && ackedCount >= totalExpectedCount) {
+                        pendingOrgsList.innerHTML = '<div class="empty-notice" style="grid-column: 1 / -1;">Tất cả các tổ chức liên quan đã hoàn thành xác nhận (100%).</div>';
+                    } else if (pendingCountVal > 0) {
+                        pendingOrgsList.innerHTML = '<div class="empty-notice" style="grid-column: 1 / -1;">Còn ' + pendingCountVal + ' tổ chức chưa gửi xác nhận (chưa có danh sách chi tiết từ máy chủ).</div>';
+                    } else {
+                        pendingOrgsList.innerHTML = '<div class="empty-notice" style="grid-column: 1 / -1;">Không có tổ chức nào trong danh sách chờ xác nhận.</div>';
+                    }
+                } else {
+                    pendingOrgs.forEach(function (org) {
+                        const orgName = typeof org === 'string' ? org : (org.name || org.org_name || org.id || 'Đơn vị liên quan');
+                        const orgId = typeof org === 'object' && org !== null ? (org.id || '') : '';
+
+                        const item = document.createElement('div');
+                        item.className = 'pending-item';
+                        item.innerHTML = '<div class="pending-info">' +
+                            '<span class="pending-name">' + escapeHtml(orgName) + '</span>' +
+                            (orgId ? '<span class="pending-id" style="font-size: 11.5px; color: #94a3b8; margin-left: 6px;">(' + escapeHtml(orgId) + ')</span>' : '') +
+                            '</div>' +
+                            '<a href="/recall-form.html?recall_id=' + encodeURIComponent(recallId) + (orgId ? '&org_id=' + encodeURIComponent(orgId) : '') + '" class="btn-action btn-secondary" style="font-size: 12px; padding: 4px 10px;">' +
+                            'Gửi xác nhận →' +
+                            '</a>';
+                        pendingOrgsList.appendChild(item);
+                    });
+                }
+
+                // Render Acknowledged Organizations Table
+                acknowledgedOrgsList.innerHTML = '';
+                if (acks.length === 0) {
+                    emptyAckNotice.style.display = 'block';
+                } else {
+                    emptyAckNotice.style.display = 'none';
+                    acks.forEach(function (ack) {
+                        const tr = document.createElement('tr');
+                        const statusClass = getStatusBadgeClass(ack.status);
+                        const statusText = formatStatus(ack.status);
+                        const formattedTime = ack.created_at ? new Date(ack.created_at).toLocaleString('vi-VN') : '—';
+
+                        tr.innerHTML = '<td><strong>' + escapeHtml(ack.org_name || ack.orgName || ack.org_id || 'Chưa đặt tên') + '</strong></td>' +
+                            '<td><span class="badge-status ' + statusClass + '">' + escapeHtml(statusText) + '</span></td>' +
+                            '<td>' + escapeHtml(ack.note || '—') + '</td>' +
+                            '<td style="font-size: 12.5px; color: #64748b;">' + escapeHtml(formattedTime) + '</td>';
+                        acknowledgedOrgsList.appendChild(tr);
+                    });
+                }
+
+                // Display pending acknowledgment prompt if current user's organization is in pending list
+                if (userOrg && (userOrg.organizationId || userOrg.organizationName)) {
+                    const uId = (userOrg.organizationId || '').toLowerCase();
+                    const uName = (userOrg.organizationName || '').toLowerCase();
+
+                    const isUserOrgPending = pendingOrgs.some(function (p) {
+                        const pName = (typeof p === 'string' ? p : (p.name || p.id || '')).toLowerCase();
+                        const pId = (typeof p === 'object' && p !== null ? (p.id || '') : '').toLowerCase();
+
+                        return (pId && uId && pId === uId) ||
+                            (pName && uName && pName === uName) ||
+                            (pName && uId && pName === uId);
+                    });
+
+                    if (isUserOrgPending) {
+                        pendingPrompt.style.display = 'flex';
+                        userPendingOrgName.textContent = userOrg.organizationName || userOrg.organizationId;
+                        userPendingRecallId.textContent = '#' + recallId;
+                        linkSubmitPending.href = '/recall-form.html?recall_id=' + encodeURIComponent(recallId);
+                    } else {
+                        pendingPrompt.style.display = 'none';
+                    }
+                } else {
+                    pendingPrompt.style.display = 'none';
+                }
+            }
+
+            function getStatusBadgeClass(status) {
+                switch (status) {
+                    case 'RECEIVED':
+                        return 'badge-status-received';
+                    case 'IN_PROGRESS':
+                        return 'badge-status-progress';
+                    case 'ACTION_TAKEN':
+                    case 'COMPLETED':
+                        return 'badge-status-taken';
+                    default:
+                        return 'badge-status-received';
+                }
+            }
+
+            function formatStatus(status) {
+                switch (status) {
+                    case 'RECEIVED':
+                        return 'Đã nhận thông báo';
+                    case 'IN_PROGRESS':
+                        return 'Đang xử lý';
+                    case 'ACTION_TAKEN':
+                        return 'Đã hoàn tất xử lý';
+                    default:
+                        return status || 'Đã ghi nhận';
+                }
+            }
+
+            function escapeHtml(str) {
+                if (!str) return '';
+                return String(str)
+                    .replace(/&/g, '&amp;')
+                    .replace(/</g, '&lt;')
+                    .replace(/>/g, '&gt;')
+                    .replace(/"/g, '&quot;')
+                    .replace(/'/g, '&#39;');
+            }
+
+            // Expose globally for automated testing
+            window.loadRecallProgress = loadRecallProgress;
+            window.renderProgressData = renderProgressData;
+
+            // Initialize App Shell and initial load
+            if (window.initAppShell) {
+                window.initAppShell({ activeNav: 'recallProgress' });
+            }
+            loadRecallProgress(recallIdInput.value || 1);
+        })();
+    </script>
+</body>
+
+</html>

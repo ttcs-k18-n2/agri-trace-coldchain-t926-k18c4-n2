@@ -14,8 +14,6 @@
   const APP_PERMISSIONS = {
     "farm.write": ["producer", "cooperative", "org_admin", "admin"],
     "harvest.create": ["producer", "cooperative", "org_admin", "admin"],
-    "shipment.create": ["producer", "cooperative", "transporter", "distributor", "warehouse", "org_admin", "admin"],
-    "shipment.complete": ["producer", "cooperative", "transporter", "distributor", "warehouse", "org_admin", "admin"],
     "product.write": ["admin"],
     "global.read": ["inspector", "admin"],
     "integrity.check": ["inspector", "admin"],
@@ -32,6 +30,9 @@
     navAuditLogs: ["inspector", "admin"],
     navAudit: ["inspector", "admin"],
     navPublicTrace: ["producer", "cooperative", "transporter", "distributor", "inspector", "org_admin", "admin", "warehouse", "processing", "retailer"],
+    navColdChain: ["producer", "cooperative", "transporter", "distributor", "inspector", "org_admin", "admin", "warehouse", "processing", "retailer"],
+    navRecallProgress: ["producer", "cooperative", "transporter", "distributor", "inspector", "org_admin", "admin", "warehouse", "processing", "retailer"],
+    navRecallForm: ["producer", "cooperative", "transporter", "distributor", "inspector", "org_admin", "admin", "warehouse", "processing", "retailer"],
   };
 
   function hasPermission(roleId, action) {
@@ -170,13 +171,11 @@
       farms: "navFarms",
       products: "navProducts",
       harvest: "navHarvest",
-      shipments: "navShipments",
-      coldShipments: "navShipments",
       integrity: "navIntegrity",
       audit: "navAuditLogs",
       auditLogs: "navAuditLogs",
-      map: "navPublicTrace",
-      publicTrace: "navPublicTrace",
+      recallProgress: "navRecallProgress",
+      recallForm: "navRecallForm",
     };
 
     let targetId = navMap[activeKey];
@@ -185,10 +184,10 @@
       else if (path.includes("farms")) targetId = "navFarms";
       else if (path.includes("products")) targetId = "navProducts";
       else if (path.includes("harvest")) targetId = "navHarvest";
-      else if (path.includes("shipment")) targetId = "navShipments";
       else if (path.includes("integrity")) targetId = "navIntegrity";
       else if (path.includes("audit")) targetId = "navAuditLogs";
-      else if (path.includes("public-trace")) targetId = "navPublicTrace";
+      else if (path.includes("recall-progress")) targetId = "navRecallProgress";
+      else if (path.includes("recall-form")) targetId = "navRecallForm";
     }
 
     if (targetId) {
@@ -251,6 +250,14 @@
       if (typeof options.onUserLoaded === "function") {
         options.onUserLoaded(verifiedUser);
       }
+
+      // Check for pending recalls to display prominent alert banner
+      if (options.checkPendingRecalls !== false) {
+        checkPendingRecalls({ onPendingRecallsLoaded: options.onPendingRecallsLoaded }).catch((e) => {
+          console.warn("Could not check pending recalls:", e);
+        });
+      }
+
       return verifiedUser;
     } catch (err) {
       console.warn("Session background revalidation failed:", err);
@@ -532,6 +539,371 @@
     return handler;
   }
 
+  /**
+   * Pending Recalls Alert Component (S-36 / S-37 / S-40)
+   * Fetches pending recalls from GET /api/recalls/pending for current authenticated organization.
+   * Renders prominent alert banner in global shell when pending recalls exist.
+   */
+  async function fetchPendingRecalls() {
+    try {
+      const res = await fetch("/api/recalls/pending", { credentials: "same-origin" });
+      if (!res.ok) {
+        return [];
+      }
+      const data = await res.json();
+      return Array.isArray(data) ? data : [];
+    } catch (err) {
+      console.warn("fetchPendingRecalls error:", err);
+      return [];
+    }
+  }
+
+  function ensureShellAlertStyles() {
+    if (typeof document === "undefined") return;
+    if (document.getElementById("shellPendingRecallStyles")) return;
+    const style = document.createElement("style");
+    style.id = "shellPendingRecallStyles";
+    style.textContent = `
+      .shell-pending-recall-alert {
+        background: #fffbeb;
+        border-bottom: 2px solid #f59e0b;
+        color: #92400e;
+        padding: 12px 20px;
+        box-shadow: 0 4px 12px rgba(245, 158, 11, 0.15);
+        font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        font-size: 13.5px;
+        z-index: 999;
+        position: relative;
+        animation: shellAlertFade 0.25s ease-out;
+      }
+      @keyframes shellAlertFade {
+        from { opacity: 0; transform: translateY(-6px); }
+        to { opacity: 1; transform: translateY(0); }
+      }
+      .shell-pending-recall-container {
+        max-width: 1200px;
+        margin: 0 auto;
+      }
+      .shell-pending-recall-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        margin-bottom: 8px;
+      }
+      .shell-pending-recall-title {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-weight: 600;
+        color: #b45309;
+      }
+      .shell-pending-icon {
+        flex-shrink: 0;
+        color: #dc2626;
+      }
+      .shell-pending-dismiss-btn {
+        background: transparent;
+        border: none;
+        font-size: 16px;
+        line-height: 1;
+        cursor: pointer;
+        color: #b45309;
+        padding: 4px 8px;
+        border-radius: 4px;
+      }
+      .shell-pending-dismiss-btn:hover {
+        background: rgba(180, 83, 9, 0.1);
+      }
+      .shell-pending-recall-list {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+      .pending-recall-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        flex-wrap: wrap;
+        gap: 12px;
+        background: #ffffff;
+        border: 1px solid #fde68a;
+        border-radius: 6px;
+        padding: 10px 14px;
+      }
+      .pending-recall-main {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        flex: 1 1 500px;
+      }
+      .pending-recall-details {
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 8px;
+        color: #1e293b;
+      }
+      .pending-recall-lots {
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 6px;
+        font-size: 12.5px;
+        color: #475569;
+      }
+      .pending-recall-lots-label {
+        font-weight: 600;
+        color: #92400e;
+        font-size: 12px;
+      }
+      .pending-recall-lots-list {
+        display: inline-flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 6px;
+      }
+      .pending-recall-lot-link {
+        display: inline-flex;
+        align-items: center;
+        background: #fef3c7;
+        color: #92400e;
+        border: 1px solid #fcd34d;
+        padding: 2px 8px;
+        border-radius: 4px;
+        font-weight: 600;
+        font-size: 12px;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+        text-decoration: none;
+        transition: background 0.15s, border-color 0.15s;
+      }
+      .pending-recall-lot-link:hover {
+        background: #fde68a;
+        border-color: #f59e0b;
+        color: #78350f;
+        text-decoration: underline;
+      }
+      .pending-recall-lots-unavailable {
+        font-style: italic;
+        color: #94a3b8;
+        font-size: 12px;
+      }
+      .pending-recall-no-lots {
+        color: #64748b;
+        font-size: 12px;
+      }
+      .pending-recall-badge {
+        background: #fef2f2;
+        color: #dc2626;
+        border: 1px solid #fca5a5;
+        font-weight: 700;
+        font-size: 12px;
+        padding: 2px 8px;
+        border-radius: 4px;
+      }
+      .pending-recall-reason {
+        font-weight: 500;
+        color: #334155;
+      }
+      .pending-recall-count-tag {
+        font-size: 12px;
+        color: #64748b;
+        background: #f1f5f9;
+        padding: 2px 6px;
+        border-radius: 4px;
+      }
+      .pending-recall-actions {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .btn-shell-recall-ack {
+        display: inline-flex;
+        align-items: center;
+        background: #dc2626;
+        color: #ffffff;
+        padding: 4px 12px;
+        border-radius: 4px;
+        font-size: 12.5px;
+        font-weight: 600;
+        text-decoration: none;
+        transition: background 0.15s;
+      }
+      .btn-shell-recall-ack:hover {
+        background: #b91c1c;
+      }
+      .btn-shell-recall-progress {
+        display: inline-flex;
+        align-items: center;
+        background: #f1f5f9;
+        color: #334155;
+        border: 1px solid #cbd5e1;
+        padding: 4px 10px;
+        border-radius: 4px;
+        font-size: 12px;
+        font-weight: 600;
+        text-decoration: none;
+      }
+      .btn-shell-recall-progress:hover {
+        background: #e2e8f0;
+      }
+    `;
+    if (document.head && document.head.appendChild) {
+      document.head.appendChild(style);
+    }
+  }
+
+  function renderPendingRecallsAlert(pendingRecalls, targetContainer) {
+    if (typeof document === "undefined") return null;
+
+    let alertEl = document.getElementById("shellPendingRecallsAlert");
+
+    if (!Array.isArray(pendingRecalls) || pendingRecalls.length === 0) {
+      if (alertEl) {
+        alertEl.style.display = "none";
+        if (typeof alertEl.remove === "function") {
+          alertEl.remove();
+        } else if (alertEl.parentNode && alertEl.parentNode.removeChild) {
+          alertEl.parentNode.removeChild(alertEl);
+        }
+      }
+      return null;
+    }
+
+    ensureShellAlertStyles();
+
+    if (!alertEl) {
+      alertEl = document.createElement("aside");
+      alertEl.id = "shellPendingRecallsAlert";
+      alertEl.className = "shell-pending-recall-alert";
+      alertEl.setAttribute("role", "alert");
+      alertEl.setAttribute("aria-live", "assertive");
+
+      let container = targetContainer;
+      if (!container) {
+        const header = document.querySelector(".app-header") || document.querySelector("header");
+        if (header && header.parentNode && header.insertAdjacentElement) {
+          header.insertAdjacentElement("afterend", alertEl);
+        } else {
+          const main = document.querySelector("main") || document.body;
+          if (main) {
+            if (main.firstChild && main.insertBefore) {
+              main.insertBefore(alertEl, main.firstChild);
+            } else if (main.appendChild) {
+              main.appendChild(alertEl);
+            }
+          }
+        }
+      } else if (container.appendChild) {
+        container.appendChild(alertEl);
+      }
+    }
+
+    alertEl.style.display = "block";
+
+    const count = pendingRecalls.length;
+    const itemsHtml = pendingRecalls
+      .map((item) => {
+        const rawRecallId = item.recall_id !== undefined ? item.recall_id : (item.id || "");
+        const rId = escapeHtml(String(rawRecallId));
+        const reason = escapeHtml(item.reason || "Yêu cầu thu hồi từ đơn vị điều phối");
+        const pendingCount = typeof item.pending_organizations_count === "number"
+          ? `<span class="pending-recall-count-tag">${item.pending_organizations_count} đơn vị chưa phản hồi</span>`
+          : "";
+
+        let lotsHtml = "";
+        if (!Array.isArray(item.affected_lots)) {
+          lotsHtml = `
+            <div class="pending-recall-lots">
+              <span class="pending-recall-lots-label">Lô hàng bị ảnh hưởng:</span>
+              <span class="pending-recall-lots-unavailable">Chi tiết lô hàng chưa khả dụng</span>
+            </div>
+          `;
+        } else if (item.affected_lots.length === 0) {
+          lotsHtml = `
+            <div class="pending-recall-lots">
+              <span class="pending-recall-lots-label">Lô hàng bị ảnh hưởng:</span>
+              <span class="pending-recall-no-lots">Không có lô hàng trực thuộc bị ảnh hưởng</span>
+            </div>
+          `;
+        } else {
+          const lotLinksHtml = item.affected_lots
+            .map((lot) => {
+              if (!lot) return "";
+              const rawLotId = lot.id !== undefined && lot.id !== null ? lot.id : "";
+              const rawLotCode = lot.code !== undefined && lot.code !== null && lot.code !== "" ? lot.code : rawLotId;
+              const encodedLotId = encodeURIComponent(String(rawLotId));
+              const escapedLotCode = escapeHtml(String(rawLotCode));
+              const escapedLotId = escapeHtml(String(rawLotId));
+              const label = (rawLotCode && rawLotId && String(rawLotCode) !== String(rawLotId))
+                ? `${escapedLotCode} (${escapedLotId})`
+                : escapedLotCode;
+              return `<a href="/lot-detail.html?id=${encodedLotId}" class="pending-recall-lot-link" title="Xem chi tiết lô hàng ${escapedLotCode}">${label}</a>`;
+            })
+            .filter(Boolean)
+            .join(" ");
+          lotsHtml = `
+            <div class="pending-recall-lots">
+              <span class="pending-recall-lots-label">Lô hàng trực thuộc bị ảnh hưởng (${item.affected_lots.length}):</span>
+              <div class="pending-recall-lots-list">${lotLinksHtml}</div>
+            </div>
+          `;
+        }
+
+        return `
+          <div class="pending-recall-row">
+            <div class="pending-recall-main">
+              <div class="pending-recall-details">
+                <span class="pending-recall-badge">Đợt thu hồi #${rId}</span>
+                <span class="pending-recall-reason">${reason}</span>
+                ${pendingCount}
+              </div>
+              ${lotsHtml}
+            </div>
+            <div class="pending-recall-actions">
+              <a href="/recall-form.html?recall_id=${encodeURIComponent(String(rawRecallId))}" class="btn-shell-recall-ack">Gửi xác nhận ngay →</a>
+              <a href="/recall-progress.html?recall_id=${encodeURIComponent(String(rawRecallId))}" class="btn-shell-recall-progress">Xem tiến độ</a>
+            </div>
+          </div>
+        `;
+      })
+      .join("");
+
+    alertEl.innerHTML = `
+      <div class="shell-pending-recall-container">
+        <div class="shell-pending-recall-header">
+          <div class="shell-pending-recall-title">
+            <svg class="shell-pending-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+              <line x1="12" y1="9" x2="12" y2="13"/>
+              <line x1="12" y1="17" x2="12.01" y2="17"/>
+            </svg>
+            <strong>CẢNH BÁO THU HỒI KHẨN CẤP:</strong>
+            <span>Đơn vị của bạn có <strong>${count}</strong> đợt thu hồi đang chờ phản hồi xác nhận</span>
+          </div>
+          <button type="button" class="shell-pending-dismiss-btn" title="Đóng cảnh báo" onclick="this.closest('#shellPendingRecallsAlert').style.display='none'">✕</button>
+        </div>
+        <div class="shell-pending-recall-list">
+          ${itemsHtml}
+        </div>
+      </div>
+    `;
+
+    return alertEl;
+  }
+
+  async function checkPendingRecalls(options = {}) {
+    const pendingRecalls = await fetchPendingRecalls();
+    let alertEl = null;
+    if (typeof document !== "undefined") {
+      alertEl = renderPendingRecallsAlert(pendingRecalls, options.targetContainer);
+    }
+    if (typeof options.onPendingRecallsLoaded === "function") {
+      options.onPendingRecallsLoaded(pendingRecalls);
+    }
+    return { pendingRecalls, alertEl };
+  }
+
   // Export to global scope & module
   if (typeof window !== "undefined") {
     window.initAppShell = initAppShell;
@@ -549,6 +921,9 @@
     window.createFormErrorHandler = createFormErrorHandler;
     window.showFieldErrors = showFieldErrors;
     window.clearFieldErrors = clearFieldErrors;
+    window.fetchPendingRecalls = fetchPendingRecalls;
+    window.renderPendingRecallsAlert = renderPendingRecallsAlert;
+    window.checkPendingRecalls = checkPendingRecalls;
   }
 
   if (typeof module !== "undefined" && module.exports) {
@@ -568,6 +943,9 @@
       createFormErrorHandler,
       showFieldErrors,
       clearFieldErrors,
+      fetchPendingRecalls,
+      renderPendingRecallsAlert,
+      checkPendingRecalls,
     };
   }
 })();
