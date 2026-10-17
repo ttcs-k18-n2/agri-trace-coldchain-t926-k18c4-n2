@@ -1454,6 +1454,7 @@ async function recordShipmentTemperature({
   _inMemoryOrgs = [],
   _ipAddress = "127.0.0.1",
   _userAgent = null,
+  onAcceptedReading = null,
 }) {
   const rawColdBoxId =
     data.coldBoxId ||
@@ -1670,7 +1671,7 @@ async function recordShipmentTemperature({
 
       // 5.1 Khóa và tìm chuyến đang hoạt động liên kết với thùng lạnh này
       const shipRes = await dbClient.query(
-        `SELECT id, cold_box_id, status, organization_id, current_temperature, last_temperature_at, started_at, created_at
+        `SELECT id, cold_box_id, status, organization_id, current_temperature, last_temperature_at, started_at, created_at, detector_state
          FROM shipments
          WHERE cold_box_id = $1 AND status = 'IN_TRANSIT'
          ORDER BY created_at DESC
@@ -1784,6 +1785,19 @@ async function recordShipmentTemperature({
          WHERE id = $1 AND (last_temperature_at IS NULL OR last_temperature_at < $3)`,
         [shipment.id, numTemp, recordedAtIso]
       );
+
+      if (typeof onAcceptedReading === "function") {
+        await onAcceptedReading({
+          client: dbClient,
+          shipment,
+          coldBoxId: cleanColdBoxId,
+          temperature: numTemp,
+          recordedAt: recordedAtIso,
+          tempId,
+          nowIso,
+          authContext,
+        });
+      }
 
       if (shouldManageTx) {
         await dbClient.query("COMMIT");
@@ -1901,10 +1915,18 @@ async function recordShipmentTemperature({
       };
     }
 
+    const prevCurrentTemp = activeShipment.currentTemperature;
+    const prevLastTempAt = activeShipment.lastTemperatureAt;
+    const prevUpdatedAt = activeShipment.updatedAt;
+    const prevDetectorState = activeShipment.detector_state
+      ? JSON.parse(JSON.stringify(activeShipment.detector_state))
+      : (activeShipment.detectorState ? JSON.parse(JSON.stringify(activeShipment.detectorState)) : null);
+
     const exists = inMemoryShipmentTemperatures.find(
       (t) => t.shipmentId === activeShipment.id && t.recordedAt === recordedAtIso
     );
     let tempId;
+    let newlyInserted = false;
     if (!exists) {
       tempId = "temp-" + crypto.randomUUID().slice(0, 8);
       inMemoryShipmentTemperatures.push({
@@ -1915,6 +1937,7 @@ async function recordShipmentTemperature({
         recordedAt: recordedAtIso,
         createdAt: nowIso,
       });
+      newlyInserted = true;
     } else {
       tempId = exists.id;
     }
@@ -1922,6 +1945,31 @@ async function recordShipmentTemperature({
     activeShipment.currentTemperature = numTemp;
     activeShipment.lastTemperatureAt = recordedAtIso;
     activeShipment.updatedAt = nowIso;
+
+    if (typeof onAcceptedReading === "function") {
+      try {
+        await onAcceptedReading({
+          shipment: activeShipment,
+          coldBoxId: cleanColdBoxId,
+          temperature: numTemp,
+          recordedAt: recordedAtIso,
+          tempId,
+          nowIso,
+          authContext,
+        });
+      } catch (err) {
+        if (newlyInserted) {
+          const idx = inMemoryShipmentTemperatures.findIndex((t) => t.id === tempId);
+          if (idx !== -1) inMemoryShipmentTemperatures.splice(idx, 1);
+        }
+        activeShipment.currentTemperature = prevCurrentTemp;
+        activeShipment.lastTemperatureAt = prevLastTempAt;
+        activeShipment.updatedAt = prevUpdatedAt;
+        activeShipment.detector_state = prevDetectorState;
+        activeShipment.detectorState = prevDetectorState;
+        throw err;
+      }
+    }
 
     return {
       status: 200,

@@ -1,0 +1,96 @@
+{
+  "scenarios": [
+    {
+      "id": "S42-JIRA-01",
+      "name": "Kịch bản 1: Không vượt ngưỡng (no exceedance)",
+      "jiraCriterion": "không vượt",
+      "expectedViolationsCount": 0,
+      "threshold": 8.0,
+      "readings": [
+        { "minute": 0, "temperature": 4.0 },
+        { "minute": 10, "temperature": 4.5 },
+        { "minute": 20, "temperature": 5.0 },
+        { "minute": 30, "temperature": 6.5 },
+        { "minute": 40, "temperature": 5.5 },
+        { "minute": 50, "temperature": 4.2 },
+        { "minute": 60, "temperature": 3.8 }
+      ]
+    },
+    {
+      "id": "S42-JIRA-02",
+      "name": "Kịch bản 2: Vượt 10 phút (10min)",
+      "jiraCriterion": "vượt 10 phút",
+      "expectedViolationsCount": 0,
+      "threshold": 8.0,
+      "readings": [
+        { "minute": 0, "temperature": 4.0 },
+        { "minute": 5, "temperature": 4.2 },
+        { "minute": 10, "temperature": 9.5 },
+        { "minute": 15, "temperature": 10.5 },
+        { "minute": 20, "temperature": 8.5 },
+        { "minute": 21, "temperature": 5.0 },
+        { "minute": 30, "temperature": 4.0 },
+        { "minute": 40, "temperature": 3.9 }
+      ]
+    },
+    {
+      "id": "S42-JIRA-03",
+      "name": "Kịch bản 3: Vượt 45 phút (45min)",
+      "jiraCriterion": "vượt 45 phút",
+      "expectedViolationsCount": 1,
+      "expectedPeakTemperature": 14.2,
+      "expectedDurationMinutes": 45,
+      "threshold": 8.0,
+      "readings": [
+        { "minute": 0, "temperature": 4.0 },
+        { "minute": 10, "temperature": 9.0 },
+        { "minute": 20, "temperature": 11.5 },
+        { "minute": 30, "temperature": 14.2 },
+        { "minute": 40, "temperature": 12.0 },
+        { "minute": 55, "temperature": 8.8 },
+        { "minute": 56, "temperature": 5.5 },
+        { "minute": 65, "temperature": 4.0 }
+      ]
+    },
+    {
+      "id": "S42-JIRA-04",
+      "name": "Kịch bản 4: Hai lần vượt cách nhau 5 phút (two excursions gap 5min)",
+      "jiraCriterion": "hai lần vượt cách nhau 5 phút",
+      "expectedViolationsCount": 2,
+      "expectedPeaks": [13.0, 12.0],
+      "expectedDurations": [40, 35],
+      "threshold": 8.0,
+      "readings": [
+        { "minute": 0, "temperature": 4.0 },
+        { "minute": 10, "temperature": 9.0 },
+        { "minute": 30, "temperature": 13.0 },
+        { "minute": 50, "temperature": 8.5 },
+        { "minute": 51, "temperature": 5.0 },
+        { "minute": 53, "temperature": 4.5 },
+        { "minute": 55, "temperature": 9.5 },
+        { "minute": 70, "temperature": 12.0 },
+        { "minute": 90, "temperature": 8.8 },
+        { "minute": 91, "temperature": 4.2 },
+        { "minute": 100, "temperature": 4.0 }
+      ]
+    },
+    {
+      "id": "S42-JIRA-05",
+      "name": "Kịch bản 5: Vượt qua nửa đêm (midnight crossing)",
+      "jiraCriterion": "vượt qua nửa đêm",
+      "expectedViolationsCount": 1,
+      "expectedPeakTemperature": 12.8,
+      "expectedDurationMinutes": 45,
+      "threshold": 8.0,
+      "readings": [
+        { "timestamp": "2026-10-17T23:30:00.000Z", "temperature": 4.0 },
+        { "timestamp": "2026-10-17T23:40:00.000Z", "temperature": 9.2 },
+        { "timestamp": "2026-10-17T23:55:00.000Z", "temperature": 11.5 },
+        { "timestamp": "2026-10-18T00:05:00.000Z", "temperature": 12.8 },
+        { "timestamp": "2026-10-18T00:25:00.000Z", "temperature": 8.6 },
+        { "timestamp": "2026-10-18T00:30:00.000Z", "temperature": 5.0 },
+        { "timestamp": "2026-10-18T00:45:00.000Z", "temperature": 4.0 }
+      ]
+    }
+  ]
+}
