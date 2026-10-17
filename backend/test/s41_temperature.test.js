@@ -666,6 +666,7 @@ test("S-41 (Jira N2-109): Ghi nhận nhiệt độ theo thời gian cho chuyến
       {
         coldBoxId: "CB-HIST-01",
         lotIds: ["LOT-TEMP-01"],
+        startedAt: "2026-10-17T12:00:00.000Z",
       }
     );
     const shipmentId = createRes.body.shipment.id;

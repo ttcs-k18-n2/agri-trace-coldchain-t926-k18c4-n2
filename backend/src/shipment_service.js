@@ -92,9 +92,11 @@ async function createShipment({
   data = {},
   inMemoryLots = [],
   inMemoryOrgs = [],
+  inMemoryProducts = [],
   ipAddress = "127.0.0.1",
   userAgent = null,
 }) {
+  const { resolveShipmentThresholds } = require("./cold_chain_violation_service");
   const {
     coldBoxId,
     lotIds,
@@ -196,7 +198,7 @@ async function createShipment({
 
       // 3.1 Khóa và kiểm tra thông tin các lô hàng theo thứ tự sắp xếp cố định (tránh Deadlock)
       const lotsRes = await dbClient.query(
-        `SELECT id, name, status, organization_id, remaining_quantity, initial_quantity
+        `SELECT id, name, status, organization_id, remaining_quantity, initial_quantity, product_id
          FROM lots
          WHERE id = ANY($1)
          ORDER BY id ASC
@@ -303,15 +305,44 @@ async function createShipment({
         };
       }
 
-      // 3.5 Thêm chuyến vận chuyển mới vào bảng shipments
+      // 3.5 Tra cứu cấu hình ngưỡng nhiệt độ theo sản phẩm (Story S-44)
+      const productIds = Array.from(
+        new Set(lotsRes.rows.map((r) => r.product_id).filter(Boolean))
+      );
+      let productRows = [];
+      if (productIds.length > 0) {
+        const prodRes = await dbClient.query(
+          `SELECT id, name, temp_min, temp_max, delay_minutes FROM products WHERE id = ANY($1)`,
+          [productIds]
+        );
+        productRows = prodRes.rows;
+      }
+
+      const resolvedThresholds = resolveShipmentThresholds(productRows);
+      if (resolvedThresholds.incompatible) {
+        if (shouldManageTx) await dbClient.query("ROLLBACK");
+        return {
+          status: 400,
+          error: "INCOMPATIBLE_PRODUCT_TEMPERATURE_RANGES",
+          message: resolvedThresholds.incompatibilityReason,
+          details: {
+            effectiveTempMin: resolvedThresholds.tempMin,
+            effectiveTempMax: resolvedThresholds.tempMax,
+            products: resolvedThresholds.productDetails,
+          },
+        };
+      }
+
+      // 3.6 Thêm chuyến vận chuyển mới vào bảng shipments kèm snapshot cấu hình ngưỡng
       const shipOrgId = isAdmin ? lotsRes.rows[0].organization_id : userOrgId;
       const insertShipRes = await dbClient.query(
         `INSERT INTO shipments (
           id, cold_box_id, status, organization_id, created_by_user_id,
           vehicle_plate, driver_name, driver_phone,
           origin_location_id, destination_location_id, notes,
-          started_at, created_at, updated_at
-        ) VALUES ($1, $2, 'IN_TRANSIT', $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $12)
+          started_at, created_at, updated_at,
+          applied_temp_min, applied_temp_max, applied_delay_minutes, temperature_config
+        ) VALUES ($1, $2, 'IN_TRANSIT', $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $12, $13, $14, $15, $16)
         RETURNING *`,
         [
           shipmentId,
@@ -326,6 +357,10 @@ async function createShipment({
           cleanNotes,
           startedAtDate,
           now,
+          resolvedThresholds.tempMin,
+          resolvedThresholds.tempMax,
+          resolvedThresholds.delayMinutes,
+          JSON.stringify(resolvedThresholds),
         ]
       );
 
@@ -435,6 +470,22 @@ async function createShipment({
         completedAt: null,
         createdAt: shipRow.created_at ? new Date(shipRow.created_at).toISOString() : nowIso,
         updatedAt: shipRow.updated_at ? new Date(shipRow.updated_at).toISOString() : nowIso,
+        appliedTempMin:
+          shipRow.applied_temp_min !== null && shipRow.applied_temp_min !== undefined
+            ? Number(shipRow.applied_temp_min)
+            : null,
+        appliedTempMax:
+          shipRow.applied_temp_max !== null && shipRow.applied_temp_max !== undefined
+            ? Number(shipRow.applied_temp_max)
+            : null,
+        appliedDelayMinutes:
+          shipRow.applied_delay_minutes !== null && shipRow.applied_delay_minutes !== undefined
+            ? Number(shipRow.applied_delay_minutes)
+            : null,
+        temperatureConfig:
+          typeof shipRow.temperature_config === "string"
+            ? JSON.parse(shipRow.temperature_config)
+            : (shipRow.temperature_config || null),
         lots: createdLotsMeta,
       };
 
@@ -567,6 +618,25 @@ async function createShipment({
       ? (foundLots[0].organizationId || foundLots[0].organization_id)
       : userOrgId;
 
+    // S-44: Tra cứu cấu hình ngưỡng theo sản phẩm (In-Memory)
+    const productIds = Array.from(
+      new Set(foundLots.map((l) => l.productId || l.product_id).filter(Boolean))
+    );
+    const matchedProducts = inMemoryProducts.filter((p) => productIds.includes(p.id));
+    const resolvedThresholds = resolveShipmentThresholds(matchedProducts);
+    if (resolvedThresholds.incompatible) {
+      return {
+        status: 400,
+        error: "INCOMPATIBLE_PRODUCT_TEMPERATURE_RANGES",
+        message: resolvedThresholds.incompatibilityReason,
+        details: {
+          effectiveTempMin: resolvedThresholds.tempMin,
+          effectiveTempMax: resolvedThresholds.tempMax,
+          products: resolvedThresholds.productDetails,
+        },
+      };
+    }
+
     const orgMap = await getOrganizationMap(null, inMemoryOrgs);
     const orgName = orgMap[shipOrgId] || shipOrgId;
 
@@ -592,6 +662,10 @@ async function createShipment({
       completedAt: null,
       createdAt: nowIso,
       updatedAt: nowIso,
+      appliedTempMin: resolvedThresholds.tempMin,
+      appliedTempMax: resolvedThresholds.tempMax,
+      appliedDelayMinutes: resolvedThresholds.delayMinutes,
+      temperatureConfig: resolvedThresholds,
       lotIds: sortedLotIds,
     };
 
@@ -1154,6 +1228,22 @@ async function getShipments({
       lastTemperatureAt: r.last_temperature_at
         ? new Date(r.last_temperature_at).toISOString()
         : null,
+      appliedTempMin:
+        r.applied_temp_min !== null && r.applied_temp_min !== undefined
+          ? Number(r.applied_temp_min)
+          : null,
+      appliedTempMax:
+        r.applied_temp_max !== null && r.applied_temp_max !== undefined
+          ? Number(r.applied_temp_max)
+          : null,
+      appliedDelayMinutes:
+        r.applied_delay_minutes !== null && r.applied_delay_minutes !== undefined
+          ? Number(r.applied_delay_minutes)
+          : null,
+      temperatureConfig:
+        typeof r.temperature_config === "string"
+          ? JSON.parse(r.temperature_config)
+          : (r.temperature_config || null),
     }));
 
     return {
@@ -1229,6 +1319,10 @@ async function getShipments({
       lastTemperatureAt: s.lastTemperatureAt
         ? new Date(s.lastTemperatureAt).toISOString()
         : null,
+      appliedTempMin: s.appliedTempMin !== undefined ? s.appliedTempMin : null,
+      appliedTempMax: s.appliedTempMax !== undefined ? s.appliedTempMax : null,
+      appliedDelayMinutes: s.appliedDelayMinutes !== undefined ? s.appliedDelayMinutes : null,
+      temperatureConfig: s.temperatureConfig || null,
     };
   });
 
@@ -1334,6 +1428,22 @@ async function getShipmentById({
       lastTemperatureAt: ship.last_temperature_at
         ? new Date(ship.last_temperature_at).toISOString()
         : null,
+      appliedTempMin:
+        ship.applied_temp_min !== null && ship.applied_temp_min !== undefined
+          ? Number(ship.applied_temp_min)
+          : null,
+      appliedTempMax:
+        ship.applied_temp_max !== null && ship.applied_temp_max !== undefined
+          ? Number(ship.applied_temp_max)
+          : null,
+      appliedDelayMinutes:
+        ship.applied_delay_minutes !== null && ship.applied_delay_minutes !== undefined
+          ? Number(ship.applied_delay_minutes)
+          : null,
+      temperatureConfig:
+        typeof ship.temperature_config === "string"
+          ? JSON.parse(ship.temperature_config)
+          : (ship.temperature_config || null),
       lots: lotsRes.rows.map((r) => ({
         lotId: r.lot_id,
         lotName: r.lot_name,
@@ -1381,6 +1491,10 @@ async function getShipmentById({
     destination: ship.destinationLocationId,
     currentTemperature: ship.currentTemperature !== undefined ? ship.currentTemperature : null,
     lastTemperatureAt: ship.lastTemperatureAt || null,
+    appliedTempMin: ship.appliedTempMin !== undefined ? ship.appliedTempMin : null,
+    appliedTempMax: ship.appliedTempMax !== undefined ? ship.appliedTempMax : null,
+    appliedDelayMinutes: ship.appliedDelayMinutes !== undefined ? ship.appliedDelayMinutes : null,
+    temperatureConfig: ship.temperatureConfig || null,
     lotIds: attached.map((sl) => sl.lotId),
     organizationName: orgMap[ship.organizationId] || ship.organizationId,
     lots: attached.map((sl) => ({
@@ -1700,7 +1814,8 @@ async function recordShipmentTemperature({
 
       // 5.1 Khóa và tìm chuyến đang hoạt động liên kết với thùng lạnh này
       const shipRes = await dbClient.query(
-        `SELECT id, cold_box_id, status, organization_id, current_temperature, last_temperature_at, started_at, created_at, detector_state
+        `SELECT id, cold_box_id, status, organization_id, current_temperature, last_temperature_at, started_at, created_at, detector_state,
+                applied_temp_min, applied_temp_max, applied_delay_minutes, temperature_config
          FROM shipments
          WHERE cold_box_id = $1 AND status = 'IN_TRANSIT'
          ORDER BY created_at DESC

@@ -1,6 +1,6 @@
 const crypto = require("node:crypto");
 const { appendBatchEvent, inMemoryBatchEvents } = require("./event_repository");
-const { inMemoryShipments, inMemoryShipmentLots } = require("./shipment_service");
+const shipmentService = require("./shipment_service");
 
 const DEFAULT_THRESHOLD_TEMP = Number(process.env.COLD_CHAIN_THRESHOLD || 8.0);
 const DEFAULT_MIN_DURATION_MINUTES = 30; // AC1 & AC2: Phải quá 30 phút mới tính là vi phạm
@@ -19,8 +19,16 @@ const streamingDetectors = new Map();
  */
 class ColdChainViolationDetector {
   constructor(options = {}) {
-    this.threshold = Number(options.threshold ?? DEFAULT_THRESHOLD_TEMP);
-    this.minDurationMinutes = Number(options.minDurationMinutes ?? DEFAULT_MIN_DURATION_MINUTES);
+    const rawThreshold = options.tempMax ?? options.threshold ?? options.thresholdMax ?? options.upperThreshold;
+    this.tempMax = rawThreshold !== undefined ? (rawThreshold !== null ? Number(rawThreshold) : null) : (options.tempMin !== undefined ? null : DEFAULT_THRESHOLD_TEMP);
+    const rawTempMin = options.tempMin ?? options.thresholdMin ?? options.lowerThreshold;
+    this.tempMin = rawTempMin !== undefined && rawTempMin !== null ? Number(rawTempMin) : null;
+    this.threshold = this.tempMax !== null ? this.tempMax : (this.tempMin !== null ? this.tempMin : DEFAULT_THRESHOLD_TEMP);
+
+    this.minDurationMinutes = Number(
+      options.minDurationMinutes ?? options.delayMinutes ?? options.durationMinutes ?? DEFAULT_MIN_DURATION_MINUTES
+    );
+    this.delayMinutes = this.minDurationMinutes;
     this.mergeGapMinutes = Number(options.mergeGapMinutes ?? DEFAULT_MERGE_GAP_MINUTES);
 
     this.minDurationMs = this.minDurationMinutes * 60 * 1000;
@@ -35,7 +43,7 @@ class ColdChainViolationDetector {
   }
 
   /**
-   * Đánh giá toàn bộ chuỗi số đo nhiệt độ (Batch Evaluation)
+   * Đánh giá toàn bộ chuỗi số đo nhiệt độ (Batch Evaluation - S-43 & S-44)
    * @param {Array<{ recordedAt: string|Date, temperature: number }>} readings
    * @returns {Array<object>} Danh sách các vi phạm được phát hiện
    */
@@ -48,7 +56,7 @@ class ColdChainViolationDetector {
     const sorted = readings
       .map((r) => ({
         recordedAt: new Date(r.recordedAt || r.timestamp || r.time).getTime(),
-        temperature: Number(r.temperature ?? r.temp),
+        temperature: Number(r.temperature ?? r.temp ?? r.value),
         raw: r,
       }))
       .filter((r) => !Number.isNaN(r.recordedAt) && !Number.isNaN(r.temperature))
@@ -56,13 +64,16 @@ class ColdChainViolationDetector {
 
     if (sorted.length === 0) return [];
 
-    // 2. Tách thành các đoạn vượt ngưỡng liên tục (Continuous Excursion Segments)
+    // 2. Tách thành các đoạn vi phạm ngưỡng liên tục (Continuous Excursion Segments)
     const rawSegments = [];
     let currentSegment = null;
 
     for (let i = 0; i < sorted.length; i++) {
       const pt = sorted[i];
-      const isExcursion = pt.temperature > this.threshold;
+      const isUpper = this.tempMax !== null && pt.temperature > this.tempMax;
+      const isLower = this.tempMin !== null && pt.temperature < this.tempMin;
+      const isExcursion = isUpper || isLower;
+      const breachType = isUpper ? "UPPER_BREACH" : (isLower ? "LOWER_BREACH" : null);
 
       if (isExcursion) {
         if (!currentSegment) {
@@ -70,17 +81,31 @@ class ColdChainViolationDetector {
             startTime: pt.recordedAt,
             endTime: pt.recordedAt,
             peakTemperature: pt.temperature,
+            breachType,
             readingsCount: 1,
             readings: [pt],
           };
-        } else {
+        } else if (currentSegment.breachType === breachType) {
           currentSegment.endTime = pt.recordedAt;
-          currentSegment.peakTemperature = Math.max(currentSegment.peakTemperature, pt.temperature);
+          currentSegment.peakTemperature = isUpper
+            ? Math.max(currentSegment.peakTemperature, pt.temperature)
+            : Math.min(currentSegment.peakTemperature, pt.temperature);
           currentSegment.readingsCount++;
           currentSegment.readings.push(pt);
+        } else {
+          // Loại vi phạm đổi hướng (ví dụ từ dưới ngưỡng chuyển sang vượt ngưỡng trên)
+          rawSegments.push(currentSegment);
+          currentSegment = {
+            startTime: pt.recordedAt,
+            endTime: pt.recordedAt,
+            peakTemperature: pt.temperature,
+            breachType,
+            readingsCount: 1,
+            readings: [pt],
+          };
         }
       } else if (currentSegment) {
-        // Nhiệt độ đã hạ về trong ngưỡng an toàn
+        // Nhiệt độ đã về trong khoảng an toàn
         rawSegments.push(currentSegment);
         currentSegment = null;
       }
@@ -92,12 +117,13 @@ class ColdChainViolationDetector {
 
     if (rawSegments.length === 0) return [];
 
-    // 3. Quy tắc gộp khoảng cách: Hai lần vượt cách nhau dưới 5 phút tính là một vi phạm (AC3 & AC4)
+    // 3. Quy tắc gộp khoảng cách: Hai lần vượt cùng loại cách nhau dưới 5 phút tính là một vi phạm (AC3 & AC4)
     const mergedSegments = [];
     let activeMerged = {
       startTime: rawSegments[0].startTime,
       endTime: rawSegments[0].endTime,
       peakTemperature: rawSegments[0].peakTemperature,
+      breachType: rawSegments[0].breachType,
       readingsCount: rawSegments[0].readingsCount,
       excursionsCount: 1,
       subSegments: [rawSegments[0]],
@@ -107,20 +133,23 @@ class ColdChainViolationDetector {
       const nextSeg = rawSegments[i];
       const gapMs = nextSeg.startTime - activeMerged.endTime;
 
-      // Khoảng cách dưới 5 phút (< 300.000 ms) -> Gộp
-      if (gapMs < this.mergeGapMs) {
+      // Khoảng cách dưới 5 phút và cùng loại vi phạm -> Gộp
+      if (gapMs < this.mergeGapMs && nextSeg.breachType === activeMerged.breachType) {
         activeMerged.endTime = nextSeg.endTime;
-        activeMerged.peakTemperature = Math.max(activeMerged.peakTemperature, nextSeg.peakTemperature);
+        activeMerged.peakTemperature = activeMerged.breachType === "UPPER_BREACH"
+          ? Math.max(activeMerged.peakTemperature, nextSeg.peakTemperature)
+          : Math.min(activeMerged.peakTemperature, nextSeg.peakTemperature);
         activeMerged.readingsCount += nextSeg.readingsCount;
         activeMerged.excursionsCount += 1;
         activeMerged.subSegments.push(nextSeg);
       } else {
-        // Khoảng cách từ 5 phút trở lên (>= 300.000 ms) -> Không gộp
+        // Khoảng cách từ 5 phút trở lên hoặc khác loại vi phạm -> Không gộp
         mergedSegments.push(activeMerged);
         activeMerged = {
           startTime: nextSeg.startTime,
           endTime: nextSeg.endTime,
           peakTemperature: nextSeg.peakTemperature,
+          breachType: nextSeg.breachType,
           readingsCount: nextSeg.readingsCount,
           excursionsCount: 1,
           subSegments: [nextSeg],
@@ -129,18 +158,29 @@ class ColdChainViolationDetector {
     }
     mergedSegments.push(activeMerged);
 
-    // 4. Lọc độ trễ 30 phút: Chỉ các đợt vượt ngưỡng liên tục (hoặc đã gộp) quá 30 phút mới tính là vi phạm (AC1 & AC2)
+    // 4. Lọc độ trễ: Chỉ các đợt vượt ngưỡng liên tục (hoặc đã gộp) quá minDurationMinutes mới tính là vi phạm
     const violations = [];
     for (const seg of mergedSegments) {
       const durationMs = seg.endTime - seg.startTime;
       const durationMinutes = durationMs / (60 * 1000);
 
-      // Nghiệp vụ quy định: "quá 30 phút" -> durationMs > minDurationMs
       if (durationMs > this.minDurationMs) {
         const violationId = `viol-${crypto.randomBytes(4).toString("hex")}`;
+        const breachType = seg.breachType || "UPPER_BREACH";
+        const isUpper = breachType === "UPPER_BREACH";
+        const thresholdVal = isUpper ? (this.tempMax ?? this.threshold) : this.tempMin;
+        const rule = isUpper
+          ? `Vượt ngưỡng trên ${this.tempMax ?? this.threshold}°C kéo dài > ${this.minDurationMinutes} phút (${durationMinutes.toFixed(1)} phút)`
+          : `Thấp hơn ngưỡng dưới ${this.tempMin}°C kéo dài > ${this.minDurationMinutes} phút (${durationMinutes.toFixed(1)} phút)`;
+
         violations.push({
           id: violationId,
-          threshold: this.threshold,
+          threshold: thresholdVal,
+          tempMin: this.tempMin,
+          tempMax: this.tempMax,
+          thresholdMin: this.tempMin,
+          thresholdMax: this.tempMax,
+          breachType,
           startTime: new Date(seg.startTime).toISOString(),
           endTime: new Date(seg.endTime).toISOString(),
           peakTemperature: Number(seg.peakTemperature.toFixed(2)),
@@ -149,7 +189,7 @@ class ColdChainViolationDetector {
           excursionsCount: seg.excursionsCount,
           readingsCount: seg.readingsCount,
           status: "RESOLVED",
-          rule: `Vượt ngưỡng ${this.threshold}°C kéo dài > ${this.minDurationMinutes} phút (${durationMinutes.toFixed(1)} phút)`,
+          rule,
         });
       }
     }
@@ -164,14 +204,19 @@ class ColdChainViolationDetector {
    */
   processReading(reading) {
     const rawTime = reading.recordedAt ?? reading.timestamp ?? reading.time;
-    const rawTemperature = reading.temperature ?? reading.temp;
+    const rawTemperature = reading.temperature ?? reading.temp ?? reading.value;
     const ts = new Date(rawTime).getTime();
     const temp = Number(rawTemperature);
 
-    if (rawTime == null || typeof rawTime === "boolean" ||
-        rawTemperature == null || typeof rawTemperature === "boolean" ||
-        (typeof rawTemperature === "string" && !rawTemperature.trim()) ||
-        !Number.isFinite(ts) || !Number.isFinite(temp)) {
+    if (
+      rawTime == null ||
+      typeof rawTime === "boolean" ||
+      rawTemperature == null ||
+      typeof rawTemperature === "boolean" ||
+      (typeof rawTemperature === "string" && !rawTemperature.trim()) ||
+      !Number.isFinite(ts) ||
+      !Number.isFinite(temp)
+    ) {
       throw new Error("Số đo không hợp lệ: thiếu thời gian hoặc nhiệt độ.");
     }
 
@@ -182,31 +227,36 @@ class ColdChainViolationDetector {
     // Bounded window reading storage
     this.windowReadings = [{ recordedAt: ts, temperature: temp }];
 
-    // Kiểm tra hết hạn của các đợt pendingSegments cách đây >= 5 phút
+    // Kiểm tra hết hạn của các đợt pendingSegments cách đây >= mergeGapMs
     this._flushExpiredPendingSegments(ts);
 
-    const isExcursion = temp > this.threshold;
+    const isUpper = this.tempMax !== null && temp > this.tempMax;
+    const isLower = this.tempMin !== null && temp < this.tempMin;
+    const isExcursion = isUpper || isLower;
+    const breachType = isUpper ? "UPPER_BREACH" : (isLower ? "LOWER_BREACH" : null);
 
     if (isExcursion) {
-      // Đang vượt ngưỡng
       if (this.pendingSegments.length > 0) {
-        // Kiểm tra xem đợt trước đó có kết thúc cách đây < 5 phút không
+        // Kiểm tra xem đợt trước đó có kết thúc cách đây < 5 phút và cùng loại vi phạm không
         const lastPending = this.pendingSegments[this.pendingSegments.length - 1];
         const gapMs = ts - lastPending.endTime;
-        if (gapMs < this.mergeGapMs) {
+        if (gapMs < this.mergeGapMs && lastPending.breachType === breachType) {
           // Gộp vào đợt pending trước đó và tiếp tục active!
           this.activeExcursion = this.pendingSegments.pop();
           this.activeExcursion.endTime = ts;
-          this.activeExcursion.peakTemperature = Math.max(this.activeExcursion.peakTemperature, temp);
+          this.activeExcursion.peakTemperature = isUpper
+            ? Math.max(this.activeExcursion.peakTemperature, temp)
+            : Math.min(this.activeExcursion.peakTemperature, temp);
           this.activeExcursion.readingsCount++;
           this.activeExcursion.excursionsCount++;
         } else {
-          // Flush tất cả pending vì gap >= 5 phút
+          // Flush tất cả pending vì gap >= 5 phút hoặc khác loại vi phạm
           this._finalizePendingSegments();
           this.activeExcursion = {
             startTime: ts,
             endTime: ts,
             peakTemperature: temp,
+            breachType,
             readingsCount: 1,
             excursionsCount: 1,
           };
@@ -216,16 +266,30 @@ class ColdChainViolationDetector {
           startTime: ts,
           endTime: ts,
           peakTemperature: temp,
+          breachType,
           readingsCount: 1,
           excursionsCount: 1,
         };
-      } else {
+      } else if (this.activeExcursion.breachType === breachType) {
         this.activeExcursion.endTime = ts;
-        this.activeExcursion.peakTemperature = Math.max(this.activeExcursion.peakTemperature, temp);
+        this.activeExcursion.peakTemperature = isUpper
+          ? Math.max(this.activeExcursion.peakTemperature, temp)
+          : Math.min(this.activeExcursion.peakTemperature, temp);
         this.activeExcursion.readingsCount++;
+      } else {
+        // Khác loại vi phạm -> đóng đợt cũ, mở đợt mới
+        this.pendingSegments.push(this.activeExcursion);
+        this.activeExcursion = {
+          startTime: ts,
+          endTime: ts,
+          peakTemperature: temp,
+          breachType,
+          readingsCount: 1,
+          excursionsCount: 1,
+        };
       }
     } else {
-      // Nhiệt độ bình thường
+      // Nhiệt độ an toàn bình thường
       if (this.activeExcursion) {
         // Tạm đóng excursion này và đưa vào pendingSegments để chờ xem có đợt mới trong vòng < 5 phút không
         this.pendingSegments.push(this.activeExcursion);
@@ -249,6 +313,7 @@ class ColdChainViolationDetector {
               ((this.activeExcursion.endTime - this.activeExcursion.startTime) / (60 * 1000)).toFixed(2)
             ),
             peakTemperature: this.activeExcursion.peakTemperature,
+            breachType: this.activeExcursion.breachType,
             isOver30Min: this.activeExcursion.endTime - this.activeExcursion.startTime > this.minDurationMs,
           }
         : null,
@@ -294,18 +359,30 @@ class ColdChainViolationDetector {
       if (!seg.violationId) {
         seg.violationId = `viol-${crypto.randomBytes(4).toString("hex")}`;
       }
+      const breachType = seg.breachType || "UPPER_BREACH";
+      const isUpper = breachType === "UPPER_BREACH";
+      const thresholdVal = isUpper ? (this.tempMax ?? this.threshold) : this.tempMin;
+      const rule = isUpper
+        ? `Vượt ngưỡng trên ${this.tempMax ?? this.threshold}°C kéo dài > ${this.minDurationMinutes} phút (${durationMinutes.toFixed(1)} phút)`
+        : `Thấp hơn ngưỡng dưới ${this.tempMin}°C kéo dài > ${this.minDurationMinutes} phút (${durationMinutes.toFixed(1)} phút)`;
+
       const violation = {
         id: seg.violationId,
-        threshold: this.threshold,
+        threshold: thresholdVal,
+        tempMin: this.tempMin,
+        tempMax: this.tempMax,
+        thresholdMin: this.tempMin,
+        thresholdMax: this.tempMax,
+        breachType,
         startTime: new Date(seg.startTime).toISOString(),
-        endTime: new Date(seg.endTime).toISOString(),
+        endTime: status === "ONGOING" ? null : new Date(seg.endTime).toISOString(),
         peakTemperature: Number(seg.peakTemperature.toFixed(2)),
         durationMinutes: Number(durationMinutes.toFixed(2)),
         durationSeconds: Math.round(durationMs / 1000),
         excursionsCount: seg.excursionsCount,
         readingsCount: seg.readingsCount,
         status,
-        rule: `Vượt ngưỡng ${this.threshold}°C kéo dài > ${this.minDurationMinutes} phút (${durationMinutes.toFixed(1)} phút)`,
+        rule,
       };
       const existingIndex = this.confirmedViolations.findIndex((item) => item.id === violation.id);
       if (existingIndex === -1) {
@@ -323,7 +400,10 @@ class ColdChainViolationDetector {
   toBoundedJSON() {
     return {
       threshold: this.threshold,
+      tempMin: this.tempMin,
+      tempMax: this.tempMax,
       minDurationMinutes: this.minDurationMinutes,
+      delayMinutes: this.delayMinutes,
       mergeGapMinutes: this.mergeGapMinutes,
       latestTimestamp: this.latestTimestamp,
       activeExcursion: this.activeExcursion ? { ...this.activeExcursion } : null,
@@ -336,9 +416,16 @@ class ColdChainViolationDetector {
   }
 
   static fromJSON(state, options = {}) {
+    const rawThreshold = state?.tempMax ?? state?.threshold ?? options.tempMax ?? options.threshold;
+    const rawTempMin = state?.tempMin ?? options.tempMin;
+    const rawDelay = state?.minDurationMinutes ?? state?.delayMinutes ?? options.minDurationMinutes ?? options.delayMinutes;
+
     const detector = new ColdChainViolationDetector({
-      threshold: state?.threshold ?? options.threshold,
-      minDurationMinutes: state?.minDurationMinutes ?? options.minDurationMinutes,
+      threshold: rawThreshold,
+      tempMax: rawThreshold,
+      tempMin: rawTempMin,
+      minDurationMinutes: rawDelay,
+      delayMinutes: rawDelay,
       mergeGapMinutes: state?.mergeGapMinutes ?? options.mergeGapMinutes,
     });
     if (state) {
@@ -613,7 +700,7 @@ async function recordViolationEventsForShipmentLots({
     }
   } else {
     // In-memory fallback
-    const attached = inMemoryShipmentLots.filter((sl) => sl.shipmentId === shipmentId);
+    const attached = (shipmentService.inMemoryShipmentLots || []).filter((sl) => sl.shipmentId === shipmentId);
     for (const sl of attached) {
       const lotId = sl.lotId;
       const lotOrgId = sl.lotOrgId || shipOrgId;
@@ -665,8 +752,23 @@ async function finalizeShipmentViolations({
   }
   if (!rawState) return [];
 
-  const configuredThreshold = Number(process.env.COLD_CHAIN_THRESHOLD || rawState.threshold || DEFAULT_THRESHOLD_TEMP);
-  const detector = ColdChainViolationDetector.fromJSON(rawState, { threshold: configuredThreshold });
+  let tempMin = shipment.applied_temp_min !== undefined && shipment.applied_temp_min !== null
+    ? Number(shipment.applied_temp_min)
+    : (shipment.appliedTempMin !== undefined && shipment.appliedTempMin !== null ? Number(shipment.appliedTempMin) : (rawState?.tempMin ?? null));
+  let tempMax = shipment.applied_temp_max !== undefined && shipment.applied_temp_max !== null
+    ? Number(shipment.applied_temp_max)
+    : (shipment.appliedTempMax !== undefined && shipment.appliedTempMax !== null ? Number(shipment.appliedTempMax) : (rawState?.tempMax ?? Number(process.env.COLD_CHAIN_THRESHOLD || rawState?.threshold || DEFAULT_THRESHOLD_TEMP)));
+  let delayMinutes = shipment.applied_delay_minutes !== undefined && shipment.applied_delay_minutes !== null
+    ? Number(shipment.applied_delay_minutes)
+    : (shipment.appliedDelayMinutes !== undefined && shipment.appliedDelayMinutes !== null ? Number(shipment.appliedDelayMinutes) : (rawState?.delayMinutes ?? DEFAULT_MIN_DURATION_MINUTES));
+
+  const detector = ColdChainViolationDetector.fromJSON(rawState, {
+    threshold: tempMax,
+    tempMax,
+    tempMin,
+    delayMinutes,
+    minDurationMinutes: delayMinutes,
+  });
   const finalViolations = detector.finalize();
 
   const cBoxId = coldBoxId || shipment.cold_box_id || shipment.coldBoxId;
@@ -782,7 +884,6 @@ async function handleAcceptedTemperatureReading({
   const shipmentId = shipment.id;
   const cBoxId = coldBoxId || shipment.cold_box_id || shipment.coldBoxId;
   const orgId = shipment.organization_id || shipment.organizationId;
-  const configuredThreshold = Number(process.env.COLD_CHAIN_THRESHOLD || threshold || DEFAULT_THRESHOLD_TEMP);
 
   // 1. Tải trạng thái detector bền vững đã lưu trên chuyến
   let rawState = shipment.detector_state || shipment.detectorState;
@@ -794,8 +895,46 @@ async function handleAcceptedTemperatureReading({
     }
   }
 
-  // 2. Khởi tạo detector từ trạng thái hiện có
-  const detector = ColdChainViolationDetector.fromJSON(rawState, { threshold: configuredThreshold });
+  // 2. Trích xuất cấu hình ngưỡng từ snapshot chuyến (Story S-44)
+  let tempMin = null;
+  let tempMax = null;
+  let delayMinutes = null;
+
+  if (shipment.applied_temp_max !== undefined && shipment.applied_temp_max !== null) {
+    tempMax = Number(shipment.applied_temp_max);
+  } else if (shipment.appliedTempMax !== undefined && shipment.appliedTempMax !== null) {
+    tempMax = Number(shipment.appliedTempMax);
+  } else if (rawState?.tempMax !== undefined && rawState?.tempMax !== null) {
+    tempMax = Number(rawState.tempMax);
+  }
+
+  if (shipment.applied_temp_min !== undefined && shipment.applied_temp_min !== null) {
+    tempMin = Number(shipment.applied_temp_min);
+  } else if (shipment.appliedTempMin !== undefined && shipment.appliedTempMin !== null) {
+    tempMin = Number(shipment.appliedTempMin);
+  } else if (rawState?.tempMin !== undefined && rawState?.tempMin !== null) {
+    tempMin = Number(rawState.tempMin);
+  }
+
+  if (shipment.applied_delay_minutes !== undefined && shipment.applied_delay_minutes !== null) {
+    delayMinutes = Number(shipment.applied_delay_minutes);
+  } else if (shipment.appliedDelayMinutes !== undefined && shipment.appliedDelayMinutes !== null) {
+    delayMinutes = Number(shipment.appliedDelayMinutes);
+  } else if (rawState?.delayMinutes !== undefined && rawState?.delayMinutes !== null) {
+    delayMinutes = Number(rawState.delayMinutes);
+  }
+
+  const configuredThreshold = tempMax !== null ? tempMax : Number(process.env.COLD_CHAIN_THRESHOLD || threshold || DEFAULT_THRESHOLD_TEMP);
+  const configuredDelay = delayMinutes !== null ? delayMinutes : (rawState?.minDurationMinutes ?? DEFAULT_MIN_DURATION_MINUTES);
+
+  // 3. Khởi tạo detector từ trạng thái hiện có kèm cấu hình ngưỡng sản phẩm
+  const detector = ColdChainViolationDetector.fromJSON(rawState, {
+    threshold: configuredThreshold,
+    tempMax: configuredThreshold,
+    tempMin,
+    delayMinutes: configuredDelay,
+    minDurationMinutes: configuredDelay,
+  });
 
   // 3. Xử lý một số đo vừa được chấp nhận
   const streamResult = detector.processReading({
@@ -895,8 +1034,8 @@ async function handleAcceptedTemperatureReading({
 
     const boundedState = detector.toBoundedJSON();
     shipment.detector_state = boundedState;
-    shipment.detectorState = boundedState;
-    const targetInMem = inMemoryShipments.find((s) => s.id === shipmentId);
+    const inMemList = shipmentService.inMemoryShipments || [];
+    const targetInMem = inMemList.find((s) => s.id === shipmentId);
     if (targetInMem) {
       targetInMem.detector_state = boundedState;
       targetInMem.detectorState = boundedState;
@@ -911,7 +1050,95 @@ async function handleAcceptedTemperatureReading({
 }
 
 /**
- * Định dạng phản hồi danh sách vi phạm theo chuẩn Response Contract của S-43 Phase 2:
+ * Tính toán dải nhiệt độ chặt nhất và kiểm tra tính tương thích khi vận chuyển một hoặc nhiều sản phẩm (Story S-44)
+ * - 1 sản phẩm: áp dụng cấu hình của sản phẩm đó.
+ * - Nhiều sản phẩm:
+ *     + Ngưỡng dưới chặt nhất = MAX(temp_min của các SP)
+ *     + Ngưỡng trên chặt nhất = MIN(temp_max của các SP)
+ *     + Độ trễ chặt nhất = MIN(delay_minutes của các SP)
+ * - Kiểm tra tương thích: Nếu MAX(temp_min) > MIN(temp_max), các dải nhiệt độ không giao nhau => Báo lỗi không tương thích.
+ */
+function resolveShipmentThresholds(products = []) {
+  if (!Array.isArray(products) || products.length === 0) {
+    return {
+      hasConfig: false,
+      tempMin: null,
+      tempMax: null,
+      delayMinutes: null,
+      incompatible: false,
+      incompatibilityReason: null,
+      productDetails: [],
+    };
+  }
+
+  const validProducts = [];
+  const tempMins = [];
+  const tempMaxs = [];
+  const delays = [];
+
+  for (const p of products) {
+    if (!p) continue;
+    const minVal = p.temp_min !== undefined && p.temp_min !== null
+      ? Number(p.temp_min)
+      : (p.tempMin !== undefined && p.tempMin !== null ? Number(p.tempMin) : null);
+    const maxVal = p.temp_max !== undefined && p.temp_max !== null
+      ? Number(p.temp_max)
+      : (p.tempMax !== undefined && p.tempMax !== null ? Number(p.tempMax) : null);
+    const delVal = p.delay_minutes !== undefined && p.delay_minutes !== null
+      ? Number(p.delay_minutes)
+      : (p.delayMinutes !== undefined && p.delayMinutes !== null ? Number(p.delayMinutes) : null);
+
+    const hasAny = Number.isFinite(minVal) || Number.isFinite(maxVal) || (Number.isFinite(delVal) && delVal >= 0);
+    if (hasAny) {
+      validProducts.push({
+        id: p.id,
+        name: p.name,
+        tempMin: Number.isFinite(minVal) ? minVal : null,
+        tempMax: Number.isFinite(maxVal) ? maxVal : null,
+        delayMinutes: Number.isFinite(delVal) ? delVal : null,
+      });
+      if (Number.isFinite(minVal)) tempMins.push(minVal);
+      if (Number.isFinite(maxVal)) tempMaxs.push(maxVal);
+      if (Number.isFinite(delVal) && delVal >= 0) delays.push(delVal);
+    }
+  }
+
+  if (validProducts.length === 0) {
+    return {
+      hasConfig: false,
+      tempMin: null,
+      tempMax: null,
+      delayMinutes: null,
+      incompatible: false,
+      incompatibilityReason: null,
+      productDetails: [],
+    };
+  }
+
+  const effectiveTempMin = tempMins.length > 0 ? Math.max(...tempMins) : null;
+  const effectiveTempMax = tempMaxs.length > 0 ? Math.min(...tempMaxs) : null;
+  const effectiveDelay = delays.length > 0 ? Math.min(...delays) : null;
+
+  let incompatible = false;
+  let incompatibilityReason = null;
+  if (effectiveTempMin !== null && effectiveTempMax !== null && effectiveTempMin > effectiveTempMax) {
+    incompatible = true;
+    incompatibilityReason = `Các sản phẩm trong chuyến có dải nhiệt độ bảo quản không tương thích: ngưỡng dưới lớn nhất (${effectiveTempMin}°C) cao hơn ngưỡng trên nhỏ nhất (${effectiveTempMax}°C). Không thể vận chuyển chung trong cùng một thùng lạnh.`;
+  }
+
+  return {
+    hasConfig: true,
+    tempMin: effectiveTempMin,
+    tempMax: effectiveTempMax,
+    delayMinutes: effectiveDelay,
+    incompatible,
+    incompatibilityReason,
+    productDetails: validProducts,
+  };
+}
+
+/**
+ * Định dạng phản hồi danh sách vi phạm theo chuẩn Response Contract của S-43 Phase 2 & S-44:
  * { shipmentId, coldBoxId, organizationId, violations, count, summary }
  */
 function formatViolationsResponse({ shipmentId, coldBoxId, organizationId, rawViolations = [] }) {
@@ -941,14 +1168,27 @@ function formatViolationsResponse({ shipmentId, coldBoxId, organizationId, rawVi
         1
     );
 
+    const thresholdVal = Number(row.threshold_value ?? row.threshold ?? rawDetails?.threshold ?? 0);
+    const breachType = row.breach_type ?? row.breachType ?? rawDetails?.breachType ?? "UPPER_BREACH";
+    const tempMin = row.temp_min ?? row.tempMin ?? rawDetails?.tempMin ?? null;
+    const tempMax = row.temp_max ?? row.tempMax ?? rawDetails?.tempMax ?? null;
+    const rule = row.rule ?? rawDetails?.rule ?? null;
+
     return {
       id: row.id,
+      threshold: thresholdVal,
+      tempMin,
+      tempMax,
+      thresholdMin: tempMin,
+      thresholdMax: tempMax,
+      breachType,
       startTime,
       endTime,
       peakTemperature,
       durationMinutes,
       status,
       sampleCount,
+      rule,
     };
   });
 
@@ -1056,7 +1296,7 @@ async function getShipmentViolations({
   }
 
   // In-Memory
-  const shipmentsList = inMemoryShipmentsList || inMemoryShipments;
+  const shipmentsList = inMemoryShipmentsList || shipmentService.inMemoryShipments || [];
   const shipment = shipmentsList.find((s) => s.id === shipmentId);
   if (!shipment) {
     return {
@@ -1185,7 +1425,7 @@ async function getColdBoxViolations({
   }
 
   // In-Memory
-  const shipmentsList = inMemoryShipmentsList || inMemoryShipments;
+  const shipmentsList = inMemoryShipmentsList || shipmentService.inMemoryShipments || [];
   const matching = shipmentsList.filter(
     (s) => (s.coldBoxId === cleanCode || s.containerId === cleanCode)
   );
@@ -1332,6 +1572,7 @@ module.exports = {
   evaluateSeriesDirect,
   recordViolationEventsForShipmentLots,
   finalizeShipmentViolations,
+  resolveShipmentThresholds,
   inMemoryReadings,
   inMemoryViolations,
   streamingDetectors,

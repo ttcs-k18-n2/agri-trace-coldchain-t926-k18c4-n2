@@ -366,7 +366,7 @@ test("S-40: Mock migration runner - already-applied 024 upgrade path applies onl
     "019_lot_consumed_status", "020_locations", "021_audit_logs",
     "022_consumed_lot_constraints", "023_public_map_areas", "023_recall_orders",
     "024_lot_custom_coordinates", "024_recall_acknowledgments", "024_shipments", "026_shipment_temperatures",
-    "027_shipment_temperature_violations"
+    "027_shipment_temperature_violations", "028_product_temperature_thresholds"
   ];
   const appliedMigrations = [...existingApplied];
 
@@ -599,10 +599,44 @@ test("S-43: Migration 027 creates temperature_violations and detector_state with
   );
 });
 
+test("S-44: Migration 028 creates product temperature thresholds and shipment config columns with rollback", () => {
+  const fs = require("node:fs");
+  const path = require("node:path");
+
+  const upPath = path.resolve(__dirname, "../../db/migrations/028_product_temperature_thresholds.sql");
+  const downPath = path.resolve(__dirname, "../../db/migrations/down/028_product_temperature_thresholds.down.sql");
+
+  assert.ok(fs.existsSync(upPath), "Migration 028 UP file must exist");
+  assert.ok(fs.existsSync(downPath), "Migration 028 DOWN file must exist");
+
+  const upSql = fs.readFileSync(upPath, "utf-8");
+  const downSql = fs.readFileSync(downPath, "utf-8");
+
+  // UP: adds columns to products
+  assert.match(upSql, /temp_min/i, "Migration 028 must add temp_min column to products");
+  assert.match(upSql, /temp_max/i, "Migration 028 must add temp_max column to products");
+  assert.match(upSql, /delay_minutes/i, "Migration 028 must add delay_minutes column to products");
+  assert.match(upSql, /chk_products_temp_range/i, "Migration 028 must enforce temp_min < temp_max constraint");
+
+  // UP: adds columns to shipments
+  assert.match(upSql, /applied_temp_min/i, "Migration 028 must add applied_temp_min column to shipments");
+  assert.match(upSql, /applied_temp_max/i, "Migration 028 must add applied_temp_max column to shipments");
+  assert.match(upSql, /applied_delay_minutes/i, "Migration 028 must add applied_delay_minutes column to shipments");
+  assert.match(upSql, /temperature_config/i, "Migration 028 must add temperature_config column to shipments");
+
+  // DOWN: drops columns from products and shipments
+  assert.match(downSql, /DROP\s+COLUMN\s+(IF\s+EXISTS\s+)?temperature_config/i, "Migration 028 rollback must drop temperature_config");
+  assert.match(downSql, /DROP\s+COLUMN\s+(IF\s+EXISTS\s+)?temp_min/i, "Migration 028 rollback must drop temp_min");
+  assert.match(downSql, /DROP\s+COLUMN\s+(IF\s+EXISTS\s+)?temp_max/i, "Migration 028 rollback must drop temp_max");
+  assert.match(downSql, /DROP\s+COLUMN\s+(IF\s+EXISTS\s+)?delay_minutes/i, "Migration 028 rollback must drop delay_minutes");
+  assert.ok(!/DROP\s+TABLE\s+(IF\s+EXISTS\s+)?(products|shipments)\b/i.test(downSql), "Migration 028 rollback must NEVER drop products or shipments table");
+});
+
 if (process.env.DATABASE_URL) {
   test("migrate: up and down work with database", async () => {
     const upRes = await runMigrations("up");
     assert.equal(upRes.status, "ok");
   });
 }
+
 

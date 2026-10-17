@@ -872,9 +872,12 @@
           <h4 class="section-title">❄️ Thùng lạnh bảo quản</h4>
           <div class="detail-grid">
             <div class="detail-field"><span class="df-label">Mã thùng:</span> <strong class="df-val">${escapeHtml(s.containerId)}</strong></div>
-            <div class="detail-field"><span class="df-label">Dải nhiệt chuẩn:</span> <strong class="df-val badge-temp-range">${escapeHtml(s.containerTempRange)}</strong></div>
+            <div class="detail-field"><span class="df-label">Giới hạn áp dụng:</span> <strong class="df-val badge-temp-range">${s.appliedTempMin != null && s.appliedTempMax != null ? `${s.appliedTempMin}°C ~ ${s.appliedTempMax}°C (trễ ${s.appliedDelayMinutes != null ? s.appliedDelayMinutes : 30} phút)` : escapeHtml(s.containerTempRange)}</strong></div>
             <div class="detail-field"><span class="df-label">Nhiệt độ hiện tại:</span> <strong class="df-val ${getTempStatusClass(s.currentTemp, s.temperatureStatus || s.domainStatus || s.sensorStatus)}">${s.currentTemp != null && Number.isFinite(s.currentTemp) ? s.currentTemp.toFixed(1) + "°C" : "Chưa có dữ liệu"}</strong></div>
             <div class="detail-field"><span class="df-label">Thời điểm ghi nhận:</span> <span class="df-val">${s.lastTemperatureAt ? formatDateTime(s.lastTemperatureAt) : "Chưa có dữ liệu"}</span></div>
+            ${s.temperatureConfig && Array.isArray(s.temperatureConfig.productDetails) && s.temperatureConfig.productDetails.length > 0 ? `
+              <div class="detail-field" style="grid-column: 1 / -1;"><span class="df-label">Quy chuẩn sản phẩm:</span> <span class="df-val" style="font-size: 12px; color: var(--color-text-main);">${s.temperatureConfig.productDetails.map(pd => `<strong>${escapeHtml(pd.name)}</strong>: ${pd.tempMin != null ? pd.tempMin + "°C" : "--"} ~ ${pd.tempMax != null ? pd.tempMax + "°C" : "--"} (trễ ${pd.delayMinutes != null ? pd.delayMinutes + "p" : "--"})`).join(" | ")}</span></div>
+            ` : ""}
             ${(s.temperatureStatus || s.sensorStatus) ? `
               <div class="detail-field"><span class="df-label">Trạng thái cảm biến:</span> <span class="df-val" style="color: ${getSensorStatusInfo(s.currentTemp, s.temperatureStatus || s.sensorStatus).color}; font-weight:600;">${escapeHtml(getSensorStatusInfo(s.currentTemp, s.temperatureStatus || s.sensorStatus).label)}</span></div>
             ` : ""}
