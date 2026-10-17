@@ -1745,10 +1745,11 @@
       const lotRemainingVal = (lot.remainingQuantity !== null && lot.remainingQuantity !== undefined)
         ? Number(lot.remainingQuantity)
         : ((lot.remaining_quantity !== null && lot.remaining_quantity !== undefined) ? Number(lot.remaining_quantity) : null);
-      const canTransfer = currentUser && !isInspector && (isAdmin || userOrgId === lotOrgId) && lot.status !== "Đã bán hết" && lot.status !== "Đã tiêu thụ" && (lotRemainingVal !== null && lotRemainingVal > 0);
-      const canSplit = currentUser && !isInspector && (isAdmin || userOrgId === lotOrgId) && ["producer", "cooperative", "distributor", "org_admin", "admin"].includes(role) && (lotRemainingVal !== null && lotRemainingVal > 0) && !lot.pendingTransfer && lot.status !== "Đã bán hết" && lot.status !== "Đã tiêu thụ";
-      const canMerge = currentUser && !isInspector && (isAdmin || userOrgId === lotOrgId) && ["producer", "cooperative", "org_admin", "admin"].includes(role) && (lotRemainingVal !== null && lotRemainingVal > 0) && !lot.pendingTransfer && lot.status !== "Đã bán hết" && lot.status !== "Đã tiêu thụ";
-      const canConsume = currentUser && !isInspector && (isAdmin || userOrgId === lotOrgId) && ["distributor", "org_admin", "admin"].includes(role) && (lotRemainingVal !== null && lotRemainingVal > 0) && !lot.pendingTransfer && lot.status !== "Đã bán hết" && lot.status !== "Đã tiêu thụ";
+      const isRecalledOrIncident = lot.status === "Có sự cố" || lot.status === "Đang thu hồi" || lot.status === "Đã thu hồi" || Boolean(lot.activeRecallOrder);
+      const canTransfer = currentUser && !isInspector && !isRecalledOrIncident && (isAdmin || userOrgId === lotOrgId) && lot.status !== "Đã bán hết" && lot.status !== "Đã tiêu thụ" && (lotRemainingVal !== null && lotRemainingVal > 0);
+      const canSplit = currentUser && !isInspector && !isRecalledOrIncident && (isAdmin || userOrgId === lotOrgId) && ["producer", "cooperative", "distributor", "org_admin", "admin"].includes(role) && (lotRemainingVal !== null && lotRemainingVal > 0) && !lot.pendingTransfer && lot.status !== "Đã bán hết" && lot.status !== "Đã tiêu thụ";
+      const canMerge = currentUser && !isInspector && !isRecalledOrIncident && (isAdmin || userOrgId === lotOrgId) && ["producer", "cooperative", "org_admin", "admin"].includes(role) && (lotRemainingVal !== null && lotRemainingVal > 0) && !lot.pendingTransfer && lot.status !== "Đã bán hết" && lot.status !== "Đã tiêu thụ";
+      const canConsume = currentUser && !isInspector && !isRecalledOrIncident && (isAdmin || userOrgId === lotOrgId) && ["distributor", "org_admin", "admin"].includes(role) && (lotRemainingVal !== null && lotRemainingVal > 0) && !lot.pendingTransfer && lot.status !== "Đã bán hết" && lot.status !== "Đã tiêu thụ";
       const canManageLocation = currentUser && !isInspector && (isAdmin || userOrgId === lotOrgId);
       const canEditCoordinates = currentUser && !isInspector && role !== "auditor" && (isAdmin || userOrgId === lotOrgId);
       const isRecipient = Boolean(userOrgId && lot.pendingTransfer && lot.pendingTransfer.toOrganizationId === userOrgId);
