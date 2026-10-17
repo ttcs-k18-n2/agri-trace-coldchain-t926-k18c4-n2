@@ -19,6 +19,33 @@ const { getOrganizationMap } = require("./lot_access");
 
 const inMemoryShipments = [];
 const inMemoryShipmentLots = [];
+const inMemoryShipmentTemperatures = [];
+
+/**
+ * Mutex lock in-memory cho nhiệt độ thùng lạnh nhằm mô phỏng tuần tự hoá (SELECT FOR UPDATE)
+ * khi chạy ở môi trường kiểm thử in-memory không có CSDL PostgreSQL.
+ */
+const temperatureLocks = new Map();
+
+async function withTemperatureLock(key, fn) {
+  const currentLock = temperatureLocks.get(key) || Promise.resolve();
+  let release;
+  const nextLock = new Promise((res) => {
+    release = res;
+  });
+  const queued = currentLock.then(() => nextLock);
+  temperatureLocks.set(key, queued);
+
+  await currentLock;
+  try {
+    return await fn();
+  } finally {
+    release();
+    if (temperatureLocks.get(key) === queued) {
+      temperatureLocks.delete(key);
+    }
+  }
+}
 
 /**
  * Mutex lock in-memory cho từng lô hàng nhằm mô phỏng tuần tự hoá (SELECT FOR UPDATE)
@@ -1091,6 +1118,13 @@ async function getShipments({
       startedAt: r.started_at ? new Date(r.started_at).toISOString() : null,
       completedAt: r.completed_at ? new Date(r.completed_at).toISOString() : null,
       createdAt: r.created_at ? new Date(r.created_at).toISOString() : null,
+      currentTemperature:
+        r.current_temperature !== null && r.current_temperature !== undefined
+          ? Number(r.current_temperature)
+          : null,
+      lastTemperatureAt: r.last_temperature_at
+        ? new Date(r.last_temperature_at).toISOString()
+        : null,
     }));
 
     return {
@@ -1159,6 +1193,13 @@ async function getShipments({
       lotCount: attached.length,
       lots: attached.map((sl) => ({ lotId: sl.lotId, status: sl.status, isActive: sl.isActive })),
       lotIds: attached.map((sl) => sl.lotId),
+      currentTemperature:
+        s.currentTemperature !== undefined && s.currentTemperature !== null
+          ? Number(s.currentTemperature)
+          : null,
+      lastTemperatureAt: s.lastTemperatureAt
+        ? new Date(s.lastTemperatureAt).toISOString()
+        : null,
     };
   });
 
@@ -1257,6 +1298,13 @@ async function getShipmentById({
       completedAt: ship.completed_at ? new Date(ship.completed_at).toISOString() : null,
       createdAt: ship.created_at ? new Date(ship.created_at).toISOString() : null,
       updatedAt: ship.updated_at ? new Date(ship.updated_at).toISOString() : null,
+      currentTemperature:
+        ship.current_temperature !== null && ship.current_temperature !== undefined
+          ? Number(ship.current_temperature)
+          : null,
+      lastTemperatureAt: ship.last_temperature_at
+        ? new Date(ship.last_temperature_at).toISOString()
+        : null,
       lots: lotsRes.rows.map((r) => ({
         lotId: r.lot_id,
         lotName: r.lot_name,
@@ -1302,6 +1350,8 @@ async function getShipmentById({
     containerId: ship.coldBoxId,
     origin: ship.originLocationId,
     destination: ship.destinationLocationId,
+    currentTemperature: ship.currentTemperature !== undefined ? ship.currentTemperature : null,
+    lastTemperatureAt: ship.lastTemperatureAt || null,
     lotIds: attached.map((sl) => sl.lotId),
     organizationName: orgMap[ship.organizationId] || ship.organizationId,
     lots: attached.map((sl) => ({
@@ -1393,12 +1443,631 @@ async function getActiveShipmentForLot({ pool = null, lotId }) {
   };
 }
 
+/**
+ * Ghi nhận số đo nhiệt độ theo thời gian cho chuyến vận chuyển thùng lạnh (Story S-41 / Jira N2-109)
+ */
+async function recordShipmentTemperature({
+  pool = null,
+  client = null,
+  authContext = null,
+  data = {},
+  _inMemoryOrgs = [],
+  _ipAddress = "127.0.0.1",
+  _userAgent = null,
+}) {
+  const rawColdBoxId =
+    data.coldBoxId ||
+    data.cold_box_id ||
+    data.coldBoxCode ||
+    data.cold_box_code ||
+    data.code ||
+    data.containerId;
+  const rawTimestamp =
+    data.timestamp ||
+    data.recordedAt ||
+    data.recorded_at ||
+    data.measuredAt ||
+    data.measured_at ||
+    data.measurementTimestamp ||
+    data.measurement_timestamp;
+  const rawTemperature =
+    data.temperature !== undefined ? data.temperature : data.value;
+
+  let cleanColdBoxId =
+    typeof rawColdBoxId === "string" ? rawColdBoxId.trim() : null;
+
+  const rawShipmentId = data.shipmentId || data.shipment_id;
+  const cleanShipmentId =
+    typeof rawShipmentId === "string" ? rawShipmentId.trim() : null;
+
+  if (!cleanColdBoxId && cleanShipmentId) {
+    if (pool || client) {
+      const dbClient = client || pool;
+      try {
+        const shp = await dbClient.query("SELECT cold_box_id FROM shipments WHERE id = $1", [cleanShipmentId]);
+        if (shp.rows[0]) {
+          cleanColdBoxId = shp.rows[0].cold_box_id;
+        }
+      } catch {
+        /* ignore */
+      }
+    } else {
+      const shp = inMemoryShipments.find((s) => s.id === cleanShipmentId);
+      if (shp) {
+        cleanColdBoxId = shp.coldBoxId || shp.containerId;
+      }
+    }
+  }
+
+  // 1. Kiểm tra mã thùng lạnh
+  if (!cleanColdBoxId) {
+    return {
+      status: 400,
+      error: "MISSING_COLD_BOX_CODE",
+      message: "Mã thùng lạnh là bắt buộc.",
+    };
+  }
+
+  // 2. Kiểm tra nhiệt độ (phải là số hữu hạn, không chấp nhận NaN, Infinity, null, chuỗi không số)
+  if (
+    rawTemperature === undefined ||
+    rawTemperature === null ||
+    rawTemperature === "" ||
+    typeof rawTemperature === "boolean"
+  ) {
+    return {
+      status: 400,
+      error: "INVALID_TEMPERATURE",
+      message: "Giá trị nhiệt độ không hợp lệ hoặc bị thiếu.",
+    };
+  }
+
+  const numTemp = Number(rawTemperature);
+  if (!Number.isFinite(numTemp) || Number.isNaN(numTemp)) {
+    return {
+      status: 400,
+      error: "INVALID_TEMPERATURE",
+      message: "Giá trị nhiệt độ phải là một số thực hữu hạn.",
+    };
+  }
+
+  // Đảm bảo kiểu số NUMERIC(5, 2) của PostgreSQL tiếp nhận giá trị hợp lệ (-999.99 đến 999.99)
+  // và trả 400 rõ ràng thay vì lỗi cơ sở dữ liệu 500
+  if (numTemp > 999.99 || numTemp < -999.99) {
+    return {
+      status: 400,
+      error: "INVALID_TEMPERATURE",
+      message: "Giá trị nhiệt độ vượt quá giới hạn lưu trữ (-999.99 đến 999.99).",
+    };
+  }
+
+  // 3. Kiểm tra thời điểm đo: bắt buộc là chuỗi hợp lệ ISO-8601, từ chối boolean, số, object, chuỗi mơ hồ và ngày sai trên lịch
+  if (!rawTimestamp || typeof rawTimestamp !== "string" || !rawTimestamp.trim()) {
+    return {
+      status: 400,
+      error: "INVALID_TIMESTAMP",
+      message: "Thời điểm đo nhiệt độ là bắt buộc và phải là chuỗi định dạng ISO-8601.",
+    };
+  }
+
+  const trimmedTimestamp = rawTimestamp.trim();
+  const isoPattern =
+    /^(\d{4})-(\d{2})-(\d{2})[T\s](\d{2}):(\d{2})(?::(\d{2})(?:\.(\d{1,6}))?)?(?:(Z)|([+-]\d{2})(?::?(\d{2}))?)?$/i;
+  const match = isoPattern.exec(trimmedTimestamp);
+  if (!match) {
+    return {
+      status: 400,
+      error: "INVALID_TIMESTAMP",
+      message: "Thời điểm đo không đúng định dạng thời gian ISO-8601 hợp lệ.",
+    };
+  }
+
+  const year = parseInt(match[1], 10);
+  const month = parseInt(match[2], 10);
+  const day = parseInt(match[3], 10);
+  const hour = parseInt(match[4], 10);
+  const minute = parseInt(match[5], 10);
+  const second = match[6] !== undefined ? parseInt(match[6], 10) : 0;
+
+  if (month < 1 || month > 12) {
+    return {
+      status: 400,
+      error: "INVALID_TIMESTAMP",
+      message: "Thời điểm đo có tháng không hợp lệ trên lịch.",
+    };
+  }
+
+  const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  if (day < 1 || day > daysInMonth) {
+    return {
+      status: 400,
+      error: "INVALID_TIMESTAMP",
+      message: "Thời điểm đo có ngày không hợp lệ trên lịch.",
+    };
+  }
+
+  if (hour < 0 || hour > 23 || minute < 0 || minute > 59 || second < 0 || second > 59) {
+    return {
+      status: 400,
+      error: "INVALID_TIMESTAMP",
+      message: "Thời điểm đo có giờ, phút hoặc giây không hợp lệ.",
+    };
+  }
+
+  if (match[9]) {
+    const tzHour = Math.abs(parseInt(match[9], 10));
+    const tzMin = match[10] ? parseInt(match[10], 10) : 0;
+    if (tzHour > 14 || tzMin < 0 || tzMin > 59) {
+      return {
+        status: 400,
+        error: "INVALID_TIMESTAMP",
+        message: "Múi giờ trong thời điểm đo không hợp lệ.",
+      };
+    }
+  }
+
+  const dateObj = new Date(trimmedTimestamp);
+  if (isNaN(dateObj.getTime())) {
+    return {
+      status: 400,
+      error: "INVALID_TIMESTAMP",
+      message: "Thời điểm đo không đúng định dạng thời gian hợp lệ.",
+    };
+  }
+
+  const recordedAtIso = dateObj.toISOString();
+  const incomingTime = dateObj.getTime();
+
+  // 4. Kiểm tra xác thực và phân quyền
+  const userId = authContext ? authContext.userId || authContext.id : null;
+  const userOrgId = authContext
+    ? authContext.organizationId || authContext.organization_id
+    : null;
+  const isAdmin = Boolean(
+    authContext && (authContext.roleId === "admin" || authContext.isAdmin)
+  );
+  const isInspector = Boolean(
+    authContext &&
+      (authContext.roleId === "inspector" || authContext.isInspector)
+  );
+
+  if (!userId) {
+    return {
+      status: 401,
+      error: "UNAUTHORIZED",
+      message: "Chưa đăng nhập.",
+    };
+  }
+
+  if (isInspector) {
+    return {
+      status: 403,
+      error: "INSPECTOR_FORBIDDEN",
+      message:
+        "Cán bộ kiểm tra chỉ có quyền đọc dữ liệu, không được phép thực hiện thao tác ghi.",
+    };
+  }
+
+  if (!isAdmin && !userOrgId) {
+    return {
+      status: 403,
+      error: "FORBIDDEN",
+      message: "Truy cập bị từ chối: thiếu ngữ cảnh tổ chức.",
+    };
+  }
+
+  const nowIso = new Date().toISOString();
+
+  // 5. Thực thi với PostgreSQL Transaction
+  if (pool || client) {
+    const dbClient = client || (await pool.connect());
+    const shouldManageTx = !client;
+
+    try {
+      if (shouldManageTx) {
+        await dbClient.query("BEGIN");
+      }
+
+      // 5.1 Khóa và tìm chuyến đang hoạt động liên kết với thùng lạnh này
+      const shipRes = await dbClient.query(
+        `SELECT id, cold_box_id, status, organization_id, current_temperature, last_temperature_at, started_at, created_at
+         FROM shipments
+         WHERE cold_box_id = $1 AND status = 'IN_TRANSIT'
+         ORDER BY created_at DESC
+         LIMIT 1
+         FOR UPDATE`,
+        [cleanColdBoxId]
+      );
+
+      if (shipRes.rows.length === 0) {
+        // Kiểm tra xem có chuyến nào đã kết thúc hay không
+        const endedRes = await dbClient.query(
+          `SELECT id, status
+           FROM shipments
+           WHERE cold_box_id = $1
+           ORDER BY created_at DESC
+           LIMIT 1`,
+          [cleanColdBoxId]
+        );
+
+        if (shouldManageTx) await dbClient.query("ROLLBACK");
+
+        if (
+          endedRes.rows.length > 0 &&
+          (endedRes.rows[0].status === "COMPLETED" ||
+            endedRes.rows[0].status === "CANCELLED")
+        ) {
+          return {
+            status: 400,
+            error: "SHIPMENT_ALREADY_ENDED",
+            message: `Chuyến vận chuyển của thùng lạnh '${cleanColdBoxId}' đã kết thúc (trạng thái: ${endedRes.rows[0].status}).`,
+          };
+        }
+
+        return {
+          status: 404,
+          error: "NO_ACTIVE_SHIPMENT",
+          message: `Không tìm thấy chuyến vận chuyển đang hoạt động cho thùng lạnh '${cleanColdBoxId}'.`,
+        };
+      }
+
+      const shipment = shipRes.rows[0];
+
+      // 5.2 Kiểm tra quyền tổ chức: Phải thuộc tổ chức quản lý chuyến hoặc admin (chống giả mạo tổ chức)
+      if (!isAdmin && shipment.organization_id !== userOrgId) {
+        if (shouldManageTx) await dbClient.query("ROLLBACK");
+        return {
+          status: 403,
+          error: "FORBIDDEN_SHIPMENT_ACCESS",
+          message:
+            "Bạn không có quyền ghi nhận nhiệt độ cho chuyến vận chuyển của tổ chức khác.",
+        };
+      }
+
+      // 5.3 Ranh giới bắt đầu vòng đời chuyến vận chuyển (Lifecycle start boundary)
+      const shipmentStartAt = shipment.started_at || shipment.created_at;
+      const shipmentStartTime = shipmentStartAt
+        ? new Date(shipmentStartAt).getTime()
+        : null;
+
+      // 5.4 So sánh mốc thời gian với số đo mới nhất đã lưu và ranh giới bắt đầu chuyến
+      const lastTempAt = shipment.last_temperature_at
+        ? new Date(shipment.last_temperature_at).getTime()
+        : null;
+
+      const isBeforeStart =
+        shipmentStartTime !== null && incomingTime < shipmentStartTime;
+      const isOlderOrEqual = lastTempAt !== null && incomingTime <= lastTempAt;
+
+      if (isBeforeStart || isOlderOrEqual) {
+        // Số đo CŨ HƠN HOẶC TRƯỚC THỜI ĐIỂM BẮT ĐẦU: bỏ qua không ghi đè, trả về 200 acknowledged
+        if (shouldManageTx) await dbClient.query("COMMIT");
+        return {
+          status: 200,
+          success: true,
+          acknowledged: true,
+          ignored: true,
+          message: isBeforeStart
+            ? "Số đo ghi nhận trước thời điểm chuyến vận chuyển bắt đầu, bỏ qua ghi nhận."
+            : "Số đo cũ hơn hoặc bằng số đo mới nhất đã lưu, bỏ qua ghi nhận.",
+          data: {
+            shipmentId: shipment.id,
+            coldBoxId: cleanColdBoxId,
+            temperature: numTemp,
+            recordedAt: recordedAtIso,
+            latestTemperature:
+              shipment.current_temperature !== null &&
+              shipment.current_temperature !== undefined
+                ? Number(shipment.current_temperature)
+                : null,
+            latestRecordedAt: shipment.last_temperature_at
+              ? new Date(shipment.last_temperature_at).toISOString()
+              : null,
+          },
+        };
+      }
+
+      // 5.4 Số đo MỚI HƠN: Lưu vào shipment_temperatures và cập nhật shipments atomically
+      const tempId = "temp-" + crypto.randomUUID().slice(0, 8);
+      await dbClient.query(
+        `INSERT INTO shipment_temperatures (id, shipment_id, cold_box_id, temperature, recorded_at, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6)
+         ON CONFLICT (shipment_id, recorded_at) DO NOTHING`,
+        [tempId, shipment.id, cleanColdBoxId, numTemp, recordedAtIso, nowIso]
+      );
+
+      await dbClient.query(
+        `UPDATE shipments
+         SET current_temperature = $2,
+             last_temperature_at = $3,
+             updated_at = NOW()
+         WHERE id = $1 AND (last_temperature_at IS NULL OR last_temperature_at < $3)`,
+        [shipment.id, numTemp, recordedAtIso]
+      );
+
+      if (shouldManageTx) {
+        await dbClient.query("COMMIT");
+      }
+
+      return {
+        status: 200,
+        success: true,
+        acknowledged: true,
+        ignored: false,
+        message: "Số đo nhiệt độ đã được ghi nhận thành công.",
+        data: {
+          id: tempId,
+          shipmentId: shipment.id,
+          coldBoxId: cleanColdBoxId,
+          temperature: numTemp,
+          recordedAt: recordedAtIso,
+          createdAt: nowIso,
+        },
+      };
+    } catch (err) {
+      if (shouldManageTx) {
+        try {
+          await dbClient.query("ROLLBACK");
+        } catch {
+          /* ignore rollback failure */
+        }
+      }
+      throw err;
+    } finally {
+      if (shouldManageTx) {
+        dbClient.release();
+      }
+    }
+  }
+
+  // 6. In-Memory Execution Path có Mutex Lock theo coldBoxId
+  return await withTemperatureLock(cleanColdBoxId, async () => {
+    const activeShipment = inMemoryShipments.find(
+      (s) =>
+        (s.coldBoxId === cleanColdBoxId || s.containerId === cleanColdBoxId) &&
+        s.status === "IN_TRANSIT"
+    );
+
+    if (!activeShipment) {
+      const anyShipment = inMemoryShipments.find(
+        (s) =>
+          s.coldBoxId === cleanColdBoxId || s.containerId === cleanColdBoxId
+      );
+      if (
+        anyShipment &&
+        (anyShipment.status === "COMPLETED" || anyShipment.status === "CANCELLED")
+      ) {
+        return {
+          status: 400,
+          error: "SHIPMENT_ALREADY_ENDED",
+          message: `Chuyến vận chuyển của thùng lạnh '${cleanColdBoxId}' đã kết thúc (trạng thái: ${anyShipment.status}).`,
+        };
+      }
+      return {
+        status: 404,
+        error: "NO_ACTIVE_SHIPMENT",
+        message: `Không tìm thấy chuyến vận chuyển đang hoạt động cho thùng lạnh '${cleanColdBoxId}'.`,
+      };
+    }
+
+    if (!isAdmin && activeShipment.organizationId !== userOrgId) {
+      return {
+        status: 403,
+        error: "FORBIDDEN_SHIPMENT_ACCESS",
+        message:
+          "Bạn không có quyền ghi nhận nhiệt độ cho chuyến vận chuyển của tổ chức khác.",
+      };
+    }
+
+    // Ranh giới bắt đầu vòng đời chuyến vận chuyển
+    const shipmentStartAt =
+      activeShipment.startedAt ||
+      activeShipment.started_at ||
+      activeShipment.createdAt ||
+      activeShipment.created_at;
+    const shipmentStartTime = shipmentStartAt
+      ? new Date(shipmentStartAt).getTime()
+      : null;
+
+    const lastTempAt = activeShipment.lastTemperatureAt
+      ? new Date(activeShipment.lastTemperatureAt).getTime()
+      : null;
+
+    const isBeforeStart =
+      shipmentStartTime !== null && incomingTime < shipmentStartTime;
+    const isOlderOrEqual = lastTempAt !== null && incomingTime <= lastTempAt;
+
+    if (isBeforeStart || isOlderOrEqual) {
+      return {
+        status: 200,
+        success: true,
+        acknowledged: true,
+        ignored: true,
+        message: isBeforeStart
+          ? "Số đo ghi nhận trước thời điểm chuyến vận chuyển bắt đầu, bỏ qua ghi nhận."
+          : "Số đo cũ hơn hoặc bằng số đo mới nhất đã lưu, bỏ qua ghi nhận.",
+        data: {
+          shipmentId: activeShipment.id,
+          coldBoxId: cleanColdBoxId,
+          temperature: numTemp,
+          recordedAt: recordedAtIso,
+          latestTemperature:
+            activeShipment.currentTemperature !== undefined &&
+            activeShipment.currentTemperature !== null
+              ? activeShipment.currentTemperature
+              : null,
+          latestRecordedAt: activeShipment.lastTemperatureAt || null,
+        },
+      };
+    }
+
+    const exists = inMemoryShipmentTemperatures.find(
+      (t) => t.shipmentId === activeShipment.id && t.recordedAt === recordedAtIso
+    );
+    let tempId;
+    if (!exists) {
+      tempId = "temp-" + crypto.randomUUID().slice(0, 8);
+      inMemoryShipmentTemperatures.push({
+        id: tempId,
+        shipmentId: activeShipment.id,
+        coldBoxId: cleanColdBoxId,
+        temperature: numTemp,
+        recordedAt: recordedAtIso,
+        createdAt: nowIso,
+      });
+    } else {
+      tempId = exists.id;
+    }
+
+    activeShipment.currentTemperature = numTemp;
+    activeShipment.lastTemperatureAt = recordedAtIso;
+    activeShipment.updatedAt = nowIso;
+
+    return {
+      status: 200,
+      success: true,
+      acknowledged: true,
+      ignored: false,
+      message: "Số đo nhiệt độ đã được ghi nhận thành công.",
+      data: {
+        id: tempId,
+        shipmentId: activeShipment.id,
+        coldBoxId: cleanColdBoxId,
+        temperature: numTemp,
+        recordedAt: recordedAtIso,
+        createdAt: nowIso,
+      },
+    };
+  });
+}
+
+/**
+ * Lấy lịch sử số đo nhiệt độ của một chuyến vận chuyển
+ */
+async function getShipmentTemperatures({
+  pool = null,
+  authContext = null,
+  shipmentId,
+}) {
+  if (!shipmentId) {
+    return {
+      status: 400,
+      error: "MISSING_SHIPMENT_ID",
+      message: "Mã chuyến vận chuyển là bắt buộc.",
+    };
+  }
+
+  const userId = authContext ? authContext.userId || authContext.id : null;
+  const userOrgId = authContext
+    ? authContext.organizationId || authContext.organization_id
+    : null;
+  const isGlobal = Boolean(
+    authContext &&
+      (authContext.roleId === "admin" ||
+        authContext.isAdmin ||
+        authContext.roleId === "inspector" ||
+        authContext.isInspector)
+  );
+
+  if (!userId) {
+    return {
+      status: 401,
+      error: "UNAUTHORIZED",
+      message: "Chưa đăng nhập.",
+    };
+  }
+
+  if (pool) {
+    const shipRes = await pool.query(
+      "SELECT id, organization_id, cold_box_id FROM shipments WHERE id = $1",
+      [shipmentId]
+    );
+    if (shipRes.rows.length === 0) {
+      return {
+        status: 404,
+        error: "SHIPMENT_NOT_FOUND",
+        message: "Không tìm thấy chuyến vận chuyển yêu cầu.",
+      };
+    }
+
+    const ship = shipRes.rows[0];
+    if (!isGlobal && ship.organization_id !== userOrgId) {
+      return {
+        status: 403,
+        error: "FORBIDDEN_SHIPMENT_ACCESS",
+        message: "Bạn không có quyền truy cập dữ liệu nhiệt độ của chuyến này.",
+      };
+    }
+
+    const tempsRes = await pool.query(
+      `SELECT id, shipment_id, cold_box_id, temperature, recorded_at, created_at
+       FROM shipment_temperatures
+       WHERE shipment_id = $1
+       ORDER BY recorded_at ASC`,
+      [shipmentId]
+    );
+
+    const items = tempsRes.rows.map((r) => ({
+      id: r.id,
+      shipmentId: r.shipment_id,
+      coldBoxId: r.cold_box_id,
+      temperature: Number(r.temperature),
+      recordedAt: r.recorded_at ? new Date(r.recorded_at).toISOString() : null,
+      createdAt: r.created_at ? new Date(r.created_at).toISOString() : null,
+    }));
+
+    return {
+      status: 200,
+      success: true,
+      shipmentId,
+      coldBoxId: ship.cold_box_id,
+      count: items.length,
+      temperatures: items,
+      data: items,
+    };
+  }
+
+  const ship = inMemoryShipments.find((s) => s.id === shipmentId);
+  if (!ship) {
+    return {
+      status: 404,
+      error: "SHIPMENT_NOT_FOUND",
+      message: "Không tìm thấy chuyến vận chuyển yêu cầu.",
+    };
+  }
+
+  if (!isGlobal && ship.organizationId !== userOrgId) {
+    return {
+      status: 403,
+      error: "FORBIDDEN_SHIPMENT_ACCESS",
+      message: "Bạn không có quyền truy cập dữ liệu nhiệt độ của chuyến này.",
+    };
+  }
+
+  const items = inMemoryShipmentTemperatures
+    .filter((t) => t.shipmentId === shipmentId)
+    .sort((a, b) => new Date(a.recordedAt) - new Date(b.recordedAt));
+
+  return {
+    status: 200,
+    success: true,
+    shipmentId,
+    coldBoxId: ship.coldBoxId,
+    count: items.length,
+    temperatures: items,
+    data: items,
+  };
+}
+
 module.exports = {
   inMemoryShipments,
   inMemoryShipmentLots,
+  inMemoryShipmentTemperatures,
   createShipment,
   completeShipment,
   getShipments,
   getShipmentById,
   getActiveShipmentForLot,
+  recordShipmentTemperature,
+  getShipmentTemperatures,
 };
