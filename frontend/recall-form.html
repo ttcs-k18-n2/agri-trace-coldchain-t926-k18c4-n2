@@ -1,0 +1,728 @@
+<!DOCTYPE html>
+<html lang="vi">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gửi Xác Nhận Thu Hồi (S-36) - AgriTrace ColdChain</title>
+    <link rel="stylesheet" href="/styles.css">
+    <style>
+        .recall-page {
+            max-width: 720px;
+            margin: 24px auto;
+            padding: 0 16px 48px;
+            font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            color: #0f172a;
+        }
+
+        .recall-card {
+            background: #ffffff;
+            border: 1px solid #e2e8f0;
+            border-radius: 10px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+            padding: 24px 28px;
+            margin-bottom: 20px;
+        }
+
+        .recall-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 12px;
+            border-bottom: 1px solid #f1f5f9;
+            padding-bottom: 16px;
+            margin-bottom: 20px;
+        }
+
+        .recall-title {
+            font-size: 20px;
+            font-weight: 700;
+            color: #0f172a;
+            margin: 0;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .recall-subtitle {
+            font-size: 13.5px;
+            color: #64748b;
+            margin: 6px 0 0;
+        }
+
+        .prompt-banner {
+            border-radius: 8px;
+            padding: 16px 18px;
+            margin-bottom: 20px;
+            display: flex;
+            gap: 14px;
+            align-items: flex-start;
+            font-size: 14px;
+            line-height: 1.5;
+        }
+
+        .prompt-banner-warning {
+            background: #fffbeb;
+            border: 1px solid #fcd34d;
+            color: #92400e;
+        }
+
+        .prompt-banner-success {
+            background: #f0fdf4;
+            border: 1px solid #86efac;
+            color: #166534;
+        }
+
+        .prompt-banner-error {
+            background: #fef2f2;
+            border: 1px solid #fca5a5;
+            color: #991b1b;
+        }
+
+        .prompt-icon {
+            flex-shrink: 0;
+            width: 22px;
+            height: 22px;
+            margin-top: 1px;
+        }
+
+        .prompt-content {
+            flex: 1;
+        }
+
+        .prompt-title {
+            font-weight: 700;
+            font-size: 14.5px;
+            margin-bottom: 4px;
+        }
+
+        .badge-pending {
+            display: inline-block;
+            padding: 2px 8px;
+            background: #fef3c7;
+            color: #b45309;
+            border: 1px solid #fde68a;
+            border-radius: 9999px;
+            font-size: 12px;
+            font-weight: 600;
+            margin-left: 6px;
+        }
+
+        .badge-acked {
+            display: inline-block;
+            padding: 2px 8px;
+            background: #dcfce7;
+            color: #15803d;
+            border: 1px solid #bbf7d0;
+            border-radius: 9999px;
+            font-size: 12px;
+            font-weight: 600;
+            margin-left: 6px;
+        }
+
+        .form-group {
+            margin-bottom: 18px;
+        }
+
+        .form-group label {
+            display: block;
+            font-size: 13.5px;
+            font-weight: 600;
+            color: #334155;
+            margin-bottom: 6px;
+        }
+
+        .form-group .hint {
+            font-size: 12px;
+            color: #64748b;
+            margin-top: 4px;
+        }
+
+        .form-control {
+            width: 100%;
+            padding: 10px 12px;
+            font-size: 14px;
+            border: 1px solid #cbd5e1;
+            border-radius: 6px;
+            background-color: #ffffff;
+            color: #0f172a;
+            box-sizing: border-box;
+            transition: border-color 0.15s, box-shadow 0.15s;
+        }
+
+        .form-control:focus {
+            border-color: #2563eb;
+            outline: none;
+            box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+        }
+
+        .form-control:disabled {
+            background-color: #f1f5f9;
+            cursor: not-allowed;
+            color: #94a3b8;
+        }
+
+        .btn-submit {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            width: 100%;
+            padding: 12px 20px;
+            font-size: 15px;
+            font-weight: 600;
+            color: #ffffff;
+            background-color: #16a34a;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: background-color 0.15s;
+        }
+
+        .btn-submit:hover:not(:disabled) {
+            background-color: #15803d;
+        }
+
+        .btn-submit:disabled {
+            background-color: #94a3b8;
+            cursor: not-allowed;
+        }
+
+        .btn-link {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            color: #0284c7;
+            text-decoration: none;
+            font-size: 13.5px;
+            font-weight: 600;
+            padding: 8px 12px;
+            border-radius: 6px;
+            transition: background-color 0.15s;
+        }
+
+        .btn-link:hover {
+            background-color: #f0f9ff;
+            text-decoration: underline;
+        }
+
+        .spinner {
+            width: 16px;
+            height: 16px;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-top-color: #ffffff;
+            border-radius: 50%;
+            animation: spin 0.7s linear infinite;
+        }
+
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <!-- AgriTrace App Shell Header -->
+    <header class="app-header">
+        <div class="header-inner">
+            <div class="header-brand">
+                <a href="/lots.html" class="brand-link">
+                    <span class="brand-title">AgriTrace ColdChain</span>
+                </a>
+            </div>
+            <nav class="header-nav">
+                <a href="/lots.html" id="navLots" class="nav-item">Quản lý lô hàng</a>
+                <a href="/farms.html" id="navFarms" class="nav-item">Vùng trồng</a>
+                <a href="/products.html" id="navProducts" class="nav-item">Sản phẩm</a>
+                <a href="/harvest.html" id="navHarvest" class="nav-item">Thu hoạch</a>
+                <a href="/recall-progress.html" id="navRecallProgress" class="nav-item">Tiến độ thu hồi</a>
+                <a href="/recall-form.html" id="navRecallForm" class="nav-item active">Xác nhận thu hồi</a>
+            </nav>
+            <div class="header-user">
+                <span id="userOrg" class="user-org"></span>
+                <span id="userRole" class="user-role"></span>
+                <span id="userEmail" class="user-email"></span>
+                <button type="button" id="logout" class="btn-logout" title="Đăng xuất">Đăng xuất</button>
+            </div>
+        </div>
+    </header>
+
+    <main class="recall-page">
+        <div class="recall-card">
+            <div class="recall-header">
+                <div>
+                    <h1 class="recall-title">
+                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#dc2626" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                            <line x1="12" y1="9" x2="12" y2="13"/>
+                            <line x1="12" y1="17" x2="12.01" y2="17"/>
+                        </svg>
+                        Gửi Xác Nhận Thu Hồi (S-36)
+                    </h1>
+                    <p class="recall-subtitle">Tiếp nhận thông báo sự cố và xác nhận phương án thu hồi từ các đơn vị trong chuỗi cung ứng.</p>
+                </div>
+                <div>
+                    <a href="/recall-progress.html" id="btnViewProgress" class="btn-link">
+                        Xem tiến độ thu hồi (S-37) →
+                    </a>
+                </div>
+            </div>
+
+            <!-- AC1: Pending Acknowledgment Prompt for Affected Organization -->
+            <div id="pendingAckPrompt" class="prompt-banner prompt-banner-warning" style="display: none;">
+                <svg class="prompt-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+                    <circle cx="12" cy="12" r="10"/>
+                    <line x1="12" y1="8" x2="12" y2="12"/>
+                    <line x1="12" y1="16" x2="12.01" y2="16"/>
+                </svg>
+                <div class="prompt-content">
+                    <div class="prompt-title">
+                        Yêu cầu phản hồi xác nhận khẩn cấp
+                        <span class="badge-pending" id="pendingBadge">Chờ xác nhận</span>
+                    </div>
+                    <div>
+                        Đơn vị <strong id="promptOrgName">...</strong> nằm trong phạm vi đợt thu hồi mã <strong id="promptRecallId">#1</strong> và hiện <strong>chưa gửi xác nhận</strong>. Vui lòng cập nhật tình trạng tiếp nhận lô hàng hoặc hành động thu hồi bên dưới.
+                    </div>
+                </div>
+            </div>
+
+            <!-- Notice when organization has already acknowledged -->
+            <div id="alreadyAckBanner" class="prompt-banner prompt-banner-success" style="display: none;">
+                <svg class="prompt-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+                    <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
+                    <polyline points="22 4 12 14.01 9 11.01"/>
+                </svg>
+                <div class="prompt-content">
+                    <div class="prompt-title">
+                        Đã ghi nhận xác nhận
+                        <span class="badge-acked" id="ackedBadge">Đã xác nhận</span>
+                    </div>
+                    <div>
+                        Đơn vị <strong id="ackedOrgName">...</strong> đã gửi phản hồi vào lúc <span id="ackedTime">...</span> với trạng thái: <strong id="ackedStatus">...</strong>. Theo quy định chuỗi cung ứng (S-36 NFR), xác nhận là sự kiện ghi thêm bất biến, không thể sửa đổi hoặc gửi trùng lặp.
+                    </div>
+                </div>
+            </div>
+
+            <!-- AC2: Success Alert -->
+            <div id="alertSuccess" class="prompt-banner prompt-banner-success" style="display: none;">
+                <svg class="prompt-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+                    <polyline points="20 6 9 17 4 12"/>
+                </svg>
+                <div class="prompt-content" id="alertSuccessMessage">
+                    Đã lưu phản hồi thành công! Dữ liệu đã được cập nhật vào tiến độ đợt thu hồi.
+                </div>
+            </div>
+
+            <!-- AC2: Error Alert -->
+            <div id="alertError" class="prompt-banner prompt-banner-error" style="display: none;">
+                <svg class="prompt-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+                    <polygon points="7.86 2 16.14 2 22 7.86 22 16.14 16.14 22 7.86 22 2 16.14 2 7.86 7.86 2"/>
+                    <line x1="12" y1="8" x2="12" y2="12"/>
+                    <line x1="12" y1="16" x2="12.01" y2="16"/>
+                </svg>
+                <div class="prompt-content" id="alertErrorMessage">
+                    Lỗi khi gửi xác nhận. Vui lòng kiểm tra lại.
+                </div>
+            </div>
+
+            <!-- S-36 Recall Form -->
+            <form id="recallForm" novalidate>
+                <div class="form-group">
+                    <label for="recall_id">Mã đợt thu hồi (Recall ID) <span style="color: #dc2626;">*</span></label>
+                    <input type="text" id="recall_id" class="form-control" placeholder="Mã lệnh thu hồi (VD: REC-20261016-A1B2C3 hoặc 1)" value="1" required>
+                    <div class="hint">Nhập mã định danh đợt thu hồi cần phản hồi (ví dụ: REC-20261016-A1B2C3 hoặc 1).</div>
+                </div>
+
+                <div class="form-group">
+                    <label for="org_name">Đơn vị xác nhận (Tự động từ phiên làm việc)</label>
+                    <input type="text" id="org_name" class="form-control" readonly disabled placeholder="Đang xác thực tổ chức..." style="background-color: #f8fafc; cursor: default;">
+                    <div class="hint" id="orgHint">Hệ thống tự động xác định tổ chức của bạn từ phiên đăng nhập hiện tại.</div>
+                </div>
+
+                <div class="form-group" style="display: none;">
+                    <label for="status">Trạng thái xử lý</label>
+                    <select id="status" class="form-control">
+                        <option value="RECEIVED">Đã nhận thông báo (Received)</option>
+                        <option value="IN_PROGRESS">Đang gom hàng chờ trả lại (In Progress)</option>
+                        <option value="ACTION_TAKEN">Đã hoàn tất xử lý (Action Taken)</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label for="note">Ghi chú xác nhận / Biện pháp xử lý <span style="font-weight: normal; color: #64748b;">(Tùy chọn)</span></label>
+                    <textarea id="note" class="form-control" rows="4" placeholder="Nhập ghi chú phản hồi (VD: Đã niêm phong 500kg trong kho lạnh, chờ xe vận chuyển đến lấy...)"></textarea>
+                    <div class="hint">Cung cấp thêm thông tin tình trạng tồn kho, biện pháp cách ly hoặc xử lý tại cơ sở.</div>
+                </div>
+
+                <!-- AC2: Submit Button with Loading State -->
+                <button type="submit" id="btnSubmit" class="btn-submit">
+                    <span id="btnSubmitText">Gửi Xác Nhận</span>
+                </button>
+            </form>
+        </div>
+    </main>
+
+    <script src="/app-shell.js"></script>
+    <script>
+        (function () {
+            const form = document.getElementById('recallForm');
+            const recallIdInput = document.getElementById('recall_id');
+            const orgNameInput = document.getElementById('org_name');
+            const statusSelect = document.getElementById('status');
+            const noteTextarea = document.getElementById('note');
+            const btnSubmit = document.getElementById('btnSubmit');
+            const btnSubmitText = document.getElementById('btnSubmitText');
+            const btnViewProgress = document.getElementById('btnViewProgress');
+
+            const pendingPrompt = document.getElementById('pendingAckPrompt');
+            const promptOrgName = document.getElementById('promptOrgName');
+            const promptRecallId = document.getElementById('promptRecallId');
+
+            const alreadyAckBanner = document.getElementById('alreadyAckBanner');
+            const ackedOrgName = document.getElementById('ackedOrgName');
+            const ackedTime = document.getElementById('ackedTime');
+            const ackedStatus = document.getElementById('ackedStatus');
+
+            const alertSuccess = document.getElementById('alertSuccess');
+            const alertSuccessMessage = document.getElementById('alertSuccessMessage');
+            const alertError = document.getElementById('alertError');
+            const alertErrorMessage = document.getElementById('alertErrorMessage');
+
+            // Helper to get URL query params
+            function getQueryParams() {
+                const params = new URLSearchParams(window.location.search);
+                return {
+                    recallId: params.get('recall_id') || params.get('recallId') || params.get('id') || '',
+                    orgName: params.get('org_name') || params.get('orgName') || params.get('org') || ''
+                };
+            }
+
+            // Extract initial parameters
+            const q = getQueryParams();
+            if (q.recallId) {
+                recallIdInput.value = q.recallId;
+            } else {
+                recallIdInput.value = '1';
+            }
+            if (q.orgName) {
+                orgNameInput.value = q.orgName;
+            }
+
+            // Update cross-link to progress page
+            function updateProgressLink(recallId) {
+                if (btnViewProgress) {
+                    btnViewProgress.href = '/recall-progress.html?recall_id=' + encodeURIComponent(recallId || 1);
+                }
+            }
+            updateProgressLink(recallIdInput.value || 1);
+
+            function onRecallIdChanged() {
+                const rId = recallIdInput.value.trim() || 1;
+                updateProgressLink(rId);
+                // Reset submit state when switching recall IDs
+                btnSubmit.disabled = false;
+                btnSubmitText.textContent = 'Gửi Xác Nhận';
+                noteTextarea.disabled = false;
+                alertSuccess.style.display = 'none';
+                alertError.style.display = 'none';
+                checkOrganizationStatus();
+            }
+
+            recallIdInput.addEventListener('change', onRecallIdChanged);
+            recallIdInput.addEventListener('input', onRecallIdChanged);
+
+            // Reconcile current user organization from /api/me or session
+            async function resolveUserOrganization() {
+                let userOrgName = '';
+                let userOrgId = '';
+
+                try {
+                    // Try session cache first
+                    const cachedRaw = sessionStorage.getItem('agriUser');
+                    if (cachedRaw) {
+                        const cached = JSON.parse(cachedRaw);
+                        if (cached && cached.organizationId) {
+                            userOrgId = cached.organizationId;
+                            userOrgName = mapOrgIdToName(cached.organizationId);
+                        }
+                    }
+
+                    if (!userOrgName) {
+                        const meRes = await fetch('/api/me', { credentials: 'same-origin' });
+                        if (meRes.ok) {
+                            const meData = await meRes.json();
+                            const u = meData.user || {};
+                            if (u.organizationId) {
+                                userOrgId = u.organizationId;
+                                userOrgName = mapOrgIdToName(u.organizationId);
+                            }
+                        }
+                    }
+                } catch (e) {
+                    // Ignore background auth error
+                }
+
+                if (userOrgName) {
+                    orgNameInput.value = userOrgName;
+                } else if (q.orgName) {
+                    orgNameInput.value = q.orgName;
+                } else {
+                    orgNameInput.value = 'Đơn vị liên kết chuỗi lạnh';
+                }
+
+                // Check pending recalls list from API
+                await checkPendingRecallsForUser(userOrgId, userOrgName);
+                await checkOrganizationStatus();
+            }
+
+            function mapOrgIdToName(orgId) {
+                const map = {
+                    'org-001': 'Nông trại Thái Nguyên',
+                    'org-002': 'Hợp tác xã Rau Sạch Bắc Giang',
+                    'org-003': 'Nhà phân phối Chuỗi Lạnh',
+                    'org-trans': 'Công ty Cổ phần Vận chuyển Chuỗi Lạnh Á Châu',
+                    'org-dist': 'Tổng Công ty Phân phối Nông sản & Bán lẻ',
+                    'org-inspector': 'Cục Kiểm tra An toàn Nông sản',
+                    'org-system': 'Cơ quan Quản lý Chuỗi Lạnh Toàn quốc'
+                };
+                return map[orgId] || orgId;
+            }
+
+            // Check GET /api/recalls/pending for current authenticated org
+            async function checkPendingRecallsForUser(orgId, orgName) {
+                try {
+                    const res = await fetch('/api/recalls/pending', { credentials: 'same-origin' });
+                    if (!res.ok) return;
+                    const pendingList = await res.json();
+                    if (Array.isArray(pendingList) && pendingList.length > 0) {
+                        // If no specific recall was requested in query string, auto-select first pending recall
+                        if (!q.recallId) {
+                            recallIdInput.value = pendingList[0].recall_id;
+                            updateProgressLink(pendingList[0].recall_id);
+                        }
+                        const activeItem = pendingList.find(function (p) {
+                            return String(p.recall_id) === String(recallIdInput.value.trim());
+                        }) || pendingList[0];
+
+                        showPendingPrompt(orgName || 'Đơn vị của bạn', activeItem.recall_id, activeItem.reason);
+                    }
+                } catch (e) {
+                    // Non-blocking
+                }
+            }
+
+            // Check if selected organization has already acknowledged or is pending in progress API
+            async function checkOrganizationStatus() {
+                const recallId = recallIdInput.value.trim() || 1;
+                const orgName = orgNameInput.value.trim();
+
+                try {
+                    const res = await fetch('/api/recalls/' + encodeURIComponent(recallId) + '/progress', { credentials: 'same-origin' });
+                    if (!res.ok) {
+                        return;
+                    }
+
+                    const progressData = await res.json();
+                    const pendingOrgs = Array.isArray(progressData.pending_organizations)
+                        ? progressData.pending_organizations
+                        : [];
+
+                    // Check if current user's org is in pending list
+                    const isPending = pendingOrgs.some(function (p) {
+                        const pName = typeof p === 'string' ? p : (p.name || p.id || '');
+                        return pName.toLowerCase() === orgName.toLowerCase() ||
+                            (p.id && orgName.toLowerCase() === mapOrgIdToName(p.id).toLowerCase());
+                    });
+
+                    if (isPending) {
+                        showPendingPrompt(orgName, recallId);
+                        alreadyAckBanner.style.display = 'none';
+                    } else if (progressData.acknowledged_count > 0) {
+                        // Check if we can find acknowledgment record
+                        checkAcknowledgmentHistory(recallId, orgName);
+                    }
+                } catch (err) {
+                    // Non-blocking
+                }
+            }
+
+            async function checkAcknowledgmentHistory(recallId, orgName) {
+                try {
+                    const res = await fetch('/api/recalls/' + encodeURIComponent(recallId) + '/acknowledgments', { credentials: 'same-origin' });
+                    if (!res.ok) return;
+                    const acks = await res.json();
+                    if (!Array.isArray(acks)) return;
+
+                    const existing = acks.find(function (a) {
+                        const aName = (a.org_name || a.orgName || a.org_id || '').trim().toLowerCase();
+                        return aName === orgName.toLowerCase();
+                    });
+
+                    if (existing) {
+                        pendingPrompt.style.display = 'none';
+                        alreadyAckBanner.style.display = 'flex';
+                        ackedOrgName.textContent = existing.org_name || orgName;
+                        ackedStatus.textContent = existing.status || 'Đã ghi nhận';
+                        ackedTime.textContent = existing.created_at ? new Date(existing.created_at).toLocaleString('vi-VN') : 'gần đây';
+                        if (existing.note) {
+                            noteTextarea.value = existing.note;
+                        }
+                        noteTextarea.disabled = true;
+                        btnSubmit.disabled = true;
+                        btnSubmitText.textContent = 'Đã Xác Nhận (Bất biến)';
+                    }
+                } catch (e) {
+                    // Non-blocking
+                }
+            }
+
+            function showPendingPrompt(orgName, recallId, reason) {
+                alreadyAckBanner.style.display = 'none';
+                pendingPrompt.style.display = 'flex';
+                promptOrgName.textContent = orgName || 'Đơn vị của bạn';
+                promptRecallId.textContent = '#' + recallId;
+                if (reason) {
+                    const msgEl = pendingPrompt.querySelector('.prompt-content > div:last-child');
+                    if (msgEl) {
+                        msgEl.innerHTML = 'Đơn vị <strong id="promptOrgName">' + escapeHtml(orgName) + '</strong> nằm trong phạm vi đợt thu hồi mã <strong id="promptRecallId">#' + escapeHtml(recallId) + '</strong> (Lý do: <em>' + escapeHtml(reason) + '</em>) và hiện <strong>chưa gửi xác nhận</strong>. Vui lòng gửi phản hồi tiếp nhận hoặc phương án xử lý bên dưới.';
+                    }
+                }
+                btnSubmitText.textContent = 'Gửi Xác Nhận';
+            }
+
+            // Real API form submission with loading/error/success handling
+            // Contract: POST /api/recalls/:id/acknowledgments accepts {note?}, server derives org from auth.
+            // S-36 NFR: Xác nhận là sự kiện ghi thêm bất biến, không sửa được; duplicate bị 409 Conflict.
+            form.addEventListener('submit', async function (event) {
+                event.preventDefault();
+
+                // Clear previous alerts
+                alertSuccess.style.display = 'none';
+                alertError.style.display = 'none';
+
+                const recallId = recallIdInput.value.trim();
+                const note = noteTextarea.value.trim();
+
+                // Validate recall_id (supports canonical string IDs like REC-20261016-A1B2C3, RO-001 or numbers)
+                if (!recallId) {
+                    alertErrorMessage.textContent = 'Vui lòng nhập Mã đợt thu hồi hợp lệ.';
+                    alertError.style.display = 'flex';
+                    return;
+                }
+
+                // Set loading state
+                btnSubmit.disabled = true;
+                btnSubmitText.innerHTML = '<span class="spinner"></span> Đang gửi xác nhận...';
+                recallIdInput.disabled = true;
+                noteTextarea.disabled = true;
+
+                const payload = {};
+                if (note) {
+                    payload.note = note;
+                }
+
+                try {
+                    const response = await fetch('/api/recalls/' + encodeURIComponent(recallId) + '/acknowledgments', {
+                        method: 'POST',
+                        credentials: 'same-origin',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify(payload)
+                    });
+
+                    if (response.ok || response.status === 201) {
+                        const data = await response.json().catch(function () { return {}; });
+                        const successMsg = data.message || 'Đã lưu phản hồi xác nhận thành công!';
+                        const currentOrg = orgNameInput.value.trim() || 'đơn vị của bạn';
+                        alertSuccessMessage.innerHTML = '<strong>' + escapeHtml(successMsg) + '</strong> Xác nhận từ <em>' + escapeHtml(currentOrg) + '</em> đã được ghi nhận cho đợt thu hồi #' + escapeHtml(recallId) + '. <a href="/recall-progress.html?recall_id=' + encodeURIComponent(recallId) + '" style="color: #15803d; font-weight: 700; text-decoration: underline; margin-left: 8px;">Xem tiến độ đợt thu hồi →</a>';
+                        alertSuccess.style.display = 'flex';
+
+                        // Transition prompt to acknowledged state
+                        pendingPrompt.style.display = 'none';
+                        alreadyAckBanner.style.display = 'flex';
+                        ackedOrgName.textContent = currentOrg;
+                        ackedStatus.textContent = 'Đã xác nhận';
+                        ackedTime.textContent = new Date().toLocaleString('vi-VN');
+
+                        // Immutable event: lock form against re-submission
+                        btnSubmit.disabled = true;
+                        btnSubmitText.textContent = 'Đã Gửi Xác Nhận';
+                        noteTextarea.disabled = true;
+
+                        // Update global shell alert if present
+                        if (window.checkPendingRecalls) {
+                            window.checkPendingRecalls().catch(function () {});
+                        }
+                    } else if (response.status === 409) {
+                        // S-36 NFR: Duplicate acknowledgment rejection
+                        const errData = await response.json().catch(function () { return {}; });
+                        const errMsg = errData.message || errData.error || 'Đơn vị đã gửi xác nhận trước đó. Xác nhận thu hồi là sự kiện ghi thêm bất biến, không thể sửa đổi hoặc gửi trùng lặp (409 Conflict).';
+                        alertErrorMessage.textContent = errMsg;
+                        alertError.style.display = 'flex';
+                        btnSubmit.disabled = true;
+                        btnSubmitText.textContent = 'Đã Xác Nhận (409 Conflict)';
+                        noteTextarea.disabled = true;
+                    } else if (response.status === 401) {
+                        alertErrorMessage.textContent = 'Phiên làm việc đã hết hạn hoặc chưa đăng nhập (401). Vui lòng đăng nhập lại để gửi xác nhận.';
+                        alertError.style.display = 'flex';
+                        btnSubmitText.textContent = 'Gửi Xác Nhận';
+                    } else if (response.status === 403) {
+                        alertErrorMessage.textContent = 'Bạn không có quyền gửi xác nhận thu hồi cho tổ chức này (403 Forbidden).';
+                        alertError.style.display = 'flex';
+                        btnSubmitText.textContent = 'Gửi Xác Nhận';
+                    } else if (response.status === 404) {
+                        alertErrorMessage.textContent = 'Không tìm thấy đợt thu hồi với mã "' + escapeHtml(recallId) + '" (404 Not Found).';
+                        alertError.style.display = 'flex';
+                        btnSubmitText.textContent = 'Gửi Xác Nhận';
+                    } else {
+                        const errData = await response.json().catch(function () { return {}; });
+                        const errMsg = errData.error || errData.message || ('Lỗi máy chủ (' + response.status + ')');
+                        alertErrorMessage.textContent = 'Không thể gửi xác nhận: ' + errMsg;
+                        alertError.style.display = 'flex';
+                        btnSubmitText.textContent = 'Gửi Xác Nhận';
+                    }
+                } catch (networkErr) {
+                    alertErrorMessage.textContent = 'Lỗi kết nối máy chủ khi gửi xác nhận: ' + networkErr.message + '. Vui lòng kiểm tra kết nối mạng.';
+                    alertError.style.display = 'flex';
+                    btnSubmitText.textContent = 'Gửi Xác Nhận';
+                } finally {
+                    recallIdInput.disabled = false;
+                    // Re-enable submit button only if not locked in submitted/409 state
+                    if (btnSubmitText.textContent === 'Gửi Xác Nhận') {
+                        btnSubmit.disabled = false;
+                        noteTextarea.disabled = false;
+                    }
+                }
+            });
+
+            function escapeHtml(str) {
+                if (!str) return '';
+                return String(str)
+                    .replace(/&/g, '&amp;')
+                    .replace(/</g, '&lt;')
+                    .replace(/>/g, '&gt;')
+                    .replace(/"/g, '&quot;')
+                    .replace(/'/g, '&#39;');
+            }
+
+            // Expose test helper
+            window.__recallFormState = {
+                checkOrganizationStatus: checkOrganizationStatus,
+                resolveUserOrganization: resolveUserOrganization,
+                checkPendingRecallsForUser: checkPendingRecallsForUser
+            };
+
+            // Initialize app shell and user data
+            if (window.initAppShell) {
+                window.initAppShell({ activeNav: 'recallForm' });
+            }
+            resolveUserOrganization();
+        })();
+    </script>
+</body>
+
+</html>

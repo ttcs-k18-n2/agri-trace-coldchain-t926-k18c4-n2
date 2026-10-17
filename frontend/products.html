@@ -124,7 +124,20 @@
         <a href="/farms.html" class="nav-item" id="navFarms"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 11v8a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-7a1 1 0 0 1 1-1h3"/><path d="M4 11V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v7"/><path d="M14 15v5a1 1 0 0 1-1 1h-2a1 1 0 0 1-1-1v-5"/><path d="M17 11V7a1 1 0 0 1 1-1h3a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1h-3a1 1 0 0 1-1-1v-3"/><path d="M3 21h18"/></svg><span>Thửa đất</span></a>
         <a href="/products.html" class="nav-item active" id="navProducts"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="m10 15 5-3-5-3v6Z"/></svg><span>Sản phẩm</span></a>
         <a href="/harvest.html" class="nav-item" id="navHarvest"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg><span>Ghi nhận thu hoạch</span></a>
+        <a href="/shipments.html" class="nav-item" id="navShipments">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="1" y="3" width="15" height="13"></rect>
+            <polygon points="16 8 20 8 23 11 23 16 16 16 16 8"></polygon>
+            <circle cx="5.5" cy="18.5" r="2.5"></circle>
+            <circle cx="18.5" cy="18.5" r="2.5"></circle>
+          </svg>
+          <span>Vận chuyển lạnh</span>
+        </a>
         <a href="/integrity.html" class="nav-item" id="navIntegrity"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg><span>Kiểm tra toàn vẹn</span></a>
+              <a href="/public-trace.html" class="nav-item" id="navPublicTrace">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"></polygon><line x1="8" y1="2" x2="8" y2="18"></line><line x1="16" y1="6" x2="16" y2="22"></line></svg>
+          <span>Bản đồ</span>
+        </a>
       </nav>
 
       <div class="user-controls">
@@ -290,6 +303,29 @@
             </div>
             <span class="form-hint" style="margin-top: 0.5rem; display: block;">Đơn vị quy chuẩn: kg, tấn hoặc thùng.</span>
           </div>
+
+          <div style="margin-top: 1.25rem; padding-top: 1rem; border-top: 1px solid var(--color-border);">
+            <div style="font-weight: 600; font-size: 14px; margin-bottom: 8px; color: var(--color-text-main); display: flex; align-items: center; gap: 6px;">
+              <span>🌡️ Quy chuẩn chuỗi lạnh (Story S-44)</span>
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+              <div class="form-group">
+                <label class="form-label" for="product-temp-min">Ngưỡng dưới (°C)</label>
+                <input type="number" step="0.1" id="product-temp-min" name="tempMin" class="form-input" placeholder="VD: 2.0">
+                <span class="form-hint">Nhiệt độ tối thiểu bảo quản</span>
+              </div>
+              <div class="form-group">
+                <label class="form-label" for="product-temp-max">Ngưỡng trên (°C)</label>
+                <input type="number" step="0.1" id="product-temp-max" name="tempMax" class="form-input" placeholder="VD: 8.0">
+                <span class="form-hint">Nhiệt độ tối đa bảo quản</span>
+              </div>
+            </div>
+            <div class="form-group" style="margin-top: 10px;">
+              <label class="form-label" for="product-delay-minutes">Độ trễ cảnh báo (phút)</label>
+              <input type="number" step="1" min="0" id="product-delay-minutes" name="delayMinutes" class="form-input" placeholder="VD: 30">
+              <span class="form-hint">Thời gian vượt dải nhiệt độ liên tục trước khi ghi nhận vi phạm (mặc định 30 phút).</span>
+            </div>
+          </div>
         </div>
         <div class="modal-footer">
           <button type="button" id="btn-cancel-modal" class="btn btn-outline">Hủy bỏ</button>
@@ -399,6 +435,21 @@
         const iconEmoji = getProductEmoji(p.name);
         const unitName = formatUnit(p.unit);
 
+        const minVal = p.tempMin !== undefined && p.tempMin !== null ? Number(p.tempMin) : (p.temp_min !== undefined && p.temp_min !== null ? Number(p.temp_min) : null);
+        const maxVal = p.tempMax !== undefined && p.tempMax !== null ? Number(p.tempMax) : (p.temp_max !== undefined && p.temp_max !== null ? Number(p.temp_max) : null);
+        const delayVal = p.delayMinutes !== undefined && p.delayMinutes !== null ? Number(p.delayMinutes) : (p.delay_minutes !== undefined && p.delay_minutes !== null ? Number(p.delay_minutes) : null);
+
+        const hasThresholds = minVal !== null && maxVal !== null;
+        const delayText = delayVal !== null ? `${delayVal} phút` : "30 phút";
+        const tempBadge = hasThresholds
+          ? `<div class="product-temp-badge" style="margin-top: 8px; font-size: 12px; color: #0284c7; background: #e0f2fe; padding: 4px 8px; border-radius: 4px; display: inline-flex; align-items: center; gap: 4px; font-weight: 500;">
+               <span>🌡️ ${minVal}°C ~ ${maxVal}°C</span>
+               <span style="opacity: 0.75;">• trễ ${delayText}</span>
+             </div>`
+          : `<div class="product-temp-badge" style="margin-top: 8px; font-size: 11px; color: var(--color-text-muted); background: rgba(0,0,0,0.04); padding: 3px 8px; border-radius: 4px; display: inline-flex; align-items: center; gap: 4px;">
+               <span>❄️ Chưa cấu hình ngưỡng</span>
+             </div>`;
+
         card.innerHTML = `
           <div>
             <div class="product-header">
@@ -408,6 +459,7 @@
                 <div style="font-size: 0.75rem; color: var(--color-text-light); font-family: monospace;">${escapeHtml(p.id)}</div>
               </div>
             </div>
+            ${tempBadge}
           </div>
           <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 1rem; padding-top: 0.75rem; border-top: 1px dashed var(--color-border); gap: 8px;">
             <div style="display: flex; align-items: center; gap: 6px;">
@@ -436,7 +488,7 @@
                   </button>
                   ${isAdmin ? `
                     <div class="dropdown-divider"></div>
-                    <button type="button" class="dropdown-item btn-menu-edit" data-id="${escapeHtml(p.id)}" data-name="${escapeHtml(p.name)}" data-unit="${escapeHtml(p.unit)}">
+                    <button type="button" class="dropdown-item btn-menu-edit" data-id="${escapeHtml(p.id)}" data-name="${escapeHtml(p.name)}" data-unit="${escapeHtml(p.unit)}" data-min="${minVal !== null ? minVal : ""}" data-max="${maxVal !== null ? maxVal : ""}" data-delay="${delayVal !== null ? delayVal : ""}">
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>
                       <span>Chỉnh sửa</span>
                     </button>
@@ -478,7 +530,7 @@
           btn.addEventListener("click", (e) => {
             e.stopPropagation();
             closeAllDropdowns();
-            openEditModal(btn.dataset.id, btn.dataset.name, btn.dataset.unit);
+            openEditModal(btn.dataset.id, btn.dataset.name, btn.dataset.unit, btn.dataset.min, btn.dataset.max, btn.dataset.delay);
           });
         });
       }
@@ -546,6 +598,24 @@
               <span style="color: var(--color-text-muted); font-weight: 500;">Tổng số lô đã thu hoạch:</span>
               <span style="font-weight: 700; color: var(--color-primary);">${lotsCount} lô hàng</span>
             </div>
+
+            <div style="margin-top: 6px; padding-top: 8px; border-top: 1px dashed var(--color-border);">
+              <div style="font-weight: 600; font-size: 12px; color: var(--color-primary); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px;">
+                ❄️ Quy chuẩn nhiệt độ bảo quản lạnh (S-44)
+              </div>
+              <div style="display: flex; justify-content: space-between; align-items: center; font-size: 13px; margin-bottom: 4px;">
+                <span style="color: var(--color-text-muted);">Ngưỡng dưới:</span>
+                <strong style="color: var(--color-text-main);">${p.tempMin != null ? p.tempMin + "°C" : (p.temp_min != null ? p.temp_min + "°C" : "Chưa thiết lập")}</strong>
+              </div>
+              <div style="display: flex; justify-content: space-between; align-items: center; font-size: 13px; margin-bottom: 4px;">
+                <span style="color: var(--color-text-muted);">Ngưỡng trên:</span>
+                <strong style="color: var(--color-text-main);">${p.tempMax != null ? p.tempMax + "°C" : (p.temp_max != null ? p.temp_max + "°C" : "Chưa thiết lập")}</strong>
+              </div>
+              <div style="display: flex; justify-content: space-between; align-items: center; font-size: 13px;">
+                <span style="color: var(--color-text-muted);">Độ trễ cảnh báo:</span>
+                <strong style="color: var(--color-text-main);">${p.delayMinutes != null ? p.delayMinutes + " phút" : (p.delay_minutes != null ? p.delay_minutes + " phút" : "30 phút (mặc định)")}</strong>
+              </div>
+            </div>
           </div>
         `;
       } catch (err) {
@@ -608,13 +678,16 @@
       document.querySelector(".modal-title").textContent = "Thêm sản phẩm mới";
       document.getElementById("btn-submit-product").textContent = "Lưu sản phẩm";
       document.getElementById("form-add-product").reset();
+      document.getElementById("product-temp-min").value = "";
+      document.getElementById("product-temp-max").value = "";
+      document.getElementById("product-delay-minutes").value = "";
       document.getElementById("form-error").style.display = "none";
       updateRadioVisual();
       document.getElementById("modal-add-product").style.display = "flex";
       document.getElementById("product-name").focus();
     }
 
-    function openEditModal(id, name, unit) {
+    function openEditModal(id, name, unit, tempMin, tempMax, delayMinutes) {
       editingProductId = id;
       document.querySelector(".modal-title").textContent = "Chỉnh sửa sản phẩm";
       document.getElementById("btn-submit-product").textContent = "Cập nhật sản phẩm";
@@ -623,6 +696,9 @@
       if (targetRadio) {
         targetRadio.checked = true;
       }
+      document.getElementById("product-temp-min").value = (tempMin !== undefined && tempMin !== null && tempMin !== "") ? tempMin : "";
+      document.getElementById("product-temp-max").value = (tempMax !== undefined && tempMax !== null && tempMax !== "") ? tempMax : "";
+      document.getElementById("product-delay-minutes").value = (delayMinutes !== undefined && delayMinutes !== null && delayMinutes !== "") ? delayMinutes : "";
       document.getElementById("form-error").style.display = "none";
       updateRadioVisual();
       document.getElementById("modal-add-product").style.display = "flex";
@@ -860,10 +936,54 @@
         e.preventDefault();
         const name = document.getElementById("product-name").value.trim();
         const unit = document.querySelector('input[name="unit"]:checked')?.value;
+        const minStr = document.getElementById("product-temp-min").value.trim();
+        const maxStr = document.getElementById("product-temp-max").value.trim();
+        const delayStr = document.getElementById("product-delay-minutes").value.trim();
         const errEl = document.getElementById("form-error");
         const submitBtn = document.getElementById("btn-submit-product");
 
         errEl.style.display = "none";
+
+        let tempMin = null;
+        let tempMax = null;
+        let delayMinutes = null;
+
+        if (minStr !== "") {
+          const numMin = Number(minStr);
+          if (!Number.isFinite(numMin) || numMin < -999.99 || numMin > 999.99) {
+            errEl.textContent = "Ngưỡng nhiệt độ dưới phải là số hữu hạn (-999.99 đến 999.99).";
+            errEl.style.display = "block";
+            return;
+          }
+          tempMin = numMin;
+        }
+
+        if (maxStr !== "") {
+          const numMax = Number(maxStr);
+          if (!Number.isFinite(numMax) || numMax < -999.99 || numMax > 999.99) {
+            errEl.textContent = "Ngưỡng nhiệt độ trên phải là số hữu hạn (-999.99 đến 999.99).";
+            errEl.style.display = "block";
+            return;
+          }
+          tempMax = numMax;
+        }
+
+        if (tempMin !== null && tempMax !== null && tempMin >= tempMax) {
+          errEl.textContent = "Ngưỡng nhiệt độ dưới phải nhỏ hơn ngưỡng nhiệt độ trên.";
+          errEl.style.display = "block";
+          return;
+        }
+
+        if (delayStr !== "") {
+          const numDelay = Number(delayStr);
+          if (!Number.isInteger(numDelay) || numDelay < 0) {
+            errEl.textContent = "Độ trễ cảnh báo phải là số nguyên không âm (phút).";
+            errEl.style.display = "block";
+            return;
+          }
+          delayMinutes = numDelay;
+        }
+
         submitBtn.disabled = true;
         submitBtn.textContent = editingProductId ? "Đang cập nhật..." : "Đang lưu...";
 
@@ -874,7 +994,7 @@
           const res = await fetch(url, {
             method,
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ name, unit }),
+            body: JSON.stringify({ name, unit, tempMin, tempMax, delayMinutes }),
           });
 
           const data = await res.json();

@@ -5,6 +5,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>AGRI TRACEABILITY - Chi tiết lô thu hoạch & Phả hệ</title>
   <link rel="stylesheet" href="/styles.css?v=20261014">
+  <!-- MapLibre GL JS & CSS & Public Trace Map Component for embedded journey map (S-60) -->
+  <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" />
+  <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+  <link rel="stylesheet" href="public-trace-map.css" />
+  <script src="public-trace-map.js"></script>
 
   <style>
     .detail-container {
@@ -1097,6 +1102,15 @@
         <a href="/farms.html" class="nav-item" id="navFarms"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 11v8a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-7a1 1 0 0 1 1-1h3"/><path d="M4 11V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v7"/><path d="M14 15v5a1 1 0 0 1-1 1h-2a1 1 0 0 1-1-1v-5"/><path d="M17 11V7a1 1 0 0 1 1-1h3a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1h-3a1 1 0 0 1-1-1v-3"/><path d="M3 21h18"/></svg><span>Thửa đất</span></a>
         <a href="/products.html" class="nav-item" id="navProducts"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="m10 15 5-3-5-3v6Z"/></svg><span>Sản phẩm</span></a>
         <a href="/harvest.html" class="nav-item" id="navHarvest"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg><span>Ghi nhận thu hoạch</span></a>
+        <a href="/shipments.html" class="nav-item" id="navShipments">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="1" y="3" width="15" height="13"></rect>
+            <polygon points="16 8 20 8 23 11 23 16 16 16 8"></polygon>
+            <circle cx="5.5" cy="18.5" r="2.5"></circle>
+            <circle cx="18.5" cy="18.5" r="2.5"></circle>
+          </svg>
+          <span>Vận chuyển lạnh</span>
+        </a>
         <a href="/integrity.html" class="nav-item" id="navIntegrity"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg><span>Kiểm tra toàn vẹn</span></a>
         <a href="/audit-logs.html" class="nav-item" id="navAuditLogs"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg><span>Nhật ký thao tác</span></a>
       </nav>
@@ -1233,6 +1247,16 @@
         </div>
         <div class="modal-body">
           <div id="confirmModalAlert" style="display: none; margin-bottom: 16px;"></div>
+
+          <!-- Cảnh báo vi phạm nhiệt độ chuỗi lạnh trước khi tiếp nhận (Story S-45 / N2-279) -->
+          <div id="confirmModalViolationWarning" style="display: none; background: #fff1f2; border: 1.5px solid #f43f5e; border-radius: var(--radius-md); padding: 12px 16px; margin-bottom: 16px; color: #9f1239;">
+            <div style="font-weight: 700; font-size: 13.5px; display: flex; align-items: center; gap: 6px; margin-bottom: 4px;">
+              <span>⚠️ CẢNH BÁO: LÔ HÀNG ĐÃ TỪNG GẶP SỰ CỐ VI PHẠM NHIỆT ĐỘ</span>
+            </div>
+            <div style="font-size: 12.5px; line-height: 1.5; color: #881337;">
+              Lô hàng này đã ghi nhận sự cố nhiệt độ vượt ngưỡng an toàn trong quá trình vận chuyển. Hãy kiểm tra kỹ chất lượng nông sản trên dòng thời gian trước khi xác nhận tiếp nhận.
+            </div>
+          </div>
 
           <div style="background: rgba(16, 185, 129, 0.06); border: 1px solid rgba(16, 185, 129, 0.25); border-radius: var(--radius-md); padding: 12px 16px; margin-bottom: 18px;">
             <div style="font-size: 11px; text-transform: uppercase; font-weight: 700; color: #10b981; letter-spacing: 0.05em; margin-bottom: 4px;">Lô hàng tiếp nhận</div>
@@ -1434,13 +1458,6 @@
             <div style="margin-top: 14px; background: rgba(245,158,11,0.08); border: 1px solid rgba(245,158,11,0.25); border-radius: 8px; padding: 10px 12px; font-size: 12px; color: #b45309; line-height: 1.5; margin-bottom: 14px;">
               <strong>Bảo chứng nguồn gốc (T-59 / S-19):</strong> Lô mới sáp nhập kế thừa đầy đủ phả hệ của tất cả các lô thành phần thông qua <code>batch_relations</code> và chuỗi sự kiện hash SHA-256 minh bạch.
             </div>
-
-            <div class="form-group" style="margin-bottom: 14px;">
-              <label style="display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px;">
-                Tên lô hàng mới sau gộp
-              </label>
-              <input type="text" id="mergeDetailNewLotName" class="form-control" placeholder="Nhập tên lô mới (ví dụ: Chè đặc sản gộp)...">
-            </div>
           </div>
 
           <div style="display:flex; justify-content:flex-end; gap:10px; padding:16px 24px; border-top:1px solid var(--color-border); background: #fafafa;">
@@ -1576,6 +1593,67 @@
         </form>
       </div>
     </div>
+
+    <!-- Modal Mở lệnh thu hồi khẩn cấp (Story S-33 & S-34) -->
+    <div id="openRecallModal" class="modal-backdrop" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.55); z-index: 2100; align-items: center; justify-content: center; padding: 20px; backdrop-filter: blur(2px);">
+      <div class="modal-content" style="background: #fff; border-radius: 16px; width: 100%; max-width: 540px; overflow: hidden; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.25); display: flex; flex-direction: column;">
+        <div style="padding: 20px 24px; border-bottom: 1px solid #fee2e2; display: flex; justify-content: space-between; align-items: center; background: #fff1f2;">
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <div style="width: 38px; height: 38px; border-radius: 10px; background: #fee2e2; color: #dc2626; display: flex; align-items: center; justify-content: center;">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+            </div>
+            <div>
+              <h3 style="font-size: 17px; font-weight: 700; color: #991b1b; margin: 0;">Mở lệnh thu hồi khẩn cấp</h3>
+              <div style="font-size: 12px; color: #b91c1c;">Khoanh vùng và truy vết toàn diện mọi lô hậu duệ (S-33 / S-34)</div>
+            </div>
+          </div>
+          <button type="button" id="btnCloseRecallModal" style="background: none; border: none; font-size: 20px; cursor: pointer; color: #991b1b; line-height: 1;">✕</button>
+        </div>
+
+        <form id="openRecallForm" style="display: flex; flex-direction: column; overflow: hidden; flex: 1;">
+          <div style="padding: 20px 24px; overflow-y: auto;">
+            <div id="recallModalAlert" style="display: none; margin-bottom: 16px;"></div>
+
+            <div style="background: #fff5f5; border: 1px solid #fecaca; border-radius: 10px; padding: 14px 16px; margin-bottom: 16px;">
+              <div style="font-size: 14px; font-weight: 700; color: #991b1b; margin-bottom: 4px;" id="recallModalLotTitle">--</div>
+              <div style="font-size: 13px; color: #7f1d1d;">
+                Mã lô gốc F0: <code id="recallModalLotId" style="font-weight: 700; color: #b91c1c; background: #fee2e2; padding: 1px 6px; border-radius: 4px;">--</code>
+              </div>
+            </div>
+
+            <div style="margin-bottom: 16px;">
+              <label for="recallReason" style="display: block; font-size: 13.5px; font-weight: 600; color: var(--color-text-main); margin-bottom: 6px;">
+                Lý do mở lệnh thu hồi (*):
+              </label>
+              <textarea id="recallReason" class="form-control" rows="3" required placeholder="Ví dụ: Phát hiện dư lượng hoạt chất thuốc bảo vệ thực vật vượt ngưỡng tối đa cho phép theo QCVN..." style="width: 100%; border: 1px solid var(--color-border); border-radius: 8px; padding: 10px 12px; font-size: 13.5px; font-family: inherit; resize: vertical;"></textarea>
+            </div>
+
+            <div style="margin-bottom: 16px;">
+              <label for="recallSeverity" style="display: block; font-size: 13.5px; font-weight: 600; color: var(--color-text-main); margin-bottom: 6px;">
+                Mức độ nghiêm trọng:
+              </label>
+              <select id="recallSeverity" class="form-control" style="width: 100%; height: 40px; border: 1px solid var(--color-border); border-radius: 8px; padding: 0 12px; font-size: 13.5px; font-family: inherit;">
+                <option value="CRITICAL">🔴 Cực kỳ nghiêm trọng (CRITICAL - Thu hồi ngay lập tức)</option>
+                <option value="HIGH" selected>🟠 Nghiêm trọng (HIGH - Nguy cơ an toàn thực phẩm cao)</option>
+                <option value="MEDIUM">🟡 Trung bình (MEDIUM - Cảnh báo và kiểm tra bổ sung)</option>
+                <option value="LOW">🔵 Thấp (LOW - Khuyến cáo nội bộ)</option>
+              </select>
+            </div>
+
+            <div style="background: rgba(239, 68, 68, 0.08); border: 1px solid rgba(239, 68, 68, 0.25); border-radius: 8px; padding: 10px 12px; font-size: 12px; color: #b91c1c; line-height: 1.5;">
+              <strong>Bảo chứng nghiệp vụ (S-33 / S-34):</strong> Lô hàng sẽ chuyển sang trạng thái <code>Có sự cố</code>. Sự kiện <code>RECALL_ORDER_CREATED</code> được đóng gói băm mật mã SHA-256 vào chuỗi sự kiện bất biến. Mọi lô hậu duệ kể cả lô gộp đa nguồn sẽ được tính toán động thời gian thực.
+            </div>
+          </div>
+
+          <div style="display:flex; justify-content:flex-end; gap:10px; padding:16px 24px; border-top:1px solid var(--color-border); background: #fafafa;">
+            <button type="button" id="btnCancelRecall" class="btn btn-secondary" style="height:38px; padding:0 16px;">Hủy bỏ</button>
+            <button type="submit" id="btnSubmitRecall" class="btn btn-primary" style="height:38px; padding:0 20px; background: #dc2626; border-color: #dc2626;">
+              <span>Xác nhận Mở lệnh thu hồi</span>
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
   </main>
 
   <script src="/app-shell.js?v=20261014"></script>
@@ -1648,6 +1726,13 @@
         }
 
         renderLot(lotData, lotEvents, { isIntegrityValid, integrityError }, lotOrigins);
+
+        // Kích hoạt tab nếu có query param ?tab=...
+        const urlParams = new URLSearchParams(window.location.search);
+        const activeTabParam = urlParams.get("tab");
+        if (activeTabParam && ["overview", "timeline", "lineage", "genealogy", "map"].includes(activeTabParam)) {
+          switchLotTab(activeTabParam);
+        }
       } catch (err) {
         renderError("Lỗi hệ thống", err.message || "Không thể đồng bộ dữ liệu.");
       }
@@ -1663,12 +1748,15 @@
       const lotRemainingVal = (lot.remainingQuantity !== null && lot.remainingQuantity !== undefined)
         ? Number(lot.remainingQuantity)
         : ((lot.remaining_quantity !== null && lot.remaining_quantity !== undefined) ? Number(lot.remaining_quantity) : null);
-      const canTransfer = currentUser && !isInspector && (isAdmin || userOrgId === lotOrgId) && lot.status !== "Đã bán hết" && lot.status !== "Đã tiêu thụ" && (lotRemainingVal !== null && lotRemainingVal > 0);
-      const canSplit = currentUser && !isInspector && (isAdmin || userOrgId === lotOrgId) && ["producer", "cooperative", "distributor", "org_admin", "admin"].includes(role) && (lotRemainingVal !== null && lotRemainingVal > 0) && !lot.pendingTransfer && lot.status !== "Đã bán hết" && lot.status !== "Đã tiêu thụ";
-      const canMerge = currentUser && !isInspector && (isAdmin || userOrgId === lotOrgId) && ["producer", "cooperative", "org_admin", "admin"].includes(role) && (lotRemainingVal !== null && lotRemainingVal > 0) && !lot.pendingTransfer && lot.status !== "Đã bán hết" && lot.status !== "Đã tiêu thụ";
-      const canConsume = currentUser && !isInspector && (isAdmin || userOrgId === lotOrgId) && ["distributor", "org_admin", "admin"].includes(role) && (lotRemainingVal !== null && lotRemainingVal > 0) && !lot.pendingTransfer && lot.status !== "Đã bán hết" && lot.status !== "Đã tiêu thụ";
+      const isRecalledOrIncident = lot.status === "Có sự cố" || lot.status === "Đang thu hồi" || lot.status === "Đã thu hồi" || Boolean(lot.activeRecallOrder);
+      const canTransfer = currentUser && !isInspector && !isRecalledOrIncident && (isAdmin || userOrgId === lotOrgId) && lot.status !== "Đã bán hết" && lot.status !== "Đã tiêu thụ" && (lotRemainingVal !== null && lotRemainingVal > 0);
+      const canSplit = currentUser && !isInspector && !isRecalledOrIncident && (isAdmin || userOrgId === lotOrgId) && ["producer", "cooperative", "distributor", "org_admin", "admin"].includes(role) && (lotRemainingVal !== null && lotRemainingVal > 0) && !lot.pendingTransfer && lot.status !== "Đã bán hết" && lot.status !== "Đã tiêu thụ";
+      const canMerge = currentUser && !isInspector && !isRecalledOrIncident && (isAdmin || userOrgId === lotOrgId) && ["producer", "cooperative", "org_admin", "admin"].includes(role) && (lotRemainingVal !== null && lotRemainingVal > 0) && !lot.pendingTransfer && lot.status !== "Đã bán hết" && lot.status !== "Đã tiêu thụ";
+      const canConsume = currentUser && !isInspector && !isRecalledOrIncident && (isAdmin || userOrgId === lotOrgId) && ["distributor", "org_admin", "admin"].includes(role) && (lotRemainingVal !== null && lotRemainingVal > 0) && !lot.pendingTransfer && lot.status !== "Đã bán hết" && lot.status !== "Đã tiêu thụ";
       const canManageLocation = currentUser && !isInspector && (isAdmin || userOrgId === lotOrgId);
+      const canEditCoordinates = currentUser && !isInspector && role !== "auditor" && (isAdmin || userOrgId === lotOrgId);
       const isRecipient = Boolean(userOrgId && lot.pendingTransfer && lot.pendingTransfer.toOrganizationId === userOrgId);
+      const hasViolation = Boolean(lot.hasTemperatureViolation || (events && events.some(e => e.eventType === 'TEMPERATURE_VIOLATION')));
       const inspectorActions = document.getElementById("inspectorActions");
       const btnCheckIntegrityLink = document.getElementById("btnCheckIntegrityLink");
 
@@ -1709,6 +1797,26 @@
             </a>
           `;
         }
+
+        // Nút xem bản đồ hành trình công khai (Story S-60)
+        actionButtonsHtml += `
+          <button type="button" onclick="switchLotTab('map')" class="btn btn-secondary" style="gap: 8px; font-weight: 600;" id="btnViewPublicMap" title="Xem bản đồ vị trí vùng trồng & điểm phân phối chuỗi lạnh">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"></polygon><line x1="8" y1="2" x2="8" y2="18"></line><line x1="16" y1="6" x2="16" y2="22"></line></svg>
+            <span>📍 Xem bản đồ hành trình</span>
+          </button>
+        `;
+
+        // Nút tải mã QR truy xuất nguồn gốc (Story S-46)
+        actionButtonsHtml += `
+          <button type="button" onclick="downloadLotQr('png')" class="btn btn-secondary" id="btnDownloadQrPng" style="gap: 6px; font-weight: 600;" title="Tải mã QR định dạng hình ảnh PNG để in">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+            <span>📥 Tải QR (PNG)</span>
+          </button>
+          <button type="button" onclick="downloadLotQr('svg')" class="btn btn-secondary" id="btnDownloadQrSvg" style="gap: 6px; font-weight: 600;" title="Tải mã QR định dạng vector SVG sắc nét">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            <span>📥 Tải QR (SVG)</span>
+          </button>
+        `;
 
         roleActionsEl.innerHTML = actionButtonsHtml;
         roleActionsEl.style.display = actionButtonsHtml ? "flex" : "none";
@@ -1787,10 +1895,21 @@
                 </button>
               ` : ""}
 
+              ${isInspectorOrAdmin ? `
+                <button type="button" class="btn btn-danger" id="btnOpenRecallHero" style="height: 32px; padding: 0 14px; font-size: 13px; display: inline-flex; align-items: center; gap: 6px; cursor: pointer; border-radius: var(--radius-sm); background: #dc2626; border-color: #dc2626; color: #fff; font-weight: 600;" title="Mở lệnh thu hồi khẩn cấp cho lô hàng này (S-33 / S-34)">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                  <span>Mở lệnh thu hồi</span>
+                </button>
+              ` : ""}
+
               <div class="dropdown-menu-wrapper">
                 <button type="button" class="btn-icon-kebab" id="btn-hero-more" onclick="toggleHeroDropdown(event)" title="Thao tác khác" aria-label="Thao tác khác">•••</button>
                 <div class="dropdown-popover" id="dropdown-hero-lot">
                   ${isInspectorOrAdmin ? `
+                    <button type="button" class="dropdown-item" id="btnOpenRecallFromDropdown" style="color: #dc2626; font-weight: 600;">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/></svg>
+                      <span>Mở lệnh thu hồi khẩn cấp</span>
+                    </button>
                     <a href="/integrity.html?lotId=${encodeURIComponent(lot.id)}" class="dropdown-item">
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
                       <span>Kiểm tra toàn vẹn</span>
@@ -1808,6 +1927,10 @@
                       <span>Gộp lô hàng</span>
                     </button>
                   ` : ""}
+                  <a href="javascript:void(0)" onclick="switchLotTab('map')" class="dropdown-item">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"></polygon><line x1="8" y1="2" x2="8" y2="18"></line><line x1="16" y1="6" x2="16" y2="22"></line></svg>
+                    <span>Xem bản đồ hành trình</span>
+                  </a>
                   ${canConsume ? `
                     <button type="button" class="dropdown-item" id="btnOpenConsumeFromDetail" style="color: #059669;">
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
@@ -1867,6 +1990,16 @@
                     <div style="margin-top: 6px; font-size: 12px; color: ${(lot.pendingTransfer.isOverdue || lot.pendingTransfer.is_overdue) ? '#991b1b' : '#92400e'};">
                       * Quyền sở hữu và trách nhiệm lưu kho hiện vẫn thuộc bên gửi cho đến khi bên bạn bấm Xác nhận tiếp nhận (Story S-16 / S-24).
                     </div>
+                    ${hasViolation ? `
+                      <div class="violation-recipient-warning" style="margin-top: 10px; margin-bottom: 12px; background: #fff1f2; border: 1.5px solid #f43f5e; border-radius: 8px; padding: 12px 16px; color: #9f1239;">
+                        <div style="display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 13.5px; margin-bottom: 4px;">
+                          <span>⚠️ CẢNH BÁO: LÔ HÀNG ĐÃ TỪNG GẶP SỰ CỐ VI PHẠM NHIỆT ĐỘ CHUỖI LẠNH</span>
+                        </div>
+                        <div style="font-size: 12.5px; line-height: 1.5; color: #881337;">
+                          Lô hàng này đã ghi nhận sự cố nhiệt độ vượt ngưỡng cho phép trong quá trình vận chuyển. Vui lòng kiểm tra kỹ chất lượng nông sản và lịch sử dòng thời gian trước khi xác nhận bàn giao.
+                        </div>
+                      </div>
+                    ` : ""}
                     <div style="margin-top: 12px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
                       <button type="button" class="btn btn-primary" id="btnDetailConfirmTransfer" data-transfer-id="${escapeHtml(lot.pendingTransfer.id)}" style="height: 36px; padding: 0 16px; font-size: 13px; font-weight: 600; display: inline-flex; align-items: center; gap: 6px; cursor: pointer;">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
@@ -1936,6 +2069,14 @@
             </svg>
             <span>Nguồn gốc</span>
             <span class="tab-badge">${((Array.isArray(lot.parentLots) && lot.parentLots.length > 0) ? lot.parentLots.length : (lot.parentLot ? 1 : 0)) + (lot.childLots ? lot.childLots.length : 0)}</span>
+          </button>
+          <button type="button" class="lot-tab-btn" id="tabBtnMap" role="tab" aria-selected="false" aria-controls="tabPaneMap" onclick="switchLotTab('map')">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"></polygon>
+              <line x1="8" y1="2" x2="8" y2="18"></line>
+              <line x1="16" y1="6" x2="16" y2="22"></line>
+            </svg>
+            <span>Bản đồ hành trình</span>
           </button>
           <button type="button" class="lot-tab-btn" id="tabBtnGenealogy" role="tab" aria-selected="false" aria-controls="tabPaneGenealogy" onclick="switchLotTab('genealogy')">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
@@ -2098,6 +2239,7 @@
                   const isConfirmed = evt.eventType === "TRANSFER_CONFIRMED";
                   const isRejected = evt.eventType === "TRANSFER_REJECTED";
                   const isHarvest = evt.eventType === "HARVEST_CREATED";
+                  const isViolation = evt.eventType === "TEMPERATURE_VIOLATION";
 
                   let badgeLabel = escapeHtml(evt.eventType || "EVENT");
                   let badgeStyle = "background: rgba(36, 138, 61, 0.1); color: var(--color-primary); border-color: rgba(36, 138, 61, 0.2);";
@@ -2118,6 +2260,10 @@
                     badgeLabel = "❌ Từ chối nhận lô (TRANSFER_REJECTED)";
                     badgeStyle = "background: rgba(220, 38, 38, 0.12); color: #b91c1c; border-color: rgba(220, 38, 38, 0.3);";
                     nodeStyle = 'style="border-color: #dc2626; color: #b91c1c; box-shadow: 0 0 0 2px rgba(220, 38, 38, 0.2);"';
+                  } else if (isViolation) {
+                    badgeLabel = "⚠️ Vi phạm nhiệt độ chuỗi lạnh (TEMPERATURE_VIOLATION)";
+                    badgeStyle = "background: rgba(239, 68, 68, 0.12); color: #b91c1c; border-color: rgba(239, 68, 68, 0.3);";
+                    nodeStyle = 'style="border-color: #ef4444; color: #b91c1c; box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.2);"';
                   }
 
                   return `
@@ -2162,6 +2308,29 @@
                       ${isRejected && payloadObj && payloadObj.reason ? `
                         <div style="background: rgba(220, 38, 38, 0.06); border: 1px solid rgba(220, 38, 38, 0.2); border-radius: var(--radius-sm); padding: 10px 14px; margin-bottom: 8px; font-size: 13px; color: #991b1b;">
                           <div><strong>Lý do từ chối:</strong> <em>"${escapeHtml(payloadObj.reason)}"</em></div>
+                        </div>
+                      ` : ""}
+                      ${isViolation && payloadObj ? `
+                        <div style="background: rgba(239, 68, 68, 0.06); border: 1.5px solid rgba(239, 68, 68, 0.25); border-radius: var(--radius-sm); padding: 12px 16px; margin-bottom: 10px; font-size: 13px; color: #991b1b;">
+                          <div style="font-weight: 700; font-size: 13.5px; margin-bottom: 8px; display: flex; align-items: center; gap: 6px;">
+                            <span>🌡️ Phát hiện vi phạm nhiệt độ chuỗi lạnh</span>
+                          </div>
+                          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 8px; margin-bottom: 8px;">
+                            <div><strong>Nhiệt độ đỉnh:</strong> <span style="font-weight: 800; color: #dc2626;">${payloadObj.peakTemperature !== undefined ? payloadObj.peakTemperature + '°C' : '--'}</span> (Ngưỡng: ${payloadObj.threshold !== undefined ? payloadObj.threshold + '°C' : '--'})</div>
+                            <div><strong>Thời lượng:</strong> <span style="font-weight: 700;">${payloadObj.durationMinutes !== undefined ? payloadObj.durationMinutes + ' phút' : (payloadObj.durationSeconds !== undefined ? Math.round(payloadObj.durationSeconds / 60) + ' phút' : '--')}</span></div>
+                            <div><strong>Mã vi phạm:</strong> <code style="font-size: 12px; background: rgba(0,0,0,0.05); padding: 2px 4px; border-radius: 4px;">${escapeHtml(payloadObj.violationId || '--')}</code></div>
+                            <div><strong>Mã chuyến:</strong> <code style="font-size: 12px; background: rgba(0,0,0,0.05); padding: 2px 4px; border-radius: 4px;">${escapeHtml(payloadObj.shipmentCode || payloadObj.shipmentId || '--')}</code></div>
+                          </div>
+                          ${payloadObj.startTime && payloadObj.endTime ? `
+                            <div style="font-size: 12px; color: #7f1d1d; margin-top: 4px;">
+                              <strong>Thời điểm:</strong> ${formatDateTime(payloadObj.startTime)} &rarr; ${formatDateTime(payloadObj.endTime)}
+                            </div>
+                          ` : ""}
+                          ${payloadObj.rule ? `
+                            <div style="font-size: 12px; color: #991b1b; margin-top: 4px; font-style: italic;">
+                              ${escapeHtml(payloadObj.rule)}
+                            </div>
+                          ` : ""}
                         </div>
                       ` : ""}
                       <div class="hash-row">
@@ -2518,7 +2687,7 @@
 
             <!-- Kết quả Truy xuôi Container -->
             <div id="traceResultContainer" style="display: none;">
-              <!-- Thống kê tóm tắt -->
+              <!-- Thống kê tóm tắt (S-27 & S-35 / N2-103) -->
               <div class="trace-stats-grid">
                 <div class="trace-stat-box">
                   <span class="trace-stat-label">Tổng số lô hậu duệ</span>
@@ -2529,16 +2698,49 @@
                   <span class="trace-stat-value highlight-green" id="statTotalLevels">0</span>
                 </div>
                 <div class="trace-stat-box">
-                  <span class="trace-stat-label">Tổ chức đang lưu giữ</span>
+                  <span class="trace-stat-label">Tổ chức đang giữ</span>
                   <span class="trace-stat-value highlight-amber" id="statTotalOrgs">0</span>
-                </div>
-                <div class="trace-stat-box">
-                  <span class="trace-stat-label">Tổng khối lượng liên đới</span>
-                  <span class="trace-stat-value" id="statTotalRemaining">0 kg</span>
                 </div>
                 <div class="trace-stat-box">
                   <span class="trace-stat-label">Địa điểm / Kho (S-27)</span>
                   <span class="trace-stat-value" style="color: #6366f1;" id="statTotalLocations">0</span>
+                </div>
+                <div class="trace-stat-box" style="border-left: 3px solid #16a34a;">
+                  <span class="trace-stat-label" style="color: #15803d;">Còn thu hồi được (Tại kho)</span>
+                  <span class="trace-stat-value highlight-green" id="statTotalRecallable">0 kg</span>
+                  <span style="font-size: 11px; color: #16a34a; font-weight: 600;" id="statRecallablePercent">0% tổng lượng</span>
+                </div>
+                <div class="trace-stat-box" style="border-left: 3px solid #dc2626;">
+                  <span class="trace-stat-label" style="color: #b91c1c;">Đã ra thị trường (Tiêu thụ)</span>
+                  <span class="trace-stat-value" style="color: #dc2626;" id="statTotalConsumed">0 kg</span>
+                  <span style="font-size: 11px; color: #dc2626; font-weight: 600;" id="statConsumedPercent">0% tổng lượng</span>
+                </div>
+                <div class="trace-stat-box">
+                  <span class="trace-stat-label">Tổng khối lượng liên đới</span>
+                  <span class="trace-stat-value" id="statTotalRemaining">0 kg</span>
+                  <span style="font-size: 11px; color: var(--color-text-muted); font-weight: 500;" id="statTotalDescendantsCount">0 lô</span>
+                </div>
+              </div>
+
+              <!-- Thanh tiến độ đối soát tổng thể (S-35 / N2-103) -->
+              <div id="recallStatusBarCard" style="display: none; margin-top: 14px; padding: 14px 18px; background: #ffffff; border-radius: var(--radius-md); border: 1px solid var(--color-border); box-shadow: 0 1px 4px rgba(0,0,0,0.03);">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; flex-wrap: wrap; gap: 8px;">
+                  <div style="font-weight: 700; font-size: 13.5px; color: var(--color-text-main); display: flex; align-items: center; gap: 6px;">
+                    <span>⚖️</span>
+                    <span>Tỷ lệ phân bổ thu hồi vs Đã tiêu thụ ra thị trường (Story S-35)</span>
+                  </div>
+                  <div style="font-size: 12px; display: flex; align-items: center; gap: 14px;">
+                    <span style="display: inline-flex; align-items: center; gap: 5px; color: #15803d; font-weight: 600;">
+                      <span style="width: 10px; height: 10px; border-radius: 2px; background: #22c55e;"></span> Còn thu hồi được: <strong id="barTextRecallable">0 kg</strong>
+                    </span>
+                    <span style="display: inline-flex; align-items: center; gap: 5px; color: #b91c1c; font-weight: 600;">
+                      <span style="width: 10px; height: 10px; border-radius: 2px; background: #ef4444;"></span> Đã ra thị trường: <strong id="barTextConsumed">0 kg</strong>
+                    </span>
+                  </div>
+                </div>
+                <div style="width: 100%; height: 10px; background: #e2e8f0; border-radius: 999px; overflow: hidden; display: flex;">
+                  <div id="barFillRecallable" style="height: 100%; background: #22c55e; width: 0%; transition: width 0.3s ease;" title="Còn thu hồi được"></div>
+                  <div id="barFillConsumed" style="height: 100%; background: #ef4444; width: 0%; transition: width 0.3s ease;" title="Đã ra thị trường"></div>
                 </div>
               </div>
 
@@ -2571,8 +2773,18 @@
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
                     <span>Bảng khoanh vùng thu hồi khẩn cấp (Recall Quarantine Matrix)</span>
                   </div>
-                  <div style="display: flex; align-items: center; gap: 8px;">
+                  <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+                    <div style="display: flex; align-items: center; gap: 6px;">
+                      <label for="recallOrgFilter" style="font-size: 12px; font-weight: 600; color: var(--color-text-main);">Lọc tổ chức:</label>
+                      <select id="recallOrgFilter" class="form-control" style="font-size: 12px; height: 32px; padding: 2px 10px; border-radius: var(--radius-sm); border: 1px solid var(--color-border); background: #fff; cursor: pointer;">
+                        <option value="ALL">Tất cả tổ chức</option>
+                      </select>
+                    </div>
                     <span style="font-size: 12px; color: #b91c1c; font-weight: 600;">Danh sách các lô cần cách ly kho</span>
+                    <button type="button" class="btn btn-secondary" id="btnRefreshDescendants" style="height: 30px; padding: 0 10px; font-size: 12px; font-weight: 600; display: inline-flex; align-items: center; gap: 4px; cursor: pointer;" title="Tính toán lại danh sách hậu duệ thời gian thực từ đồ thị">
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+                      <span>Làm mới</span>
+                    </button>
                   </div>
                 </div>
                 <div class="recall-table-wrap">
@@ -2583,10 +2795,12 @@
                         <th>Tên sản phẩm / Lô</th>
                         <th>Quan hệ</th>
                         <th>Tầng</th>
-                        <th>Tổ chức đang lưu giữ</th>
-                        <th>Địa điểm / Kho lưu trữ (S-27)</th>
+                        <th>Tổ chức đang giữ</th>
+                        <th>Địa điểm / Kho lưu trữ</th>
                         <th>Trạng thái</th>
-                        <th>Tồn kho hiện tại</th>
+                        <th style="text-align: right;">Khối lượng ban đầu</th>
+                        <th style="text-align: right; color: #15803d;">Còn thu hồi được</th>
+                        <th style="text-align: right; color: #b91c1c;">Đã bán / Tiêu thụ</th>
                         <th style="text-align: right;">Hành động</th>
                       </tr>
                     </thead>
@@ -2653,7 +2867,92 @@
             </div>
           </div>
         </div>
-      `;
+      
+
+        <!-- Tab 5: Bản đồ hành trình (S-60) -->
+        <div class="lot-tab-pane" id="tabPaneMap" role="tabpanel" aria-labelledby="tabBtnMap">
+          <div class="card" style="margin-bottom: 24px; padding: 20px; background: #ffffff; border: 1px solid var(--color-border); border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 16px;">
+              <div>
+                <h3 class="card-heading" style="margin-bottom: 4px; font-size: 16px; font-weight: 700; color: #0f172a;">📍 Bản đồ vị trí vùng trồng & hành trình chuỗi lạnh</h3>
+                <div style="font-size: 13px; color: var(--color-text-muted);">
+                  Tọa độ nguồn gốc vùng trồng, các điểm trung chuyển kho bãi và đường đi chuỗi lạnh của lô hàng.
+                </div>
+              </div>
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <button type="button" class="btn btn-secondary" onclick="loadDetailMap(lotData ? lotData.id : '')" style="font-size: 12px; height: 32px; padding: 0 10px; font-weight: 600;">
+                  🔄 Tải lại bản đồ
+                </button>
+                <a id="btnOpenPublicMapTab" href="/public-trace.html" target="_blank" rel="noopener noreferrer" class="btn btn-secondary" style="font-size: 12px; height: 32px; padding: 0 10px; display: inline-flex; align-items: center; gap: 4px; text-decoration: none; font-weight: 600;">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>
+                  <span>Mở cổng công khai</span>
+                </a>
+              </div>
+            </div>
+
+            <div id="lotDetailMapStatus" style="display: none; padding: 10px 14px; border-radius: 8px; font-size: 13px; margin-bottom: 16px;"></div>
+
+            ${canEditCoordinates ? `
+            <!-- Thanh công cụ tùy chỉnh / gán tọa độ thủ công cho lô hàng (Choice A - Story S-60) -->
+            <div class="custom-coord-panel">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; flex-wrap: wrap; gap: 8px;">
+                <div style="font-size: 13.5px; font-weight: 700; color: #0f172a; display: flex; align-items: center; gap: 6px;">
+                  <span>📍 Tùy chỉnh tọa độ / Định vị nhanh cho lô hàng</span>
+                  <span style="font-size: 11px; background: #e0f2fe; color: #0369a1; padding: 2px 8px; border-radius: 9999px; font-weight: 600;">Lựa chọn A</span>
+                </div>
+                <div style="font-size: 12px; color: #64748b;">
+                  Gõ tọa độ (Vĩ độ, Kinh độ), bấm gợi ý mẫu hoặc click trực tiếp trên bản đồ
+                </div>
+              </div>
+
+              <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
+                <select id="inputCustomType" class="form-control" style="width: auto; min-width: 140px; font-size: 12.5px; height: 36px;">
+                  <option value="farm">🌱 Vùng trồng nông sản</option>
+                  <option value="cold_storage">❄️ Kho bảo quản lạnh</option>
+                  <option value="store">🏢 Điểm phân phối / Bán lẻ</option>
+                </select>
+                <input type="text" id="inputCustomName" class="form-control" placeholder="Tên địa điểm (VD: Vùng trồng Thái Nguyên)" style="flex: 1; min-width: 180px; font-size: 12.5px; height: 36px;" value="${lot ? escapeHtml(lot.name || '') : ''}">
+                <input type="text" id="inputCustomCoords" class="form-control" placeholder="Vĩ độ, Kinh độ (VD: 21.5750, 105.6905)" style="width: 220px; font-size: 12.5px; height: 36px; font-family: monospace;">
+                <button type="button" class="btn btn-secondary" onclick="handlePreviewCustomCoordinate()" style="font-size: 12.5px; height: 36px; font-weight: 600; white-space: nowrap; display: inline-flex; align-items: center; gap: 6px;">
+                  <span>📍 Ghim lên bản đồ</span>
+                </button>
+                <button type="button" class="btn btn-primary" onclick="handleSaveCustomCoordinate()" style="font-size: 12.5px; height: 36px; font-weight: 600; white-space: nowrap; display: inline-flex; align-items: center; gap: 6px;">
+                  <span>💾 Lưu vào hệ thống</span>
+                </button>
+              </div>
+
+              <div style="display: flex; align-items: center; gap: 6px; margin-top: 10px; flex-wrap: wrap; font-size: 12px;">
+                <span style="color: #64748b; font-weight: 600;">Gợi ý mẫu:</span>
+                <button type="button" class="chip-btn" onclick="applyPresetCoordinate('farm', 'Vùng cà chua Hùng Sơn', '21.5750, 105.6905')">🍅 Hùng Sơn (21.5750, 105.6905)</button>
+                <button type="button" class="chip-btn" onclick="applyPresetCoordinate('farm', 'Vùng chè Tân Cương', '21.5450, 105.7720')">🌿 Tân Cương (21.5450, 105.7720)</button>
+                <button type="button" class="chip-btn" onclick="applyPresetCoordinate('farm', 'Vùng chè La Bằng', '21.5580, 105.6720')">🌱 La Bằng (21.5580, 105.6720)</button>
+                <button type="button" class="chip-btn" onclick="applyPresetCoordinate('cold_storage', 'Kho lạnh Nông trại Thái Nguyên', '21.5830, 105.8250')">❄️ Kho lạnh TN (21.5830, 105.8250)</button>
+                <button type="button" class="chip-btn" onclick="applyPresetCoordinate('store', 'Điểm phân phối Hà Nội', '21.0356, 105.9012')">🏢 Hà Nội (21.0356, 105.9012)</button>
+                <button type="button" class="chip-btn" onclick="handleGetDeviceLocation()" title="Lấy GPS từ thiết bị">🎯 GPS thiết bị</button>
+              </div>
+
+              <div id="customCoordStatusAlert" style="display: none; margin-top: 10px; padding: 8px 12px; border-radius: 6px; font-size: 12.5px;"></div>
+            </div>` : `
+            <div class="custom-coord-panel" style="background: #f8fafc; border: 1px dashed #cbd5e1; padding: 12px 16px; border-radius: 8px; font-size: 13px; color: #64748b; margin-bottom: 16px;">
+              🔒 Chỉ đơn vị đang quản lý lô hàng (${escapeHtml(lot.organizationName || lot.organizationId || "chủ sở hữu")}) hoặc Quản trị viên mới có quyền cập nhật tọa độ thủ công.
+            </div>`}
+
+            <div class="public-trace-map-wrapper" style="margin-bottom: 20px;">
+              <div id="lotDetailMapCanvas" class="public-trace-map-container">
+                <div style="display: flex; align-items: center; justify-content: center; height: 100%; color: var(--color-text-muted);">
+                  Đang khởi tạo bản đồ hành trình...
+                </div>
+              </div>
+            </div>
+
+            <div id="lotDetailMapTimelineContainer" style="margin-top: 16px;">
+              <h4 style="margin: 0 0 12px; font-size: 14.5px; font-weight: 700; color: #1e293b;">Các trạm dừng trong hành trình</h4>
+              <div id="lotDetailMapTimeline">
+                <div style="color: var(--color-text-muted); font-size: 13px;">Đang tải hành trình...</div>
+              </div>
+            </div>
+          </div>
+        </div>`;
 
       const btnDirectTransfer = document.getElementById("btnTransferDirectHero");
       if (btnDirectTransfer) {
@@ -2695,10 +2994,26 @@
         btnConsumeHero.addEventListener("click", () => openConsumeLotModal(lot));
       }
 
-      // S-26, S-27, S-28, S-29: Xử lý nút Truy xuôi hậu duệ
+      // S-26, S-27, S-28, S-29, S-34: Xử lý nút Truy xuôi hậu duệ và Làm mới
       const btnTraceForward = document.getElementById("btnExecuteTraceForward");
       if (btnTraceForward) {
         btnTraceForward.addEventListener("click", () => executeTraceForward(lot.id));
+      }
+
+      const btnRefreshDesc = document.getElementById("btnRefreshDescendants");
+      if (btnRefreshDesc) {
+        btnRefreshDesc.addEventListener("click", () => executeTraceForward(lot.id));
+      }
+
+      // S-33 / S-34: Xử lý nút Mở lệnh thu hồi khẩn cấp
+      const btnRecallHero = document.getElementById("btnOpenRecallHero");
+      if (btnRecallHero) {
+        btnRecallHero.addEventListener("click", () => openRecallModalHandler(lot));
+      }
+
+      const btnRecallDropdown = document.getElementById("btnOpenRecallFromDropdown");
+      if (btnRecallDropdown) {
+        btnRecallDropdown.addEventListener("click", () => openRecallModalHandler(lot));
       }
     }
 
@@ -2769,45 +3084,153 @@
       const descendants = Array.isArray(data.descendants) ? data.descendants : (data.descendantsDetail || []);
       const levels = Array.isArray(data.levels) ? data.levels : [];
 
-      // 1. Thống kê tóm tắt
+      // 1. Thống kê tóm tắt (Story S-35 / N2-103 & S-27)
       const statTotalDescendants = document.getElementById("statTotalDescendants");
       const statTotalLevels = document.getElementById("statTotalLevels");
       const statTotalOrgs = document.getElementById("statTotalOrgs");
       const statTotalRemaining = document.getElementById("statTotalRemaining");
       const statTotalLocations = document.getElementById("statTotalLocations");
+      const statTotalRecallable = document.getElementById("statTotalRecallable");
+      const statRecallablePercent = document.getElementById("statRecallablePercent");
+      const statTotalConsumed = document.getElementById("statTotalConsumed");
+      const statConsumedPercent = document.getElementById("statConsumedPercent");
+      const statTotalDescendantsCount = document.getElementById("statTotalDescendantsCount");
+
+      const recallStatusBarCard = document.getElementById("recallStatusBarCard");
+      const barFillRecallable = document.getElementById("barFillRecallable");
+      const barFillConsumed = document.getElementById("barFillConsumed");
+      const barTextRecallable = document.getElementById("barTextRecallable");
+      const barTextConsumed = document.getElementById("barTextConsumed");
+
       const locationSummaryCard = document.getElementById("locationSummaryCard");
       const locationSummaryList = document.getElementById("locationSummaryList");
 
       const orgSet = new Set();
       let totalRemainingKg = 0;
+      let totalConsumedKg = 0;
+      let serverInitialKg = null;
+      let hasKnownRemaining = false;
+      let hasKnownConsumed = false;
 
       descendants.forEach((d) => {
-        if (d.organizationId) orgSet.add(d.organizationId);
-        if (d.remainingQuantity !== null && d.remainingQuantity !== undefined) {
+        if (d.organizationId || d.organizationName) orgSet.add(d.organizationId || d.organizationName);
+        if (d.remainingQuantity !== null && d.remainingQuantity !== undefined && !isNaN(Number(d.remainingQuantity))) {
           totalRemainingKg += Number(d.remainingQuantity);
+          hasKnownRemaining = true;
+        }
+        if (d.consumedQuantity !== null && d.consumedQuantity !== undefined && !isNaN(Number(d.consumedQuantity))) {
+          totalConsumedKg += Number(d.consumedQuantity);
+          hasKnownConsumed = true;
         }
       });
+
+      // Nếu API trả về recallSummary chuẩn xác thì ưu tiên dùng giá trị từ Backend (triệt tiêu sai số float)
+      if (data.recallSummary) {
+        if (data.recallSummary.totalRecallableQuantity !== null && data.recallSummary.totalRecallableQuantity !== undefined && !isNaN(Number(data.recallSummary.totalRecallableQuantity))) {
+          totalRemainingKg = Number(data.recallSummary.totalRecallableQuantity);
+          hasKnownRemaining = true;
+        }
+        if (data.recallSummary.totalConsumedQuantity !== null && data.recallSummary.totalConsumedQuantity !== undefined && !isNaN(Number(data.recallSummary.totalConsumedQuantity))) {
+          totalConsumedKg = Number(data.recallSummary.totalConsumedQuantity);
+          hasKnownConsumed = true;
+        }
+        if (data.recallSummary.totalInitialQuantity !== null && data.recallSummary.totalInitialQuantity !== undefined && !isNaN(Number(data.recallSummary.totalInitialQuantity))) {
+          serverInitialKg = Number(data.recallSummary.totalInitialQuantity);
+        }
+      } else if (data.totalRecallableQuantity !== undefined && data.totalConsumedQuantity !== undefined) {
+        if (data.totalRecallableQuantity !== null && !isNaN(Number(data.totalRecallableQuantity))) {
+          totalRemainingKg = Number(data.totalRecallableQuantity);
+          hasKnownRemaining = true;
+        }
+        if (data.totalConsumedQuantity !== null && !isNaN(Number(data.totalConsumedQuantity))) {
+          totalConsumedKg = Number(data.totalConsumedQuantity);
+          hasKnownConsumed = true;
+        }
+        if (data.totalInitialQuantity !== undefined && data.totalInitialQuantity !== null && !isNaN(Number(data.totalInitialQuantity))) {
+          serverInitialKg = Number(data.totalInitialQuantity);
+        }
+      }
+
+      const totalOverallScope = (hasKnownRemaining ? totalRemainingKg : 0) + (hasKnownConsumed ? totalConsumedKg : 0);
+      let recallableRatio = (hasKnownRemaining && totalOverallScope > 0) ? (totalRemainingKg / totalOverallScope) * 100 : 0;
+      let consumedRatio = (hasKnownConsumed && totalOverallScope > 0) ? (totalConsumedKg / totalOverallScope) * 100 : 0;
+
+      if (data.recallSummary && data.recallSummary.recallablePercentage !== undefined && data.recallSummary.recallablePercentage !== null && !isNaN(Number(data.recallSummary.recallablePercentage))) {
+        recallableRatio = Number(data.recallSummary.recallablePercentage);
+      }
+      if (data.recallSummary && data.recallSummary.consumedPercentage !== undefined && data.recallSummary.consumedPercentage !== null && !isNaN(Number(data.recallSummary.consumedPercentage))) {
+        consumedRatio = Number(data.recallSummary.consumedPercentage);
+      }
 
       if (statTotalDescendants) statTotalDescendants.textContent = descendants.length;
       if (statTotalLevels) statTotalLevels.textContent = levels.length;
       if (statTotalOrgs) statTotalOrgs.textContent = orgSet.size;
-      if (statTotalRemaining) statTotalRemaining.textContent = `${totalRemainingKg.toFixed(2)} kg`;
+      if (statTotalDescendantsCount) statTotalDescendantsCount.textContent = `${descendants.length} lô liên đới`;
 
-      // Story S-27: Phân bổ theo địa điểm lưu kho & cửa hàng
+      // Dùng tổng recallSummary từ server khi có; ngược lại tránh tính tổng sai từ initialQuantity nhiều tầng
+      if (statTotalRemaining) {
+        statTotalRemaining.textContent = (serverInitialKg !== null) ? `${serverInitialKg.toFixed(2)} kg` : "--";
+      }
+
+      if (hasKnownRemaining) {
+        if (statTotalRecallable) statTotalRecallable.textContent = `${totalRemainingKg.toFixed(2)} kg`;
+        if (statRecallablePercent) statRecallablePercent.textContent = totalOverallScope > 0 ? `${recallableRatio.toFixed(1)}% thu hồi được` : "--";
+      } else {
+        if (statTotalRecallable) statTotalRecallable.textContent = "--";
+        if (statRecallablePercent) statRecallablePercent.textContent = "--";
+      }
+
+      if (hasKnownConsumed) {
+        if (statTotalConsumed) statTotalConsumed.textContent = `${totalConsumedKg.toFixed(2)} kg`;
+        if (statConsumedPercent) statConsumedPercent.textContent = totalOverallScope > 0 ? `${consumedRatio.toFixed(1)}% ra thị trường` : "--";
+      } else {
+        if (statTotalConsumed) statTotalConsumed.textContent = "--";
+        if (statConsumedPercent) statConsumedPercent.textContent = "--";
+      }
+
+      // Thanh tiến độ đối soát S-35 (Hiện khi có ít nhất 1 lô và có số lượng xác định)
+      if (recallStatusBarCard && descendants.length > 0 && (hasKnownRemaining || hasKnownConsumed) && totalOverallScope > 0) {
+        recallStatusBarCard.style.display = "block";
+        if (barFillRecallable) barFillRecallable.style.width = `${recallableRatio}%`;
+        if (barFillConsumed) barFillConsumed.style.width = `${consumedRatio}%`;
+        if (barTextRecallable) barTextRecallable.textContent = `${totalRemainingKg.toFixed(2)} kg (${recallableRatio.toFixed(1)}%)`;
+        if (barTextConsumed) barTextConsumed.textContent = `${totalConsumedKg.toFixed(2)} kg (${consumedRatio.toFixed(1)}%)`;
+      } else if (recallStatusBarCard) {
+        recallStatusBarCard.style.display = "none";
+      }
+
+      // Story S-27 & S-35: Phân bổ theo địa điểm lưu kho & cửa hàng
       const locSummary = Array.isArray(data.locationSummary) ? data.locationSummary : [];
       if (statTotalLocations) statTotalLocations.textContent = locSummary.length;
       if (locationSummaryCard && locationSummaryList) {
         if (locSummary.length > 0) {
           locationSummaryCard.style.display = "block";
-          locationSummaryList.innerHTML = locSummary.map(item => `
-            <div style="background: rgba(37, 99, 235, 0.06); border: 1px solid rgba(37, 99, 235, 0.2); border-radius: 8px; padding: 6px 12px; font-size: 12.5px; display: inline-flex; align-items: center; gap: 8px;">
-              <span style="font-weight: 700; color: #1e40af;">📍 ${escapeHtml(item.locationName)}</span>
-              <span style="background: #ffffff; padding: 2px 6px; border-radius: 4px; font-weight: 600; color: #059669; border: 1px solid rgba(5, 150, 105, 0.2);">
-                ${(item.lotsCount !== undefined ? item.lotsCount : item.totalLots) || 0} lô (${Number(item.totalRemainingQuantity).toFixed(2)} ${escapeHtml(item.unit || "kg")})
-              </span>
-              ${item.locationAddress ? `<span style="color: #64748b; font-size: 11px;">(${escapeHtml(item.locationAddress)})</span>` : ""}
-            </div>
-          `).join("");
+          locationSummaryList.innerHTML = locSummary.map(item => {
+            const remVal = (item.totalRemainingQuantity !== null && item.totalRemainingQuantity !== undefined && !isNaN(Number(item.totalRemainingQuantity)))
+              ? Number(item.totalRemainingQuantity).toFixed(2)
+              : "--";
+            const consVal = (item.totalConsumedQuantity !== null && item.totalConsumedQuantity !== undefined && !isNaN(Number(item.totalConsumedQuantity)))
+              ? Number(item.totalConsumedQuantity).toFixed(2)
+              : "--";
+            const unitStr = escapeHtml(item.unit || item.productUnit || "kg");
+            return `
+              <div style="background: rgba(37, 99, 235, 0.04); border: 1px solid rgba(37, 99, 235, 0.18); border-radius: 8px; padding: 8px 14px; font-size: 12.5px; display: inline-flex; flex-direction: column; gap: 4px;">
+                <div style="display: flex; align-items: center; gap: 6px;">
+                  <span style="font-weight: 700; color: #1e40af;">📍 ${escapeHtml(item.locationName || "Chưa xác định")}</span>
+                  <span style="font-size: 11px; color: #64748b;">(${(item.lotsCount !== undefined ? item.lotsCount : item.totalLots) || 0} lô)</span>
+                </div>
+                <div style="display: flex; align-items: center; gap: 8px; font-size: 11.5px;">
+                  <span style="color: #15803d; font-weight: 600; background: rgba(34, 197, 94, 0.1); padding: 1px 6px; border-radius: 4px;">
+                    Còn: ${remVal} ${unitStr}
+                  </span>
+                  <span style="color: #b91c1c; font-weight: 600; background: rgba(239, 68, 68, 0.1); padding: 1px 6px; border-radius: 4px;">
+                    Đã bán: ${consVal} ${unitStr}
+                  </span>
+                </div>
+                ${item.locationAddress ? `<div style="color: #64748b; font-size: 11px;">${escapeHtml(item.locationAddress)}</div>` : ""}
+              </div>
+            `;
+          }).join("");
         } else {
           locationSummaryCard.style.display = "none";
         }
@@ -2846,12 +3269,20 @@
                 </div>
                 <div class="tree-level-grid">
                   ${(lvl.lots || []).map((lotItem) => {
-                    const isMerge = lotItem.relationType === "MERGE";
-                    const badgeClass = isMerge ? "tree-badge-merge" : "tree-badge-split";
-                    const badgeText = isMerge ? "Gộp (MERGE - Đa nguồn)" : "Tách (SPLIT)";
-                    const remKg = lotItem.remainingQuantity !== null && lotItem.remainingQuantity !== undefined
-                      ? `${Number(lotItem.remainingQuantity).toFixed(2)} ${escapeHtml(lotItem.productUnit || "kg")}`
+                    const isMultiMerge = lotItem.relationType === "MERGE" || lotItem.isMultiSourceMerge === true || (Array.isArray(lotItem.mergedSources) && lotItem.mergedSources.length >= 2);
+                    const isMerge = lotItem.relationType === "MERGE" || isMultiMerge;
+                    const badgeClass = isMultiMerge ? "tree-badge-merge" : (isMerge ? "tree-badge-merge" : "tree-badge-split");
+                    const badgeText = isMultiMerge
+                      ? `Gộp đa nguồn (${lotItem.sourcesCount || (lotItem.mergedSources ? lotItem.mergedSources.length : 2)})`
+                      : (isMerge ? "Gộp (MERGE - Đa nguồn)" : "Tách (SPLIT)");
+                    const unitStr = escapeHtml(lotItem.productUnit || "kg");
+                    const remKg = (lotItem.remainingQuantity !== null && lotItem.remainingQuantity !== undefined && !isNaN(Number(lotItem.remainingQuantity)))
+                      ? `${Number(lotItem.remainingQuantity).toFixed(2)} ${unitStr}`
                       : "--";
+                    let consKg = "--";
+                    if (lotItem.consumedQuantity !== null && lotItem.consumedQuantity !== undefined && !isNaN(Number(lotItem.consumedQuantity))) {
+                      consKg = `${Number(lotItem.consumedQuantity).toFixed(2)} ${unitStr}`;
+                    }
 
                     return `
                       <div class="tree-lot-card">
@@ -2863,10 +3294,13 @@
                           <div style="font-size: 14.5px; font-weight: 700; color: var(--color-text-main); margin-top: 6px;">
                             ${escapeHtml(lotItem.productName || lotItem.name || "Lô hậu duệ")}
                           </div>
-                          <div style="font-size: 12.5px; color: var(--color-text-muted); margin-top: 4px; display: flex; flex-direction: column; gap: 2px;">
-                            <div><strong>Tổ chức:</strong> ${escapeHtml(lotItem.organizationName || lotItem.organizationId || "--")}</div>
-                            <div><strong>Vị trí kho:</strong> <span style="color: #1e40af; font-weight: 600;">${escapeHtml(lotItem.locationName || "--")}</span></div>
-                            <div><strong>Tồn kho:</strong> <span style="font-weight: 700; color: #b91c1c;">${remKg}</span></div>
+                          <div style="font-size: 12.5px; color: var(--color-text-muted); margin-top: 4px; display: flex; flex-direction: column; gap: 3px;">
+                            <div><strong>Tổ chức:</strong> ${escapeHtml(lotItem.organizationName || lotItem.organizationId || "Chưa xác định")}</div>
+                            <div><strong>Vị trí kho:</strong> <span style="color: #1e40af; font-weight: 600;">${escapeHtml(lotItem.locationName || "Chưa xác định")}</span></div>
+                            <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                              <span><strong>Còn thu hồi:</strong> <span style="font-weight: 700; color: #15803d;">${remKg}</span></span>
+                              <span><strong>Đã bán:</strong> <span style="font-weight: 700; color: #b91c1c;">${consKg}</span></span>
+                            </div>
                             ${lotItem.quantity ? `<div><strong>Khối lượng chuyển:</strong> ${Number(lotItem.quantity).toFixed(2)} kg</div>` : ""}
                             ${lotItem.path ? `<div style="font-size: 11px; font-family: monospace; color: #64748b; margin-top: 2px;">Nguồn: ${escapeHtml(lotItem.path.join(" ➔ "))}</div>` : ""}
                           </div>
@@ -2887,63 +3321,177 @@
         }
       }
 
-      // 3. Bảng khoanh vùng thu hồi (Recall Quarantine Table)
+      // 3. Bảng khoanh vùng thu hồi (Recall Quarantine Table - Story S-35 / N2-103)
+      // NFR: Nhóm theo tổ chức để mỗi bên xem được phần của mình
       const recallTbody = document.getElementById("recallTableBody");
+      const orgFilter = document.getElementById("recallOrgFilter");
+
       if (recallTbody) {
         if (descendants.length === 0) {
           recallTbody.innerHTML = `
             <tr>
-              <td colspan="9" style="text-align: center; padding: 24px; color: var(--color-text-muted);">
+              <td colspan="11" style="text-align: center; padding: 24px; color: var(--color-text-muted);">
                 Không có lô hậu duệ nào cần khoanh vùng thu hồi.
               </td>
             </tr>
           `;
+          if (orgFilter) {
+            orgFilter.innerHTML = '<option value="ALL">Tất cả tổ chức (0 lô)</option>';
+            orgFilter.disabled = true;
+          }
         } else {
-          recallTbody.innerHTML = descendants.map((d) => {
-            const isMerge = d.relationType === "MERGE";
-            const badgeClass = isMerge ? "tree-badge-merge" : "tree-badge-split";
-            const badgeText = isMerge ? "GỘP (Đa nguồn)" : "TÁCH LÔ";
-            const remKg = d.remainingQuantity !== null && d.remainingQuantity !== undefined
-              ? `${Number(d.remainingQuantity).toFixed(2)} ${escapeHtml(d.productUnit || "kg")}`
-              : "--";
+          // Nhóm các lô theo tổ chức
+          const orgGroupsMap = new Map();
+          descendants.forEach((d) => {
+            const orgKey = d.organizationId || d.organizationName || "UNKNOWN_ORG";
+            const orgName = d.organizationName || d.organizationId || "Chưa xác định";
+            if (!orgGroupsMap.has(orgKey)) {
+              orgGroupsMap.set(orgKey, {
+                orgKey,
+                orgName,
+                lots: [],
+                totalRemaining: 0,
+                totalConsumed: 0,
+                hasKnownRem: false,
+                hasKnownCons: false,
+              });
+            }
+            const grp = orgGroupsMap.get(orgKey);
+            grp.lots.push(d);
+            if (d.remainingQuantity !== null && d.remainingQuantity !== undefined && !isNaN(Number(d.remainingQuantity))) {
+              grp.totalRemaining += Number(d.remainingQuantity);
+              grp.hasKnownRem = true;
+            }
+            if (d.consumedQuantity !== null && d.consumedQuantity !== undefined && !isNaN(Number(d.consumedQuantity))) {
+              grp.totalConsumed += Number(d.consumedQuantity);
+              grp.hasKnownCons = true;
+            }
+          });
 
-            return `
-              <tr>
-                <td style="font-family: monospace; font-weight: 800; color: var(--color-primary);">
-                  ${escapeHtml(d.id)}
-                </td>
-                <td style="font-weight: 600;">
-                  ${escapeHtml(d.productName || d.name || d.id)}
-                </td>
-                <td>
-                  <span class="${badgeClass}">${badgeText}</span>
-                </td>
-                <td>
-                  <span style="font-weight: 700; color: #475569;">Tầng ${d.distance || 1}</span>
-                </td>
-                <td>
-                  <span style="font-weight: 600; color: var(--color-text-main);">${escapeHtml(d.organizationName || d.organizationId || "--")}</span>
-                </td>
-                <td>
-                  <div style="font-weight: 600; color: #1e40af;">${escapeHtml(d.locationName || "--")}</div>
-                  ${d.locationAddress ? `<div style="font-size: 11px; color: #64748b;">${escapeHtml(d.locationAddress)}</div>` : ""}
-                </td>
-                <td>
-                  <span class="status-pill ${d.status === 'Đã thu hoạch' || d.status === 'Đã nhập kho' ? 'success' : 'warning'}" style="font-size: 11px;">
-                    ${escapeHtml(d.status || "Đang lưu kho")}
+          // Điền dữ liệu vào bộ lọc tổ chức
+          if (orgFilter) {
+            orgFilter.disabled = false;
+            orgFilter.innerHTML = `<option value="ALL">Tất cả tổ chức (${descendants.length} lô)</option>` +
+              Array.from(orgGroupsMap.values()).map(g =>
+                `<option value="${escapeHtml(g.orgKey)}">${escapeHtml(g.orgName)} (${g.lots.length} lô)</option>`
+              ).join("");
+
+            orgFilter.onchange = () => {
+              const selected = orgFilter.value;
+              const allOrgRows = recallTbody.querySelectorAll(".org-group-row");
+              allOrgRows.forEach(row => {
+                if (selected === "ALL" || row.dataset.orgKey === selected) {
+                  row.style.display = "";
+                } else {
+                  row.style.display = "none";
+                }
+              });
+            };
+          }
+
+          // Kết xuất bảng chia nhóm theo tổ chức
+          let tableHtml = "";
+          orgGroupsMap.forEach((grp) => {
+            const remStr = grp.hasKnownRem ? `${grp.totalRemaining.toFixed(2)} kg` : "--";
+            const consStr = grp.hasKnownCons ? `${grp.totalConsumed.toFixed(2)} kg` : "--";
+
+            // Hàng tiêu đề nhóm tổ chức
+            tableHtml += `
+              <tr class="org-group-row org-group-header" data-org-key="${escapeHtml(grp.orgKey)}" style="background: #f1f5f9; border-top: 2px solid #cbd5e1; font-weight: 700; color: #1e293b;">
+                <td colspan="11" style="padding: 10px 14px;">
+                  <span style="font-size: 14px;">🏢</span> <strong>Tổ chức: ${escapeHtml(grp.orgName)}</strong>
+                  <span style="font-weight: 500; font-size: 12px; color: #64748b; margin-left: 10px;">
+                    (${grp.lots.length} lô liên đới | Còn thu hồi: <strong style="color: #15803d;">${remStr}</strong> | Đã ra thị trường: <strong style="color: #b91c1c;">${consStr}</strong>)
                   </span>
-                </td>
-                <td style="font-weight: 700; color: #b91c1c;">
-                  ${remKg}
-                </td>
-                <td style="text-align: right;">
-                  <a href="/lot-detail.html?id=${encodeURIComponent(d.id)}" class="btn btn-secondary" style="font-size: 11.5px; padding: 4px 10px; height: auto;">
-                    Xem lô
-                  </a>
                 </td>
               </tr>
             `;
-          }).join("");
+
+            // Danh sách các lô của tổ chức
+            grp.lots.forEach((d) => {
+              const isMultiMerge = d.relationType === "MERGE" || d.isMultiSourceMerge === true || (Array.isArray(d.mergedSources) && d.mergedSources.length >= 2);
+              const isMerge = d.relationType === "MERGE" || isMultiMerge;
+
+              let badgeHtml = "";
+              if (isMultiMerge) {
+                const sourcesTooltip = Array.isArray(d.mergedSources) && d.mergedSources.length > 0
+                  ? d.mergedSources.map((s) => `${s.parentBatchId || s.id} (${s.quantity ? s.quantity + 'kg' : ''})`).join(", ")
+                  : "Nhiều nguồn cha";
+                badgeHtml = `
+                  <span class="tree-badge-merge" style="background: #ede9fe; color: #6d28d9; border: 1px solid #c4b5fd; font-weight: 700; display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 6px; cursor: help;" title="Lô gộp từ các nguồn: ${escapeHtml(sourcesTooltip)}">
+                    <span>🔀</span>
+                    <span>Gộp đa nguồn (${d.sourcesCount || (d.mergedSources ? d.mergedSources.length : 2)})</span>
+                  </span>
+                `;
+              } else if (isMerge) {
+                badgeHtml = `<span class="tree-badge-merge">GỘP LÔ</span>`;
+              } else {
+                badgeHtml = `<span class="tree-badge-split">TÁCH LÔ</span>`;
+              }
+
+              const unit = escapeHtml(d.productUnit || "kg");
+              const initKg = (d.initialQuantity !== null && d.initialQuantity !== undefined && !isNaN(Number(d.initialQuantity)))
+                ? `${Number(d.initialQuantity).toFixed(2)} ${unit}`
+                : "--";
+              const remKg = (d.remainingQuantity !== null && d.remainingQuantity !== undefined && !isNaN(Number(d.remainingQuantity)))
+                ? `${Number(d.remainingQuantity).toFixed(2)} ${unit}`
+                : "--";
+
+              let consKg = "--";
+              if (d.consumedQuantity !== null && d.consumedQuantity !== undefined && !isNaN(Number(d.consumedQuantity))) {
+                consKg = `${Number(d.consumedQuantity).toFixed(2)} ${unit}`;
+              }
+
+              const isSoldOut = d.status === "Đã bán hết" || (d.remainingQuantity !== null && Number(d.remainingQuantity) === 0);
+              const statusClass = (d.status === "Có sự cố") ? "danger" : (isSoldOut ? "warning" : (d.status ? "success" : "neutral"));
+              const statusText = d.status || (isSoldOut ? "Đã bán hết" : "--");
+
+              tableHtml += `
+                <tr class="org-group-row" data-org-key="${escapeHtml(grp.orgKey)}">
+                  <td style="font-family: monospace; font-weight: 800; color: var(--color-primary);">
+                    ${escapeHtml(d.id)}
+                  </td>
+                  <td style="font-weight: 600;">
+                    ${escapeHtml(d.productName || d.name || d.id)}
+                  </td>
+                  <td>
+                    ${badgeHtml}
+                  </td>
+                  <td>
+                    <span style="font-weight: 700; color: #475569;">Tầng ${d.distance || d.level || 1}</span>
+                  </td>
+                  <td>
+                    <span style="font-weight: 600; color: var(--color-text-main);">${escapeHtml(d.organizationName || d.organizationId || "Chưa xác định")}</span>
+                  </td>
+                  <td>
+                    <div style="font-weight: 600; color: #1e40af;">📍 ${escapeHtml(d.locationName || "Chưa xác định")}</div>
+                    ${d.locationAddress ? `<div style="font-size: 11px; color: #64748b;">${escapeHtml(d.locationAddress)}</div>` : ""}
+                  </td>
+                  <td>
+                    <span class="status-pill ${statusClass}" style="font-size: 11px;">
+                      ${escapeHtml(statusText)}
+                    </span>
+                  </td>
+                  <td style="text-align: right; font-weight: 600; color: #475569;">
+                    ${initKg}
+                  </td>
+                  <td style="text-align: right; font-weight: 700; color: #15803d; background: rgba(34, 197, 94, 0.03);">
+                    ${remKg}
+                  </td>
+                  <td style="text-align: right; font-weight: 700; color: #b91c1c; background: rgba(239, 68, 68, 0.03);">
+                    ${consKg}
+                  </td>
+                  <td style="text-align: right;">
+                    <a href="/lot-detail.html?id=${encodeURIComponent(d.id)}" class="btn btn-secondary" style="font-size: 11.5px; padding: 4px 10px; height: auto;">
+                      Xem lô
+                    </a>
+                  </td>
+                </tr>
+              `;
+            });
+          });
+
+          recallTbody.innerHTML = tableHtml;
         }
       }
     }
@@ -2960,6 +3508,7 @@
         { key: "timeline", btnId: "tabBtnTimeline", paneId: "tabPaneTimeline" },
         { key: "lineage", btnId: "tabBtnLineage", paneId: "tabPaneLineage" },
         { key: "genealogy", btnId: "tabBtnGenealogy", paneId: "tabPaneGenealogy" },
+        { key: "map", btnId: "tabBtnMap", paneId: "tabPaneMap" },
       ];
 
       tabs.forEach((t) => {
@@ -2980,8 +3529,228 @@
           loadGenealogyTree(lotData.id);
         }
       }
+      if (tabKey === "map" && lotData && lotData.id) {
+        loadDetailMap(lotData.id);
+      }
     }
     window.switchLotTab = switchLotTab;
+
+    let lotDetailTraceMapInstance = null;
+    let lotDetailMapLoadedId = null;
+
+    async function loadDetailMap(targetId) {
+      if (!targetId) return;
+
+      const openPublicBtn = document.getElementById("btnOpenPublicMapTab");
+      if (openPublicBtn) {
+        openPublicBtn.href = `/public-trace.html?code=${encodeURIComponent(targetId)}`;
+      }
+
+      const canvasEl = document.getElementById("lotDetailMapCanvas");
+      if (!canvasEl) return;
+
+      if (lotDetailMapLoadedId === targetId && lotDetailTraceMapInstance) {
+        setTimeout(() => {
+          if (lotDetailTraceMapInstance && lotDetailTraceMapInstance.map) {
+            lotDetailTraceMapInstance.map.resize();
+          }
+        }, 150);
+        return;
+      }
+
+      try {
+        if (!lotDetailTraceMapInstance) {
+          lotDetailTraceMapInstance = new PublicTraceMap({
+            containerId: "lotDetailMapCanvas",
+            timelineContainerId: "lotDetailMapTimeline",
+            apiUrl: "/api/public/lots",
+            onMapClick: (pt) => {
+              const coordsInput = document.getElementById("inputCustomCoords");
+              if (coordsInput) coordsInput.value = `${pt.lat.toFixed(4)}, ${pt.lng.toFixed(4)}`;
+            }
+          });
+          window.__lotDetailTraceMap = lotDetailTraceMapInstance;
+        }
+
+        await lotDetailTraceMapInstance.loadAndRender(targetId);
+        lotDetailMapLoadedId = targetId;
+
+        setTimeout(() => {
+          if (lotDetailTraceMapInstance && lotDetailTraceMapInstance.map) {
+            lotDetailTraceMapInstance.map.resize();
+          }
+        }, 200);
+      } catch (err) {
+        console.error("Lỗi nạp bản đồ hành trình chi tiết:", err);
+      }
+    }
+    window.loadDetailMap = loadDetailMap;
+
+    function applyPresetCoordinate(type, name, coords) {
+      const typeEl = document.getElementById("inputCustomType");
+      const nameEl = document.getElementById("inputCustomName");
+      const coordsEl = document.getElementById("inputCustomCoords");
+      if (typeEl) typeEl.value = type;
+      if (nameEl) nameEl.value = name;
+      if (coordsEl) coordsEl.value = coords;
+      handlePreviewCustomCoordinate();
+    }
+    window.applyPresetCoordinate = applyPresetCoordinate;
+
+    function handlePreviewCustomCoordinate() {
+      const coordsInput = document.getElementById("inputCustomCoords");
+      const nameInput = document.getElementById("inputCustomName");
+      const typeInput = document.getElementById("inputCustomType");
+      const alertEl = document.getElementById("customCoordStatusAlert");
+
+      const coordsStr = coordsInput ? coordsInput.value.trim() : "";
+      if (!coordsStr) {
+        if (alertEl) {
+          alertEl.style.display = "block";
+          alertEl.style.background = "#fef2f2";
+          alertEl.style.color = "#991b1b";
+          alertEl.textContent = "Vui lòng nhập tọa độ (Vĩ độ, Kinh độ, ví dụ: 21.5750, 105.6905).";
+        }
+        return;
+      }
+
+      if (!lotDetailTraceMapInstance) {
+        lotDetailTraceMapInstance = new PublicTraceMap({
+          containerId: "lotDetailMapCanvas",
+          timelineContainerId: "lotDetailMapTimeline",
+          apiUrl: "/api/public/lots",
+          onMapClick: (pt) => {
+            if (coordsInput) coordsInput.value = `${pt.lat.toFixed(4)}, ${pt.lng.toFixed(4)}`;
+          }
+        });
+        window.__lotDetailTraceMap = lotDetailTraceMapInstance;
+      } else {
+        lotDetailTraceMapInstance.onMapClick = (pt) => {
+          if (coordsInput) coordsInput.value = `${pt.lat.toFixed(4)}, ${pt.lng.toFixed(4)}`;
+        };
+      }
+
+      const success = lotDetailTraceMapInstance.applyCustomCoordinates({
+        coordinates: coordsStr,
+        name: nameInput ? nameInput.value.trim() : "",
+        type: typeInput ? typeInput.value : "farm"
+      });
+
+      if (alertEl) {
+        if (success) {
+          alertEl.style.display = "block";
+          alertEl.style.background = "#dcfce7";
+          alertEl.style.color = "#15803d";
+          alertEl.innerHTML = "✔ <strong>Đã ghim lên bản đồ!</strong> Bấm 'Lưu vào hệ thống' để lưu vĩnh viễn.";
+        } else {
+          alertEl.style.display = "block";
+          alertEl.style.background = "#fef2f2";
+          alertEl.style.color = "#991b1b";
+          alertEl.textContent = "Định dạng tọa độ không hợp lệ. Vui lòng nhập: Vĩ độ, Kinh độ (VD: 21.5750, 105.6905).";
+        }
+      }
+    }
+    window.handlePreviewCustomCoordinate = handlePreviewCustomCoordinate;
+
+    async function handleSaveCustomCoordinate() {
+      const coordsInput = document.getElementById("inputCustomCoords");
+      const nameInput = document.getElementById("inputCustomName");
+      const typeInput = document.getElementById("inputCustomType");
+      const alertEl = document.getElementById("customCoordStatusAlert");
+
+      const coordsStr = coordsInput ? coordsInput.value.trim() : "";
+      if (!coordsStr) {
+        if (alertEl) {
+          alertEl.style.display = "block";
+          alertEl.style.background = "#fef2f2";
+          alertEl.style.color = "#991b1b";
+          alertEl.textContent = "Vui lòng nhập tọa độ trước khi lưu.";
+        }
+        return;
+      }
+
+      const currentLotId = lotData ? lotData.id : null;
+      if (!currentLotId) return;
+
+      try {
+        if (alertEl) {
+          alertEl.style.display = "block";
+          alertEl.style.background = "#e0f2fe";
+          alertEl.style.color = "#0369a1";
+          alertEl.textContent = "Đang lưu tọa độ vào hệ thống...";
+        }
+
+        const res = await fetch(`/api/lots/${encodeURIComponent(currentLotId)}/coordinates`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          credentials: "same-origin",
+          body: JSON.stringify({
+            coordinates: coordsStr,
+            name: nameInput ? nameInput.value.trim() : "",
+            type: typeInput ? typeInput.value : "farm"
+          })
+        });
+
+        const resData = await res.json();
+        if (!res.ok) {
+          throw new Error(resData.message || "Không thể lưu tọa độ.");
+        }
+
+        if (alertEl) {
+          alertEl.style.display = "block";
+          alertEl.style.background = "#dcfce7";
+          alertEl.style.color = "#15803d";
+          alertEl.innerHTML = "🎉 <strong>Lưu tọa độ thành công!</strong> Vị trí đã được cập nhật cho cả hệ thống quản lý và trang truy xuất công khai.";
+        }
+
+        if (lotDetailTraceMapInstance && resData.mapData) {
+          lotDetailTraceMapInstance.render(resData.mapData);
+        } else {
+          await loadDetailMap(currentLotId);
+        }
+      } catch (err) {
+        if (alertEl) {
+          alertEl.style.display = "block";
+          alertEl.style.background = "#fef2f2";
+          alertEl.style.color = "#991b1b";
+          alertEl.textContent = err.message || "Lỗi lưu tọa độ.";
+        }
+      }
+    }
+    window.handleSaveCustomCoordinate = handleSaveCustomCoordinate;
+
+    function handleGetDeviceLocation() {
+      const coordsInput = document.getElementById("inputCustomCoords");
+      const alertEl = document.getElementById("customCoordStatusAlert");
+      if (!navigator.geolocation) {
+        alert("Trình duyệt không hỗ trợ Geolocation GPS.");
+        return;
+      }
+      if (alertEl) {
+        alertEl.style.display = "block";
+        alertEl.style.background = "#e0f2fe";
+        alertEl.style.color = "#0369a1";
+        alertEl.textContent = "Đang lấy tọa độ GPS từ thiết bị của bạn...";
+      }
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          const lat = pos.coords.latitude.toFixed(4);
+          const lng = pos.coords.longitude.toFixed(4);
+          if (coordsInput) coordsInput.value = `${lat}, ${lng}`;
+          handlePreviewCustomCoordinate();
+        },
+        (err) => {
+          if (alertEl) {
+            alertEl.style.display = "block";
+            alertEl.style.background = "#fef2f2";
+            alertEl.style.color = "#991b1b";
+            alertEl.textContent = `Không lấy được GPS (${err.message}). Bạn có thể tự gõ tọa độ hoặc chọn gợi ý.`;
+          }
+        },
+        { enableHighAccuracy: true, timeout: 8000 }
+      );
+    }
+    window.handleGetDeviceLocation = handleGetDeviceLocation;
 
     async function loadGenealogyTree(targetId) {
       if (!targetId) return;
@@ -3716,6 +4485,16 @@
       document.getElementById("confirmLotTitle").textContent = lotName || lotId;
       document.getElementById("confirmLotId").textContent = lotId;
       if (alertBox) { alertBox.style.display = "none"; alertBox.textContent = ""; }
+
+      // Cảnh báo vi phạm nhiệt độ chuỗi lạnh trước khi xác nhận (S-45 / N2-279)
+      const violWarningEl = document.getElementById("confirmModalViolationWarning");
+      const currentLotHasViolation = Boolean(
+        (lotData && lotData.hasTemperatureViolation) ||
+        (lotEvents && lotEvents.some((e) => e.eventType === "TEMPERATURE_VIOLATION"))
+      );
+      if (violWarningEl) {
+        violWarningEl.style.display = currentLotHasViolation ? "block" : "none";
+      }
 
       pendingDetailConfirmAction = { transferId, lotId, lotName };
       modal.style.display = "flex";
@@ -4601,11 +5380,173 @@
       }
     }
 
+    let targetRecallLot = null;
+
+    function openRecallModalHandler(lot) {
+      targetRecallLot = lot;
+      const modal = document.getElementById("openRecallModal");
+      const alertBox = document.getElementById("recallModalAlert");
+      const titleEl = document.getElementById("recallModalLotTitle");
+      const idEl = document.getElementById("recallModalLotId");
+      const reasonInput = document.getElementById("recallReason");
+      const severityInput = document.getElementById("recallSeverity");
+
+      if (alertBox) {
+        alertBox.style.display = "none";
+        alertBox.textContent = "";
+      }
+      if (titleEl) titleEl.textContent = lot.name || lot.productName || "Lô nông sản";
+      if (idEl) idEl.textContent = lot.id;
+      if (reasonInput) reasonInput.value = "";
+      if (severityInput) severityInput.value = "HIGH";
+
+      if (modal) modal.style.display = "flex";
+    }
+
+    function closeRecallModal() {
+      const modal = document.getElementById("openRecallModal");
+      if (modal) modal.style.display = "none";
+      targetRecallLot = null;
+    }
+
+    function setupRecallModalListeners() {
+      const btnClose = document.getElementById("btnCloseRecallModal");
+      const btnCancel = document.getElementById("btnCancelRecall");
+      const form = document.getElementById("openRecallForm");
+      const btnSubmit = document.getElementById("btnSubmitRecall");
+      const alertBox = document.getElementById("recallModalAlert");
+
+      if (btnClose) btnClose.addEventListener("click", closeRecallModal);
+      if (btnCancel) btnCancel.addEventListener("click", closeRecallModal);
+
+      if (form) {
+        form.addEventListener("submit", async (e) => {
+          e.preventDefault();
+          if (!targetRecallLot) return;
+
+          const lotId = targetRecallLot.id;
+          const reason = document.getElementById("recallReason") ? document.getElementById("recallReason").value.trim() : "";
+          const severity = document.getElementById("recallSeverity") ? document.getElementById("recallSeverity").value : "HIGH";
+
+          if (!reason) {
+            if (alertBox) {
+              alertBox.className = "alert alert-danger";
+              alertBox.style.display = "block";
+              alertBox.textContent = "Vui lòng nhập lý do mở lệnh thu hồi.";
+            }
+            return;
+          }
+
+          if (btnSubmit) {
+            btnSubmit.disabled = true;
+            btnSubmit.innerHTML = `
+              <svg class="spin" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 2a10 10 0 0 1 10 10"/></svg>
+              <span>Đang mở lệnh...</span>
+            `;
+          }
+
+          try {
+            const res = await fetch("/api/recalls", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              credentials: "same-origin",
+              body: JSON.stringify({
+                lotId,
+                reason,
+                severity,
+              }),
+            });
+
+            const data = await res.json();
+            if (!res.ok) {
+              throw new Error(data.message || data.error || "Không thể mở lệnh thu hồi.");
+            }
+
+            closeRecallModal();
+
+            if (typeof window.showToast === "function") {
+              window.showToast(`Đã mở lệnh thu hồi ${data.recallOrder ? data.recallOrder.id : ''}! Trạng thái lô đã chuyển sang "Có sự cố".`, "success");
+            } else {
+              alert(`Thành công: Đã mở lệnh thu hồi ${data.recallOrder ? data.recallOrder.id : ''}!`);
+            }
+
+            await loadLotDetail(lotId);
+            // Tự động kích hoạt hiển thị hậu duệ thu hồi
+            executeTraceForward(lotId);
+          } catch (err) {
+            if (alertBox) {
+              alertBox.className = "alert alert-danger";
+              alertBox.style.display = "block";
+              alertBox.textContent = err.message || "Lỗi khi mở lệnh thu hồi.";
+            }
+          } finally {
+            if (btnSubmit) {
+              btnSubmit.disabled = false;
+              btnSubmit.innerHTML = "<span>Xác nhận Mở lệnh thu hồi</span>";
+            }
+          }
+        });
+      }
+    }
+
+    // --- S-46: Tải mã QR truy xuất nguồn gốc (PNG / SVG) ---
+    async function downloadLotQr(format) {
+      const urlParams = new URLSearchParams(window.location.search);
+      const lotId = urlParams.get("id") || (lotData && lotData.id);
+
+      if (!lotId) {
+        alert("Không tìm thấy thông tin lô hàng để tải mã QR!");
+        return;
+      }
+
+      const btnId = format === "svg" ? "btnDownloadQrSvg" : "btnDownloadQrPng";
+      const btn = document.getElementById(btnId);
+      const originalHtml = btn ? btn.innerHTML : "";
+
+      if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = `<span>Đang tạo QR...</span>`;
+      }
+
+      try {
+        const apiUrl = `/api/lots/qrcode/${encodeURIComponent(lotId)}?format=${encodeURIComponent(format)}`;
+        const res = await fetch(apiUrl, { credentials: "same-origin" });
+
+        if (!res.ok) {
+          let errMsg = `Không thể tải mã QR (${res.status})`;
+          try {
+            const errJson = await res.json();
+            if (errJson && errJson.message) errMsg = errJson.message;
+          } catch (_) {}
+          alert(`Lỗi: ${errMsg}`);
+          return;
+        }
+
+        const blob = await res.blob();
+        const blobUrl = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = blobUrl;
+        a.download = `QR_${lotId}.${format}`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
+      } catch (err) {
+        alert(`Lỗi khi tải mã QR: ${err.message}`);
+      } finally {
+        if (btn) {
+          btn.disabled = false;
+          btn.innerHTML = originalHtml;
+        }
+      }
+    }
+
     setupTransferModalListeners();
     setupSplitModalListeners();
     setupMergeModalListeners();
     setupConsumeModalListeners();
     setupLocationModalListeners();
+    setupRecallModalListeners();
     initPage();
   </script>
 </body>

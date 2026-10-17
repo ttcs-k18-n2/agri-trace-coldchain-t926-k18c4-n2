@@ -23,6 +23,7 @@ const {
   fetchAllLotsRaw,
 } = require("./lot_access");
 const { seedS22InMemory } = require("../scripts/seed_s22");
+const { seedS39InMemory } = require("../scripts/seed_s39");
 const { markOverdueTransfers, startTransferOverdueJob } = require("./transfer_overdue_job");
 const {
   isValidQuantity,
@@ -33,6 +34,28 @@ const {
   validateMergeItems,
 } = require("./quantity");
 const { traceLotOrigins, traceLotDescendants, CycleDetectedError } = require("./lot_genealogy");
+const { getPublicLotMapData } = require("./public_trace_map");
+
+const publicMapRateLimitMap = new Map();
+function checkPublicMapRateLimit(ip) {
+  const now = Date.now();
+  const windowMs = 60 * 1000;
+  const maxRequests = 120;
+  const record = publicMapRateLimitMap.get(ip) || { count: 0, resetTime: now + windowMs };
+  if (now > record.resetTime) {
+    record.count = 1;
+    record.resetTime = now + windowMs;
+  } else {
+    record.count++;
+  }
+  publicMapRateLimitMap.set(ip, record);
+  if (publicMapRateLimitMap.size > 10000) {
+    for (const [k, v] of publicMapRateLimitMap.entries()) {
+      if (now > v.resetTime) publicMapRateLimitMap.delete(k);
+    }
+  }
+  return record.count <= maxRequests;
+}
 const {
   validateProductsCsv,
   validateFarmsCsv,
@@ -49,6 +72,29 @@ const {
   recordAuditLog,
   getAuditLogs,
 } = require("./audit_logger");
+const {
+  inMemoryShipments,
+  inMemoryShipmentLots,
+  inMemoryShipmentTemperatures,
+  createShipment,
+  completeShipment,
+  getShipments,
+  getShipmentById,
+  getActiveShipmentForLot,
+  recordShipmentTemperature,
+  getShipmentTemperatures,
+} = require("./shipment_service");
+const {
+  getRecallOrderWithLiveDescendants,
+  checkLotRecallStatus,
+} = require("./recall_service");
+const {
+  handleAcceptedTemperatureReading,
+  getViolations,
+  getShipmentViolations,
+  getColdBoxViolations,
+  ColdChainViolationDetector,
+} = require("./cold_chain_violation_service");
 const app = express();
 const PORT = Number(process.env.PORT || 3000);
 
@@ -120,9 +166,9 @@ const inMemoryOrgs = [
 ];
 
 const inMemoryProducts = [
-  { id: "PROD-TOMATO", name: "Cà chua", unit: "kg" },
-  { id: "PROD-TEA", name: "Chè", unit: "kg" },
-  { id: "PROD-VEGETABLE", name: "Rau cải", unit: "kg" },
+  { id: "PROD-TOMATO", name: "Cà chua", unit: "kg", tempMin: 2.0, tempMax: 8.0, delayMinutes: 30, temp_min: 2.0, temp_max: 8.0, delay_minutes: 30 },
+  { id: "PROD-TEA", name: "Chè", unit: "kg", tempMin: 5.0, tempMax: 12.0, delayMinutes: 45, temp_min: 5.0, temp_max: 12.0, delay_minutes: 45 },
+  { id: "PROD-VEGETABLE", name: "Rau cải", unit: "kg", tempMin: 1.0, tempMax: 6.0, delayMinutes: 20, temp_min: 1.0, temp_max: 6.0, delay_minutes: 20 },
 ];
 const inMemoryFarms = [
   { id: "FARM-001", name: "Thửa đồi chè La Bằng 01", area: 2.5, coordinates: "21.5645, 105.6789", organizationId: "org-001" },
@@ -130,11 +176,11 @@ const inMemoryFarms = [
   { id: "FARM-101", name: "Thửa rau cải Yên Dũng 01", area: 3.0, coordinates: "21.2341, 106.1892", organizationId: "org-002" },
 ];
 const inMemoryLots = [
-  { id: "LOT-001", name: "Lô cà chua Thái Nguyên", status: "Đã thu hoạch", organizationId: "org-001", farmId: "FARM-002", productId: "PROD-TOMATO", initialQuantity: 500, remainingQuantity: 500, harvestedAt: "2026-09-25", parentLotId: null },
-  { id: "LOT-002", name: "Lô chè Tân Cương", status: "Đã thu hoạch", organizationId: "org-001", farmId: "FARM-001", productId: "PROD-TEA", initialQuantity: 120, remainingQuantity: 120, harvestedAt: "2026-09-26", parentLotId: null },
-  { id: "LOT-101", name: "Lô rau cải Bắc Giang", status: "Đã thu hoạch", organizationId: "org-002", farmId: "FARM-101", productId: "PROD-VEGETABLE", initialQuantity: 300, remainingQuantity: 300, harvestedAt: "2026-09-27", parentLotId: null },
+  { id: "LOT-001", name: "Lô cà chua Thái Nguyên", status: "Đã thu hoạch", organizationId: "org-001", farmId: "FARM-002", productId: "PROD-TOMATO", initialQuantity: 500, remainingQuantity: 500, harvestedAt: "2026-09-25", parentLotId: null, locationId: "LOC-WH-TN-01" },
+  { id: "LOT-002", name: "Lô chè Tân Cương", status: "Đã thu hoạch", organizationId: "org-001", farmId: "FARM-001", productId: "PROD-TEA", initialQuantity: 120, remainingQuantity: 120, harvestedAt: "2026-09-26", parentLotId: null, locationId: "LOC-WH-TN-01" },
+  { id: "LOT-101", name: "Lô rau cải Bắc Giang", status: "Đã thu hoạch", organizationId: "org-002", farmId: "FARM-101", productId: "PROD-VEGETABLE", initialQuantity: 300, remainingQuantity: 300, harvestedAt: "2026-09-27", parentLotId: null, locationId: "LOC-WH-BG-01" },
   { id: "LOT-102", name: "Lô dưa chuột Hiệp Hòa", status: "Đã thu hoạch", organizationId: "org-002", farmId: null, productId: null, initialQuantity: 250, remainingQuantity: 250, harvestedAt: "2026-09-28", parentLotId: null },
-  { id: "LOT-DIST-01", name: "Lô cà chua phân phối siêu thị", status: "Đã nhập kho", organizationId: "org-dist", farmId: null, productId: "PROD-TOMATO", initialQuantity: 200, remainingQuantity: 200, harvestedAt: "2026-10-01", parentLotId: null },
+  { id: "LOT-DIST-01", name: "Lô cà chua phân phối siêu thị", status: "Đã nhập kho", organizationId: "org-dist", farmId: null, productId: "PROD-TOMATO", initialQuantity: 200, remainingQuantity: 200, harvestedAt: "2026-10-01", parentLotId: null, locationId: "LOC-STORE-HN-01" },
   { id: "LOT-DIST-02", name: "Lô rau cải sạch cửa hàng bán lẻ", status: "Đang lưu kho", organizationId: "org-dist", farmId: null, productId: "PROD-VEGETABLE", initialQuantity: 150, remainingQuantity: 150, harvestedAt: "2026-10-02", parentLotId: null },
 ];
 
@@ -151,6 +197,8 @@ const inMemoryOrganizations = [
 
 const inMemoryTransfers = [];
 const inMemoryBatchRelations = [];
+const inMemoryRecallOrders = [];
+const inMemoryRecallAcknowledgments = [];
 
 async function getPendingTransferForLot(lotId) {
   if (pool) {
@@ -514,7 +562,7 @@ app.use(attachAuthContext);
  * Middleware phân quyền và mặc định từ chối route chưa khai báo quyền (T-11)
  * @param {string[]} allowedRoles - Danh sách vai trò được phép truy cập
  */
-function requirePermission(allowedRoles = []) {
+function requirePermission(allowedRoles = [], options = {}) {
   return (req, res, next) => {
     if (!req.auth || !req.auth.userId) {
       if (req.accepts("html") && !req.accepts("json")) {
@@ -532,17 +580,20 @@ function requirePermission(allowedRoles = []) {
     }
 
     const { roleId, isInspector } = req.auth;
+    const allowInspectorWrite = options.allowInspectorWrite === true;
 
-    // Cán bộ kiểm tra chỉ được đọc (GET / HEAD), không được ghi (POST, PUT, DELETE, PATCH)
-    if (isInspector && ["POST", "PUT", "PATCH", "DELETE"].includes(req.method)) {
+    // Cán bộ kiểm tra chỉ được đọc (GET / HEAD), trừ các thao tác mở/quản lý lệnh thu hồi chuyên biệt (S-33 / S-34)
+    if (isInspector && ["POST", "PUT", "PATCH", "DELETE"].includes(req.method) && !allowInspectorWrite) {
       return res.status(403).json({
         message: "Cán bộ kiểm tra chỉ có quyền đọc dữ liệu, không được phép thực hiện thao tác ghi.",
       });
     }
 
-    // Cán bộ kiểm tra được đọc mọi tổ chức ở các route đọc
-    if (isInspector && ["GET", "HEAD"].includes(req.method)) {
-      return next();
+    // Cán bộ kiểm tra được đọc mọi tổ chức ở các route đọc hoặc route thu hồi được cấp phép
+    if (isInspector && (["GET", "HEAD"].includes(req.method) || allowInspectorWrite)) {
+      if (allowedRoles.includes("inspector")) {
+        return next();
+      }
     }
 
     // Admin hệ thống có toàn quyền
@@ -610,6 +661,86 @@ app.get("/", (req, res) => {
 
 app.get("/health", checkHealth);
 app.get("/api/health", checkHealth);
+
+/**
+ * S-60 (N2-131 / N2-290): API Bản đồ vị trí vùng trồng và điểm phân phối trên trang truy xuất công khai
+ * - Không yêu cầu đăng nhập (Public Consumer API).
+ * - Tái sử dụng traceLotOrigins() để lấy toàn bộ vùng trồng gốc.
+ * - Trích xuất lịch sử TRANSFER_CONFIRMED và LOCATION_CHANGED theo thứ tự thời gian.
+ * - Bảo vệ tọa độ thửa riêng tư theo S-06 (sử dụng danh mục tọa độ đại diện cấp xã).
+ * - Tuyệt đối không trả về số điện thoại, mã định danh người dùng nội bộ, hay dữ liệu nhạy cảm.
+ */
+app.get(
+  ["/api/public/lots/:code/map", "/api/public/lots/:code/public-map"],
+  async (req, res) => {
+    const clientIp = req.ip || req.socket.remoteAddress || "127.0.0.1";
+    if (!checkPublicMapRateLimit(clientIp)) {
+      return res.status(429).json({
+        error: "TOO_MANY_REQUESTS",
+        message: "Quá nhiều yêu cầu truy xuất bản đồ. Vui lòng thử lại sau.",
+      });
+    }
+
+    const rawCode = req.params.code;
+    if (!rawCode || typeof rawCode !== "string") {
+      return res.status(400).json({
+        error: "INVALID_LOT_CODE",
+        message: "Mã lô hàng không hợp lệ.",
+      });
+    }
+
+    const code = rawCode.trim();
+    // Giới hạn độ dài tối đa 50 ký tự và không chứa ký tự độc hại (Issue 33)
+    if (!/^[A-Za-z0-9_-]{1,50}$/.test(code)) {
+      return res.status(400).json({
+        error: "INVALID_LOT_CODE",
+        message: "Mã lô hàng không đúng định dạng (tối đa 50 ký tự, không chứa ký tự đặc biệt).",
+      });
+    }
+
+    try {
+      const mapData = await getPublicLotMapData({
+        pool,
+        lotCode: code.trim(),
+        inMemoryLots,
+        inMemoryBatchRelations,
+        inMemoryBatchEvents,
+        inMemoryOrgs,
+        inMemoryProducts,
+        inMemoryFarms,
+        inMemoryLocations,
+        inMemoryTransfers,
+      });
+
+      return res.status(200).json(mapData);
+    } catch (err) {
+      if (err.statusCode === 404 || err.code === "LOT_NOT_FOUND" || err.message?.includes("Không tìm thấy lô hàng")) {
+        return res.status(404).json({
+          error: "LOT_NOT_FOUND",
+          message: `Không tìm thấy thông tin lô hàng ${code} trên hệ thống truy xuất công khai.`,
+        });
+      }
+      if (err.name === "CycleDetectedError" || err.statusCode === 422) {
+        return res.status(422).json({
+          error: "GENEALOGY_CYCLE_ERROR",
+          message: "Phát hiện sự cố vòng lặp cấu trúc phả hệ trong dữ liệu truy vết.",
+        });
+      }
+      if (err.statusCode === 400 || err.code === "INVALID_LOT_CODE") {
+        return res.status(400).json({
+          error: "INVALID_LOT_CODE",
+          message: "Mã lô hàng không hợp lệ.",
+        });
+      }
+      console.error("[PublicTraceMap Internal Error]:", err);
+      return res.status(err.statusCode || 500).json({
+        error: "INTERNAL_ERROR",
+        message: "Lỗi máy chủ khi truy xuất bản đồ lô hàng. Vui lòng thử lại sau.",
+      });
+    }
+  }
+);
+
 
 app.post("/api/login", async (req, res) => {
   const email = normalizeEmail(req.body.email);
@@ -760,8 +891,19 @@ app.get(
   async (req, res) => {
     if (pool) {
       try {
-        const result = await pool.query("SELECT id, name, unit, created_at FROM products ORDER BY name ASC");
-        return res.status(200).json({ products: result.rows });
+        const result = await pool.query(
+          "SELECT id, name, unit, temp_min, temp_max, delay_minutes, created_at FROM products ORDER BY name ASC"
+        );
+        const products = result.rows.map((r) => ({
+          ...r,
+          temp_min: r.temp_min !== null ? Number(r.temp_min) : null,
+          temp_max: r.temp_max !== null ? Number(r.temp_max) : null,
+          delay_minutes: r.delay_minutes !== null ? Number(r.delay_minutes) : null,
+          tempMin: r.temp_min !== null ? Number(r.temp_min) : null,
+          tempMax: r.temp_max !== null ? Number(r.temp_max) : null,
+          delayMinutes: r.delay_minutes !== null ? Number(r.delay_minutes) : null,
+        }));
+        return res.status(200).json({ products });
       } catch (err) {
         return res.status(500).json({ message: err.message });
       }
@@ -784,19 +926,29 @@ app.get(
     if (pool) {
       try {
         const result = await pool.query(
-          "SELECT id, name, unit, created_at FROM products WHERE id = $1",
+          "SELECT id, name, unit, temp_min, temp_max, delay_minutes, created_at FROM products WHERE id = $1",
           [id]
         );
         if (result.rows.length === 0) {
           return res.status(404).json({ message: "Không tìm thấy sản phẩm." });
         }
+        const r = result.rows[0];
+        const product = {
+          ...r,
+          temp_min: r.temp_min !== null ? Number(r.temp_min) : null,
+          temp_max: r.temp_max !== null ? Number(r.temp_max) : null,
+          delay_minutes: r.delay_minutes !== null ? Number(r.delay_minutes) : null,
+          tempMin: r.temp_min !== null ? Number(r.temp_min) : null,
+          tempMax: r.temp_max !== null ? Number(r.temp_max) : null,
+          delayMinutes: r.delay_minutes !== null ? Number(r.delay_minutes) : null,
+        };
         const lotsCountRes = await pool.query(
           "SELECT COUNT(*)::int as count FROM lots WHERE product_id = $1",
           [id]
         );
         const lotsCount = lotsCountRes.rows[0] ? lotsCountRes.rows[0].count : 0;
         return res.status(200).json({
-          product: result.rows[0],
+          product,
           lotsCount,
         });
       } catch (err) {
@@ -837,6 +989,46 @@ app.post(
 
     const prodId = req.body.id || `PROD-${crypto.randomBytes(4).toString("hex").toUpperCase()}`;
 
+    // Story S-44: Hỗ trợ cấu hình ngưỡng nhiệt độ và độ trễ theo sản phẩm
+    const rawMin = req.body.tempMin !== undefined ? req.body.tempMin : req.body.temp_min;
+    const rawMax = req.body.tempMax !== undefined ? req.body.tempMax : req.body.temp_max;
+    const rawDelay = req.body.delayMinutes !== undefined ? req.body.delayMinutes : req.body.delay_minutes;
+
+    let tempMin = null;
+    let tempMax = null;
+    let delayMinutes = null;
+
+    if (rawMin !== undefined && rawMin !== null && rawMin !== "") {
+      const parsedMin = Number(rawMin);
+      if (!Number.isFinite(parsedMin) || parsedMin < -999.99 || parsedMin > 999.99) {
+        return res.status(400).json({ error: "INVALID_TEMP_MIN", message: "Ngưỡng nhiệt độ dưới phải là số hữu hạn hợp lệ (-999.99 đến 999.99)." });
+      }
+      tempMin = parsedMin;
+    }
+
+    if (rawMax !== undefined && rawMax !== null && rawMax !== "") {
+      const parsedMax = Number(rawMax);
+      if (!Number.isFinite(parsedMax) || parsedMax < -999.99 || parsedMax > 999.99) {
+        return res.status(400).json({ error: "INVALID_TEMP_MAX", message: "Ngưỡng nhiệt độ trên phải là số hữu hạn hợp lệ (-999.99 đến 999.99)." });
+      }
+      tempMax = parsedMax;
+    }
+
+    if (tempMin !== null && tempMax !== null && tempMin >= tempMax) {
+      return res.status(400).json({
+        error: "INVALID_TEMPERATURE_RANGE",
+        message: "Ngưỡng nhiệt độ dưới phải nhỏ hơn ngưỡng nhiệt độ trên.",
+      });
+    }
+
+    if (rawDelay !== undefined && rawDelay !== null && rawDelay !== "") {
+      const parsedDelay = Number(rawDelay);
+      if (!Number.isInteger(parsedDelay) || parsedDelay < 0) {
+        return res.status(400).json({ error: "INVALID_DELAY_MINUTES", message: "Độ trễ cảnh báo phải là số nguyên không âm (phút)." });
+      }
+      delayMinutes = parsedDelay;
+    }
+
     if (pool) {
       try {
         const dupCheck = await pool.query(
@@ -848,12 +1040,24 @@ app.post(
         }
 
         const insertRes = await pool.query(
-          "INSERT INTO products (id, name, unit) VALUES ($1, $2, $3) RETURNING id, name, unit, created_at",
-          [prodId, cleanName, unit]
+          `INSERT INTO products (id, name, unit, temp_min, temp_max, delay_minutes)
+           VALUES ($1, $2, $3, $4, $5, $6)
+           RETURNING id, name, unit, temp_min, temp_max, delay_minutes, created_at`,
+          [prodId, cleanName, unit, tempMin, tempMax, delayMinutes]
         );
+        const r = insertRes.rows[0];
+        const product = {
+          ...r,
+          temp_min: r.temp_min !== null ? Number(r.temp_min) : null,
+          temp_max: r.temp_max !== null ? Number(r.temp_max) : null,
+          delay_minutes: r.delay_minutes !== null ? Number(r.delay_minutes) : null,
+          tempMin: r.temp_min !== null ? Number(r.temp_min) : null,
+          tempMax: r.temp_max !== null ? Number(r.temp_max) : null,
+          delayMinutes: r.delay_minutes !== null ? Number(r.delay_minutes) : null,
+        };
         return res.status(201).json({
           message: "Thêm sản phẩm thành công.",
-          product: insertRes.rows[0],
+          product,
         });
       } catch (err) {
         if (err.code === "23505") {
@@ -869,7 +1073,18 @@ app.post(
       return res.status(409).json({ message: "Sản phẩm với tên này đã tồn tại." });
     }
 
-    const newProd = { id: prodId, name: cleanName, unit, created_at: new Date().toISOString() };
+    const newProd = {
+      id: prodId,
+      name: cleanName,
+      unit,
+      tempMin,
+      tempMax,
+      delayMinutes,
+      temp_min: tempMin,
+      temp_max: tempMax,
+      delay_minutes: delayMinutes,
+      created_at: new Date().toISOString(),
+    };
     inMemoryProducts.push(newProd);
 
     return res.status(201).json({
@@ -999,8 +1214,8 @@ app.post(
 
 
 /**
- * Chỉnh sửa sản phẩm (T-17, S-07)
- * Chỉ tài khoản Admin mới có quyền cập nhật tên hoặc đơn vị tính.
+ * Chỉnh sửa sản phẩm (T-17, S-07, S-44)
+ * Chỉ tài khoản Admin mới có quyền cập nhật thông tin sản phẩm và cấu hình nhiệt độ.
  */
 app.put(
   "/api/products/:id",
@@ -1009,14 +1224,64 @@ app.put(
     const { id } = req.params;
     const { name, unit } = req.body;
 
-    if (!name || !name.trim()) {
-      return res.status(400).json({ message: "Tên sản phẩm không được để trống." });
+    const rawMin = req.body.tempMin !== undefined ? req.body.tempMin : req.body.temp_min;
+    const rawMax = req.body.tempMax !== undefined ? req.body.tempMax : req.body.temp_max;
+    const rawDelay = req.body.delayMinutes !== undefined ? req.body.delayMinutes : req.body.delay_minutes;
+
+    const hasNameOrUnit = name !== undefined || unit !== undefined;
+    let cleanName = null;
+    let cleanUnit = null;
+
+    if (hasNameOrUnit) {
+      if (!name || typeof name !== "string" || !name.trim()) {
+        return res.status(400).json({ message: "Tên sản phẩm không được để trống." });
+      }
+      cleanName = name.trim();
+      const validUnits = ["kg", "tan", "thung"];
+      if (!unit || !validUnits.includes(unit)) {
+        return res.status(400).json({ message: "Đơn vị không hợp lệ. Chỉ chấp nhận: kg, tan, thung." });
+      }
+      cleanUnit = unit;
     }
 
-    const cleanName = name.trim();
-    const validUnits = ["kg", "tan", "thung"];
-    if (!unit || !validUnits.includes(unit)) {
-      return res.status(400).json({ message: "Đơn vị không hợp lệ. Chỉ chấp nhận: kg, tan, thung." });
+    let tempMin = undefined;
+    let tempMax = undefined;
+    let delayMinutes = undefined;
+
+    if (rawMin !== undefined) {
+      if (rawMin === null || rawMin === "") {
+        tempMin = null;
+      } else {
+        const parsedMin = Number(rawMin);
+        if (!Number.isFinite(parsedMin) || parsedMin < -999.99 || parsedMin > 999.99) {
+          return res.status(400).json({ error: "INVALID_TEMP_MIN", message: "Ngưỡng nhiệt độ dưới phải là số hữu hạn hợp lệ (-999.99 đến 999.99)." });
+        }
+        tempMin = parsedMin;
+      }
+    }
+
+    if (rawMax !== undefined) {
+      if (rawMax === null || rawMax === "") {
+        tempMax = null;
+      } else {
+        const parsedMax = Number(rawMax);
+        if (!Number.isFinite(parsedMax) || parsedMax < -999.99 || parsedMax > 999.99) {
+          return res.status(400).json({ error: "INVALID_TEMP_MAX", message: "Ngưỡng nhiệt độ trên phải là số hữu hạn hợp lệ (-999.99 đến 999.99)." });
+        }
+        tempMax = parsedMax;
+      }
+    }
+
+    if (rawDelay !== undefined) {
+      if (rawDelay === null || rawDelay === "") {
+        delayMinutes = null;
+      } else {
+        const parsedDelay = Number(rawDelay);
+        if (!Number.isInteger(parsedDelay) || parsedDelay < 0) {
+          return res.status(400).json({ error: "INVALID_DELAY_MINUTES", message: "Độ trễ cảnh báo phải là số nguyên không âm (phút)." });
+        }
+        delayMinutes = parsedDelay;
+      }
     }
 
     if (pool) {
@@ -1025,23 +1290,56 @@ app.put(
         if (!checkExist.row) {
           return res.status(404).json({ message: "Không tìm thấy sản phẩm." });
         }
+        const existing = checkExist.row;
 
-        const dupCheck = await pool.query(
-          "SELECT id FROM products WHERE LOWER(name) = LOWER($1) AND id != $2",
-          [cleanName, id]
-        );
-        if (dupCheck.rows.length > 0) {
-          return res.status(409).json({ message: "Sản phẩm với tên này đã tồn tại." });
+        if (cleanName) {
+          const dupCheck = await pool.query(
+            "SELECT id FROM products WHERE LOWER(name) = LOWER($1) AND id != $2",
+            [cleanName, id]
+          );
+          if (dupCheck.rows.length > 0) {
+            return res.status(409).json({ message: "Sản phẩm với tên này đã tồn tại." });
+          }
         }
 
+        const effectiveMin = tempMin !== undefined ? tempMin : (existing.temp_min !== null ? Number(existing.temp_min) : null);
+        const effectiveMax = tempMax !== undefined ? tempMax : (existing.temp_max !== null ? Number(existing.temp_max) : null);
+
+        if (effectiveMin !== null && effectiveMax !== null && effectiveMin >= effectiveMax) {
+          return res.status(400).json({
+            error: "INVALID_TEMPERATURE_RANGE",
+            message: "Ngưỡng nhiệt độ dưới phải nhỏ hơn ngưỡng nhiệt độ trên.",
+          });
+        }
+
+        const finalName = cleanName || existing.name;
+        const finalUnit = cleanUnit || existing.unit;
+        const finalMin = tempMin !== undefined ? tempMin : existing.temp_min;
+        const finalMax = tempMax !== undefined ? tempMax : existing.temp_max;
+        const finalDelay = delayMinutes !== undefined ? delayMinutes : existing.delay_minutes;
+
         const updateRes = await pool.query(
-          "UPDATE products SET name = $1, unit = $2 WHERE id = $3 RETURNING id, name, unit, created_at",
-          [cleanName, unit, id]
+          `UPDATE products
+           SET name = $1, unit = $2, temp_min = $3, temp_max = $4, delay_minutes = $5
+           WHERE id = $6
+           RETURNING id, name, unit, temp_min, temp_max, delay_minutes, created_at`,
+          [finalName, finalUnit, finalMin, finalMax, finalDelay, id]
         );
+
+        const r = updateRes.rows[0];
+        const product = {
+          ...r,
+          temp_min: r.temp_min !== null ? Number(r.temp_min) : null,
+          temp_max: r.temp_max !== null ? Number(r.temp_max) : null,
+          delay_minutes: r.delay_minutes !== null ? Number(r.delay_minutes) : null,
+          tempMin: r.temp_min !== null ? Number(r.temp_min) : null,
+          tempMax: r.temp_max !== null ? Number(r.temp_max) : null,
+          delayMinutes: r.delay_minutes !== null ? Number(r.delay_minutes) : null,
+        };
 
         return res.status(200).json({
           message: "Cập nhật sản phẩm thành công.",
-          product: updateRes.rows[0],
+          product,
         });
       } catch (err) {
         if (err.code === "23505") {
@@ -1057,18 +1355,146 @@ app.put(
       return res.status(404).json({ message: "Không tìm thấy sản phẩm." });
     }
 
-    const dup = inMemoryProducts.find(
-      (p) => p.id !== id && p.name.toLowerCase() === cleanName.toLowerCase()
-    );
-    if (dup) {
-      return res.status(409).json({ message: "Sản phẩm với tên này đã tồn tại." });
+    if (cleanName) {
+      const dup = inMemoryProducts.find(
+        (p) => p.id !== id && p.name.toLowerCase() === cleanName.toLowerCase()
+      );
+      if (dup) {
+        return res.status(409).json({ message: "Sản phẩm với tên này đã tồn tại." });
+      }
+      prod.name = cleanName;
     }
 
-    prod.name = cleanName;
-    prod.unit = unit;
+    if (cleanUnit) {
+      prod.unit = cleanUnit;
+    }
+
+    const effectiveMin = tempMin !== undefined ? tempMin : (prod.tempMin ?? prod.temp_min ?? null);
+    const effectiveMax = tempMax !== undefined ? tempMax : (prod.tempMax ?? prod.temp_max ?? null);
+    if (effectiveMin !== null && effectiveMax !== null && effectiveMin >= effectiveMax) {
+      return res.status(400).json({
+        error: "INVALID_TEMPERATURE_RANGE",
+        message: "Ngưỡng nhiệt độ dưới phải nhỏ hơn ngưỡng nhiệt độ trên.",
+      });
+    }
+
+    if (tempMin !== undefined) {
+      prod.tempMin = tempMin;
+      prod.temp_min = tempMin;
+    }
+    if (tempMax !== undefined) {
+      prod.tempMax = tempMax;
+      prod.temp_max = tempMax;
+    }
+    if (delayMinutes !== undefined) {
+      prod.delayMinutes = delayMinutes;
+      prod.delay_minutes = delayMinutes;
+    }
 
     return res.status(200).json({
       message: "Cập nhật sản phẩm thành công.",
+      product: prod,
+    });
+  }
+);
+
+/**
+ * Cập nhật cấu hình ngưỡng nhiệt độ và độ trễ theo sản phẩm (Story S-44 / N2-219)
+ */
+app.put(
+  ["/api/products/:id/temperature-config", "/api/products/:id/thresholds"],
+  requirePermission(["admin"]),
+  async (req, res) => {
+    const { id } = req.params;
+    const rawMin = req.body.tempMin !== undefined ? req.body.tempMin : req.body.temp_min;
+    const rawMax = req.body.tempMax !== undefined ? req.body.tempMax : req.body.temp_max;
+    const rawDelay = req.body.delayMinutes !== undefined ? req.body.delayMinutes : req.body.delay_minutes;
+
+    let tempMin = null;
+    let tempMax = null;
+    let delayMinutes = null;
+
+    if (rawMin !== undefined && rawMin !== null && rawMin !== "") {
+      const parsedMin = Number(rawMin);
+      if (!Number.isFinite(parsedMin) || parsedMin < -999.99 || parsedMin > 999.99) {
+        return res.status(400).json({ error: "INVALID_TEMP_MIN", message: "Ngưỡng nhiệt độ dưới phải là số hữu hạn hợp lệ (-999.99 đến 999.99)." });
+      }
+      tempMin = parsedMin;
+    }
+
+    if (rawMax !== undefined && rawMax !== null && rawMax !== "") {
+      const parsedMax = Number(rawMax);
+      if (!Number.isFinite(parsedMax) || parsedMax < -999.99 || parsedMax > 999.99) {
+        return res.status(400).json({ error: "INVALID_TEMP_MAX", message: "Ngưỡng nhiệt độ trên phải là số hữu hạn hợp lệ (-999.99 đến 999.99)." });
+      }
+      tempMax = parsedMax;
+    }
+
+    if (tempMin !== null && tempMax !== null && tempMin >= tempMax) {
+      return res.status(400).json({
+        error: "INVALID_TEMPERATURE_RANGE",
+        message: "Ngưỡng nhiệt độ dưới phải nhỏ hơn ngưỡng nhiệt độ trên.",
+      });
+    }
+
+    if (rawDelay !== undefined && rawDelay !== null && rawDelay !== "") {
+      const parsedDelay = Number(rawDelay);
+      if (!Number.isInteger(parsedDelay) || parsedDelay < 0) {
+        return res.status(400).json({ error: "INVALID_DELAY_MINUTES", message: "Độ trễ cảnh báo phải là số nguyên không âm (phút)." });
+      }
+      delayMinutes = parsedDelay;
+    }
+
+    if (pool) {
+      try {
+        const checkExist = await scopedQueryById(pool, req.auth, "products", id);
+        if (!checkExist.row) {
+          return res.status(404).json({ message: "Không tìm thấy sản phẩm." });
+        }
+
+        const updateRes = await pool.query(
+          `UPDATE products
+           SET temp_min = $1, temp_max = $2, delay_minutes = $3
+           WHERE id = $4
+           RETURNING id, name, unit, temp_min, temp_max, delay_minutes, created_at`,
+          [tempMin, tempMax, delayMinutes, id]
+        );
+
+        const r = updateRes.rows[0];
+        const product = {
+          ...r,
+          temp_min: r.temp_min !== null ? Number(r.temp_min) : null,
+          temp_max: r.temp_max !== null ? Number(r.temp_max) : null,
+          delay_minutes: r.delay_minutes !== null ? Number(r.delay_minutes) : null,
+          tempMin: r.temp_min !== null ? Number(r.temp_min) : null,
+          tempMax: r.temp_max !== null ? Number(r.temp_max) : null,
+          delayMinutes: r.delay_minutes !== null ? Number(r.delay_minutes) : null,
+        };
+
+        return res.status(200).json({
+          message: "Cập nhật cấu hình nhiệt độ sản phẩm thành công.",
+          product,
+        });
+      } catch (err) {
+        return res.status(500).json({ message: err.message });
+      }
+    }
+
+    // In-memory fallback
+    const prod = inMemoryProducts.find((p) => p.id === id);
+    if (!prod) {
+      return res.status(404).json({ message: "Không tìm thấy sản phẩm." });
+    }
+
+    prod.tempMin = tempMin;
+    prod.temp_min = tempMin;
+    prod.tempMax = tempMax;
+    prod.temp_max = tempMax;
+    prod.delayMinutes = delayMinutes;
+    prod.delay_minutes = delayMinutes;
+
+    return res.status(200).json({
+      message: "Cập nhật cấu hình nhiệt độ sản phẩm thành công.",
       product: prod,
     });
   }
@@ -1379,7 +1805,11 @@ app.get(
               JOIN lots m_pl ON m_parents.pr_id = m_pl.id
               LEFT JOIN products m_pp ON m_pl.product_id = m_pp.id
               LEFT JOIN organizations m_po ON m_pl.organization_id = m_po.id
-            ), '[]'::json) AS parent_lots_json
+            ), '[]'::json) AS parent_lots_json,
+            EXISTS (
+              SELECT 1 FROM batch_events be
+              WHERE be.batch_id = l.id AND be.event_type = 'TEMPERATURE_VIOLATION'
+            ) AS has_temperature_violation
           FROM lots l
           LEFT JOIN farms f ON l.farm_id = f.id
           LEFT JOIN products p ON l.product_id = p.id
@@ -1542,6 +1972,7 @@ app.get(
           locationType: row.location_type || null,
           accessType,
           ancestors,
+          hasTemperatureViolation: Boolean(row.has_temperature_violation),
         };
       } else {
         const access = await evaluateLotAccess({
@@ -1703,15 +2134,28 @@ app.get(
           locationType: rawLot.locationType || (inMemoryLocations && (inMemoryLocations.find(loc => loc.id === (rawLot.locationId || rawLot.location_id))?.locationType || inMemoryLocations.find(loc => loc.id === (rawLot.locationId || rawLot.location_id))?.location_type)) || null,
           accessType: access.accessType,
           ancestors: access.ancestors,
+          hasTemperatureViolation: (inMemoryBatchEvents || []).some(
+            (e) => e.batchId === rawLot.id && e.eventType === "TEMPERATURE_VIOLATION"
+          ),
         };
       }
 
       const isCurrentHolder = Boolean(callerOrgId && lot && (lot.organizationId === callerOrgId || lot.organization_id === callerOrgId));
+      let pendingTransfer = null;
+
       if (isGlobal || isCurrentHolder || !pool) {
-        const pendingTransfer = await getPendingTransferForLot(lot.id);
-        lot.pendingTransfer = pendingTransfer;
-      } else {
-        lot.pendingTransfer = null;
+        pendingTransfer = await getPendingTransferForLot(lot.id);
+      } else if (lot.accessType === "PAST_HOLDER") {
+        pendingTransfer = await getPendingTransferForLot(lot.id);
+        if (pendingTransfer && pendingTransfer.toOrganizationId !== callerOrgId && pendingTransfer.to_organization_id !== callerOrgId) {
+          pendingTransfer = null;
+        }
+      }
+
+      lot.pendingTransfer = pendingTransfer;
+
+      if (lot.hasTemperatureViolation === undefined) {
+        lot.hasTemperatureViolation = false;
       }
 
       return res.status(200).json({ lot });
@@ -1819,6 +2263,23 @@ app.post(
           return res.status(400).json({
             error: "LOT_ALREADY_CONSUMED",
             message: "Không thể tách lô hàng đã bán hết cho người tiêu dùng.",
+          });
+        }
+
+        // Story S-38: Lô đang trong lệnh thu hồi hoặc đã đánh dấu có sự cố bị chặn tách
+        const recallCheck = await checkLotRecallStatus({
+          lotId: parentLotId,
+          lot: parentLot,
+          pool,
+          inMemoryRecallOrders,
+          inMemoryLots,
+        });
+        if (recallCheck.isBlocked) {
+          await client.query("ROLLBACK");
+          return res.status(400).json({
+            error: recallCheck.blockReason,
+            recallOrderId: recallCheck.recallOrderId,
+            message: recallCheck.message,
           });
         }
 
@@ -2061,6 +2522,22 @@ app.post(
         return res.status(400).json({
           error: "LOT_ALREADY_CONSUMED",
           message: "Không thể tách lô hàng đã bán hết cho người tiêu dùng.",
+        });
+      }
+
+      // Story S-38: Lô đang trong lệnh thu hồi hoặc đã đánh dấu có sự cố bị chặn tách
+      const recallCheck = await checkLotRecallStatus({
+        lotId: parentLotId,
+        lot: parentLot,
+        pool: null,
+        inMemoryRecallOrders,
+        inMemoryLots,
+      });
+      if (recallCheck.isBlocked) {
+        return res.status(400).json({
+          error: recallCheck.blockReason,
+          recallOrderId: recallCheck.recallOrderId,
+          message: recallCheck.message,
         });
       }
 
@@ -2459,6 +2936,26 @@ app.post(
           });
         }
 
+        // Story S-38: Lô đang trong lệnh thu hồi hoặc đã đánh dấu có sự cố bị chặn gộp
+        for (const lotObj of fetchedLots) {
+          const recallCheck = await checkLotRecallStatus({
+            lotId: lotObj.id,
+            lot: lotObj,
+            pool,
+            inMemoryRecallOrders,
+            inMemoryLots,
+          });
+          if (recallCheck.isBlocked) {
+            await client.query("ROLLBACK");
+            return res.status(400).json({
+              error: recallCheck.blockReason,
+              recallOrderId: recallCheck.recallOrderId,
+              lotId: lotObj.id,
+              message: recallCheck.message,
+            });
+          }
+        }
+
         // Kiểm tra xem có lô nào đang trong quá trình chuyển giao PENDING không
         const pendingCheck = await client.query(
           "SELECT lot_id FROM lot_transfers WHERE lot_id = ANY($1::text[]) AND status = 'PENDING'",
@@ -2652,6 +3149,25 @@ app.post(
           error: validation.error,
           message: validation.message,
         });
+      }
+
+      // Story S-38: Lô đang trong lệnh thu hồi hoặc đã đánh dấu có sự cố bị chặn gộp
+      for (const lotObj of fetchedLots) {
+        const recallCheck = await checkLotRecallStatus({
+          lotId: lotObj.id,
+          lot: lotObj,
+          pool: null,
+          inMemoryRecallOrders,
+          inMemoryLots,
+        });
+        if (recallCheck.isBlocked) {
+          return res.status(400).json({
+            error: recallCheck.blockReason,
+            recallOrderId: recallCheck.recallOrderId,
+            lotId: lotObj.id,
+            message: recallCheck.message,
+          });
+        }
       }
 
       // Kiểm tra chuyển giao đang chờ
@@ -3445,22 +3961,41 @@ app.get(
           status: item.status,
           remainingQuantity: item.remainingQuantity,
           initialQuantity: item.initialQuantity,
+          consumedQuantity: item.consumedQuantity,
           productName: item.productName,
           productUnit: item.productUnit,
           farmName: item.farmName,
           parentLotId: item.parentLotId,
+          isMultiSourceMerge: item.isMultiSourceMerge || false,
+          sourcesCount: item.sourcesCount || 0,
+          mergedSources: item.mergedSources || [],
+          notes: item.notes || null,
           distance: item.distance,
           path: item.path,
         })),
       }));
 
       const targetLotObj = lotsMap.get(lotId) || null;
+      let rootInitQty = null;
+      let rootRemQty = null;
+      let rootConsQty = null;
+      if (detailedDescendants.rootLot) {
+        rootInitQty = detailedDescendants.rootLot.initialQuantity;
+        rootRemQty = detailedDescendants.rootLot.remainingQuantity;
+        rootConsQty = detailedDescendants.rootLot.consumedQuantity;
+      } else if (targetLotObj) {
+        rootInitQty = targetLotObj.initialQuantity !== undefined ? Number(targetLotObj.initialQuantity) : (targetLotObj.initial_quantity !== undefined ? Number(targetLotObj.initial_quantity) : null);
+        rootRemQty = targetLotObj.remainingQuantity !== undefined ? Number(targetLotObj.remainingQuantity) : (targetLotObj.remaining_quantity !== undefined ? Number(targetLotObj.remaining_quantity) : null);
+      }
+
       const startLot = {
         id: lotId,
         name: targetLotObj ? targetLotObj.name : lotId,
         organizationId: targetLotObj ? (targetLotObj.organizationId || targetLotObj.organization_id) : null,
         status: targetLotObj ? targetLotObj.status : null,
-        remainingQuantity: targetLotObj ? (targetLotObj.remainingQuantity !== undefined ? Number(targetLotObj.remainingQuantity) : Number(targetLotObj.remaining_quantity)) : null,
+        remainingQuantity: rootRemQty,
+        initialQuantity: rootInitQty,
+        consumedQuantity: rootConsQty,
       };
 
       const finalDescendantIds = Array.from(descendantSet);
@@ -3490,6 +4025,17 @@ app.get(
         truncationReason: detailedDescendants.truncationReason || null,
         warning: detailedDescendants.warning || null,
         executionTimeMs,
+        recallSummary: detailedDescendants.recallSummary || {
+          totalLots: totalDescendants,
+          totalRecallableQuantity: 0,
+          totalConsumedQuantity: 0,
+          totalInitialQuantity: 0,
+          recallablePercentage: 0,
+          consumedPercentage: 0,
+        },
+        totalRecallableQuantity: detailedDescendants.totalRecallableQuantity !== undefined ? detailedDescendants.totalRecallableQuantity : 0,
+        totalConsumedQuantity: detailedDescendants.totalConsumedQuantity !== undefined ? detailedDescendants.totalConsumedQuantity : 0,
+        totalInitialQuantity: detailedDescendants.totalInitialQuantity !== undefined ? detailedDescendants.totalInitialQuantity : 0,
       });
     } catch (err) {
       if (err instanceof CycleDetectedError || err.name === "CycleDetectedError") {
@@ -4573,6 +5119,22 @@ app.post(
 
       if (!lot) {
         return res.status(404).json({ message: "Không tìm thấy lô hàng." });
+      }
+
+      // Story S-38: Lô đang trong lệnh thu hồi hoặc đã đánh dấu có sự cố bị chặn bàn giao
+      const recallCheck = await checkLotRecallStatus({
+        lotId,
+        lot,
+        pool,
+        inMemoryRecallOrders,
+        inMemoryLots,
+      });
+      if (recallCheck.isBlocked) {
+        return res.status(400).json({
+          error: recallCheck.blockReason,
+          recallOrderId: recallCheck.recallOrderId,
+          message: recallCheck.message,
+        });
       }
 
       const lotRemainingVal = Number(lot.remainingQuantity !== undefined ? lot.remainingQuantity : (lot.remaining_quantity !== undefined ? lot.remaining_quantity : (lot.initialQuantity || lot.initial_quantity || 0)));
@@ -5971,6 +6533,17 @@ app.get("/harvest", requireAuth, (req, res) => {
   return res.redirect("http://localhost:8080/harvest.html");
 });
 
+
+const frontendPublicTracePath = path.join(__dirname, "../../frontend/public-trace.html");
+
+app.get(["/public-trace", "/public-trace.html"], (req, res) => {
+  if (fs.existsSync(frontendPublicTracePath)) {
+    return sendFrontendFile(res, frontendPublicTracePath);
+  }
+  const query = req.url.includes("?") ? req.url.substring(req.url.indexOf("?")) : "";
+  return res.redirect("/public-trace.html" + query);
+});
+
 const frontendLotDetailPath = path.join(__dirname, "../../frontend/lot-detail.html");
 
 app.get(["/lot-detail", "/lot-detail.html"], requireAuth, (req, res) => {
@@ -6381,6 +6954,146 @@ app.patch(
 );
 
 /**
+ * Cập nhật tọa độ / định vị nhanh cho lô hàng (Choice A - Story S-60)
+ */
+app.patch(
+  "/api/lots/:id/coordinates",
+  requirePermission(["producer", "cooperative", "transporter", "distributor", "org_admin", "admin"]),
+  async (req, res) => {
+    const lotId = req.params.id;
+    const { coordinates, name, address, type } = req.body || {};
+
+    const { parseCoordinates } = require("./public_trace_map");
+    const parsed = parseCoordinates(coordinates);
+    if (!parsed) {
+      return res.status(400).json({
+        error: "INVALID_COORDINATES",
+        message: "Tọa độ không hợp lệ. Vui lòng nhập định dạng Vĩ độ, Kinh độ (Ví dụ: 21.5750, 105.6905).",
+      });
+    }
+
+    const customData = {
+      lat: parsed.lat,
+      lng: parsed.lng,
+      name: (name && typeof name === "string") ? name.trim() : null,
+      address: (address && typeof address === "string") ? address.trim() : null,
+      type: type || "farm",
+      updatedAt: new Date().toISOString(),
+    };
+
+    const isAdmin = Boolean(req.auth && (req.auth.roleId === "admin" || req.auth.isAdmin));
+    const callerOrg = isAdmin ? null : (req.auth ? (req.auth.organizationId || req.auth.organization_id) : null);
+
+    if (pool) {
+      const lotRes = await pool.query("SELECT * FROM lots WHERE UPPER(id) = UPPER($1)", [lotId]);
+      if (lotRes.rows.length === 0) {
+        return res.status(404).json({
+          error: "LOT_NOT_FOUND",
+          message: "Không tìm thấy lô hàng.",
+        });
+      }
+      const lot = lotRes.rows[0];
+      const lotOrgId = lot.organization_id;
+
+      if (!isAdmin && lotOrgId !== callerOrg) {
+        logSecurityEvent("CROSS_TENANT_ACCESS_DENIED", {
+          userId: req.auth.userId || req.auth.id,
+          userEmail: req.auth.email,
+          userOrgId: callerOrg,
+          userRole: req.auth.roleId,
+          resourceType: "lots",
+          resourceId: lotId,
+          targetOrgId: lotOrgId,
+          action: "UPDATE_COORDINATES",
+          ip: req.ip,
+          userAgent: req.get("User-Agent"),
+        });
+        return res.status(403).json({
+          error: "FORBIDDEN",
+          message: "Truy cập bị từ chối: chỉ tổ chức đang trực tiếp sở hữu lô hàng mới có quyền cập nhật tọa độ.",
+        });
+      }
+
+      try {
+        const updateRes = await pool.query(
+          "UPDATE lots SET custom_coordinates = $1 WHERE UPPER(id) = UPPER($2)",
+          [JSON.stringify(customData), lotId]
+        );
+        if (updateRes.rowCount === 0) {
+          return res.status(404).json({
+            error: "LOT_NOT_FOUND",
+            message: "Không tìm thấy lô hàng để cập nhật.",
+          });
+        }
+      } catch (dbErr) {
+        console.error("[ERROR UPDATE_COORDINATES]", dbErr.message);
+        return res.status(500).json({
+          error: "DATABASE_ERROR",
+          message: "Không thể lưu tọa độ vào cơ sở dữ liệu: " + dbErr.message,
+        });
+      }
+    } else {
+      const targetLot = inMemoryLots.find((l) => l.id && l.id.toUpperCase() === lotId.toUpperCase());
+      if (!targetLot) {
+        return res.status(404).json({
+          error: "LOT_NOT_FOUND",
+          message: "Không tìm thấy lô hàng.",
+        });
+      }
+      const lotOrgId = targetLot.organizationId || targetLot.organization_id;
+      if (!isAdmin && lotOrgId !== callerOrg) {
+        return res.status(403).json({
+          error: "FORBIDDEN",
+          message: "Truy cập bị từ chối: chỉ tổ chức đang trực tiếp sở hữu lô hàng mới có quyền cập nhật tọa độ.",
+        });
+      }
+    }
+
+    // Chỉ đồng bộ RAM sau khi lưu DB thành công (hoặc in-memory mode)
+    const targetLot = inMemoryLots.find((l) => l.id && l.id.toUpperCase() === lotId.toUpperCase());
+    if (targetLot) {
+      targetLot.customCoordinates = customData;
+      targetLot.custom_coordinates = customData;
+    }
+
+    if (req.auth) {
+      await recordAuditLog({
+        pool,
+        inMemoryLogs: inMemoryAuditLogs,
+        actorUserId: req.auth.userId || req.auth.id,
+        actorEmail: req.auth.email,
+        organizationId: req.auth.organizationId || "system",
+        action: "UPDATE_LOT_COORDINATES",
+        resourceType: "lot",
+        resourceId: lotId,
+        ipAddress: req.ip || "127.0.0.1",
+        userAgent: req.get("User-Agent") || null,
+        details: { coordinates: parsed, name, type },
+      });
+    }
+
+    const mapData = await getPublicLotMapData({
+      pool,
+      lotCode: lotId,
+      inMemoryLots,
+      inMemoryBatchRelations,
+      inMemoryBatchEvents,
+      inMemoryOrgs: inMemoryOrganizations,
+      inMemoryProducts,
+      inMemoryFarms,
+      inMemoryLocations,
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Cập nhật tọa độ lô hàng thành công!",
+      coordinates: parsed,
+      mapData,
+    });
+  }
+);
+
+/**
  * ==============================================================================
  * BÁO CÁO TÓM TẮT VỊ TRÍ & KHỐI LƯỢNG HẬU DUỆ (Story S-27)
  * ==============================================================================
@@ -6431,9 +7144,18 @@ app.get(
           locationName: d.locationName,
           remainingQuantity: d.remainingQuantity,
           initialQuantity: d.initialQuantity,
+          consumedQuantity: d.consumedQuantity,
           productUnit: d.productUnit,
           distance: d.distance,
+          isMultiSourceMerge: d.isMultiSourceMerge || false,
+          sourcesCount: d.sourcesCount || 0,
+          mergedSources: d.mergedSources || [],
+          notes: d.notes || null,
         })),
+        recallSummary: result.recallSummary,
+        totalRecallableQuantity: result.totalRecallableQuantity,
+        totalConsumedQuantity: result.totalConsumedQuantity,
+        totalInitialQuantity: result.totalInitialQuantity,
       });
     } catch (err) {
       if (err instanceof CycleDetectedError || err.name === "CycleDetectedError") {
@@ -6444,6 +7166,964 @@ app.get(
         });
       }
       return res.status(500).json({ message: err.message });
+    }
+  }
+);
+
+/**
+ * ==============================================================================
+ * QUẢN LÝ LỆNH THU HỒI NÔNG SẢN (Story S-33 / S-34)
+ * ==============================================================================
+ */
+
+// POST /api/recalls: Mở lệnh thu hồi (RBAC: Inspector, Admin)
+app.post(
+  "/api/recalls",
+  requirePermission(["inspector", "admin"], { allowInspectorWrite: true }),
+  async (req, res) => {
+    try {
+      const { lotId, reason, severity = "HIGH" } = req.body;
+      if (!lotId || !String(lotId).trim()) {
+        return res.status(400).json({ error: "MISSING_LOT_ID", message: "Mã lô hàng (lotId) là bắt buộc." });
+      }
+      if (!reason || !String(reason).trim()) {
+        return res.status(400).json({ error: "MISSING_REASON", message: "Lý do thu hồi (reason) là bắt buộc." });
+      }
+
+      const validSeverities = ["LOW", "MEDIUM", "HIGH", "CRITICAL"];
+      const upperSeverity = String(severity).toUpperCase();
+      if (!validSeverities.includes(upperSeverity)) {
+        return res.status(400).json({
+          error: "INVALID_SEVERITY",
+          message: `Mức độ nghiêm trọng không hợp lệ. Cho phép: ${validSeverities.join(", ")}`,
+        });
+      }
+
+      // Kiểm tra lô hàng tồn tại
+      let lot = null;
+      if (pool) {
+        const lotRes = await scopedQueryById(pool, req.auth, "lots", lotId);
+        lot = lotRes.rows[0] || null;
+      } else {
+        lot = inMemoryLots.find((l) => l.id === lotId) || null;
+      }
+
+      if (!lot) {
+        return res.status(404).json({ error: "LOT_NOT_FOUND", message: `Không tìm thấy lô hàng với mã: ${lotId}` });
+      }
+
+      const lotOrgId = lot.organization_id || lot.organizationId;
+      const recallOrderId = `REC-${new Date().toISOString().slice(0, 10).replace(/-/g, "")}-${crypto.randomBytes(3).toString("hex").toUpperCase()}`;
+      const now = new Date();
+
+      if (pool) {
+        const client = await pool.connect();
+        try {
+          await client.query("BEGIN");
+
+          await client.query(
+            `INSERT INTO recall_orders (id, lot_id, reason, severity, status, created_by, created_at, updated_at)
+             VALUES ($1, $2, $3, $4, 'OPEN', $5, $6, $6)`,
+            [recallOrderId, lotId, reason, upperSeverity, req.auth.email, now]
+          );
+
+          // Cập nhật trạng thái lô hàng gốc thành 'Có sự cố' (S-33)
+          await client.query("UPDATE lots SET status = 'Có sự cố' WHERE id = $1 AND organization_id = $2", [lotId, lotOrgId]);
+
+          // Ghi nhận sự kiện RECALL_ORDER_CREATED vào chuỗi hash-chain batch_events (K-01 / S-10)
+          const recallEvent = await appendBatchEvent(client, {
+            batchId: lotId,
+            eventType: "RECALL_ORDER_CREATED",
+            payload: {
+              recallOrderId,
+              lotId,
+              reason,
+              severity: upperSeverity,
+              status: "OPEN",
+              createdBy: req.auth.email,
+              step: `Mở lệnh thu hồi khẩn cấp: ${reason}`,
+            },
+            organizationId: lotOrgId,
+            actorUserId: req.auth.userId,
+            occurredAt: now,
+          });
+
+          // Ghi audit log (S-31 Atomicity)
+          await recordAuditLog({
+            client,
+            pool,
+            inMemoryLogs: inMemoryAuditLogs,
+            actorUserId: req.auth.userId,
+            actorEmail: req.auth.email,
+            organizationId: lotOrgId,
+            action: "RECALL_ORDER_CREATED",
+            resourceType: "recall_order",
+            resourceId: recallOrderId,
+            ipAddress: req.ip,
+            userAgent: req.get("User-Agent"),
+            details: { recallOrderId, lotId, reason, severity: upperSeverity },
+          });
+
+          await client.query("COMMIT");
+
+          return res.status(201).json({
+            message: "Mở lệnh thu hồi thành công.",
+            recallOrder: {
+              id: recallOrderId,
+              lotId,
+              reason,
+              severity: upperSeverity,
+              status: "OPEN",
+              createdBy: req.auth.email,
+              createdAt: now.toISOString(),
+              updatedAt: now.toISOString(),
+            },
+            event: recallEvent,
+          });
+        } catch (dbErr) {
+          await client.query("ROLLBACK");
+          throw dbErr;
+        } finally {
+          client.release();
+        }
+      } else {
+        // In-memory fallback
+        const newOrder = {
+          id: recallOrderId,
+          lotId,
+          reason,
+          severity: upperSeverity,
+          status: "OPEN",
+          createdBy: req.auth.email,
+          createdAt: now.toISOString(),
+          updatedAt: now.toISOString(),
+        };
+        inMemoryRecallOrders.push(newOrder);
+
+        // Đổi trạng thái lô gốc
+        lot.status = "Có sự cố";
+
+        // Ghi batch_events hash-chain
+        const recallEvent = await appendBatchEvent(null, {
+          batchId: lotId,
+          eventType: "RECALL_ORDER_CREATED",
+          payload: {
+            recallOrderId,
+            lotId,
+            reason,
+            severity: upperSeverity,
+            status: "OPEN",
+            createdBy: req.auth.email,
+            step: `Mở lệnh thu hồi khẩn cấp: ${reason}`,
+          },
+          organizationId: lotOrgId,
+          actorUserId: req.auth.userId,
+          occurredAt: now,
+        });
+
+        await recordAuditLog({
+          pool: null,
+          inMemoryLogs: inMemoryAuditLogs,
+          actorUserId: req.auth.userId,
+          actorEmail: req.auth.email,
+          organizationId: lotOrgId,
+          action: "RECALL_ORDER_CREATED",
+          resourceType: "recall_order",
+          resourceId: recallOrderId,
+          ipAddress: req.ip,
+          userAgent: req.get("User-Agent"),
+          details: { recallOrderId, lotId, reason, severity: upperSeverity },
+        });
+
+        return res.status(201).json({
+          message: "Mở lệnh thu hồi thành công.",
+          recallOrder: newOrder,
+          event: recallEvent,
+        });
+      }
+    } catch (err) {
+      return res.status(500).json({ message: err.message });
+    }
+  }
+);
+
+// --- S-36 & S-37: Recall helpers, acknowledgments & progress tracking ---
+
+async function getRecallOrderById(recallId) {
+  if (!recallId) return null;
+  const strId = String(recallId).trim();
+  if (pool && typeof pool.query === "function") {
+    try {
+      const res = await pool.query(
+        `SELECT id, lot_id, reason, severity, status, created_by, created_at, updated_at
+         FROM recall_orders
+         WHERE id = $1`,
+        [strId]
+      );
+      if (res.rows[0]) {
+        const r = res.rows[0];
+        return {
+          id: r.id,
+          lotId: r.lot_id,
+          lot_id: r.lot_id,
+          reason: r.reason,
+          severity: r.severity,
+          status: r.status,
+          createdBy: r.created_by,
+          created_by: r.created_by,
+          createdAt: r.created_at,
+          created_at: r.created_at,
+          updatedAt: r.updated_at,
+          updated_at: r.updated_at,
+        };
+      }
+    } catch (err) {
+      if (err.code !== "42P01") throw err;
+    }
+  }
+
+  if (Array.isArray(inMemoryRecallOrders)) {
+    const found = inMemoryRecallOrders.find((o) => String(o.id) === strId);
+    if (found) {
+      return {
+        id: found.id,
+        lotId: found.lotId || found.lot_id,
+        lot_id: found.lotId || found.lot_id,
+        reason: found.reason,
+        severity: found.severity || "HIGH",
+        status: found.status || "OPEN",
+        createdBy: found.createdBy || found.created_by,
+        created_by: found.createdBy || found.created_by,
+        createdAt: found.createdAt || found.created_at || new Date().toISOString(),
+        created_at: found.createdAt || found.created_at || new Date().toISOString(),
+        updatedAt: found.updatedAt || found.updated_at || new Date().toISOString(),
+        updated_at: found.updatedAt || found.updated_at || new Date().toISOString(),
+        targetOrganizationIds: found.targetOrganizationIds || found.target_organization_ids || null,
+      };
+    }
+  }
+  return null;
+}
+
+async function getExpectedOrganizationsForRecall(order) {
+  if (!order) return [];
+  if (Array.isArray(order.targetOrganizationIds) && order.targetOrganizationIds.length > 0) {
+    return Array.from(new Set(order.targetOrganizationIds));
+  }
+  if (Array.isArray(order.target_organization_ids) && order.target_organization_ids.length > 0) {
+    return Array.from(new Set(order.target_organization_ids));
+  }
+
+  const rootLotId = order.lotId || order.lot_id;
+  if (!rootLotId) return [];
+
+  let descendants = [];
+  let rootLot = null;
+  try {
+    const traceRes = await traceLotDescendants({
+      pool,
+      startLotId: rootLotId,
+      inMemoryLots,
+      inMemoryBatchRelations,
+      inMemoryBatchEvents,
+      inMemoryOrgs,
+      inMemoryProducts,
+      inMemoryFarms,
+      inMemoryLocations,
+    });
+    descendants = traceRes.descendants || [];
+    rootLot = traceRes.rootLot || null;
+  } catch {
+    descendants = [];
+  }
+
+  if (!rootLot) {
+    if (pool && typeof pool.query === "function") {
+      try {
+        const lr = await scopedQueryById(pool, { isInspector: true }, "lots", rootLotId);
+        rootLot = lr.rows[0] || null;
+      } catch {
+        // ignore
+      }
+    }
+
+    if (!rootLot && Array.isArray(inMemoryLots)) {
+      rootLot = inMemoryLots.find((l) => l.id === rootLotId) || null;
+    }
+  }
+
+  const orgSet = new Set();
+  for (const d of descendants) {
+    const orgId = d.organizationId || d.organization_id;
+    if (orgId) {
+      orgSet.add(orgId);
+    }
+  }
+
+  if (orgSet.size === 0 && rootLot) {
+    const rootOrg = rootLot.organizationId || rootLot.organization_id;
+    if (rootOrg) orgSet.add(rootOrg);
+  }
+
+  return Array.from(orgSet);
+}
+
+async function getOrganizationName(orgId) {
+  if (!orgId) return "";
+  if (pool && typeof pool.query === "function") {
+    try {
+      const res = await pool.query("SELECT name FROM organizations WHERE id = $1", [orgId]);
+      if (res.rows[0] && res.rows[0].name) {
+        return res.rows[0].name;
+      }
+    } catch {
+      // ignore
+    }
+  }
+  if (Array.isArray(inMemoryOrgs)) {
+    const found = inMemoryOrgs.find((o) => o.id === orgId);
+    if (found && found.name) return found.name;
+  }
+  if (Array.isArray(inMemoryOrganizations)) {
+    const found = inMemoryOrganizations.find((o) => o.id === orgId);
+    if (found && found.name) return found.name;
+  }
+  return orgId;
+}
+
+async function getAcknowledgmentsForRecall(recallId) {
+  if (!recallId) return [];
+  const strId = String(recallId).trim();
+  if (pool && typeof pool.query === "function") {
+    try {
+      const res = await pool.query(
+        "SELECT * FROM recall_acknowledgments WHERE recall_id = $1 ORDER BY created_at DESC",
+        [strId]
+      );
+      return res.rows.map((r) => ({
+        id: r.id,
+        recall_id: r.recall_id,
+        recallId: r.recall_id,
+        organization_id: r.organization_id,
+        organizationId: r.organization_id,
+        org_name: r.org_name,
+        orgName: r.org_name,
+        status: r.status,
+        note: r.note,
+        created_by_user_id: r.created_by_user_id,
+        createdByUserId: r.created_by_user_id,
+        created_at: r.created_at,
+        createdAt: r.created_at,
+      }));
+    } catch (err) {
+      if (err.code !== "42P01") throw err;
+    }
+  }
+
+  if (Array.isArray(inMemoryRecallAcknowledgments)) {
+    return inMemoryRecallAcknowledgments
+      .filter((a) => String(a.recallId || a.recall_id) === strId)
+      .sort((a, b) => new Date(b.createdAt || b.created_at) - new Date(a.createdAt || a.created_at));
+  }
+
+  return [];
+}
+
+async function getRootLotForRecall(order) {
+  const rootLotId = order.lotId || order.lot_id;
+  if (!rootLotId) return null;
+  if (pool && typeof pool.query === "function") {
+    try {
+      const lr = await scopedQueryById(pool, { isInspector: true }, "lots", rootLotId);
+      if (lr.rows[0]) return lr.rows[0];
+    } catch {
+      // ignore
+    }
+  }
+
+  if (Array.isArray(inMemoryLots)) {
+    return inMemoryLots.find((l) => l.id === rootLotId) || null;
+  }
+  return null;
+}
+
+async function getAffectedLotsForRecallAndOrg(order, userOrgId) {
+  if (!order || !userOrgId) return [];
+
+  const rootLotId = order.lotId || order.lot_id;
+  if (!rootLotId) return [];
+
+  let descendants = [];
+  let rootLot = null;
+  try {
+    const traceRes = await traceLotDescendants({
+      pool,
+      startLotId: rootLotId,
+      inMemoryLots,
+      inMemoryBatchRelations,
+      inMemoryBatchEvents,
+      inMemoryOrgs,
+      inMemoryProducts,
+      inMemoryFarms,
+      inMemoryLocations,
+    });
+    descendants = traceRes.descendants || [];
+    rootLot = traceRes.rootLot || null;
+  } catch {
+    descendants = [];
+  }
+
+  const rawRootLot = await getRootLotForRecall(order);
+
+  const candidateLots = [];
+  if (rawRootLot) {
+    const rootOrg = rawRootLot.organization_id || rawRootLot.organizationId;
+    if (rootOrg === userOrgId) {
+      candidateLots.push({ lot: rawRootLot, isRoot: true });
+    }
+  } else if (rootLot) {
+    const rootOrg = rootLot.organization_id || rootLot.organizationId;
+    if (rootOrg === userOrgId) {
+      candidateLots.push({ lot: rootLot, isRoot: true });
+    }
+  }
+
+  for (const d of descendants) {
+    const dOrg = d.organizationId || d.organization_id;
+    if (dOrg === userOrgId) {
+      candidateLots.push({ lot: d, isRoot: false });
+    }
+  }
+
+  const affectedLots = [];
+  const seenLotIds = new Set();
+
+  for (const item of candidateLots) {
+    const lot = item.lot;
+    const lotId = String(lot.id);
+    if (!lotId || seenLotIds.has(lotId)) {
+      continue;
+    }
+    seenLotIds.add(lotId);
+
+    let raw = null;
+    if (item.isRoot && rawRootLot) {
+      raw = rawRootLot;
+    } else if (Array.isArray(inMemoryLots)) {
+      raw = inMemoryLots.find((l) => l.id === lotId) || null;
+    }
+
+    const code = (raw && raw.code) ? String(raw.code) : (lot.code ? String(lot.code) : lotId);
+
+    const formattedLot = {
+      id: lotId,
+      code,
+    };
+
+    const name = (raw && raw.name !== undefined) ? raw.name : lot.name;
+    if (name !== undefined && name !== null) {
+      formattedLot.name = String(name);
+    }
+
+    const status = (raw && raw.status !== undefined) ? raw.status : lot.status;
+    if (status !== undefined && status !== null) {
+      formattedLot.status = String(status);
+    }
+
+    let locationName = null;
+    if (raw && (raw.location_name || raw.locationName)) {
+      locationName = raw.location_name || raw.locationName;
+    } else if (lot.location_name || lot.locationName) {
+      locationName = lot.location_name || lot.locationName;
+    } else {
+      const locId = (raw && (raw.location_id || raw.locationId)) || lot.location_id || lot.locationId;
+      if (locId) {
+        const loc = await getLocationById(pool, inMemoryLocations, locId);
+        if (loc && loc.name) {
+          locationName = loc.name;
+        }
+      }
+    }
+    if (!locationName && lot.location && lot.location.name) {
+      locationName = lot.location.name;
+    }
+    if (!locationName && lot.locationName && lot.locationName !== "Kho lưu trữ mặc định") {
+      locationName = lot.locationName;
+    }
+    if (locationName !== null && locationName !== undefined) {
+      formattedLot.location_name = String(locationName);
+    }
+
+    let remQty = null;
+    if (lot.remaining_quantity !== undefined && lot.remaining_quantity !== null) {
+      remQty = Number(lot.remaining_quantity);
+    } else if (lot.remainingQuantity !== undefined && lot.remainingQuantity !== null) {
+      remQty = Number(lot.remainingQuantity);
+    } else if (raw && raw.remaining_quantity !== undefined && raw.remaining_quantity !== null) {
+      remQty = Number(raw.remaining_quantity);
+    } else if (raw && raw.remainingQuantity !== undefined && raw.remainingQuantity !== null) {
+      remQty = Number(raw.remainingQuantity);
+    }
+    if (remQty !== null && !Number.isNaN(remQty)) {
+      formattedLot.remaining_quantity = remQty;
+    }
+
+    let consumedQty = null;
+    let initQty = null;
+    if (lot.initial_quantity !== undefined && lot.initial_quantity !== null) {
+      initQty = Number(lot.initial_quantity);
+    } else if (lot.initialQuantity !== undefined && lot.initialQuantity !== null) {
+      initQty = Number(lot.initialQuantity);
+    } else if (raw && raw.initial_quantity !== undefined && raw.initial_quantity !== null) {
+      initQty = Number(raw.initial_quantity);
+    } else if (raw && raw.initialQuantity !== undefined && raw.initialQuantity !== null) {
+      initQty = Number(raw.initialQuantity);
+    }
+
+    if (raw && raw.consumed_quantity !== undefined && raw.consumed_quantity !== null) {
+      consumedQty = Number(raw.consumed_quantity);
+    } else if (raw && raw.consumedQuantity !== undefined && raw.consumedQuantity !== null) {
+      consumedQty = Number(raw.consumedQuantity);
+    } else if (initQty !== null && remQty !== null && !Number.isNaN(initQty) && !Number.isNaN(remQty)) {
+      consumedQty = Math.max(0, Number((initQty - remQty).toFixed(3)));
+    } else if (lot.consumed_quantity !== undefined && lot.consumed_quantity !== null) {
+      consumedQty = Number(lot.consumed_quantity);
+    } else if (lot.consumedQuantity !== undefined && lot.consumedQuantity !== null) {
+      consumedQty = Number(lot.consumedQuantity);
+    }
+    if (consumedQty !== null && !Number.isNaN(consumedQty)) {
+      formattedLot.consumed_quantity = consumedQty;
+    }
+
+    affectedLots.push(formattedLot);
+  }
+
+  return affectedLots;
+}
+
+// 0. API: Lấy danh sách lệnh thu hồi đang chờ xác nhận của tổ chức đăng nhập (S-36 Alert)
+// (Đăng ký trước GET /api/recalls/:id để tránh bị nuốt bởi route có params :id)
+app.get(
+  "/api/recalls/pending",
+  requirePermission(["producer", "cooperative", "transporter", "distributor", "org_admin", "admin", "inspector"]),
+  async (req, res) => {
+    try {
+      const userOrgId = req.auth.organizationId;
+      if (!userOrgId) {
+        return res.status(200).json([]);
+      }
+
+      let openOrders = [];
+      if (pool && typeof pool.query === "function") {
+        try {
+          const resOrders = await pool.query(
+            "SELECT * FROM recall_orders WHERE status = 'OPEN' ORDER BY created_at DESC"
+          );
+          openOrders = resOrders.rows.map((r) => ({
+            id: r.id,
+            lotId: r.lot_id,
+            lot_id: r.lot_id,
+            reason: r.reason,
+            severity: r.severity,
+            status: r.status,
+            createdBy: r.created_by,
+            createdAt: r.created_at,
+          }));
+        } catch (err) {
+          if (err.code !== "42P01") throw err;
+        }
+      } else if (Array.isArray(inMemoryRecallOrders)) {
+        openOrders = inMemoryRecallOrders.filter((o) => o.status === "OPEN");
+      }
+
+      const pendingRecalls = [];
+      for (const order of openOrders) {
+        const expectedOrgIds = await getExpectedOrganizationsForRecall(order);
+        if (!expectedOrgIds.includes(userOrgId)) {
+          continue;
+        }
+
+        const acks = await getAcknowledgmentsForRecall(order.id);
+        const alreadyAcked = acks.some(
+          (a) => (a.organizationId || a.organization_id) === userOrgId
+        );
+        if (alreadyAcked) {
+          continue;
+        }
+
+        const ackOrgIds = new Set(acks.map((a) => a.organizationId || a.organization_id));
+        const pendingCount = expectedOrgIds.filter((id) => !ackOrgIds.has(id)).length;
+        const affectedLots = await getAffectedLotsForRecallAndOrg(order, userOrgId);
+
+        pendingRecalls.push({
+          recall_id: order.id,
+          reason: order.reason,
+          created_at: order.created_at || order.createdAt,
+          pending_organizations_count: pendingCount,
+          affected_lots: affectedLots,
+        });
+      }
+
+      return res.status(200).json(pendingRecalls);
+    } catch (error) {
+      console.error("Lỗi khi lấy danh sách thu hồi chờ xác nhận:", error);
+      return res.status(500).json({ error: "Lỗi server khi lấy dữ liệu thu hồi chờ xử lý" });
+    }
+  }
+);
+
+
+// GET /api/recalls/:id: Chi tiết lệnh thu hồi & Hậu duệ trực tiếp
+app.get(
+  "/api/recalls/:id",
+  requirePermission(["inspector", "admin"]),
+  async (req, res) => {
+    try {
+      const recallOrderId = req.params.id;
+      const report = await getRecallOrderWithLiveDescendants({
+        recallOrderId,
+        pool,
+        inMemoryRecallOrders,
+        inMemoryLots,
+        inMemoryBatchRelations,
+        inMemoryBatchEvents,
+        inMemoryOrgs,
+        inMemoryProducts,
+        inMemoryFarms,
+        inMemoryLocations,
+      });
+
+      return res.status(200).json(report);
+    } catch (err) {
+      if (err.statusCode === 404) {
+        return res.status(404).json({ error: "NOT_FOUND", message: err.message });
+      }
+      return res.status(500).json({ message: err.message });
+    }
+  }
+);
+
+// GET /api/recalls/:id/descendants: Danh sách hậu duệ thu hồi qua nhiều nguồn gộp (Live BFS)
+app.get(
+  "/api/recalls/:id/descendants",
+  requirePermission(["inspector", "admin"]),
+  async (req, res) => {
+    try {
+      const recallOrderId = req.params.id;
+      const report = await getRecallOrderWithLiveDescendants({
+        recallOrderId,
+        pool,
+        inMemoryRecallOrders,
+        inMemoryLots,
+        inMemoryBatchRelations,
+        inMemoryBatchEvents,
+        inMemoryOrgs,
+        inMemoryProducts,
+        inMemoryFarms,
+        inMemoryLocations,
+      });
+
+      return res.status(200).json({
+        recallId: report.recallOrder.id,
+        rootLotId: report.recallOrder.lotId,
+        descendantCount: report.descendantCount,
+        descendantIds: report.descendantIds,
+        descendants: report.descendants,
+        totalRecallQuantity: report.quarantineSummary.totalQuarantineQuantity,
+        quarantineSummary: report.quarantineSummary,
+        quarantineInventoryLots: report.quarantineInventoryLots,
+        consumedLots: report.consumedLots,
+        locationSummary: report.locationSummary,
+        generatedAt: report.calculatedAt,
+      });
+    } catch (err) {
+      if (err.statusCode === 404) {
+        return res.status(404).json({ error: "NOT_FOUND", message: err.message });
+      }
+      return res.status(500).json({ message: err.message });
+    }
+  }
+);
+
+// 1. API: Theo dõi tiến độ thu hồi (S-37)
+app.get(
+  "/api/recalls/:recallId/progress",
+  requirePermission(["producer", "cooperative", "transporter", "distributor", "org_admin", "admin", "inspector"]),
+  async (req, res) => {
+    const recallId = req.params.recallId || req.params.id;
+
+    try {
+      const order = await getRecallOrderById(recallId);
+      if (!order) {
+        return res.status(404).json({ error: "NOT_FOUND", message: "Không tìm thấy lệnh thu hồi." });
+      }
+
+      const isInspectorOrAdmin =
+        req.auth.isInspector || ["inspector", "admin"].includes(req.auth.roleId);
+      const userOrgId = req.auth.organizationId;
+      const expectedOrgIds = await getExpectedOrganizationsForRecall(order);
+      const rootLot = await getRootLotForRecall(order);
+
+      const isAllowed =
+        isInspectorOrAdmin ||
+        expectedOrgIds.includes(userOrgId) ||
+        order.createdBy === userOrgId ||
+        (rootLot && (rootLot.organizationId === userOrgId || rootLot.organization_id === userOrgId));
+
+      if (!isAllowed) {
+        return res.status(403).json({
+          error: "FORBIDDEN",
+          message: "Bạn không có quyền xem tiến độ của lệnh thu hồi này.",
+        });
+      }
+
+      const acks = await getAcknowledgmentsForRecall(recallId);
+      const ackOrgIds = new Set(acks.map((a) => a.organizationId || a.organization_id));
+      const acknowledgedCount = ackOrgIds.size;
+      const expectedCount = expectedOrgIds.length;
+
+      const pendingOrgIds = expectedOrgIds.filter((id) => !ackOrgIds.has(id));
+      const pendingOrganizations = await Promise.all(
+        pendingOrgIds.map(async (id) => ({
+          id,
+          name: await getOrganizationName(id),
+        }))
+      );
+
+      return res.status(200).json({
+        recall_id: order.id,
+        acknowledged_count: acknowledgedCount,
+        expected_count: expectedCount,
+        total_expected: expectedCount,
+        pending_organizations: pendingOrganizations,
+        status: order.status,
+      });
+    } catch (error) {
+      console.error("Lỗi khi tính tiến độ thu hồi:", error);
+      return res.status(500).json({ error: "Lỗi server khi tính tiến độ" });
+    }
+  }
+);
+
+// 2. API: Gửi xác nhận thu hồi từ tổ chức được phân quyền (S-36)
+app.post(
+  "/api/recalls/:recallId/acknowledgments",
+  requirePermission(["producer", "cooperative", "transporter", "distributor", "org_admin", "admin"]),
+  async (req, res) => {
+    const recallId = req.params.recallId || req.params.id;
+    const userOrgId = req.auth.organizationId;
+
+    if (!userOrgId) {
+      return res.status(403).json({ error: "FORBIDDEN", message: "Yêu cầu ngữ cảnh tổ chức." });
+    }
+
+    try {
+      const order = await getRecallOrderById(recallId);
+      if (!order) {
+        return res.status(404).json({ error: "NOT_FOUND", message: "Không tìm thấy lệnh thu hồi." });
+      }
+
+      const expectedOrgIds = await getExpectedOrganizationsForRecall(order);
+      if (!expectedOrgIds.includes(userOrgId)) {
+        return res.status(403).json({
+          error: "FORBIDDEN",
+          message: "Tổ chức của bạn không thuộc danh sách cần xác nhận cho lệnh thu hồi này.",
+        });
+      }
+
+      const acks = await getAcknowledgmentsForRecall(recallId);
+      const alreadyAcked = acks.some(
+        (a) => (a.organizationId || a.organization_id) === userOrgId
+      );
+      if (alreadyAcked) {
+        return res.status(409).json({
+          error: "ALREADY_ACKNOWLEDGED",
+          message: "Tổ chức đã gửi xác nhận cho lệnh thu hồi này.",
+        });
+      }
+
+      const note = req.body && req.body.note ? String(req.body.note).trim() : null;
+      const status = req.body && req.body.status ? String(req.body.status) : "ACKNOWLEDGED";
+      const orgName = await getOrganizationName(userOrgId);
+      const userId = req.auth.userId || req.auth.id || "user";
+      const now = new Date();
+
+      if (pool && typeof pool.query === "function") {
+        const client = await pool.connect();
+        try {
+          await client.query("BEGIN");
+          const insertRes = await client.query(
+            `INSERT INTO recall_acknowledgments (
+              recall_id, organization_id, org_name, status, note, created_by_user_id, created_at
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7)
+            RETURNING *`,
+            [String(recallId), userOrgId, orgName, status, note, userId, now]
+          );
+          const ackRow = insertRes.rows[0];
+
+          const countRes = await client.query(
+            "SELECT COUNT(DISTINCT organization_id) as count FROM recall_acknowledgments WHERE recall_id = $1",
+            [String(recallId)]
+          );
+          const totalAcks = parseInt(countRes.rows[0].count, 10);
+
+          if (totalAcks >= expectedOrgIds.length) {
+            await client.query(
+              "UPDATE recall_orders SET status = 'COMPLETED', updated_at = $1 WHERE id = $2",
+              [now, String(recallId)]
+            );
+            order.status = "COMPLETED";
+            order.updatedAt = now.toISOString();
+
+            const rootLotId = order.lotId || order.lot_id;
+            const rootLot = await getRootLotForRecall(order);
+            const lotOrgId = (rootLot && (rootLot.organization_id || rootLot.organizationId)) || userOrgId;
+
+            await appendBatchEvent(client, {
+              batchId: rootLotId,
+              eventType: "RECALL_COMPLETED",
+              payload: {
+                recallId: order.id,
+                reason: order.reason,
+                acknowledgedCount: totalAcks,
+                expectedCount: expectedOrgIds.length,
+                completedAt: now.toISOString(),
+              },
+              organizationId: lotOrgId,
+              actorUserId: userId,
+              occurredAt: now,
+            });
+          }
+
+          await client.query("COMMIT");
+          return res.status(201).json({
+            message: "Đã lưu phản hồi thành công",
+            data: {
+              id: ackRow.id,
+              recall_id: ackRow.recall_id,
+              organization_id: ackRow.organization_id,
+              org_name: ackRow.org_name,
+              status: ackRow.status,
+              note: ackRow.note,
+              created_at: ackRow.created_at,
+            },
+          });
+        } catch (dbErr) {
+          await client.query("ROLLBACK");
+          if (dbErr.code === "23505") {
+            return res.status(409).json({
+              error: "ALREADY_ACKNOWLEDGED",
+              message: "Tổ chức đã gửi xác nhận cho lệnh thu hồi này.",
+            });
+          }
+          throw dbErr;
+        } finally {
+          client.release();
+        }
+      }
+
+      // In-memory fallback
+      const newAck = {
+        id: inMemoryRecallAcknowledgments.length + 1,
+        recallId: String(recallId),
+        recall_id: String(recallId),
+        organizationId: userOrgId,
+        organization_id: userOrgId,
+        orgName,
+        org_name: orgName,
+        status,
+        note,
+        createdByUserId: userId,
+        created_by_user_id: userId,
+        createdAt: now.toISOString(),
+        created_at: now.toISOString(),
+      };
+      inMemoryRecallAcknowledgments.push(newAck);
+
+      // Check if last required acknowledgment
+      const acksForOrder = inMemoryRecallAcknowledgments.filter(
+        (a) => String(a.recallId || a.recall_id) === String(recallId)
+      );
+      const ackOrgIds = new Set(acksForOrder.map((a) => a.organizationId || a.organization_id));
+      if (ackOrgIds.size >= expectedOrgIds.length) {
+        order.status = "COMPLETED";
+        order.updatedAt = now.toISOString();
+
+        // Also update object inside inMemoryRecallOrders if reference differed
+        const memOrder = inMemoryRecallOrders.find((o) => String(o.id) === String(recallId));
+        if (memOrder) {
+          memOrder.status = "COMPLETED";
+          memOrder.updatedAt = now.toISOString();
+        }
+
+        const rootLotId = order.lotId || order.lot_id;
+        const rootLot = await getRootLotForRecall(order);
+        const lotOrgId = (rootLot && (rootLot.organization_id || rootLot.organizationId)) || userOrgId;
+
+        await appendBatchEvent(null, {
+          batchId: rootLotId,
+          eventType: "RECALL_COMPLETED",
+          payload: {
+            recallId: order.id,
+            reason: order.reason,
+            acknowledgedCount: ackOrgIds.size,
+            expectedCount: expectedOrgIds.length,
+            completedAt: now.toISOString(),
+          },
+          organizationId: lotOrgId,
+          actorUserId: userId,
+          occurredAt: now,
+        });
+      }
+
+      return res.status(201).json({
+        message: "Đã lưu phản hồi thành công",
+        data: newAck,
+      });
+    } catch (error) {
+      console.error("Lỗi khi lưu phản hồi thu hồi:", error);
+      return res.status(500).json({ error: "Lỗi server khi lưu phản hồi" });
+    }
+  }
+);
+
+// 3. API: Lấy danh sách các đơn vị đã xác nhận (S-36)
+app.get(
+  "/api/recalls/:recallId/acknowledgments",
+  requirePermission(["producer", "cooperative", "transporter", "distributor", "org_admin", "admin", "inspector"]),
+  async (req, res) => {
+    const recallId = req.params.recallId || req.params.id;
+
+    try {
+      const order = await getRecallOrderById(recallId);
+      if (!order) {
+        return res.status(404).json({ error: "NOT_FOUND", message: "Không tìm thấy lệnh thu hồi." });
+      }
+
+      const isInspectorOrAdmin =
+        req.auth.isInspector || ["inspector", "admin"].includes(req.auth.roleId);
+      const userOrgId = req.auth.organizationId;
+      const expectedOrgIds = await getExpectedOrganizationsForRecall(order);
+      const rootLot = await getRootLotForRecall(order);
+
+      const isAllowed =
+        isInspectorOrAdmin ||
+        expectedOrgIds.includes(userOrgId) ||
+        order.createdBy === userOrgId ||
+        (rootLot && (rootLot.organizationId === userOrgId || rootLot.organization_id === userOrgId));
+
+      if (!isAllowed) {
+        return res.status(403).json({
+          error: "FORBIDDEN",
+          message: "Bạn không có quyền xem phản hồi của lệnh thu hồi này.",
+        });
+      }
+
+      const acks = await getAcknowledgmentsForRecall(recallId);
+      return res.status(200).json(acks);
+    } catch (error) {
+      console.error("Lỗi khi lấy danh sách phản hồi:", error);
+      return res.status(500).json({ error: "Lỗi server khi lấy dữ liệu phản hồi" });
     }
   }
 );
@@ -6473,6 +8153,268 @@ app.get(
     } catch (err) {
       return res.status(500).json({ message: err.message });
     }
+  }
+);
+
+/**
+ * S-40 (Jira N2-211): Mở chuyến vận chuyển gắn nhiều lô và một thùng lạnh
+ */
+app.post(
+  "/api/shipments",
+  requirePermission(["producer", "cooperative", "transporter", "distributor", "org_admin", "admin"]),
+  async (req, res) => {
+    try {
+      const result = await createShipment({
+        pool,
+        authContext: req.auth,
+        data: req.body,
+        inMemoryLots,
+        inMemoryOrgs,
+        inMemoryProducts,
+        ipAddress: req.ip,
+        userAgent: req.get("User-Agent"),
+      });
+      return res.status(result.status || (result.success ? 201 : 400)).json(result);
+    } catch (err) {
+      return res.status(500).json({ error: "INTERNAL_SERVER_ERROR", message: err.message });
+    }
+  }
+);
+
+app.get(
+  "/api/shipments",
+  requirePermission(["producer", "cooperative", "transporter", "distributor", "inspector", "org_admin", "admin"]),
+  async (req, res) => {
+    try {
+      const result = await getShipments({
+        pool,
+        authContext: req.auth,
+        filters: req.query,
+        inMemoryOrgs,
+      });
+      return res.status(200).json(result);
+    } catch (err) {
+      return res.status(500).json({ error: "INTERNAL_SERVER_ERROR", message: err.message });
+    }
+  }
+);
+
+app.get(
+  "/api/shipments/:id",
+  requirePermission(["producer", "cooperative", "transporter", "distributor", "inspector", "org_admin", "admin"]),
+  async (req, res) => {
+    try {
+      const result = await getShipmentById({
+        pool,
+        authContext: req.auth,
+        shipmentId: req.params.id,
+        inMemoryOrgs,
+      });
+      return res.status(result.status || 200).json(result);
+    } catch (err) {
+      return res.status(500).json({ error: "INTERNAL_SERVER_ERROR", message: err.message });
+    }
+  }
+);
+
+app.post(
+  ["/api/shipments/:id/complete", "/api/shipments/:id/end"],
+  requirePermission(["producer", "cooperative", "transporter", "distributor", "org_admin", "admin"]),
+  async (req, res) => {
+    try {
+      const result = await completeShipment({
+        pool,
+        authContext: req.auth,
+        shipmentId: req.params.id,
+        data: req.body,
+        inMemoryOrgs,
+        ipAddress: req.ip,
+        userAgent: req.get("User-Agent"),
+      });
+      return res.status(result.status || 200).json(result);
+    } catch (err) {
+      return res.status(500).json({ error: "INTERNAL_SERVER_ERROR", message: err.message });
+    }
+  }
+);
+
+app.get(
+  "/api/lots/:id/active-shipment",
+  requirePermission(["producer", "cooperative", "transporter", "distributor", "inspector", "org_admin", "admin"]),
+  async (req, res) => {
+    try {
+      const result = await getActiveShipmentForLot({
+        pool,
+        lotId: req.params.id,
+      });
+      return res.status(200).json(result);
+    } catch (err) {
+      return res.status(500).json({ error: "INTERNAL_SERVER_ERROR", message: err.message });
+    }
+  }
+);
+
+/**
+ * S-41 (Jira N2-109): Ghi nhận nhiệt độ theo thời gian cho chuyến vận chuyển thùng lạnh
+ */
+app.post(
+  [
+    "/api/shipments/temperatures",
+    "/api/temperatures",
+    "/api/cold-boxes/:code/temperatures",
+    "/api/cold-boxes/temperatures",
+    "/api/shipments/:id/temperatures",
+  ],
+  requirePermission(["producer", "cooperative", "transporter", "distributor", "org_admin", "admin"]),
+  async (req, res) => {
+    try {
+      const mergedData = {
+        ...req.body,
+        coldBoxId:
+          req.params.code ||
+          req.body?.coldBoxId ||
+          req.body?.cold_box_id ||
+          req.body?.coldBoxCode ||
+          req.body?.cold_box_code ||
+          req.body?.code,
+        shipmentId:
+          req.params.id ||
+          req.body?.shipmentId ||
+          req.body?.shipment_id,
+      };
+      const result = await recordShipmentTemperature({
+        pool,
+        authContext: req.auth,
+        data: mergedData,
+        inMemoryOrgs,
+        ipAddress: req.ip,
+        userAgent: req.get("User-Agent"),
+        onAcceptedReading: async (ctx) => {
+          return handleAcceptedTemperatureReading({
+            ...ctx,
+            pool,
+          });
+        },
+      });
+      return res.status(result.status || 200).json(result);
+    } catch (err) {
+      return res.status(500).json({ error: "INTERNAL_SERVER_ERROR", message: err.message });
+    }
+  }
+);
+
+app.get(
+  ["/api/shipments/:id/temperatures", "/api/temperatures/:id"],
+  requirePermission(["producer", "cooperative", "transporter", "distributor", "inspector", "org_admin", "admin"]),
+  async (req, res) => {
+    try {
+      const result = await getShipmentTemperatures({
+        pool,
+        authContext: req.auth,
+        shipmentId: req.params.id,
+      });
+      return res.status(result.status || 200).json(result);
+    } catch (err) {
+      return res.status(500).json({ error: "INTERNAL_SERVER_ERROR", message: err.message });
+    }
+  }
+);
+
+/**
+ * S-43 Phase 2 (Jira N2-111): REST Violation Routes & RBAC Enforcement
+ */
+app.get(
+  "/api/shipments/:id/violations",
+  requirePermission(["producer", "cooperative", "transporter", "distributor", "inspector", "org_admin", "admin"]),
+  async (req, res) => {
+    try {
+      const result = await getShipmentViolations({
+        pool,
+        authContext: req.auth,
+        shipmentId: req.params.id,
+      });
+      return res.status(result.status || 200).json(result);
+    } catch (err) {
+      return res.status(500).json({ error: "INTERNAL_SERVER_ERROR", message: err.message });
+    }
+  }
+);
+
+app.get(
+  "/api/cold-boxes/:code/violations",
+  requirePermission(["producer", "cooperative", "transporter", "distributor", "inspector", "org_admin", "admin"]),
+  async (req, res) => {
+    try {
+      const result = await getColdBoxViolations({
+        pool,
+        authContext: req.auth,
+        coldBoxCode: req.params.code,
+        shipmentId: req.query.shipmentId || req.query.shipment_id,
+      });
+      return res.status(result.status || 200).json(result);
+    } catch (err) {
+      return res.status(500).json({ error: "INTERNAL_SERVER_ERROR", message: err.message });
+    }
+  }
+);
+
+/**
+ * Danh mục thùng lạnh tiêu chuẩn chuỗi lạnh phục vụ S-40 (Jira N2-211)
+ */
+app.get(
+  "/api/cold-containers",
+  requirePermission(["producer", "cooperative", "transporter", "distributor", "inspector", "org_admin", "admin"]),
+  async (_req, res) => {
+    return res.status(200).json({
+      success: true,
+      containers: [
+        {
+          id: "CONT-COLD-01",
+          name: "Thùng lạnh chuyên dụng 50L (Vắc-xin & Nông sản nhạy cảm)",
+          tempMin: 2,
+          tempMax: 8,
+          capacityLiters: 50,
+          sensorModel: "IoT DHT22 Pro",
+          status: "READY",
+        },
+        {
+          id: "CONT-COLD-02",
+          name: "Thùng lạnh siêu tốc 120L (Rau củ quả tươi cao cấp)",
+          tempMin: 0,
+          tempMax: 4,
+          capacityLiters: 120,
+          sensorModel: "PT100 Industrial",
+          status: "READY",
+        },
+        {
+          id: "CONT-FREEZE-01",
+          name: "Thùng đông sâu 200L (Thủy hải sản & Đông lạnh)",
+          tempMin: -20,
+          tempMax: -10,
+          capacityLiters: 200,
+          sensorModel: "K-Type Thermocouple",
+          status: "READY",
+        },
+        {
+          id: "CONT-CHILL-01",
+          name: "Thùng mát tiêu chuẩn 80L (Trái cây ôn đới & Nấm)",
+          tempMin: 8,
+          tempMax: 15,
+          capacityLiters: 80,
+          sensorModel: "Sensirion SHT30",
+          status: "READY",
+        },
+        {
+          id: "CBX-001",
+          name: "Thùng lạnh mẫu tiêu chuẩn S-40",
+          tempMin: 2,
+          tempMax: 4,
+          capacityLiters: 60,
+          sensorModel: "Sensirion SHT35 Pro",
+          status: "READY",
+        },
+      ],
+    });
   }
 );
 
@@ -6507,6 +8449,16 @@ async function start() {
     inMemoryFarms,
   });
 
+  // Kích hoạt seed S-39 tự động khi khởi động backend để luôn sẵn sàng 15 lô R01..R15
+  seedS39InMemory({
+    inMemoryLots,
+    inMemoryBatchRelations,
+    inMemoryBatchEvents,
+    inMemoryOrgs,
+    inMemoryProducts,
+    inMemoryFarms,
+  });
+
   // Khởi động job rà soát bàn giao quá hạn định kỳ (S-24 / T-56)
   startTransferOverdueJob({ pool, inMemoryTransfers });
 
@@ -6520,6 +8472,11 @@ if (require.main === module) {
 }
 
 module.exports = {
+  inMemoryRecallAcknowledgments,
+  getExpectedOrganizationsForRecall,
+  getAcknowledgmentsForRecall,
+  getRootLotForRecall,
+  getAffectedLotsForRecallAndOrg,
   app,
   users,
   inMemoryLots,
@@ -6567,8 +8524,10 @@ module.exports = {
   collectAncestorLotIds,
   collectDescendantLotIds,
   seedS22InMemory,
+  seedS39InMemory,
   traceLotOrigins,
   traceLotDescendants,
+  getPublicLotMapData,
   inMemoryLocations,
   fetchLocations,
   getLocationById,
@@ -6580,6 +8539,16 @@ module.exports = {
   CycleDetectedError,
   lotOriginsCache,
   clearLotOriginsCache,
+  inMemoryShipments,
+  inMemoryShipmentLots,
+  inMemoryShipmentTemperatures,
+  createShipment,
+  completeShipment,
+  getShipments,
+  getShipmentById,
+  getActiveShipmentForLot,
+  recordShipmentTemperature,
+  getShipmentTemperatures,
   seedS22Data: () =>
     seedS22InMemory({
       inMemoryLots,
@@ -6589,5 +8558,91 @@ module.exports = {
       inMemoryProducts,
       inMemoryFarms,
     }),
+  seedS39Data: () =>
+    seedS39InMemory({
+      inMemoryLots,
+      inMemoryBatchRelations,
+      inMemoryBatchEvents,
+      inMemoryOrgs,
+      inMemoryProducts,
+      inMemoryFarms,
+    }),
+  inMemoryRecallOrders,
+  getRecallOrderWithLiveDescendants,
+  checkLotRecallStatus,
+  handleAcceptedTemperatureReading,
+  getViolations,
+  getShipmentViolations,
 };
 
+// --- S-46: Sinh và xuất mã QR cho lô hàng (PNG / SVG) ---
+// NFR: Đường dẫn công khai dùng mã lô (lotCode), KHÔNG dùng khóa số tự tăng hoặc ID nội bộ.
+const QRCode = require("qrcode");
+
+app.get(["/trace/lots/:lotCode", "/trace/:lotCode"], (req, res) => {
+  const { lotCode } = req.params;
+  return res.redirect(`/public-trace.html?code=${encodeURIComponent(lotCode)}`);
+});
+
+app.get(["/api/lots/qrcode/:lotCode", "/api/lots/:id/qrcode"], async (req, res) => {
+  try {
+    const lotCode = (req.params.lotCode || req.params.id || "").trim();
+    const format = (req.query.format || "png").toLowerCase().trim();
+
+    if (!lotCode) {
+      return res.status(400).json({ error: "INVALID_LOT_CODE", message: "Mã lô hàng không hợp lệ." });
+    }
+
+    if (format !== "png" && format !== "svg") {
+      return res.status(400).json({ error: "INVALID_FORMAT", message: "Định dạng không được hỗ trợ. Chỉ hỗ trợ png hoặc svg." });
+    }
+
+    // Kiểm tra lô hàng tồn tại trong hệ thống (PostgreSQL hoặc in-memory)
+    let lotExists = false;
+    if (pool) {
+      try {
+        const lotRes = await pool.query("SELECT id, name FROM lots WHERE id = $1 LIMIT 1", [lotCode]);
+        lotExists = lotRes.rows.length > 0;
+      } catch (_) {
+        /* ignore db error and fallback to in-memory */
+      }
+    }
+    if (!lotExists) {
+      lotExists = (inMemoryLots || []).some((l) => l.id === lotCode);
+    }
+
+    if (!lotExists) {
+      return res.status(404).json({ error: "LOT_NOT_FOUND", message: `Không tìm thấy lô hàng với mã "${lotCode}".` });
+    }
+
+    const host = req.get("host");
+    const protocol = req.protocol || "http";
+    const baseUrl = process.env.PUBLIC_URL || process.env.BASE_URL || process.env.FRONTEND_URL || `${protocol}://${host}`;
+    const publicUrl = `${baseUrl}/public-trace.html?code=${encodeURIComponent(lotCode)}`;
+
+    if (format === "svg") {
+      const svgString = await QRCode.toString(publicUrl, {
+        type: "svg",
+        margin: 2,
+        width: 300,
+        errorCorrectionLevel: "M",
+      });
+      res.type("image/svg+xml");
+      res.setHeader("Content-Disposition", `attachment; filename="qr-${lotCode}.svg"`);
+      return res.send(svgString);
+    }
+
+    const pngBuffer = await QRCode.toBuffer(publicUrl, {
+      type: "png",
+      margin: 2,
+      width: 300,
+      errorCorrectionLevel: "M",
+    });
+    res.type("image/png");
+    res.setHeader("Content-Disposition", `attachment; filename="qr-${lotCode}.png"`);
+    return res.send(pngBuffer);
+  } catch (err) {
+    console.error("Lỗi khi sinh mã QR:", err);
+    return res.status(500).json({ error: "INTERNAL_SERVER_ERROR", message: "Không thể sinh mã QR: " + err.message });
+  }
+});

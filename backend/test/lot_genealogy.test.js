@@ -233,6 +233,7 @@ test("traceLotDescendants - Thuật toán duyệt xuôi hậu duệ tách/gộp 
         });
       },
       (err) => {
+        assert.ok(err instanceof CycleDetectedError);
         assert.equal(err.name, "CycleDetectedError");
         assert.equal(err.cycleLotId, "LOT-A");
         assert.equal(
