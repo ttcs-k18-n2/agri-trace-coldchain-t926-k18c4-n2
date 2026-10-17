@@ -566,7 +566,7 @@ function requirePermission(allowedRoles = [], options = {}) {
     }
 
     const { roleId, isInspector } = req.auth;
-    const allowInspectorWrite = options.allowInspectorWrite === true || req.path.startsWith("/api/recalls");
+    const allowInspectorWrite = options.allowInspectorWrite === true;
 
     // Cán bộ kiểm tra chỉ được đọc (GET / HEAD), trừ các thao tác mở/quản lý lệnh thu hồi chuyên biệt (S-33 / S-34)
     if (isInspector && ["POST", "PUT", "PATCH", "DELETE"].includes(req.method) && !allowInspectorWrite) {
@@ -6733,7 +6733,7 @@ app.get(
 // POST /api/recalls: Mở lệnh thu hồi (RBAC: Inspector, Admin)
 app.post(
   "/api/recalls",
-  requirePermission(["inspector", "admin"]),
+  requirePermission(["inspector", "admin"], { allowInspectorWrite: true }),
   async (req, res) => {
     try {
       const { lotId, reason, severity = "HIGH" } = req.body;

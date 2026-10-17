@@ -257,6 +257,14 @@ test("Real PostgreSQL S-34 Acceptance Criteria Suite on agy_s34_test", async (t)
         coordinates: "21.5750, 105.6905",
       });
       assert.equal(crossTenantPatch.status, 403, "Producer cannot modify cross-tenant lot R04 (ORG-B)");
+
+      // Inspector can still read existing read routes with 200
+      const inspectorLotsGet = await inspectorAgent.get("/api/lots");
+      assert.equal(inspectorLotsGet.status, 200, "Inspector original read /api/lots returns 200");
+      const inspectorRecallGet = await inspectorAgent.get(`/api/recalls/${createdRecallId}`);
+      assert.equal(inspectorRecallGet.status, 200, "Inspector original read /api/recalls/:id returns 200");
+      const inspectorDescGet = await inspectorAgent.get(`/api/recalls/${createdRecallId}/descendants`);
+      assert.equal(inspectorDescGet.status, 200, "Inspector original read /api/recalls/:id/descendants returns 200");
     });
 
     // =========================================================================
@@ -354,6 +362,115 @@ test("Real PostgreSQL S-34 Acceptance Criteria Suite on agy_s34_test", async (t)
 
       // Total quantity is preserved: (150+100+100+100+150+50+80) = 730 kg
       assert.equal(dynamicRes.body.totalRecallQuantity, 730, "Total quantity must remain 730 kg");
+    });
+
+    // =========================================================================
+    // AC 7: Query-Budget Bounded by BFS Levels on Broad Graph & Multi-Source DAG
+    // =========================================================================
+    await t.test("AC7: Query-budget bounded by BFS levels on broad graph with outside-source and diamond DAG", async () => {
+      const fixtureLots = [
+        { id: "LOT-Q-ROOT", name: "Query Budget Root", status: "Đã thu hoạch", organization_id: "ORG-A" },
+        { id: "LOT-Q-OUTSIDE", name: "Outside Source Lot", status: "Đã thu hoạch", organization_id: "ORG-A" },
+      ];
+      for (let i = 0; i < 10; i++) {
+        fixtureLots.push({
+          id: `LOT-Q-L1-${String(i).padStart(2, "0")}`,
+          name: `L1 Child ${i}`,
+          status: "Đang lưu kho",
+          organization_id: "ORG-A",
+        });
+      }
+      fixtureLots.push(
+        { id: "LOT-Q-DIAMOND", name: "Diamond Lot", status: "Đang lưu kho", organization_id: "ORG-B" },
+        { id: "LOT-Q-EXT", name: "External Merge Lot", status: "Đang lưu kho", organization_id: "ORG-B" }
+      );
+
+      const fixtureRelations = [];
+      for (let i = 0; i < 10; i++) {
+        fixtureRelations.push({
+          id: `rel-q-l1-${i}`,
+          parent_batch_id: "LOT-Q-ROOT",
+          child_batch_id: `LOT-Q-L1-${String(i).padStart(2, "0")}`,
+          relation_type: "SPLIT",
+          quantity: 10,
+        });
+      }
+      // Diamond: 2 parents in graph
+      fixtureRelations.push(
+        { id: "rel-q-d1", parent_batch_id: "LOT-Q-L1-00", child_batch_id: "LOT-Q-DIAMOND", relation_type: "MERGE", quantity: 5 },
+        { id: "rel-q-d2", parent_batch_id: "LOT-Q-L1-01", child_batch_id: "LOT-Q-DIAMOND", relation_type: "MERGE", quantity: 5 }
+      );
+      // External merge: 1 parent in graph, 1 parent outside graph
+      fixtureRelations.push(
+        { id: "rel-q-e1", parent_batch_id: "LOT-Q-L1-02", child_batch_id: "LOT-Q-EXT", relation_type: "MERGE", quantity: 5 },
+        { id: "rel-q-e2", parent_batch_id: "LOT-Q-OUTSIDE", child_batch_id: "LOT-Q-EXT", relation_type: "MERGE", quantity: 5 }
+      );
+
+      for (const l of fixtureLots) {
+        await migPool.query(
+          `INSERT INTO lots (id, name, status, organization_id, initial_quantity, remaining_quantity)
+           VALUES ($1, $2, $3, $4, 100, 100)
+           ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name`,
+          [l.id, l.name, l.status, l.organization_id]
+        );
+      }
+      for (const r of fixtureRelations) {
+        await migPool.query(
+          `INSERT INTO batch_relations (id, parent_batch_id, child_batch_id, relation_type, quantity, organization_id)
+           VALUES ($1, $2, $3, $4, $5, 'ORG-A')
+           ON CONFLICT (id) DO NOTHING`,
+          [r.id, r.parent_batch_id, r.child_batch_id, r.relation_type, r.quantity]
+        );
+      }
+
+      let parentBatchQueries = 0;
+      const originalQuery = appPool.query.bind(appPool);
+      appPool.query = function (...args) {
+        const sql = typeof args[0] === "string" ? args[0] : (args[0] && args[0].text ? args[0].text : "");
+        if (sql.includes("FROM batch_relations") && sql.includes("child_batch_id = ANY")) {
+          parentBatchQueries++;
+        }
+        return originalQuery(...args);
+      };
+
+      try {
+        const { traceLotDescendants } = require("../src/lot_genealogy");
+        const res = await traceLotDescendants({
+          pool: appPool,
+          startLotId: "LOT-Q-ROOT",
+        });
+
+        // 1. Query budget: parentBatchQueries must be <= 2 (bounded by BFS levels, NOT 12 children!)
+        assert.ok(
+          parentBatchQueries <= 2,
+          `Query budget violation: executed ${parentBatchQueries} batch parent queries for 2 levels (expected <= 2, never 12)`
+        );
+
+        // 2. Descendant count: 10 L1 lots + 2 L2 lots = 12 total descendants
+        assert.equal(res.descendantCount, 12);
+        // LOT-Q-OUTSIDE must NOT be in descendants
+        assert.equal(res.descendantIds.includes("LOT-Q-OUTSIDE"), false);
+
+        // 3. Diamond DAG node
+        const diamondNode = res.descendants.find((d) => d.id === "LOT-Q-DIAMOND");
+        assert.ok(diamondNode, "LOT-Q-DIAMOND must be in descendants");
+        assert.equal(diamondNode.isMultiSourceMerge, true);
+        assert.equal(diamondNode.sourcesCount, 2);
+        const diamondParents = diamondNode.mergedSources.map((s) => s.parentBatchId).sort();
+        assert.deepEqual(diamondParents, ["LOT-Q-L1-00", "LOT-Q-L1-01"]);
+
+        // 4. External merge node
+        const extNode = res.descendants.find((d) => d.id === "LOT-Q-EXT");
+        assert.ok(extNode, "LOT-Q-EXT must be in descendants");
+        assert.equal(extNode.isMultiSourceMerge, true);
+        assert.equal(extNode.sourcesCount, 2);
+        const extParents = extNode.mergedSources.map((s) => s.parentBatchId).sort();
+        assert.deepEqual(extParents, ["LOT-Q-L1-02", "LOT-Q-OUTSIDE"], "Must include outside source LOT-Q-OUTSIDE in mergedSources");
+      } finally {
+        appPool.query = originalQuery;
+        await migPool.query(`DELETE FROM batch_relations WHERE id LIKE 'rel-q-%'`).catch(() => {});
+        await migPool.query(`DELETE FROM lots WHERE id LIKE 'LOT-Q-%'`).catch(() => {});
+      }
     });
   } finally {
     // Teardown test artifacts in PostgreSQL

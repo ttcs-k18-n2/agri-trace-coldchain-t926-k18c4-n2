@@ -580,6 +580,35 @@ async function traceLotDescendants({
   }
 
   const rootLot = lotsMap.get(startLotId) || null;
+  // Pre-index in-memory relations by child and parent for fast lookup
+  const inMemoryRelationsByChild = new Map();
+  const inMemoryRelationsByParent = new Map();
+  if (Array.isArray(inMemoryBatchRelations)) {
+    for (const r of inMemoryBatchRelations) {
+      const c = r.childBatchId || r.child_batch_id;
+      const p = r.parentBatchId || r.parent_batch_id;
+      if (c && p) {
+        if (!inMemoryRelationsByChild.has(c)) {
+          inMemoryRelationsByChild.set(c, []);
+        }
+        inMemoryRelationsByChild.get(c).push({
+          parentBatchId: p,
+          relationType: r.relationType || r.relation_type || "MERGE",
+          quantity: r.quantity !== null && r.quantity !== undefined ? Number(r.quantity) : null,
+        });
+
+        if (!inMemoryRelationsByParent.has(p)) {
+          inMemoryRelationsByParent.set(p, []);
+        }
+        inMemoryRelationsByParent.get(p).push({
+          parentBatchId: p,
+          childBatchId: c,
+          relationType: r.relationType || r.relation_type || "SPLIT",
+          quantity: r.quantity !== null && r.quantity !== undefined ? Number(r.quantity) : null,
+        });
+      }
+    }
+  }
 
   // 2. Chuẩn bị BFS duyệt theo tầng
   let currentLevelQueue = [{ lotId: startLotId, path: [startLotId] }];
@@ -789,6 +818,37 @@ async function traceLotDescendants({
     }
     detectCycle3Color(startLotId, fullAdjacencyMap);
 
+    // Thu thập các quan hệ cha theo tầng (Batch 1 query cho cả tầng thay vì N+1 queries per child)
+    const levelCandidateChildIds = Array.from(
+      new Set(rawRelationsFromParents.map((r) => r.childBatchId).filter(Boolean))
+    );
+    const parentRelationsByChild = new Map();
+    if (levelCandidateChildIds.length > 0 && pool && typeof pool.query === "function") {
+      try {
+        const pRes = await pool.query(
+          `SELECT parent_batch_id, child_batch_id, relation_type, quantity
+           FROM batch_relations
+           WHERE child_batch_id = ANY($1::text[])`,
+          [levelCandidateChildIds]
+        );
+        for (const r of pRes.rows) {
+          const cId = r.child_batch_id;
+          if (!parentRelationsByChild.has(cId)) {
+            parentRelationsByChild.set(cId, []);
+          }
+          parentRelationsByChild.get(cId).push({
+            parentBatchId: r.parent_batch_id,
+            relationType: r.relation_type || "MERGE",
+            quantity: r.quantity !== null && r.quantity !== undefined ? Number(r.quantity) : null,
+          });
+        }
+      } catch (err) {
+        if (err.code !== "42P01") {
+          throw new Error(`Lỗi truy vấn quan hệ cha của các lô con theo tầng: ${err.message}`);
+        }
+      }
+    }
+
     // Duyệt từng node cha trong hàng đợi tầng hiện tại để kiểm tra chu trình và mở rộng cạnh
     const nextLevelQueue = [];
     const levelLots = [];
@@ -850,42 +910,32 @@ async function traceLotDescendants({
         const initQty = lotObj ? (lotObj.initialQuantity !== undefined ? lotObj.initialQuantity : lotObj.initial_quantity) : null;
         const remQty = lotObj ? (lotObj.remainingQuantity !== undefined ? lotObj.remainingQuantity : lotObj.remaining_quantity) : null;
 
-        // Lấy chi tiết quan hệ cha (Kiểm tra lô gộp đa nguồn theo AC2)
+        // Lấy chi tiết quan hệ cha (Kiểm tra lô gộp đa nguồn theo AC2 - Sử dụng quan hệ đã batch theo tầng)
         const childParentRelations = [];
         const seenParentRels = new Set();
-        if (pool && typeof pool.query === "function") {
-          try {
-            const pRes = await pool.query(
-              `SELECT parent_batch_id, relation_type, quantity
-               FROM batch_relations
-               WHERE child_batch_id = $1`,
-              [childId]
-            );
-            for (const r of pRes.rows) {
-              if (r.parent_batch_id && !seenParentRels.has(r.parent_batch_id)) {
-                seenParentRels.add(r.parent_batch_id);
-                childParentRelations.push({
-                  parentBatchId: r.parent_batch_id,
-                  relationType: r.relation_type || "MERGE",
-                  quantity: r.quantity !== null && r.quantity !== undefined ? Number(r.quantity) : null,
-                });
-              }
-            }
-          } catch (err) {
-            if (err.code !== "42P01") {
-              throw new Error(`Lỗi truy vấn quan hệ cha của lô con ${childId}: ${err.message}`);
+
+        const dbParentRels = parentRelationsByChild.get(childId);
+        if (Array.isArray(dbParentRels)) {
+          for (const r of dbParentRels) {
+            if (r.parentBatchId && !seenParentRels.has(r.parentBatchId)) {
+              seenParentRels.add(r.parentBatchId);
+              childParentRelations.push({
+                parentBatchId: r.parentBatchId,
+                relationType: r.relationType || "MERGE",
+                quantity: r.quantity !== null && r.quantity !== undefined ? Number(r.quantity) : null,
+              });
             }
           }
         }
-        if (Array.isArray(inMemoryBatchRelations)) {
-          for (const r of inMemoryBatchRelations) {
-            const c = r.childBatchId || r.child_batch_id;
-            const p = r.parentBatchId || r.parent_batch_id;
-            if (c === childId && p && !seenParentRels.has(p)) {
-              seenParentRels.add(p);
+
+        const memParentRels = inMemoryRelationsByChild.get(childId);
+        if (Array.isArray(memParentRels)) {
+          for (const r of memParentRels) {
+            if (r.parentBatchId && !seenParentRels.has(r.parentBatchId)) {
+              seenParentRels.add(r.parentBatchId);
               childParentRelations.push({
-                parentBatchId: p,
-                relationType: r.relationType || r.relation_type || "MERGE",
+                parentBatchId: r.parentBatchId,
+                relationType: r.relationType || "MERGE",
                 quantity: r.quantity !== null && r.quantity !== undefined ? Number(r.quantity) : null,
               });
             }
