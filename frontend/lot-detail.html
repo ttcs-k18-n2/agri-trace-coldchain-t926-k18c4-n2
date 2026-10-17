@@ -1806,6 +1806,18 @@
           </button>
         `;
 
+        // Nút tải mã QR truy xuất nguồn gốc (Story S-46)
+        actionButtonsHtml += `
+          <button type="button" onclick="downloadLotQr('png')" class="btn btn-secondary" id="btnDownloadQrPng" style="gap: 6px; font-weight: 600;" title="Tải mã QR định dạng hình ảnh PNG để in">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+            <span>📥 Tải QR (PNG)</span>
+          </button>
+          <button type="button" onclick="downloadLotQr('svg')" class="btn btn-secondary" id="btnDownloadQrSvg" style="gap: 6px; font-weight: 600;" title="Tải mã QR định dạng vector SVG sắc nét">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            <span>📥 Tải QR (SVG)</span>
+          </button>
+        `;
+
         roleActionsEl.innerHTML = actionButtonsHtml;
         roleActionsEl.style.display = actionButtonsHtml ? "flex" : "none";
       }
@@ -5476,6 +5488,59 @@
         });
       }
     }
+
+    // --- S-46: Tải mã QR truy xuất nguồn gốc (PNG / SVG) ---
+    async function downloadLotQr(format) {
+      const urlParams = new URLSearchParams(window.location.search);
+      const lotId = urlParams.get("id") || (lotData && lotData.id);
+
+      if (!lotId) {
+        alert("Không tìm thấy thông tin lô hàng để tải mã QR!");
+        return;
+      }
+
+      const btnId = format === "svg" ? "btnDownloadQrSvg" : "btnDownloadQrPng";
+      const btn = document.getElementById(btnId);
+      const originalHtml = btn ? btn.innerHTML : "";
+
+      if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = `<span>Đang tạo QR...</span>`;
+      }
+
+      try {
+        const apiUrl = `/api/lots/qrcode/${encodeURIComponent(lotId)}?format=${encodeURIComponent(format)}`;
+        const res = await fetch(apiUrl, { credentials: "same-origin" });
+
+        if (!res.ok) {
+          let errMsg = `Không thể tải mã QR (${res.status})`;
+          try {
+            const errJson = await res.json();
+            if (errJson && errJson.message) errMsg = errJson.message;
+          } catch (_) {}
+          alert(`Lỗi: ${errMsg}`);
+          return;
+        }
+
+        const blob = await res.blob();
+        const blobUrl = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = blobUrl;
+        a.download = `QR_${lotId}.${format}`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
+      } catch (err) {
+        alert(`Lỗi khi tải mã QR: ${err.message}`);
+      } finally {
+        if (btn) {
+          btn.disabled = false;
+          btn.innerHTML = originalHtml;
+        }
+      }
+    }
+
     setupTransferModalListeners();
     setupSplitModalListeners();
     setupMergeModalListeners();

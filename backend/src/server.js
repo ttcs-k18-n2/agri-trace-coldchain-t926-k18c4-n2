@@ -8277,7 +8277,76 @@ module.exports = {
   handleAcceptedTemperatureReading,
   getViolations,
   getShipmentViolations,
-  getColdBoxViolations,
-  ColdChainViolationDetector,
 };
 
+// --- S-46: Sinh và xuất mã QR cho lô hàng (PNG / SVG) ---
+// NFR: Đường dẫn công khai dùng mã lô (lotCode), KHÔNG dùng khóa số tự tăng hoặc ID nội bộ.
+const QRCode = require("qrcode");
+
+app.get(["/trace/lots/:lotCode", "/trace/:lotCode"], (req, res) => {
+  const { lotCode } = req.params;
+  return res.redirect(`/public-trace.html?code=${encodeURIComponent(lotCode)}`);
+});
+
+app.get(["/api/lots/qrcode/:lotCode", "/api/lots/:id/qrcode"], async (req, res) => {
+  try {
+    const lotCode = (req.params.lotCode || req.params.id || "").trim();
+    const format = (req.query.format || "png").toLowerCase().trim();
+
+    if (!lotCode) {
+      return res.status(400).json({ error: "INVALID_LOT_CODE", message: "Mã lô hàng không hợp lệ." });
+    }
+
+    if (format !== "png" && format !== "svg") {
+      return res.status(400).json({ error: "INVALID_FORMAT", message: "Định dạng không được hỗ trợ. Chỉ hỗ trợ png hoặc svg." });
+    }
+
+    // Kiểm tra lô hàng tồn tại trong hệ thống (PostgreSQL hoặc in-memory)
+    let lotExists = false;
+    if (pool) {
+      try {
+        const lotRes = await pool.query("SELECT id, name FROM lots WHERE id = $1 LIMIT 1", [lotCode]);
+        lotExists = lotRes.rows.length > 0;
+      } catch (_) {
+        /* ignore db error and fallback to in-memory */
+      }
+    }
+    if (!lotExists) {
+      lotExists = (inMemoryLots || []).some((l) => l.id === lotCode);
+    }
+
+    if (!lotExists) {
+      return res.status(404).json({ error: "LOT_NOT_FOUND", message: `Không tìm thấy lô hàng với mã "${lotCode}".` });
+    }
+
+    const host = req.get("host");
+    const protocol = req.protocol || "http";
+    const baseUrl = process.env.PUBLIC_URL || process.env.BASE_URL || process.env.FRONTEND_URL || `${protocol}://${host}`;
+    const publicUrl = `${baseUrl}/public-trace.html?code=${encodeURIComponent(lotCode)}`;
+
+    if (format === "svg") {
+      const svgString = await QRCode.toString(publicUrl, {
+        type: "svg",
+        margin: 2,
+        width: 300,
+        errorCorrectionLevel: "M",
+      });
+      res.type("image/svg+xml");
+      res.setHeader("Content-Disposition", `attachment; filename="qr-${lotCode}.svg"`);
+      return res.send(svgString);
+    }
+
+    const pngBuffer = await QRCode.toBuffer(publicUrl, {
+      type: "png",
+      margin: 2,
+      width: 300,
+      errorCorrectionLevel: "M",
+    });
+    res.type("image/png");
+    res.setHeader("Content-Disposition", `attachment; filename="qr-${lotCode}.png"`);
+    return res.send(pngBuffer);
+  } catch (err) {
+    console.error("Lỗi khi sinh mã QR:", err);
+    return res.status(500).json({ error: "INTERNAL_SERVER_ERROR", message: "Không thể sinh mã QR: " + err.message });
+  }
+});
