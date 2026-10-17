@@ -6,7 +6,7 @@
   "scripts": {
     "start": "node src/server.js",
     "check": "node --check src/server.js && node --check src/index.js && node --check src/migrate.js",
-    "test": "node --test --experimental-test-coverage",
+    "test": "node --test --test-concurrency=1 --experimental-test-coverage",
     "lint": "eslint src test && node scripts/check_tenant_queries.js && node scripts/check_frontend_syntax.js",
     "audit": "npm audit --audit-level=high",
     "migrate": "node src/migrate.js",
