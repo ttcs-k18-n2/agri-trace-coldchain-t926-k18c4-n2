@@ -1459,8 +1459,31 @@ async function recordShipmentTemperature({
   const rawTemperature =
     data.temperature !== undefined ? data.temperature : data.value;
 
-  const cleanColdBoxId =
+  let cleanColdBoxId =
     typeof rawColdBoxId === "string" ? rawColdBoxId.trim() : null;
+
+  const rawShipmentId = data.shipmentId || data.shipment_id;
+  const cleanShipmentId =
+    typeof rawShipmentId === "string" ? rawShipmentId.trim() : null;
+
+  if (!cleanColdBoxId && cleanShipmentId) {
+    if (pool || client) {
+      const dbClient = client || pool;
+      try {
+        const shp = await dbClient.query("SELECT cold_box_id FROM shipments WHERE id = $1", [cleanShipmentId]);
+        if (shp.rows[0]) {
+          cleanColdBoxId = shp.rows[0].cold_box_id;
+        }
+      } catch {
+        /* ignore */
+      }
+    } else {
+      const shp = inMemoryShipments.find((s) => s.id === cleanShipmentId);
+      if (shp) {
+        cleanColdBoxId = shp.coldBoxId || shp.containerId;
+      }
+    }
+  }
 
   // 1. Kiểm tra mã thùng lạnh
   if (!cleanColdBoxId) {
@@ -1495,7 +1518,7 @@ async function recordShipmentTemperature({
   }
 
   // 3. Kiểm tra thời điểm đo
-  if (!rawTimestamp) {
+  if (!rawTimestamp || typeof rawTimestamp === "boolean") {
     return {
       status: 400,
       error: "INVALID_TIMESTAMP",

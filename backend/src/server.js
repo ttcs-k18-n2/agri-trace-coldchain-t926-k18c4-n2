@@ -6861,6 +6861,10 @@ app.post(
           req.body?.coldBoxCode ||
           req.body?.cold_box_code ||
           req.body?.code,
+        shipmentId:
+          req.params.id ||
+          req.body?.shipmentId ||
+          req.body?.shipment_id,
       };
       const result = await recordShipmentTemperature({
         pool,
