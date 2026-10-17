@@ -946,6 +946,7 @@ test("S-40 Mocked Browser E2E Coverage (Isolated with Fixtures, Zero Shared Post
       assert.equal(detailDisplay, "flex");
 
       // 2.2 Verify Detail Content Area renders Container, Route, and Both Lots
+      await client.waitForText("#detailContentArea", "SHP-COLD-MC-001");
       const detailAreaText = await client.evaluate('document.getElementById("detailContentArea").textContent');
       assert.match(detailAreaText, /SHP-COLD-MC-001/);
       assert.match(detailAreaText, /CONT-COLD-01/);
