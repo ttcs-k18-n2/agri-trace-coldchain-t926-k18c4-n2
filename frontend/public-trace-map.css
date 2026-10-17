@@ -480,3 +480,115 @@
   color: #1d4ed8;
   transform: translateY(-1px);
 }
+
+/* Story S-49: Alert Banners for Recall and Cold Chain Violations */
+.public-alert-box {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  padding: 16px 20px;
+  border-radius: 12px;
+  margin-bottom: 20px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.05);
+  animation: slideDownFade 0.25s ease-out;
+}
+
+@keyframes slideDownFade {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.public-alert-box.alert-recall {
+  background: #fef2f2;
+  border: 1.5px solid #ef4444;
+  color: #991b1b;
+}
+
+.public-alert-box.alert-recall .alert-box-icon {
+  color: #dc2626;
+  background: #fee2e2;
+  border-radius: 10px;
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.public-alert-box.alert-recall .alert-box-title {
+  margin: 0 0 4px 0;
+  font-size: 16px;
+  font-weight: 700;
+  color: #b91c1c;
+}
+
+.public-alert-box.alert-recall .alert-box-message {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.5;
+  color: #7f1d1d;
+}
+
+.public-alert-box.alert-coldchain {
+  background: #fffbeb;
+  border: 1.5px solid #f59e0b;
+  color: #92400e;
+}
+
+.public-alert-box.alert-coldchain .alert-box-icon {
+  color: #d97706;
+  background: #fef3c7;
+  border-radius: 10px;
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.public-alert-box.alert-coldchain .alert-box-title {
+  margin: 0 0 4px 0;
+  font-size: 16px;
+  font-weight: 700;
+  color: #b45309;
+}
+
+.public-alert-box.alert-coldchain .alert-box-message {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.5;
+  color: #78350f;
+}
+
+/* Safety Badges */
+.verified-banner.badge-danger {
+  background: #fef2f2;
+  color: #b91c1c;
+  border: 1px solid #f87171;
+}
+
+.verified-banner.badge-warning {
+  background: #fffbeb;
+  color: #b45309;
+  border: 1px solid #fcd34d;
+}
+
+.verified-banner.badge-success {
+  background: #dcfce7;
+  color: #15803d;
+  border: 1px solid #86efac;
+}
+
+.trace-badge-violation {
+  background: #fef2f2 !important;
+  color: #b91c1c !important;
+  border: 1px solid #f87171 !important;
+}
