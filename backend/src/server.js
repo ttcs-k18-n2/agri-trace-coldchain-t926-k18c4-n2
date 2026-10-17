@@ -715,6 +715,7 @@ app.get(
         inMemoryFarms,
         inMemoryLocations,
         inMemoryTransfers,
+        inMemoryRecallOrders,
       });
 
       return res.status(200).json(mapData);
@@ -7087,6 +7088,7 @@ app.patch(
       inMemoryProducts,
       inMemoryFarms,
       inMemoryLocations,
+      inMemoryRecallOrders,
     });
 
     return res.status(200).json({
