@@ -10,6 +10,15 @@
 
 const { traceLotOrigins } = require("./lot_genealogy");
 const { getLocationById } = require("./location_service");
+const {
+  PUBLIC_LOT_ALLOWLIST,
+  PUBLIC_ORIGIN_ALLOWLIST,
+  PUBLIC_JOURNEY_ALLOWLIST,
+  PUBLIC_ROUTE_ALLOWLIST,
+  PUBLIC_SUMMARY_ALLOWLIST,
+  PUBLIC_RECALL_ALLOWLIST,
+  PUBLIC_COLDCHAIN_ALLOWLIST,
+} = require("./public_allowlist");
 
 /**
  * Danh mục tọa độ đại diện cấp xã / khu vực mặc định (In-memory fallback & seed mapping)
@@ -267,17 +276,53 @@ function getLocationTypeLabel(type) {
   }
 }
 
-function getSafePublicOrgName(orgName, orgId, orgMap, fallback = "Đối tác chuỗi cung ứng") {
+function getSafePublicProducerName(orgName, orgId, orgMap, fallback = "Hợp tác xã sản xuất") {
   if (orgName && typeof orgName === "string" && !orgName.toLowerCase().startsWith("org-")) {
     return orgName;
   }
   if (orgId && orgMap && orgMap.has(orgId)) {
     const mapped = orgMap.get(orgId);
-    if (mapped && typeof mapped === "string" && !mapped.toLowerCase().startsWith("org-")) {
-      return mapped;
+    const mName = typeof mapped === "object" ? mapped.name : mapped;
+    if (mName && typeof mName === "string" && !mName.toLowerCase().startsWith("org-")) {
+      return mName;
     }
   }
   return fallback;
+}
+
+function getPublicPartnerTypeLabel(orgTypeOrRole, fallback = "Đối tác chuỗi cung ứng") {
+  const norm = String(orgTypeOrRole || "").toLowerCase().trim();
+  if (norm.includes("trans") || norm.includes("vận chuyển") || norm.includes("carrier") || norm.includes("logistics")) {
+    return "Đơn vị vận chuyển";
+  }
+  if (norm.includes("dist") || norm.includes("phân phối") || norm.includes("retail") || norm.includes("store") || norm.includes("bán lẻ")) {
+    return "Nhà phân phối";
+  }
+  if (norm.includes("coop") || norm.includes("hợp tác xã") || norm.includes("htx")) {
+    return "Hợp tác xã";
+  }
+  if (norm.includes("storage") || norm.includes("warehouse") || norm.includes("kho") || norm.includes("cold")) {
+    return "Kho bảo quản";
+  }
+  if (norm.includes("producer") || norm.includes("farm") || norm.includes("sản xuất")) {
+    return "Cơ sở sản xuất";
+  }
+  return fallback;
+}
+
+function getSafeIntermediatePartnerName(orgId, orgType, orgMap, fallback = "Đối tác chuỗi cung ứng") {
+  let typeCandidate = orgType;
+  if (!typeCandidate && orgId && orgMap && orgMap.has(orgId)) {
+    const mapped = orgMap.get(orgId);
+    if (typeof mapped === "object") {
+      typeCandidate = mapped.type;
+    }
+  }
+  return getPublicPartnerTypeLabel(typeCandidate, fallback);
+}
+
+function getSafePublicOrgName(orgName, orgId, orgMap, fallback = "Đối tác chuỗi cung ứng") {
+  return getSafePublicProducerName(orgName, orgId, orgMap, fallback);
 }
 
 /**
@@ -322,10 +367,19 @@ async function getPublicLotMapData(options = {}) {
   let lotRecord = null;
   const orgMap = new Map();
   for (const o of inMemoryOrgs) {
-    orgMap.set(o.id, o.name || o.id);
+    orgMap.set(o.id, { name: o.name || o.id, type: o.type });
   }
 
   if (pool && typeof pool.query === "function") {
+    try {
+      const orgsRes = await pool.query("SELECT id, name, type FROM organizations");
+      for (const o of orgsRes.rows) {
+        orgMap.set(o.id, { name: o.name || o.id, type: o.type });
+      }
+    } catch {
+      // Ignored if table doesn't exist
+    }
+
     const lotRes = await pool.query(
       `SELECT 
         l.id, l.name, l.status, l.organization_id, l.farm_id, l.product_id,
@@ -602,7 +656,7 @@ async function getPublicLotMapData(options = {}) {
           typeLabel: getLocationTypeLabel(locType),
           title: locName,
           locationName: locName,
-          organizationName: getSafePublicOrgName(null, ev.organizationId, orgMap, "Đơn vị lưu kho chuỗi lạnh"),
+          organizationName: getSafeIntermediatePartnerName(ev.organizationId, locType, orgMap, "Kho bảo quản"),
           address: locAddress,
           coordinates: locCoords,
           hasCoordinates: Boolean(locCoords),
@@ -613,15 +667,25 @@ async function getPublicLotMapData(options = {}) {
         });
       }
     } else if (ev.eventType === "TRANSFER_CONFIRMED") {
-      const fromOrg = getSafePublicOrgName(ev.payload.fromOrganizationName, ev.payload.fromOrganizationId, orgMap, "Bên giao");
-      const toOrg = getSafePublicOrgName(ev.payload.toOrganizationName, ev.payload.toOrganizationId, orgMap, "Bên nhận");
+      const fromType = getSafeIntermediatePartnerName(
+        ev.payload.fromOrganizationId,
+        ev.payload.fromOrganizationType || ev.payload.fromType,
+        orgMap,
+        "Hợp tác xã"
+      );
+      const toType = getSafeIntermediatePartnerName(
+        ev.payload.toOrganizationId,
+        ev.payload.toOrganizationType || ev.payload.toType,
+        orgMap,
+        "Đơn vị vận chuyển"
+      );
       journey.push({
         step: currentStep++,
         type: "transit",
         typeLabel: "Bàn giao vận chuyển chuỗi lạnh",
-        title: `Bàn giao vận chuyển: ${fromOrg} ➔ ${toOrg}`,
+        title: `Bàn giao vận chuyển: ${fromType} ➔ ${toType}`,
         locationName: "Điểm bàn giao chuỗi lạnh",
-        organizationName: toOrg,
+        organizationName: toType,
         address: "Hành trình vận chuyển chuyên dụng giữa các đối tác",
         coordinates: null,
         hasCoordinates: false,
@@ -662,7 +726,7 @@ async function getPublicLotMapData(options = {}) {
         typeLabel: getLocationTypeLabel(locType),
         title: locName,
         locationName: locName,
-        organizationName: lotRecord.organizationName,
+        organizationName: getSafeIntermediatePartnerName(lotRecord.organizationId, locType, orgMap, "Nhà phân phối"),
         address: curLoc ? curLoc.address : (lotRecord.locationAddress || null),
         coordinates: curCoords,
         hasCoordinates: Boolean(curCoords),
@@ -856,35 +920,17 @@ function sanitizePublicTracePayload(data) {
     return { lat, lng };
   };
 
-  const lot = sanitizeObject(data.lot, [
-    "code",
-    "name",
-    "status",
-    "productName",
-    "productUnit",
-    "organizationName",
-    "harvestedAt",
-    "isMerged",
-    "recall",
-    "coldChain",
-    "safetyStatus",
-  ]);
+  const lot = sanitizeObject(data.lot, PUBLIC_LOT_ALLOWLIST);
+  if (lot && lot.recall && typeof lot.recall === "object") {
+    lot.recall = sanitizeObject(lot.recall, PUBLIC_RECALL_ALLOWLIST);
+  }
+  if (lot && lot.coldChain && typeof lot.coldChain === "object") {
+    lot.coldChain = sanitizeObject(lot.coldChain, PUBLIC_COLDCHAIN_ALLOWLIST);
+  }
 
   const origins = Array.isArray(data.origins)
     ? data.origins.map((orig) => {
-        const item = sanitizeObject(orig, [
-          "farmName",
-          "area",
-          "organizationName",
-          "regionName",
-          "commune",
-          "district",
-          "province",
-          "coordinates",
-          "hasCoordinates",
-          "verified",
-          "harvestedAt",
-        ]);
+        const item = sanitizeObject(orig, PUBLIC_ORIGIN_ALLOWLIST);
         if (item && item.coordinates) {
           item.coordinates = sanitizeCoords(item.coordinates);
         }
@@ -894,25 +940,7 @@ function sanitizePublicTracePayload(data) {
 
   const journey = Array.isArray(data.journey)
     ? data.journey.map((stop) => {
-        const item = sanitizeObject(stop, [
-          "step",
-          "type",
-          "typeLabel",
-          "title",
-          "locationName",
-          "organizationName",
-          "address",
-          "coordinates",
-          "hasCoordinates",
-          "verified",
-          "occurredAt",
-          "description",
-          "isOrigin",
-          "isTransfer",
-          "isCurrentLocation",
-          "hasViolation",
-          "warning",
-        ]);
+        const item = sanitizeObject(stop, PUBLIC_JOURNEY_ALLOWLIST);
         if (item && item.coordinates) {
           item.coordinates = sanitizeCoords(item.coordinates);
         }
@@ -922,14 +950,7 @@ function sanitizePublicTracePayload(data) {
 
   const routes = Array.isArray(data.routes)
     ? data.routes.map((rt) => {
-        const item = sanitizeObject(rt, [
-          "fromStep",
-          "toStep",
-          "fromTitle",
-          "toTitle",
-          "isSchematic",
-          "coordinates",
-        ]);
+        const item = sanitizeObject(rt, PUBLIC_ROUTE_ALLOWLIST);
         if (item && Array.isArray(item.coordinates)) {
           item.coordinates = item.coordinates
             .filter((pair) => Array.isArray(pair) && pair.length === 2)
@@ -939,15 +960,7 @@ function sanitizePublicTracePayload(data) {
       })
     : [];
 
-  const summary = sanitizeObject(data.summary, [
-    "totalOrigins",
-    "totalStops",
-    "verifiedStops",
-    "unverifiedStops",
-    "hasUnlocatedStops",
-    "isSchematic",
-    "disclaimer",
-  ]);
+  const summary = sanitizeObject(data.summary, PUBLIC_SUMMARY_ALLOWLIST);
 
   return {
     lot,

@@ -291,4 +291,82 @@ test("Story S-48: Trang công khai chỉ trả về trường được đánh d�
     assert.equal(resNotFound.status, 404);
     assert.equal(resNotFound.body.error, "LOT_NOT_FOUND");
   });
+
+  await t.test("TC08: Che giấu tên thương mại của đối tác trung gian, chỉ hiển thị theo loại vai trò (S-48)", async () => {
+    const res = await request(app).get("/api/public/lots/LOT-001/map");
+    assert.equal(res.status, 200);
+
+    const journey = res.body.journey || [];
+    // Kiểm tra các chặng trung gian (không phải vùng trồng gốc)
+    const intermediateStops = journey.filter((s) => !s.isOrigin);
+
+    const allowedRoleTypes = [
+      "Hợp tác xã",
+      "Đơn vị vận chuyển",
+      "Nhà phân phối",
+      "Kho bảo quản",
+      "Cơ sở sản xuất",
+      "Đối tác chuỗi cung ứng",
+    ];
+
+    for (const stop of intermediateStops) {
+      // Tên tổ chức trung gian phải thuộc danh mục vai trò chuẩn hóa
+      assert.ok(
+        allowedRoleTypes.includes(stop.organizationName),
+        `Chặng trung gian '${stop.title}' để lộ tên đối tác thương mại riêng tư: '${stop.organizationName}'!`
+      );
+
+      // Tuyệt đối không chứa tên công ty thương mại cụ thể
+      assert.equal(
+        stop.organizationName.includes("Công ty Cổ phần Vận chuyển"),
+        false,
+        "Không được để lộ tên công ty vận chuyển"
+      );
+      assert.equal(
+        stop.organizationName.includes("Tổng Công ty Phân phối"),
+        false,
+        "Không được để lộ tên tổng công ty phân phối"
+      );
+    }
+  });
+
+  await t.test("TC09: Tuyệt đối không xuất khối lượng hàng hóa và giá bán/nhập trong API công khai (S-48)", async () => {
+    const res = await request(app).get("/api/public/lots/LOT-001");
+    assert.equal(res.status, 200);
+
+    const jsonStr = JSON.stringify(res.body);
+    const forbiddenCommercialTerms = [
+      "initialQuantity",
+      "remainingQuantity",
+      "quantity",
+      "price",
+      "importPrice",
+      "exportPrice",
+      "unitPrice",
+      "totalAmount",
+      "farmArea",
+    ];
+
+    for (const term of forbiddenCommercialTerms) {
+      assert.equal(
+        res.body.lot[term],
+        undefined,
+        `Trường thương mại '${term}' không được phép xuất hiện trong lot công khai!`
+      );
+    }
+
+    // Kiểm tra cả trên endpoint /map
+    const resMap = await request(app).get("/api/public/lots/LOT-001/map");
+    for (const term of forbiddenCommercialTerms) {
+      assert.equal(
+        resMap.body.lot[term],
+        undefined,
+        `Trường thương mại '${term}' không được phép xuất hiện trong lot trên /map!`
+      );
+    }
+    for (const orig of (resMap.body.origins || [])) {
+      assert.equal(orig.area, undefined, "origins không được để lộ diện tích / diện tích canh tác");
+      assert.equal(orig.initialQuantity, undefined, "origins không được để lộ khối lượng");
+    }
+  });
 });
