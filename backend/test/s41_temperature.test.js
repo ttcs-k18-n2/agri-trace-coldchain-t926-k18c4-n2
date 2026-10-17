@@ -987,8 +987,8 @@ test("S-41 (Jira N2-109): Ghi nhận nhiệt độ theo thời gian cho chuyến
     assert.equal(numericTimestamp.status, 400);
     assert.equal(numericTimestamp.body.error, "INVALID_TIMESTAMP");
 
-    // D. Chống future poisoning: thời điểm đo vượt quá xa trong tương lai (ví dụ: năm 2099)
-    const futurePoisoning = await request(
+    // D. Accelerated fixture timestamps: valid future timestamps are accepted (no arbitrary 24h skew blocking S42)
+    const futureAccelerated = await request(
       server,
       {
         hostname: "127.0.0.1",
@@ -1003,8 +1003,191 @@ test("S-41 (Jira N2-109): Ghi nhận nhiệt độ theo thời gian cho chuyến
         temperature: 4.0,
       }
     );
-    assert.equal(futurePoisoning.status, 400);
-    assert.equal(futurePoisoning.body.error, "INVALID_TIMESTAMP");
+    assert.equal(futureAccelerated.status, 200);
+    assert.equal(futureAccelerated.body.acknowledged, true);
+
+    // E. Strict calendar date and format rejection: ambiguous strings, invalid calendar dates
+    const invalidCalendarDates = [
+      "1",
+      "invalid-date",
+      "2026-02-31T12:00:00.000Z",
+      "2026-13-01T12:00:00.000Z",
+      "2026-04-31T12:00:00.000Z",
+      "2026-10-17T25:00:00.000Z",
+      "2026-10-17T12:60:00.000Z",
+    ];
+    for (const badTs of invalidCalendarDates) {
+      const resBad = await request(
+        server,
+        {
+          hostname: "127.0.0.1",
+          port,
+          path: "/api/shipments/temperatures",
+          method: "POST",
+          headers: { "Content-Type": "application/json", Cookie: producerCookie },
+        },
+        {
+          coldBoxId: "CB-NUM-01",
+          timestamp: badTs,
+          temperature: 4.0,
+        }
+      );
+      assert.equal(resBad.status, 400, `Expected 400 for bad timestamp '${badTs}'`);
+      assert.equal(resBad.body.error, "INVALID_TIMESTAMP");
+    }
+  });
+
+  await t.test("TC-S41-13: List (/api/shipments) và detail (/api/shipments/:id) đồng nhất currentTemperature (0, số âm, null)", async () => {
+    resetState();
+    inMemoryLots.push(
+      { id: "LOT-PROJ-01", name: "Lô 01", status: "Đã thu hoạch", organizationId: "org-001", remainingQuantity: 100, initialQuantity: 100 },
+      { id: "LOT-PROJ-02", name: "Lô 02", status: "Đã thu hoạch", organizationId: "org-001", remainingQuantity: 100, initialQuantity: 100 },
+      { id: "LOT-PROJ-03", name: "Lô 03", status: "Đã thu hoạch", organizationId: "org-001", remainingQuantity: 100, initialQuantity: 100 }
+    );
+
+    // 1. Tạo 3 chuyến: Chuyến A (sẽ đo 0 độ), Chuyến B (sẽ đo số âm), Chuyến C (chưa đo)
+    const createA = await request(
+      server,
+      {
+        hostname: "127.0.0.1",
+        port,
+        path: "/api/shipments",
+        method: "POST",
+        headers: { "Content-Type": "application/json", Cookie: producerCookie },
+      },
+      { coldBoxId: "CB-PROJ-01", lotIds: ["LOT-PROJ-01"] }
+    );
+    assert.equal(createA.status, 201);
+    const shipAId = createA.body.shipment.id;
+
+    const createB = await request(
+      server,
+      {
+        hostname: "127.0.0.1",
+        port,
+        path: "/api/shipments",
+        method: "POST",
+        headers: { "Content-Type": "application/json", Cookie: producerCookie },
+      },
+      { coldBoxId: "CB-PROJ-02", lotIds: ["LOT-PROJ-02"] }
+    );
+    assert.equal(createB.status, 201);
+    const shipBId = createB.body.shipment.id;
+
+    const createC = await request(
+      server,
+      {
+        hostname: "127.0.0.1",
+        port,
+        path: "/api/shipments",
+        method: "POST",
+        headers: { "Content-Type": "application/json", Cookie: producerCookie },
+      },
+      { coldBoxId: "CB-PROJ-03", lotIds: ["LOT-PROJ-03"] }
+    );
+    assert.equal(createC.status, 201);
+    const shipCId = createC.body.shipment.id;
+
+    // Ghi số đo 0 độ cho Chuyến A
+    const timeA = new Date("2026-10-17T12:00:00.000Z").toISOString();
+    const resA = await request(
+      server,
+      {
+        hostname: "127.0.0.1",
+        port,
+        path: "/api/shipments/temperatures",
+        method: "POST",
+        headers: { "Content-Type": "application/json", Cookie: producerCookie },
+      },
+      { coldBoxId: "CB-PROJ-01", temperature: 0.0, timestamp: timeA }
+    );
+    assert.equal(resA.status, 200);
+
+    // Ghi số đo âm (-3.2 độ) cho Chuyến B
+    const timeB = new Date("2026-10-17T12:05:00.000Z").toISOString();
+    const resB = await request(
+      server,
+      {
+        hostname: "127.0.0.1",
+        port,
+        path: "/api/shipments/temperatures",
+        method: "POST",
+        headers: { "Content-Type": "application/json", Cookie: producerCookie },
+      },
+      { coldBoxId: "CB-PROJ-02", temperature: -3.2, timestamp: timeB }
+    );
+    assert.equal(resB.status, 200);
+
+    // 2. Gọi GET /api/shipments (list)
+    const listRes = await request(
+      server,
+      {
+        hostname: "127.0.0.1",
+        port,
+        path: "/api/shipments",
+        method: "GET",
+        headers: { Cookie: adminCookie },
+      }
+    );
+    assert.equal(listRes.status, 200);
+    const listItems = listRes.body.data;
+    const map = new Map(listItems.map((s) => [s.id, s]));
+
+    // 3. Gọi GET /api/shipments/:id (detail)
+    const detailA = await request(
+      server,
+      {
+        hostname: "127.0.0.1",
+        port,
+        path: `/api/shipments/${shipAId}`,
+        method: "GET",
+        headers: { Cookie: adminCookie },
+      }
+    );
+    const detailB = await request(
+      server,
+      {
+        hostname: "127.0.0.1",
+        port,
+        path: `/api/shipments/${shipBId}`,
+        method: "GET",
+        headers: { Cookie: adminCookie },
+      }
+    );
+    const detailC = await request(
+      server,
+      {
+        hostname: "127.0.0.1",
+        port,
+        path: `/api/shipments/${shipCId}`,
+        method: "GET",
+        headers: { Cookie: adminCookie },
+      }
+    );
+
+    // So sánh Chuyến A: currentTemperature = 0 (bảo toàn số 0, không nhầm với falsy/null)
+    const itemA = map.get(shipAId);
+    assert.ok(itemA, "Chuyến A phải có trong danh sách");
+    assert.strictEqual(itemA.currentTemperature, 0, "List Chuyến A phải có currentTemperature là 0");
+    assert.strictEqual(detailA.body.shipment.currentTemperature, 0, "Detail Chuyến A phải có currentTemperature là 0");
+    assert.equal(itemA.lastTemperatureAt, timeA);
+    assert.equal(detailA.body.shipment.lastTemperatureAt, timeA);
+
+    // So sánh Chuyến B: currentTemperature = -3.2
+    const itemB = map.get(shipBId);
+    assert.ok(itemB, "Chuyến B phải có trong danh sách");
+    assert.strictEqual(itemB.currentTemperature, -3.2);
+    assert.strictEqual(detailB.body.shipment.currentTemperature, -3.2);
+    assert.equal(itemB.lastTemperatureAt, timeB);
+    assert.equal(detailB.body.shipment.lastTemperatureAt, timeB);
+
+    // So sánh Chuyến C: currentTemperature = null, lastTemperatureAt = null
+    const itemC = map.get(shipCId);
+    assert.ok(itemC, "Chuyến C phải có trong danh sách");
+    assert.strictEqual(itemC.currentTemperature, null);
+    assert.strictEqual(detailC.body.shipment.currentTemperature, null);
+    assert.strictEqual(itemC.lastTemperatureAt, null);
+    assert.strictEqual(detailC.body.shipment.lastTemperatureAt, null);
   });
 });
 

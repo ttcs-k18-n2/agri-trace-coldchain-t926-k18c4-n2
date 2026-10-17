@@ -8,6 +8,8 @@ const {
   setDatabasePool,
   inMemoryShipments,
   recordShipmentTemperature,
+  getShipments,
+  getShipmentById,
 } = require("../src/server");
 
 const isCI = process.env.CI === "true" || process.env.CI === "1";
@@ -174,7 +176,7 @@ test("S-41 PostgreSQL Integration Suite (Story S-41 / Jira N2-109)", async (t) =
       const testOrgId = "org-s41-pg-test";
       const testShipId = "shp-s41-pg-preserve-01";
       await pool.query(
-        "INSERT INTO organizations (id, name) VALUES ($1, $2) ON CONFLICT (id) DO NOTHING",
+        "INSERT INTO organizations (id, name, type) VALUES ($1, $2, 'transporter') ON CONFLICT (id) DO NOTHING",
         [testOrgId, "Tổ chức thử nghiệm S41"]
       );
       await pool.query(
@@ -466,6 +468,92 @@ test("S-41 PostgreSQL Integration Suite (Story S-41 / Jira N2-109)", async (t) =
       } finally {
         client.release();
       }
+    }
+  );
+
+  // --- SUBTEST 6: Projection Consistency between getShipments and getShipmentById (0, negative, null) ---
+  await t.test(
+    "TC-S41-PG-06: getShipments PG projection preserving 0, negative temperature, ISO timestamp, and null",
+    { skip: !isPostgresAvailable },
+    async () => {
+      const orgId = "org-trans";
+      const authAdmin = { userId: "usr-admin", roleId: "admin" };
+
+      // 1. Shipment with 0 degrees Celsius
+      const shipZeroId = "shp-pg-zero-01";
+      const coldBoxZero = "CB-PG-ZERO";
+      await pool.query(
+        `INSERT INTO shipments (id, cold_box_id, status, organization_id, started_at)
+         VALUES ($1, $2, 'IN_TRANSIT', $3, NOW())
+         ON CONFLICT (id) DO UPDATE SET current_temperature = NULL, last_temperature_at = NULL`,
+        [shipZeroId, coldBoxZero, orgId]
+      );
+      const timeZero = new Date("2026-10-17T12:00:00.000Z").toISOString();
+      await recordShipmentTemperature({
+        pool,
+        authContext: { userId: "usr-trans", roleId: "transporter", organizationId: orgId },
+        data: { coldBoxId: coldBoxZero, temperature: 0.0, timestamp: timeZero },
+      });
+
+      // 2. Shipment with negative temperature
+      const shipNegId = "shp-pg-neg-01";
+      const coldBoxNeg = "CB-PG-NEG";
+      await pool.query(
+        `INSERT INTO shipments (id, cold_box_id, status, organization_id, started_at)
+         VALUES ($1, $2, 'IN_TRANSIT', $3, NOW())
+         ON CONFLICT (id) DO UPDATE SET current_temperature = NULL, last_temperature_at = NULL`,
+        [shipNegId, coldBoxNeg, orgId]
+      );
+      const timeNeg = new Date("2026-10-17T12:05:00.000Z").toISOString();
+      await recordShipmentTemperature({
+        pool,
+        authContext: { userId: "usr-trans", roleId: "transporter", organizationId: orgId },
+        data: { coldBoxId: coldBoxNeg, temperature: -4.5, timestamp: timeNeg },
+      });
+
+      // 3. Shipment with no temperature recorded
+      const shipNullId = "shp-pg-null-01";
+      const coldBoxNull = "CB-PG-NULL";
+      await pool.query(
+        `INSERT INTO shipments (id, cold_box_id, status, organization_id, started_at)
+         VALUES ($1, $2, 'IN_TRANSIT', $3, NOW())
+         ON CONFLICT (id) DO UPDATE SET current_temperature = NULL, last_temperature_at = NULL`,
+        [shipNullId, coldBoxNull, orgId]
+      );
+
+      // Verify list projection
+      const listRes = await getShipments({ pool, authContext: authAdmin });
+      assert.equal(listRes.success, true);
+      const listMap = new Map(listRes.data.map((s) => [s.id, s]));
+
+      // Verify detail projection
+      const detailZero = await getShipmentById({ pool, authContext: authAdmin, shipmentId: shipZeroId });
+      const detailNeg = await getShipmentById({ pool, authContext: authAdmin, shipmentId: shipNegId });
+      const detailNull = await getShipmentById({ pool, authContext: authAdmin, shipmentId: shipNullId });
+
+      // Compare Zero
+      const listZero = listMap.get(shipZeroId);
+      assert.ok(listZero, "Zero shipment must exist in getShipments list");
+      assert.strictEqual(listZero.currentTemperature, 0, "List currentTemperature must preserve 0");
+      assert.strictEqual(detailZero.shipment.currentTemperature, 0, "Detail currentTemperature must preserve 0");
+      assert.equal(listZero.lastTemperatureAt, timeZero);
+      assert.equal(detailZero.shipment.lastTemperatureAt, timeZero);
+
+      // Compare Negative
+      const listNeg = listMap.get(shipNegId);
+      assert.ok(listNeg, "Negative shipment must exist in getShipments list");
+      assert.strictEqual(listNeg.currentTemperature, -4.5);
+      assert.strictEqual(detailNeg.shipment.currentTemperature, -4.5);
+      assert.equal(listNeg.lastTemperatureAt, timeNeg);
+      assert.equal(detailNeg.shipment.lastTemperatureAt, timeNeg);
+
+      // Compare Null
+      const listNull = listMap.get(shipNullId);
+      assert.ok(listNull, "Null shipment must exist in getShipments list");
+      assert.strictEqual(listNull.currentTemperature, null);
+      assert.strictEqual(detailNull.shipment.currentTemperature, null);
+      assert.strictEqual(listNull.lastTemperatureAt, null);
+      assert.strictEqual(detailNull.shipment.lastTemperatureAt, null);
     }
   );
 });
@@ -814,8 +902,8 @@ test("S-41 Portable Logic Verification Suite (In-Memory & HTTP Endpoints)", asyn
     assert.equal(resOverflow.status, 400);
     assert.equal(resOverflow.error, "INVALID_TEMPERATURE");
 
-    // 5. Future poisoning: timestamp > 24h ahead returns 400
-    const resFuture = await recordShipmentTemperature({
+    // 5. Accelerated fixture timestamps: valid future timestamps are accepted (no arbitrary 24h skew blocking S42)
+    const resAccelerated = await recordShipmentTemperature({
       authContext: { userId: "usr-trans", roleId: "transporter", organizationId: "org-trans" },
       data: {
         coldBoxId: "CB-REUSE-PORT",
@@ -823,8 +911,31 @@ test("S-41 Portable Logic Verification Suite (In-Memory & HTTP Endpoints)", asyn
         timestamp: new Date(Date.now() + 86400000 * 2).toISOString(),
       },
     });
-    assert.equal(resFuture.status, 400);
-    assert.equal(resFuture.error, "INVALID_TIMESTAMP");
+    assert.equal(resAccelerated.status, 200);
+    assert.equal(resAccelerated.acknowledged, true);
+
+    // 6. Strict calendar date and format rejection: ambiguous strings, invalid calendar dates (Feb 31, Month 13)
+    const invalidDates = [
+      "1",
+      "invalid-date",
+      "2026-02-31T12:00:00.000Z",
+      "2026-13-01T12:00:00.000Z",
+      "2026-04-31T12:00:00.000Z",
+      "2026-10-17T25:00:00.000Z",
+      "2026-10-17T12:60:00.000Z",
+    ];
+    for (const badDate of invalidDates) {
+      const resBad = await recordShipmentTemperature({
+        authContext: { userId: "usr-trans", roleId: "transporter", organizationId: "org-trans" },
+        data: {
+          coldBoxId: "CB-REUSE-PORT",
+          temperature: 4.0,
+          timestamp: badDate,
+        },
+      });
+      assert.equal(resBad.status, 400, `Expected 400 for bad timestamp '${badDate}'`);
+      assert.equal(resBad.error, "INVALID_TIMESTAMP");
+    }
   });
 });
 

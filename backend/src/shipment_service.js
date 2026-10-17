@@ -1118,6 +1118,13 @@ async function getShipments({
       startedAt: r.started_at ? new Date(r.started_at).toISOString() : null,
       completedAt: r.completed_at ? new Date(r.completed_at).toISOString() : null,
       createdAt: r.created_at ? new Date(r.created_at).toISOString() : null,
+      currentTemperature:
+        r.current_temperature !== null && r.current_temperature !== undefined
+          ? Number(r.current_temperature)
+          : null,
+      lastTemperatureAt: r.last_temperature_at
+        ? new Date(r.last_temperature_at).toISOString()
+        : null,
     }));
 
     return {
@@ -1186,6 +1193,13 @@ async function getShipments({
       lotCount: attached.length,
       lots: attached.map((sl) => ({ lotId: sl.lotId, status: sl.status, isActive: sl.isActive })),
       lotIds: attached.map((sl) => sl.lotId),
+      currentTemperature:
+        s.currentTemperature !== undefined && s.currentTemperature !== null
+          ? Number(s.currentTemperature)
+          : null,
+      lastTemperatureAt: s.lastTemperatureAt
+        ? new Date(s.lastTemperatureAt).toISOString()
+        : null,
     };
   });
 
@@ -1527,7 +1541,7 @@ async function recordShipmentTemperature({
     };
   }
 
-  // 3. Kiểm tra thời điểm đo: bắt buộc là chuỗi hợp lệ ISO-8601, từ chối boolean, số, object
+  // 3. Kiểm tra thời điểm đo: bắt buộc là chuỗi hợp lệ ISO-8601, từ chối boolean, số, object, chuỗi mơ hồ và ngày sai trên lịch
   if (!rawTimestamp || typeof rawTimestamp !== "string" || !rawTimestamp.trim()) {
     return {
       status: 400,
@@ -1537,13 +1551,59 @@ async function recordShipmentTemperature({
   }
 
   const trimmedTimestamp = rawTimestamp.trim();
-  const isoPattern = /^\d{4}-\d{2}-\d{2}[T\s]\d{2}:\d{2}(:\d{2}(\.\d{1,6})?)?(Z|[+-]\d{2}(:?\d{2})?)?$/i;
-  if (!isoPattern.test(trimmedTimestamp)) {
+  const isoPattern =
+    /^(\d{4})-(\d{2})-(\d{2})[T\s](\d{2}):(\d{2})(?::(\d{2})(?:\.(\d{1,6}))?)?(?:(Z)|([+-]\d{2})(?::?(\d{2}))?)?$/i;
+  const match = isoPattern.exec(trimmedTimestamp);
+  if (!match) {
     return {
       status: 400,
       error: "INVALID_TIMESTAMP",
       message: "Thời điểm đo không đúng định dạng thời gian ISO-8601 hợp lệ.",
     };
+  }
+
+  const year = parseInt(match[1], 10);
+  const month = parseInt(match[2], 10);
+  const day = parseInt(match[3], 10);
+  const hour = parseInt(match[4], 10);
+  const minute = parseInt(match[5], 10);
+  const second = match[6] !== undefined ? parseInt(match[6], 10) : 0;
+
+  if (month < 1 || month > 12) {
+    return {
+      status: 400,
+      error: "INVALID_TIMESTAMP",
+      message: "Thời điểm đo có tháng không hợp lệ trên lịch.",
+    };
+  }
+
+  const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  if (day < 1 || day > daysInMonth) {
+    return {
+      status: 400,
+      error: "INVALID_TIMESTAMP",
+      message: "Thời điểm đo có ngày không hợp lệ trên lịch.",
+    };
+  }
+
+  if (hour < 0 || hour > 23 || minute < 0 || minute > 59 || second < 0 || second > 59) {
+    return {
+      status: 400,
+      error: "INVALID_TIMESTAMP",
+      message: "Thời điểm đo có giờ, phút hoặc giây không hợp lệ.",
+    };
+  }
+
+  if (match[9]) {
+    const tzHour = Math.abs(parseInt(match[9], 10));
+    const tzMin = match[10] ? parseInt(match[10], 10) : 0;
+    if (tzHour > 14 || tzMin < 0 || tzMin > 59) {
+      return {
+        status: 400,
+        error: "INVALID_TIMESTAMP",
+        message: "Múi giờ trong thời điểm đo không hợp lệ.",
+      };
+    }
   }
 
   const dateObj = new Date(trimmedTimestamp);
@@ -1557,16 +1617,6 @@ async function recordShipmentTemperature({
 
   const recordedAtIso = dateObj.toISOString();
   const incomingTime = dateObj.getTime();
-
-  // Chống future poisoning: Cho phép sai lệch đồng hồ tối đa 24 giờ
-  const MAX_FUTURE_SKEW_MS = 24 * 60 * 60 * 1000;
-  if (incomingTime > Date.now() + MAX_FUTURE_SKEW_MS) {
-    return {
-      status: 400,
-      error: "INVALID_TIMESTAMP",
-      message: "Thời điểm đo không thể vượt quá thời gian hiện tại của hệ thống (chống future poisoning).",
-    };
-  }
 
   // 4. Kiểm tra xác thực và phân quyền
   const userId = authContext ? authContext.userId || authContext.id : null;

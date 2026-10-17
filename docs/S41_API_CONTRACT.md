@@ -81,7 +81,7 @@ CREATE INDEX IF NOT EXISTS idx_shipment_temperatures_recorded_at ON shipment_tem
 | Trường | Kiểu dữ liệu | Bắt buộc | Mô tả |
 |---|---|:---:|---|
 | `coldBoxId` | `string` | **Có** | Mã thùng lạnh (hỗ trợ bí danh `cold_box_id`, `coldBoxCode`, `code`) |
-| `timestamp` | `string` (ISO-8601) | **Có** | Chuỗi thời gian chuẩn ISO-8601/RFC 3339 (ví dụ: `2026-10-17T12:00:00.000Z`). Từ chối số nguyên/Unix epoch, boolean, object, và các mốc thời gian vượt quá ngưỡng máy chủ (chống future poisoning). Hỗ trợ bí danh `recordedAt`, `measuredAt`. |
+| `timestamp` | `string` (ISO-8601) | **Có** | Chuỗi thời gian chuẩn ISO-8601/RFC 3339 (ví dụ: `2026-10-17T12:00:00.000Z`). Kiểm tra tính hợp lệ chặt chẽ trên lịch (tháng 1-12, số ngày trong tháng có tính năm nhuận, giờ 0-23, phút 0-59, giây 0-59, múi giờ hợp lệ). Từ chối chuỗi mơ hồ như "1", số nguyên/Unix epoch, boolean, object, hoặc ngày sai lịch (như 31/02). Hỗ trợ bí danh `recordedAt`, `measuredAt`. |
 | `temperature` | `number` (hữu hạn) | **Có** | Giá trị nhiệt độ đo được tính theo độ C trong phạm vi lưu trữ PostgreSQL `NUMERIC(5, 2)` (-999.99 đến 999.99). Hỗ trợ số âm, số 0 và số thập phân (hỗ trợ bí danh `value`). |
 
 #### Phản hồi thành công: Số đo mới hơn được lưu (HTTP 200)
@@ -156,6 +156,11 @@ CREATE INDEX IF NOT EXISTS idx_shipment_temperatures_recorded_at ON shipment_tem
 }
 ```
 
+### 4.3 Danh sách và chi tiết chuyến vận chuyển (Projection đồng nhất)
+Các endpoint `GET /api/shipments` (danh sách) và `GET /api/shipments/:id` (chi tiết) đồng nhất cung cấp thông tin số đo nhiệt độ hiện hành:
+- `currentTemperature`: Số thực đại diện cho nhiệt độ mới nhất (hỗ trợ số âm, bảo toàn số 0) hoặc `null` nếu chưa có số đo nào được ghi nhận.
+- `lastTemperatureAt`: Chuỗi thời gian chuẩn ISO-8601 của số đo mới nhất hoặc `null` nếu chưa có số đo nào được ghi nhận.
+
 ---
 
 ## 5. BẢNG MÃ LỖI & NGỮ NGHĨA PHẢN HỒI (ERROR SEMANTICS)
@@ -164,7 +169,7 @@ CREATE INDEX IF NOT EXISTS idx_shipment_temperatures_recorded_at ON shipment_tem
 |:---:|---|---|---|
 | `400` | `MISSING_COLD_BOX_CODE` | Không truyền mã thùng lạnh trong body hoặc params. | Bổ sung `coldBoxId`. |
 | `400` | `INVALID_TEMPERATURE` | Giá trị nhiệt độ bị thiếu, không phải số, là `NaN`/`Infinity`, hoặc vượt quá giới hạn lưu trữ PostgreSQL NUMERIC(5, 2) (-999.99 đến 999.99). | Truyền số thực hữu hạn trong phạm vi cho phép (ví dụ: `4.5`). |
-| `400` | `INVALID_TIMESTAMP` | Thời điểm đo bị thiếu, sai kiểu dữ liệu (boolean, number, object), sai định dạng ISO-8601, hoặc vượt quá ngưỡng thời gian máy chủ (future poisoning). | Sử dụng chuỗi định dạng ISO-8601 hợp lệ (`YYYY-MM-DDTHH:mm:ss.sssZ`). |
+| `400` | `INVALID_TIMESTAMP` | Thời điểm đo bị thiếu, sai kiểu dữ liệu (boolean, number, object), sai định dạng ISO-8601, chuỗi mơ hồ (ví dụ: "1") hoặc ngày giờ không hợp lệ trên lịch (ví dụ: ngày 31 tháng 2). | Sử dụng chuỗi định dạng ISO-8601 hợp lệ trên lịch (`YYYY-MM-DDTHH:mm:ss.sssZ`). |
 | `400` | `SHIPMENT_ALREADY_ENDED` | Chuyến vận chuyển của thùng lạnh đã kết thúc (`COMPLETED` hoặc `CANCELLED`). | Không gửi số đo cho chuyến đã dỡ hàng xong. |
 | `401` | `UNAUTHORIZED` | Chưa đăng nhập hoặc cookie phiên đã hết hạn. | Thực hiện đăng nhập `/api/login` trước khi gọi. |
 | `403` | `INSPECTOR_FORBIDDEN` | Cán bộ kiểm tra cố gắng thực hiện thao tác ghi số đo. | Cán bộ kiểm tra chỉ có quyền đọc. |
