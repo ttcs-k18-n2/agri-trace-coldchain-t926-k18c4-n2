@@ -1,5 +1,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const path = require("node:path");
 const { runMigrations } = require("../src/migrate");
 
 test("migrate: module loads and exports runMigrations", () => {
@@ -293,7 +295,7 @@ test("S-40: Mock migration runner - already-applied 024 upgrade path applies onl
     "016_lots_parent_lineage", "017_batch_relations", "018_grant_agri_app_permissions",
     "019_lot_consumed_status", "020_locations", "021_audit_logs",
     "022_consumed_lot_constraints", "023_public_map_areas",
-    "024_lot_custom_coordinates", "024_shipments"
+    "024_lot_custom_coordinates", "024_shipments", "026_shipment_temperatures"
   ];
   const appliedMigrations = [...existingApplied];
 
@@ -421,6 +423,60 @@ test("S-40: Actionable diagnosis logic - detects duplicate active cold boxes wit
   assert.match(diagnosticMsg, /Cannot apply migration 025/);
   assert.match(diagnosticMsg, /Action required/);
   assert.match(diagnosticMsg, /Do NOT delete business data manually/);
+});
+
+test("S-41: Migration 026 creates shipment_temperatures table and columns with rollback adhering to project convention", () => {
+  const upFile = path.resolve(__dirname, "../../db/migrations/026_shipment_temperatures.sql");
+  const downFile = path.resolve(__dirname, "../../db/migrations/down/026_shipment_temperatures.down.sql");
+
+  assert.ok(fs.existsSync(upFile), "026_shipment_temperatures.sql must exist");
+  assert.ok(fs.existsSync(downFile), "026_shipment_temperatures.down.sql must exist");
+
+  const upSql = fs.readFileSync(upFile, "utf-8");
+  const downSql = fs.readFileSync(downFile, "utf-8");
+
+  // UP: creates shipment_temperatures table
+  assert.match(
+    upSql,
+    /CREATE\s+TABLE\s+(IF\s+NOT\s+EXISTS\s+)?shipment_temperatures/i,
+    "Migration 026 must create table shipment_temperatures"
+  );
+  assert.match(
+    upSql,
+    /CONSTRAINT\s+uq_shipment_temperature_timestamp\s+UNIQUE\s*\(\s*shipment_id\s*,\s*recorded_at\s*\)/i,
+    "Migration 026 must enforce unique timestamp per shipment constraint"
+  );
+  assert.match(
+    upSql,
+    /ALTER\s+TABLE\s+shipments\s+ADD\s+COLUMN\s+(IF\s+NOT\s+EXISTS\s+)?current_temperature/i,
+    "Migration 026 must add current_temperature column to shipments"
+  );
+  assert.match(
+    upSql,
+    /ALTER\s+TABLE\s+shipments\s+ADD\s+COLUMN\s+(IF\s+NOT\s+EXISTS\s+)?last_temperature_at/i,
+    "Migration 026 must add last_temperature_at column to shipments"
+  );
+
+  // DOWN: drops only new temperature objects safely
+  assert.match(
+    downSql,
+    /DROP\s+TABLE\s+(IF\s+EXISTS\s+)?shipment_temperatures/i,
+    "Migration 026 rollback must drop table shipment_temperatures"
+  );
+  assert.match(
+    downSql,
+    /ALTER\s+TABLE\s+shipments\s+DROP\s+COLUMN\s+(IF\s+EXISTS\s+)?current_temperature/i,
+    "Migration 026 rollback must drop column current_temperature from shipments"
+  );
+  assert.match(
+    downSql,
+    /ALTER\s+TABLE\s+shipments\s+DROP\s+COLUMN\s+(IF\s+EXISTS\s+)?last_temperature_at/i,
+    "Migration 026 rollback must drop column last_temperature_at from shipments"
+  );
+  assert.ok(
+    !/DROP\s+TABLE\s+(IF\s+EXISTS\s+)?shipments\b/i.test(downSql),
+    "Migration 026 rollback must NEVER drop shipments table"
+  );
 });
 
 if (process.env.DATABASE_URL) {

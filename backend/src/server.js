@@ -74,11 +74,14 @@ const {
 const {
   inMemoryShipments,
   inMemoryShipmentLots,
+  inMemoryShipmentTemperatures,
   createShipment,
   completeShipment,
   getShipments,
   getShipmentById,
   getActiveShipmentForLot,
+  recordShipmentTemperature,
+  getShipmentTemperatures,
 } = require("./shipment_service");
 const app = express();
 const PORT = Number(process.env.PORT || 3000);
@@ -6836,6 +6839,62 @@ app.get(
 );
 
 /**
+ * S-41 (Jira N2-109): Ghi nhận nhiệt độ theo thời gian cho chuyến vận chuyển thùng lạnh
+ */
+app.post(
+  [
+    "/api/shipments/temperatures",
+    "/api/temperatures",
+    "/api/cold-boxes/:code/temperatures",
+    "/api/cold-boxes/temperatures",
+    "/api/shipments/:id/temperatures",
+  ],
+  requirePermission(["producer", "cooperative", "transporter", "distributor", "org_admin", "admin"]),
+  async (req, res) => {
+    try {
+      const mergedData = {
+        ...req.body,
+        coldBoxId:
+          req.params.code ||
+          req.body?.coldBoxId ||
+          req.body?.cold_box_id ||
+          req.body?.coldBoxCode ||
+          req.body?.cold_box_code ||
+          req.body?.code,
+      };
+      const result = await recordShipmentTemperature({
+        pool,
+        authContext: req.auth,
+        data: mergedData,
+        inMemoryOrgs,
+        ipAddress: req.ip,
+        userAgent: req.get("User-Agent"),
+      });
+      return res.status(result.status || 200).json(result);
+    } catch (err) {
+      return res.status(500).json({ error: "INTERNAL_SERVER_ERROR", message: err.message });
+    }
+  }
+);
+
+app.get(
+  ["/api/shipments/:id/temperatures", "/api/temperatures/:id"],
+  requirePermission(["producer", "cooperative", "transporter", "distributor", "inspector", "org_admin", "admin"]),
+  async (req, res) => {
+    try {
+      const result = await getShipmentTemperatures({
+        pool,
+        authContext: req.auth,
+        shipmentId: req.params.id,
+      });
+      return res.status(result.status || 200).json(result);
+    } catch (err) {
+      return res.status(500).json({ error: "INTERNAL_SERVER_ERROR", message: err.message });
+    }
+  }
+);
+
+/**
  * Danh mục thùng lạnh tiêu chuẩn chuỗi lạnh phục vụ S-40 (Jira N2-211)
  */
 app.get(
@@ -7002,11 +7061,14 @@ module.exports = {
   clearLotOriginsCache,
   inMemoryShipments,
   inMemoryShipmentLots,
+  inMemoryShipmentTemperatures,
   createShipment,
   completeShipment,
   getShipments,
   getShipmentById,
   getActiveShipmentForLot,
+  recordShipmentTemperature,
+  getShipmentTemperatures,
   seedS22Data: () =>
     seedS22InMemory({
       inMemoryLots,
