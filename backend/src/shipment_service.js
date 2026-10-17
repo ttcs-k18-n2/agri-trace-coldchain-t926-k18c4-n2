@@ -181,6 +181,8 @@ async function createShipment({
   const shipmentId = "shp-" + crypto.randomUUID().slice(0, 8);
   const now = new Date();
   const nowIso = now.toISOString();
+  const startedAtDate = (data.startedAt || data.started_at) ? new Date(data.startedAt || data.started_at) : now;
+  const startedAtIso = startedAtDate.toISOString();
 
   // 3. Thực thi với PostgreSQL Transaction
   if (pool || client) {
@@ -309,7 +311,7 @@ async function createShipment({
           vehicle_plate, driver_name, driver_phone,
           origin_location_id, destination_location_id, notes,
           started_at, created_at, updated_at
-        ) VALUES ($1, $2, 'IN_TRANSIT', $3, $4, $5, $6, $7, $8, $9, $10, $11, $11, $11)
+        ) VALUES ($1, $2, 'IN_TRANSIT', $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $12)
         RETURNING *`,
         [
           shipmentId,
@@ -322,6 +324,7 @@ async function createShipment({
           cleanOrigin,
           cleanDest,
           cleanNotes,
+          startedAtDate,
           now,
         ]
       );
@@ -585,7 +588,7 @@ async function createShipment({
       notes: cleanNotes,
       createdByUserId: userId,
       completedByUserId: null,
-      startedAt: nowIso,
+      startedAt: startedAtIso,
       completedAt: null,
       createdAt: nowIso,
       updatedAt: nowIso,
@@ -857,6 +860,19 @@ async function completeShipment({
         },
       });
 
+      // Hoàn tất và chốt các vi phạm nhiệt độ còn dang dở khi kết thúc chuyến (S-45 / S-43)
+      try {
+        const { finalizeShipmentViolations } = require("./cold_chain_violation_service");
+        await finalizeShipmentViolations({
+          client: dbClient,
+          shipment,
+          coldBoxId: shipment.cold_box_id,
+          organizationId: shipment.organization_id,
+        });
+      } catch (err) {
+        console.error("Lỗi khi finalize vi phạm nhiệt độ chuyến vận chuyển:", err);
+      }
+
       if (shouldManageTx) {
         await dbClient.query("COMMIT");
       }
@@ -998,6 +1014,19 @@ async function completeShipment({
       completedAt: nowIso,
     },
   });
+
+  // Hoàn tất và chốt các vi phạm nhiệt độ còn dang dở khi kết thúc chuyến (S-45 / S-43)
+  try {
+    const { finalizeShipmentViolations } = require("./cold_chain_violation_service");
+    await finalizeShipmentViolations({
+      client: null,
+      shipment,
+      coldBoxId: shipment.coldBoxId,
+      organizationId: shipment.organizationId,
+    });
+  } catch (err) {
+    console.error("Lỗi khi finalize in-memory vi phạm nhiệt độ:", err);
+  }
 
   const resultPayload = {
     ...shipment,

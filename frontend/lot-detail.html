@@ -1248,6 +1248,16 @@
         <div class="modal-body">
           <div id="confirmModalAlert" style="display: none; margin-bottom: 16px;"></div>
 
+          <!-- Cảnh báo vi phạm nhiệt độ chuỗi lạnh trước khi tiếp nhận (Story S-45 / N2-279) -->
+          <div id="confirmModalViolationWarning" style="display: none; background: #fff1f2; border: 1.5px solid #f43f5e; border-radius: var(--radius-md); padding: 12px 16px; margin-bottom: 16px; color: #9f1239;">
+            <div style="font-weight: 700; font-size: 13.5px; display: flex; align-items: center; gap: 6px; margin-bottom: 4px;">
+              <span>⚠️ CẢNH BÁO: LÔ HÀNG ĐÃ TỪNG GẶP SỰ CỐ VI PHẠM NHIỆT ĐỘ</span>
+            </div>
+            <div style="font-size: 12.5px; line-height: 1.5; color: #881337;">
+              Lô hàng này đã ghi nhận sự cố nhiệt độ vượt ngưỡng an toàn trong quá trình vận chuyển. Hãy kiểm tra kỹ chất lượng nông sản trên dòng thời gian trước khi xác nhận tiếp nhận.
+            </div>
+          </div>
+
           <div style="background: rgba(16, 185, 129, 0.06); border: 1px solid rgba(16, 185, 129, 0.25); border-radius: var(--radius-md); padding: 12px 16px; margin-bottom: 18px;">
             <div style="font-size: 11px; text-transform: uppercase; font-weight: 700; color: #10b981; letter-spacing: 0.05em; margin-bottom: 4px;">Lô hàng tiếp nhận</div>
             <div style="font-size: 15px; font-weight: 700; color: var(--color-text-main);" id="confirmLotTitle">--</div>
@@ -1746,6 +1756,7 @@
       const canManageLocation = currentUser && !isInspector && (isAdmin || userOrgId === lotOrgId);
       const canEditCoordinates = currentUser && !isInspector && role !== "auditor" && (isAdmin || userOrgId === lotOrgId);
       const isRecipient = Boolean(userOrgId && lot.pendingTransfer && lot.pendingTransfer.toOrganizationId === userOrgId);
+      const hasViolation = Boolean(lot.hasTemperatureViolation || (events && events.some(e => e.eventType === 'TEMPERATURE_VIOLATION')));
       const inspectorActions = document.getElementById("inspectorActions");
       const btnCheckIntegrityLink = document.getElementById("btnCheckIntegrityLink");
 
@@ -1967,6 +1978,16 @@
                     <div style="margin-top: 6px; font-size: 12px; color: ${(lot.pendingTransfer.isOverdue || lot.pendingTransfer.is_overdue) ? '#991b1b' : '#92400e'};">
                       * Quyền sở hữu và trách nhiệm lưu kho hiện vẫn thuộc bên gửi cho đến khi bên bạn bấm Xác nhận tiếp nhận (Story S-16 / S-24).
                     </div>
+                    ${hasViolation ? `
+                      <div class="violation-recipient-warning" style="margin-top: 10px; margin-bottom: 12px; background: #fff1f2; border: 1.5px solid #f43f5e; border-radius: 8px; padding: 12px 16px; color: #9f1239;">
+                        <div style="display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 13.5px; margin-bottom: 4px;">
+                          <span>⚠️ CẢNH BÁO: LÔ HÀNG ĐÃ TỪNG GẶP SỰ CỐ VI PHẠM NHIỆT ĐỘ CHUỖI LẠNH</span>
+                        </div>
+                        <div style="font-size: 12.5px; line-height: 1.5; color: #881337;">
+                          Lô hàng này đã ghi nhận sự cố nhiệt độ vượt ngưỡng cho phép trong quá trình vận chuyển. Vui lòng kiểm tra kỹ chất lượng nông sản và lịch sử dòng thời gian trước khi xác nhận bàn giao.
+                        </div>
+                      </div>
+                    ` : ""}
                     <div style="margin-top: 12px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
                       <button type="button" class="btn btn-primary" id="btnDetailConfirmTransfer" data-transfer-id="${escapeHtml(lot.pendingTransfer.id)}" style="height: 36px; padding: 0 16px; font-size: 13px; font-weight: 600; display: inline-flex; align-items: center; gap: 6px; cursor: pointer;">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
@@ -2206,6 +2227,7 @@
                   const isConfirmed = evt.eventType === "TRANSFER_CONFIRMED";
                   const isRejected = evt.eventType === "TRANSFER_REJECTED";
                   const isHarvest = evt.eventType === "HARVEST_CREATED";
+                  const isViolation = evt.eventType === "TEMPERATURE_VIOLATION";
 
                   let badgeLabel = escapeHtml(evt.eventType || "EVENT");
                   let badgeStyle = "background: rgba(36, 138, 61, 0.1); color: var(--color-primary); border-color: rgba(36, 138, 61, 0.2);";
@@ -2226,6 +2248,10 @@
                     badgeLabel = "❌ Từ chối nhận lô (TRANSFER_REJECTED)";
                     badgeStyle = "background: rgba(220, 38, 38, 0.12); color: #b91c1c; border-color: rgba(220, 38, 38, 0.3);";
                     nodeStyle = 'style="border-color: #dc2626; color: #b91c1c; box-shadow: 0 0 0 2px rgba(220, 38, 38, 0.2);"';
+                  } else if (isViolation) {
+                    badgeLabel = "⚠️ Vi phạm nhiệt độ chuỗi lạnh (TEMPERATURE_VIOLATION)";
+                    badgeStyle = "background: rgba(239, 68, 68, 0.12); color: #b91c1c; border-color: rgba(239, 68, 68, 0.3);";
+                    nodeStyle = 'style="border-color: #ef4444; color: #b91c1c; box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.2);"';
                   }
 
                   return `
@@ -2270,6 +2296,29 @@
                       ${isRejected && payloadObj && payloadObj.reason ? `
                         <div style="background: rgba(220, 38, 38, 0.06); border: 1px solid rgba(220, 38, 38, 0.2); border-radius: var(--radius-sm); padding: 10px 14px; margin-bottom: 8px; font-size: 13px; color: #991b1b;">
                           <div><strong>Lý do từ chối:</strong> <em>"${escapeHtml(payloadObj.reason)}"</em></div>
+                        </div>
+                      ` : ""}
+                      ${isViolation && payloadObj ? `
+                        <div style="background: rgba(239, 68, 68, 0.06); border: 1.5px solid rgba(239, 68, 68, 0.25); border-radius: var(--radius-sm); padding: 12px 16px; margin-bottom: 10px; font-size: 13px; color: #991b1b;">
+                          <div style="font-weight: 700; font-size: 13.5px; margin-bottom: 8px; display: flex; align-items: center; gap: 6px;">
+                            <span>🌡️ Phát hiện vi phạm nhiệt độ chuỗi lạnh</span>
+                          </div>
+                          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 8px; margin-bottom: 8px;">
+                            <div><strong>Nhiệt độ đỉnh:</strong> <span style="font-weight: 800; color: #dc2626;">${payloadObj.peakTemperature !== undefined ? payloadObj.peakTemperature + '°C' : '--'}</span> (Ngưỡng: ${payloadObj.threshold !== undefined ? payloadObj.threshold + '°C' : '--'})</div>
+                            <div><strong>Thời lượng:</strong> <span style="font-weight: 700;">${payloadObj.durationMinutes !== undefined ? payloadObj.durationMinutes + ' phút' : (payloadObj.durationSeconds !== undefined ? Math.round(payloadObj.durationSeconds / 60) + ' phút' : '--')}</span></div>
+                            <div><strong>Mã vi phạm:</strong> <code style="font-size: 12px; background: rgba(0,0,0,0.05); padding: 2px 4px; border-radius: 4px;">${escapeHtml(payloadObj.violationId || '--')}</code></div>
+                            <div><strong>Mã chuyến:</strong> <code style="font-size: 12px; background: rgba(0,0,0,0.05); padding: 2px 4px; border-radius: 4px;">${escapeHtml(payloadObj.shipmentCode || payloadObj.shipmentId || '--')}</code></div>
+                          </div>
+                          ${payloadObj.startTime && payloadObj.endTime ? `
+                            <div style="font-size: 12px; color: #7f1d1d; margin-top: 4px;">
+                              <strong>Thời điểm:</strong> ${formatDateTime(payloadObj.startTime)} &rarr; ${formatDateTime(payloadObj.endTime)}
+                            </div>
+                          ` : ""}
+                          ${payloadObj.rule ? `
+                            <div style="font-size: 12px; color: #991b1b; margin-top: 4px; font-style: italic;">
+                              ${escapeHtml(payloadObj.rule)}
+                            </div>
+                          ` : ""}
                         </div>
                       ` : ""}
                       <div class="hash-row">
@@ -4425,6 +4474,16 @@
       document.getElementById("confirmLotId").textContent = lotId;
       if (alertBox) { alertBox.style.display = "none"; alertBox.textContent = ""; }
 
+      // Cảnh báo vi phạm nhiệt độ chuỗi lạnh trước khi xác nhận (S-45 / N2-279)
+      const violWarningEl = document.getElementById("confirmModalViolationWarning");
+      const currentLotHasViolation = Boolean(
+        (lotData && lotData.hasTemperatureViolation) ||
+        (lotEvents && lotEvents.some((e) => e.eventType === "TEMPERATURE_VIOLATION"))
+      );
+      if (violWarningEl) {
+        violWarningEl.style.display = currentLotHasViolation ? "block" : "none";
+      }
+
       pendingDetailConfirmAction = { transferId, lotId, lotName };
       modal.style.display = "flex";
     }
@@ -5417,7 +5476,6 @@
         });
       }
     }
-
     setupTransferModalListeners();
     setupSplitModalListeners();
     setupMergeModalListeners();

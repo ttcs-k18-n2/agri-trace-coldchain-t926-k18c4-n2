@@ -234,8 +234,8 @@ test("S-41 PostgreSQL Integration Suite (Story S-41 / Jira N2-109)", async (t) =
 
       await pool.query(
         `INSERT INTO shipments (id, cold_box_id, status, organization_id, started_at)
-         VALUES ($1, $2, 'IN_TRANSIT', $3, NOW())
-         ON CONFLICT (id) DO UPDATE SET status = 'IN_TRANSIT', current_temperature = NULL, last_temperature_at = NULL`,
+         VALUES ($1, $2, 'IN_TRANSIT', $3, NOW() - INTERVAL '1 day')
+         ON CONFLICT (id) DO UPDATE SET status = 'IN_TRANSIT', current_temperature = NULL, last_temperature_at = NULL, started_at = NOW() - INTERVAL '1 day'`,
         [shipId, coldBoxId, orgId]
       );
       await pool.query("DELETE FROM shipment_temperatures WHERE shipment_id = $1", [shipId]);
@@ -310,8 +310,8 @@ test("S-41 PostgreSQL Integration Suite (Story S-41 / Jira N2-109)", async (t) =
 
       await pool.query(
         `INSERT INTO shipments (id, cold_box_id, status, organization_id, started_at)
-         VALUES ($1, $2, 'IN_TRANSIT', $3, NOW())
-         ON CONFLICT (id) DO UPDATE SET status = 'IN_TRANSIT', current_temperature = NULL, last_temperature_at = NULL`,
+         VALUES ($1, $2, 'IN_TRANSIT', $3, NOW() - INTERVAL '1 day')
+         ON CONFLICT (id) DO UPDATE SET status = 'IN_TRANSIT', current_temperature = NULL, last_temperature_at = NULL, started_at = NOW() - INTERVAL '1 day'`,
         [shipId, coldBoxId, orgId]
       );
       await pool.query("DELETE FROM shipment_temperatures WHERE shipment_id = $1", [shipId]);
@@ -484,8 +484,8 @@ test("S-41 PostgreSQL Integration Suite (Story S-41 / Jira N2-109)", async (t) =
       const coldBoxZero = "CB-PG-ZERO";
       await pool.query(
         `INSERT INTO shipments (id, cold_box_id, status, organization_id, started_at)
-         VALUES ($1, $2, 'IN_TRANSIT', $3, NOW())
-         ON CONFLICT (id) DO UPDATE SET current_temperature = NULL, last_temperature_at = NULL`,
+         VALUES ($1, $2, 'IN_TRANSIT', $3, NOW() - INTERVAL '1 day')
+         ON CONFLICT (id) DO UPDATE SET current_temperature = NULL, last_temperature_at = NULL, started_at = NOW() - INTERVAL '1 day'`,
         [shipZeroId, coldBoxZero, orgId]
       );
       const timeZero = new Date("2026-10-17T12:00:00.000Z").toISOString();
@@ -500,8 +500,8 @@ test("S-41 PostgreSQL Integration Suite (Story S-41 / Jira N2-109)", async (t) =
       const coldBoxNeg = "CB-PG-NEG";
       await pool.query(
         `INSERT INTO shipments (id, cold_box_id, status, organization_id, started_at)
-         VALUES ($1, $2, 'IN_TRANSIT', $3, NOW())
-         ON CONFLICT (id) DO UPDATE SET current_temperature = NULL, last_temperature_at = NULL`,
+         VALUES ($1, $2, 'IN_TRANSIT', $3, NOW() - INTERVAL '1 day')
+         ON CONFLICT (id) DO UPDATE SET current_temperature = NULL, last_temperature_at = NULL, started_at = NOW() - INTERVAL '1 day'`,
         [shipNegId, coldBoxNeg, orgId]
       );
       const timeNeg = new Date("2026-10-17T12:05:00.000Z").toISOString();
@@ -516,8 +516,8 @@ test("S-41 PostgreSQL Integration Suite (Story S-41 / Jira N2-109)", async (t) =
       const coldBoxNull = "CB-PG-NULL";
       await pool.query(
         `INSERT INTO shipments (id, cold_box_id, status, organization_id, started_at)
-         VALUES ($1, $2, 'IN_TRANSIT', $3, NOW())
-         ON CONFLICT (id) DO UPDATE SET current_temperature = NULL, last_temperature_at = NULL`,
+         VALUES ($1, $2, 'IN_TRANSIT', $3, NOW() - INTERVAL '1 day')
+         ON CONFLICT (id) DO UPDATE SET current_temperature = NULL, last_temperature_at = NULL, started_at = NOW() - INTERVAL '1 day'`,
         [shipNullId, coldBoxNull, orgId]
       );
 
@@ -597,8 +597,8 @@ test("S-41 Portable Logic Verification Suite (In-Memory & HTTP Endpoints)", asyn
     status: "IN_TRANSIT",
     currentTemperature: null,
     lastTemperatureAt: null,
-    startedAt: new Date().toISOString(),
-    createdAt: new Date().toISOString(),
+    startedAt: "2026-10-17T00:00:00.000Z",
+    createdAt: "2026-10-17T00:00:00.000Z",
   });
 
   await t.test("TC-S41-PORTABLE-01: Timestamp validation finite numbers, booleans, and invalid formats", async () => {

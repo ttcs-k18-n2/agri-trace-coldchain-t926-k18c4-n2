@@ -108,6 +108,7 @@ test("S-41 (Jira N2-109): Ghi nhận nhiệt độ theo thời gian cho chuyến
       {
         coldBoxId: "CB-TEMP-01",
         lotIds: ["LOT-TEMP-01"],
+        startedAt: "2026-10-17T09:00:00.000Z",
       }
     );
     assert.equal(createRes.status, 201, "Tạo chuyến thành công");
@@ -228,6 +229,7 @@ test("S-41 (Jira N2-109): Ghi nhận nhiệt độ theo thời gian cho chuyến
       {
         coldBoxId: "CB-CONCUR-01",
         lotIds: ["LOT-TEMP-01"],
+        startedAt: "2026-10-17T09:00:00.000Z",
       }
     );
     assert.equal(createRes.status, 201);
@@ -1055,7 +1057,7 @@ test("S-41 (Jira N2-109): Ghi nhận nhiệt độ theo thời gian cho chuyến
         method: "POST",
         headers: { "Content-Type": "application/json", Cookie: producerCookie },
       },
-      { coldBoxId: "CB-PROJ-01", lotIds: ["LOT-PROJ-01"] }
+      { coldBoxId: "CB-PROJ-01", lotIds: ["LOT-PROJ-01"], startedAt: "2026-10-17T09:00:00.000Z" }
     );
     assert.equal(createA.status, 201);
     const shipAId = createA.body.shipment.id;
@@ -1069,7 +1071,7 @@ test("S-41 (Jira N2-109): Ghi nhận nhiệt độ theo thời gian cho chuyến
         method: "POST",
         headers: { "Content-Type": "application/json", Cookie: producerCookie },
       },
-      { coldBoxId: "CB-PROJ-02", lotIds: ["LOT-PROJ-02"] }
+      { coldBoxId: "CB-PROJ-02", lotIds: ["LOT-PROJ-02"], startedAt: "2026-10-17T09:00:00.000Z" }
     );
     assert.equal(createB.status, 201);
     const shipBId = createB.body.shipment.id;
@@ -1083,7 +1085,7 @@ test("S-41 (Jira N2-109): Ghi nhận nhiệt độ theo thời gian cho chuyến
         method: "POST",
         headers: { "Content-Type": "application/json", Cookie: producerCookie },
       },
-      { coldBoxId: "CB-PROJ-03", lotIds: ["LOT-PROJ-03"] }
+      { coldBoxId: "CB-PROJ-03", lotIds: ["LOT-PROJ-03"], startedAt: "2026-10-17T09:00:00.000Z" }
     );
     assert.equal(createC.status, 201);
     const shipCId = createC.body.shipment.id;
