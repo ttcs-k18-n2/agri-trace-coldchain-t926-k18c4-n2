@@ -365,7 +365,8 @@ test("S-40: Mock migration runner - already-applied 024 upgrade path applies onl
     "016_lots_parent_lineage", "017_batch_relations", "018_grant_agri_app_permissions",
     "019_lot_consumed_status", "020_locations", "021_audit_logs",
     "022_consumed_lot_constraints", "023_public_map_areas", "023_recall_orders",
-    "024_lot_custom_coordinates", "024_recall_acknowledgments", "024_shipments", "026_shipment_temperatures"
+    "024_lot_custom_coordinates", "024_recall_acknowledgments", "024_shipments", "026_shipment_temperatures",
+    "027_shipment_temperature_violations"
   ];
   const appliedMigrations = [...existingApplied];
 
@@ -546,6 +547,55 @@ test("S-41: Migration 026 creates shipment_temperatures table and columns with r
   assert.ok(
     !/DROP\s+TABLE\s+(IF\s+EXISTS\s+)?shipments\b/i.test(downSql),
     "Migration 026 rollback must NEVER drop shipments table"
+  );
+});
+
+test("S-43: Migration 027 creates temperature_violations and detector_state with rollback adhering to project convention", () => {
+  const fs = require("node:fs");
+  const path = require("node:path");
+
+  const upPath = path.resolve(__dirname, "../../db/migrations/027_shipment_temperature_violations.sql");
+  const downPath = path.resolve(__dirname, "../../db/migrations/down/027_shipment_temperature_violations.down.sql");
+
+  assert.ok(fs.existsSync(upPath), "Migration 027 UP file must exist");
+  assert.ok(fs.existsSync(downPath), "Migration 027 DOWN file must exist");
+
+  const upSql = fs.readFileSync(upPath, "utf-8");
+  const downSql = fs.readFileSync(downPath, "utf-8");
+
+  // UP: creates temperature_violations table
+  assert.match(
+    upSql,
+    /CREATE\s+TABLE\s+(IF\s+NOT\s+EXISTS\s+)?temperature_violations/i,
+    "Migration 027 must create temperature_violations table"
+  );
+  assert.match(upSql, /REFERENCES\s+shipments\s*\(\s*id\s*\)/i);
+  assert.match(upSql, /cold_box_id/i);
+  assert.match(upSql, /threshold_value/i);
+  assert.match(upSql, /peak_temperature/i);
+  assert.match(upSql, /duration_minutes/i);
+
+  // UP: adds detector_state to shipments
+  assert.match(
+    upSql,
+    /ALTER\s+TABLE\s+shipments\s+ADD\s+COLUMN\s+(IF\s+NOT\s+EXISTS\s+)?detector_state/i,
+    "Migration 027 must add detector_state column to shipments"
+  );
+
+  // DOWN: drops temperature_violations and detector_state
+  assert.match(
+    downSql,
+    /DROP\s+TABLE\s+(IF\s+EXISTS\s+)?temperature_violations/i,
+    "Migration 027 rollback must drop table temperature_violations"
+  );
+  assert.match(
+    downSql,
+    /ALTER\s+TABLE\s+shipments\s+DROP\s+COLUMN\s+(IF\s+EXISTS\s+)?detector_state/i,
+    "Migration 027 rollback must drop column detector_state from shipments"
+  );
+  assert.ok(
+    !/DROP\s+TABLE\s+(IF\s+EXISTS\s+)?shipments\b/i.test(downSql),
+    "Migration 027 rollback must NEVER drop shipments table"
   );
 });
 

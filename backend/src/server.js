@@ -88,6 +88,13 @@ const {
   getRecallOrderWithLiveDescendants,
   checkLotRecallStatus,
 } = require("./recall_service");
+const {
+  handleAcceptedTemperatureReading,
+  getViolations,
+  getShipmentViolations,
+  getColdBoxViolations,
+  ColdChainViolationDetector,
+} = require("./cold_chain_violation_service");
 const app = express();
 const PORT = Number(process.env.PORT || 3000);
 
@@ -7939,6 +7946,12 @@ app.post(
         inMemoryOrgs,
         ipAddress: req.ip,
         userAgent: req.get("User-Agent"),
+        onAcceptedReading: async (ctx) => {
+          return handleAcceptedTemperatureReading({
+            ...ctx,
+            pool,
+          });
+        },
       });
       return res.status(result.status || 200).json(result);
     } catch (err) {
@@ -7956,6 +7969,44 @@ app.get(
         pool,
         authContext: req.auth,
         shipmentId: req.params.id,
+      });
+      return res.status(result.status || 200).json(result);
+    } catch (err) {
+      return res.status(500).json({ error: "INTERNAL_SERVER_ERROR", message: err.message });
+    }
+  }
+);
+
+/**
+ * S-43 Phase 2 (Jira N2-111): REST Violation Routes & RBAC Enforcement
+ */
+app.get(
+  "/api/shipments/:id/violations",
+  requirePermission(["producer", "cooperative", "transporter", "distributor", "inspector", "org_admin", "admin"]),
+  async (req, res) => {
+    try {
+      const result = await getShipmentViolations({
+        pool,
+        authContext: req.auth,
+        shipmentId: req.params.id,
+      });
+      return res.status(result.status || 200).json(result);
+    } catch (err) {
+      return res.status(500).json({ error: "INTERNAL_SERVER_ERROR", message: err.message });
+    }
+  }
+);
+
+app.get(
+  "/api/cold-boxes/:code/violations",
+  requirePermission(["producer", "cooperative", "transporter", "distributor", "inspector", "org_admin", "admin"]),
+  async (req, res) => {
+    try {
+      const result = await getColdBoxViolations({
+        pool,
+        authContext: req.auth,
+        coldBoxCode: req.params.code,
+        shipmentId: req.query.shipmentId || req.query.shipment_id,
       });
       return res.status(result.status || 200).json(result);
     } catch (err) {
@@ -8176,5 +8227,10 @@ module.exports = {
   inMemoryRecallOrders,
   getRecallOrderWithLiveDescendants,
   checkLotRecallStatus,
+  handleAcceptedTemperatureReading,
+  getViolations,
+  getShipmentViolations,
+  getColdBoxViolations,
+  ColdChainViolationDetector,
 };
 
