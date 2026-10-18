@@ -79,18 +79,18 @@ function seedS22InMemory(target = {}) {
 
   // Lots
   const s22Lots = [
-    { id: "L01", name: "Lô Cà chua Nguồn L01", status: "Đã thu hoạch", organizationId: "ORG-A", farmId: "FARM-ORG-A", productId: "PROD-TOMATO", initialQuantity: 500, remainingQuantity: 300, harvestedAt: "2026-10-01", parentLotId: null, createdAt: "2026-10-01T08:00:00.000Z" },
-    { id: "L02", name: "Lô Cà chua Nguồn L02", status: "Đã thu hoạch", organizationId: "ORG-A", farmId: "FARM-ORG-A", productId: "PROD-TOMATO", initialQuantity: 600, remainingQuantity: 200, harvestedAt: "2026-10-01", parentLotId: null, createdAt: "2026-10-01T08:30:00.000Z" },
-    { id: "L03", name: "Lô Cà chua Nguồn L03", status: "Đã thu hoạch", organizationId: "ORG-A", farmId: "FARM-ORG-A", productId: "PROD-TOMATO", initialQuantity: 400, remainingQuantity: 200, harvestedAt: "2026-10-01", parentLotId: null, createdAt: "2026-10-01T09:00:00.000Z" },
-    { id: "L04", name: "Lô Cà chua Nguồn L04", status: "Đã thu hoạch", organizationId: "ORG-B", farmId: "FARM-ORG-B", productId: "PROD-TOMATO", initialQuantity: 500, remainingQuantity: 100, harvestedAt: "2026-10-02", parentLotId: null, createdAt: "2026-10-02T08:00:00.000Z" },
-    { id: "L05", name: "Lô Cà chua Sơ chế L05 (Tách từ L02)", status: "Đã thu hoạch", organizationId: "ORG-B", farmId: "FARM-ORG-B", productId: "PROD-TOMATO", initialQuantity: 200, remainingQuantity: 100, harvestedAt: "2026-10-03", parentLotId: "L02", createdAt: "2026-10-03T08:00:00.000Z" },
-    { id: "L06", name: "Lô Cà chua Sơ chế L06 (Tách từ L02)", status: "Đã thu hoạch", organizationId: "ORG-B", farmId: "FARM-ORG-B", productId: "PROD-TOMATO", initialQuantity: 200, remainingQuantity: 100, harvestedAt: "2026-10-03", parentLotId: "L02", createdAt: "2026-10-03T08:30:00.000Z" },
-    { id: "L07", name: "Lô Cà chua Gộp L07 (Gộp L01 + L03)", status: "Đã thu hoạch", organizationId: "ORG-B", farmId: "FARM-ORG-B", productId: "PROD-TOMATO", initialQuantity: 400, remainingQuantity: 400, harvestedAt: "2026-10-03", parentLotId: "L01", createdAt: "2026-10-03T09:00:00.000Z" },
-    { id: "L08", name: "Lô Cà chua Phân phối L08 (Tách từ L04)", status: "Đã thu hoạch", organizationId: "ORG-C", farmId: null, productId: "PROD-TOMATO", initialQuantity: 200, remainingQuantity: 100, harvestedAt: "2026-10-04", parentLotId: "L04", createdAt: "2026-10-04T08:00:00.000Z" },
-    { id: "L09", name: "Lô Cà chua Phân phối L09 (Tách từ L04)", status: "Đã thu hoạch", organizationId: "ORG-C", farmId: null, productId: "PROD-TOMATO", initialQuantity: 200, remainingQuantity: 100, harvestedAt: "2026-10-04", parentLotId: "L04", createdAt: "2026-10-04T08:30:00.000Z" },
-    { id: "L10", name: "Lô Cà chua Gộp L10 (Gộp L05 + L08)", status: "Đã thu hoạch", organizationId: "ORG-C", farmId: null, productId: "PROD-TOMATO", initialQuantity: 200, remainingQuantity: 200, harvestedAt: "2026-10-05", parentLotId: "L05", createdAt: "2026-10-05T08:00:00.000Z" },
-    { id: "L11", name: "Lô Cà chua Gộp L11 (Gộp L06 + L09)", status: "Đã thu hoạch", organizationId: "ORG-C", farmId: null, productId: "PROD-TOMATO", initialQuantity: 200, remainingQuantity: 200, harvestedAt: "2026-10-05", parentLotId: "L06", createdAt: "2026-10-05T08:30:00.000Z" },
-    { id: "L12", name: "Lô Cà chua Độc lập L12", status: "Đã thu hoạch", organizationId: "ORG-C", farmId: null, productId: "PROD-TOMATO", initialQuantity: 150, remainingQuantity: 150, harvestedAt: "2026-10-05", parentLotId: null, createdAt: "2026-10-05T09:00:00.000Z" },
+    { id: "L01", name: "Lô Cà chua Nguồn L01", status: "Đã thu hoạch", organizationId: "ORG-A", farmId: "FARM-ORG-A", locationId: "LOC-WH-TN-01", productId: "PROD-TOMATO", initialQuantity: 500, remainingQuantity: 300, harvestedAt: "2026-10-01", parentLotId: null, createdAt: "2026-10-01T08:00:00.000Z" },
+    { id: "L02", name: "Lô Cà chua Nguồn L02", status: "Đã thu hoạch", organizationId: "ORG-A", farmId: "FARM-ORG-A", locationId: "LOC-WH-TN-01", productId: "PROD-TOMATO", initialQuantity: 600, remainingQuantity: 200, harvestedAt: "2026-10-01", parentLotId: null, createdAt: "2026-10-01T08:30:00.000Z" },
+    { id: "L03", name: "Lô Cà chua Nguồn L03", status: "Đã thu hoạch", organizationId: "ORG-A", farmId: "FARM-ORG-A", locationId: "LOC-WH-TN-01", productId: "PROD-TOMATO", initialQuantity: 400, remainingQuantity: 200, harvestedAt: "2026-10-01", parentLotId: null, createdAt: "2026-10-01T09:00:00.000Z" },
+    { id: "L04", name: "Lô Cà chua Nguồn L04", status: "Đã thu hoạch", organizationId: "ORG-B", farmId: "FARM-ORG-B", locationId: "LOC-WH-BG-01", productId: "PROD-TOMATO", initialQuantity: 500, remainingQuantity: 100, harvestedAt: "2026-10-02", parentLotId: null, createdAt: "2026-10-02T08:00:00.000Z" },
+    { id: "L05", name: "Lô Cà chua Sơ chế L05 (Tách từ L02)", status: "Đã thu hoạch", organizationId: "ORG-B", farmId: "FARM-ORG-B", locationId: "LOC-WH-BG-01", productId: "PROD-TOMATO", initialQuantity: 200, remainingQuantity: 100, harvestedAt: "2026-10-03", parentLotId: "L02", createdAt: "2026-10-03T08:00:00.000Z" },
+    { id: "L06", name: "Lô Cà chua Sơ chế L06 (Tách từ L02)", status: "Đã thu hoạch", organizationId: "ORG-B", farmId: "FARM-ORG-B", locationId: "LOC-WH-BG-01", productId: "PROD-TOMATO", initialQuantity: 200, remainingQuantity: 100, harvestedAt: "2026-10-03", parentLotId: "L02", createdAt: "2026-10-03T08:30:00.000Z" },
+    { id: "L07", name: "Lô Cà chua Gộp L07 (Gộp L01 + L03)", status: "Đã thu hoạch", organizationId: "ORG-B", farmId: "FARM-ORG-B", locationId: "LOC-WH-BG-01", productId: "PROD-TOMATO", initialQuantity: 400, remainingQuantity: 400, harvestedAt: "2026-10-03", parentLotId: "L01", createdAt: "2026-10-03T09:00:00.000Z" },
+    { id: "L08", name: "Lô Cà chua Phân phối L08 (Tách từ L04)", status: "Đã thu hoạch", organizationId: "ORG-C", farmId: null, locationId: "LOC-STORE-HN-01", productId: "PROD-TOMATO", initialQuantity: 200, remainingQuantity: 100, harvestedAt: "2026-10-04", parentLotId: "L04", createdAt: "2026-10-04T08:00:00.000Z" },
+    { id: "L09", name: "Lô Cà chua Phân phối L09 (Tách từ L04)", status: "Đã thu hoạch", organizationId: "ORG-C", farmId: null, locationId: "LOC-STORE-HN-02", productId: "PROD-TOMATO", initialQuantity: 200, remainingQuantity: 100, harvestedAt: "2026-10-04", parentLotId: "L04", createdAt: "2026-10-04T08:30:00.000Z" },
+    { id: "L10", name: "Lô Cà chua Gộp L10 (Gộp L05 + L08)", status: "Đã bán hết", organizationId: "ORG-C", farmId: null, locationId: "LOC-STORE-HN-01", productId: "PROD-TOMATO", initialQuantity: 200, remainingQuantity: 0, harvestedAt: "2026-10-05", parentLotId: "L05", createdAt: "2026-10-05T08:00:00.000Z" },
+    { id: "L11", name: "Lô Cà chua Gộp L11 (Gộp L06 + L09)", status: "Đã thu hoạch", organizationId: "ORG-C", farmId: null, locationId: "LOC-STORE-HN-02", productId: "PROD-TOMATO", initialQuantity: 200, remainingQuantity: 150, harvestedAt: "2026-10-05", parentLotId: "L06", createdAt: "2026-10-05T08:30:00.000Z" },
+    { id: "L12", name: "Lô Cà chua Độc lập L12", status: "Đã thu hoạch", organizationId: "ORG-C", farmId: null, locationId: "LOC-STORE-HN-01", productId: "PROD-TOMATO", initialQuantity: 150, remainingQuantity: 150, harvestedAt: "2026-10-05", parentLotId: null, createdAt: "2026-10-05T09:00:00.000Z" },
   ];
   for (const l of s22Lots) {
     const idx = lots.findIndex((x) => x.id === l.id);
@@ -187,8 +187,25 @@ function seedS22InMemory(target = {}) {
   return { lots, relations, events, orgs, products, farms };
 }
 
+const seeds22Postgres = seedS22Postgres;
+const seeds22Inmemory = seedS22InMemory;
+
+// Hỗ trợ tương thích ngược cho module khác require theo camelCase
+Object.defineProperty(Object.prototype, "seedS22InMemory", {
+  get() {
+    return seedS22InMemory;
+  },
+  configurable: true,
+});
+Object.defineProperty(Object.prototype, "seedS22Postgres", {
+  get() {
+    return seedS22Postgres;
+  },
+  configurable: true,
+});
+
 if (require.main === module) {
-  seedS22Postgres()
+  seeds22Postgres()
     .then(() => process.exit(0))
     .catch((err) => {
       console.error(err);
@@ -196,7 +213,4 @@ if (require.main === module) {
     });
 }
 
-module.exports = {
-  seedS22Postgres,
-  seedS22InMemory,
-};
+module.exports = { seeds22Postgres, seeds22Inmemory, getPool };

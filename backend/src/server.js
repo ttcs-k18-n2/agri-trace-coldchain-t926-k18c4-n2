@@ -25,6 +25,7 @@ const {
 const { seedS22InMemory } = require("../scripts/seed_s22");
 const { seedS39InMemory } = require("../scripts/seed_s39");
 const { markOverdueTransfers, startTransferOverdueJob } = require("./transfer_overdue_job");
+const { initIntegrityCheckJob, startIntegrityCheckJob } = require("./jobs/integrityCheckJob");
 const {
   isValidQuantity,
   toMilliUnits,
@@ -8469,6 +8470,9 @@ async function start() {
   // Khởi động job rà soát bàn giao quá hạn định kỳ (S-24 / T-56)
   startTransferOverdueJob({ pool, inMemoryTransfers });
 
+  // Khởi động job kiểm tra tính toàn vẹn chuỗi sự kiện định kỳ lúc 2:00 sáng (S-55)
+  initIntegrityCheckJob({ pool });
+
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`Backend server running at http://0.0.0.0:${PORT}`);
   });
@@ -8527,6 +8531,8 @@ module.exports = {
   setAppendHookForTesting,
   markOverdueTransfers,
   startTransferOverdueJob,
+  initIntegrityCheckJob,
+  startIntegrityCheckJob,
   validateMergeLotInput,
   collectAncestorLotIds,
   collectDescendantLotIds,

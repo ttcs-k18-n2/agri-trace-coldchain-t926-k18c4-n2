@@ -21,6 +21,7 @@
     "bcryptjs": "^3.0.2",
     "express": "^5.1.0",
     "express-session": "^1.18.2",
+    "node-cron": "^4.6.0",
     "pg": "^8.13.1",
     "qrcode": "^1.5.4"
   },
