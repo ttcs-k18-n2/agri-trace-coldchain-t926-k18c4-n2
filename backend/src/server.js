@@ -113,6 +113,12 @@ const {
   inMemoryViolations,
 } = require("./cold_chain_violation_service");
 const { exportLotDossierToPdf } = require("./lot_pdf_export_service");
+const {
+  runIntegrityAuditJob,
+  getLatestIntegrityAudit,
+  inMemoryIntegrityJobs,
+  inMemoryIntegrityLogs,
+} = require("./integrity_periodic_job");
 const app = express();
 const PORT = Number(process.env.PORT || 3000);
 
@@ -8696,6 +8702,75 @@ app.post(
         error: "AGGREGATION_JOB_ERROR",
         message: "Lỗi thực thi job tổng hợp nhiệt độ: " + err.message,
       });
+    }
+  }
+);
+
+/**
+ * Story S-55 (Jira N2-123): Job kiểm tra toàn vẹn định kỳ mọi lô và cảnh báo khi phát hiện đứt mạch
+ */
+app.post(
+  "/api/admin/integrity-audits/run",
+  requirePermission(["admin"]),
+  async (req, res) => {
+    try {
+      const batchSize = Math.min(Math.max(Number(req.body?.batchSize) || 25, 1), 100);
+      const result = await runIntegrityAuditJob({
+        pool,
+        batchSize,
+        actorEmail: req.auth?.email || "admin@example.com",
+        inMemoryContext: {
+          inMemoryLots,
+          inMemoryBatchEvents,
+          inMemoryAuditLogs,
+        },
+      });
+
+      return res.status(200).json({
+        success: true,
+        message: "Thực thi job kiểm tra toàn vẹn chuỗi hash thành công.",
+        result,
+      });
+    } catch (err) {
+      console.error("[S-55 Job API Error]:", err);
+      return res.status(500).json({
+        error: "INTEGRITY_JOB_ERROR",
+        message: "Lỗi thực thi job kiểm tra toàn vẹn: " + err.message,
+      });
+    }
+  }
+);
+
+app.get(
+  "/api/admin/integrity-audits/latest",
+  requirePermission(["admin"]),
+  async (req, res) => {
+    try {
+      const audit = await getLatestIntegrityAudit({
+        pool,
+        inMemoryContext: { inMemoryLots, inMemoryBatchEvents },
+      });
+      return res.status(200).json(audit);
+    } catch (err) {
+      return res.status(500).json({ error: "INTERNAL_SERVER_ERROR", message: err.message });
+    }
+  }
+);
+
+app.get(
+  "/api/admin/integrity-audits",
+  requirePermission(["admin"]),
+  async (req, res) => {
+    try {
+      if (pool) {
+        const jobsRes = await pool.query(
+          "SELECT * FROM integrity_audit_jobs ORDER BY started_at DESC LIMIT 50"
+        );
+        return res.status(200).json({ jobs: jobsRes.rows });
+      }
+      return res.status(200).json({ jobs: inMemoryIntegrityJobs });
+    } catch (err) {
+      return res.status(500).json({ error: "INTERNAL_SERVER_ERROR", message: err.message });
     }
   }
 );
