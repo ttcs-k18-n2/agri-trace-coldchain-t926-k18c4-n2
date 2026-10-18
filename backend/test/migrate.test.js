@@ -367,6 +367,7 @@ test("S-40: Mock migration runner - already-applied 024 upgrade path applies onl
     "022_consumed_lot_constraints", "023_public_map_areas", "023_recall_orders",
     "024_lot_custom_coordinates", "024_recall_acknowledgments", "024_shipments", "026_shipment_temperatures",
     "027_shipment_temperature_violations", "028_product_temperature_thresholds", "033_farmer_privacy_anonymization"
+    "027_shipment_temperature_violations", "028_product_temperature_thresholds", "029_public_cache_and_rate_limits", "030_temperature_hourly_aggregation", "031_lots_inspector_search_indices", "032_integrity_audit_logs", "033_farmer_privacy_anonymization"
   ];
   const appliedMigrations = [...existingApplied];
 
