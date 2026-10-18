@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="vi">
+
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -249,6 +250,7 @@
         opacity: 0;
         transform: translateY(4px);
       }
+
       to {
         opacity: 1;
         transform: translateY(0);
@@ -969,6 +971,7 @@
       border-radius: 10px;
       padding: 18px;
     }
+
     .s28-tree {
       display: flex;
       align-items: center;
@@ -976,17 +979,20 @@
       min-width: max-content;
       min-height: 360px;
     }
+
     .s28-side-group {
       display: flex;
       align-items: center;
       gap: 24px;
     }
+
     .s28-side {
       display: flex;
       flex-direction: column;
       align-items: center;
       gap: 14px;
     }
+
     .s28-column-title {
       font-size: 12px;
       font-weight: 700;
@@ -995,6 +1001,7 @@
       letter-spacing: .05em;
       margin-bottom: 6px;
     }
+
     .s28-node {
       border: 2px solid #b7c7dc;
       background: #fff;
@@ -1005,17 +1012,21 @@
       box-shadow: 0 2px 5px rgba(19, 41, 75, 0.05);
       transition: all .2s ease;
     }
+
     .s28-node.current {
       border-color: #2876d2;
       background: #eaf3ff;
-      box-shadow: 0 4px 12px rgba(40,118,210,.18);
+      box-shadow: 0 4px 12px rgba(40, 118, 210, .18);
     }
+
     .s28-node.selected {
       outline: 2.5px solid #2876d2;
     }
+
     .s28-node button {
       margin-top: 8px;
     }
+
     .s28-badge-rel {
       display: inline-block;
       font-size: 10.5px;
@@ -1024,14 +1035,17 @@
       border-radius: 4px;
       margin-top: 4px;
     }
+
     .s28-badge-merge {
       background: #ede9fe;
       color: #6d28d9;
     }
+
     .s28-badge-split {
       background: #dcfce7;
       color: #15803d;
     }
+
     .s28-children {
       display: flex;
       flex-direction: column;
@@ -1039,6 +1053,7 @@
       padding-left: 16px;
       border-left: 2px solid #c5d2e2;
     }
+
     .s28-parents-group {
       display: flex;
       flex-direction: column;
@@ -1046,6 +1061,7 @@
       padding-right: 16px;
       border-right: 2px solid #c5d2e2;
     }
+
     .s28-node-btn {
       font: inherit;
       cursor: pointer;
@@ -1055,15 +1071,18 @@
       padding: 4px 8px;
       font-size: 11.5px;
     }
+
     .s28-node-btn:hover {
       background: #edf4ff;
     }
+
     .s28-tag-list {
       display: flex;
       flex-wrap: wrap;
       gap: 4px;
       margin-top: 2px;
     }
+
     .s28-tag-lot {
       background: #f1f5f9;
       border: 1px solid #cbd5e1;
@@ -1073,22 +1092,25 @@
       font-family: monospace;
       cursor: pointer;
     }
+
     .s28-tag-lot:hover {
       background: #e2e8f0;
       color: #2876d2;
     }
   </style>
 </head>
+
 <body class="bg-gradient">
   <!-- Dynamic Header / App Shell -->
   <header class="app-header">
     <div class="header-container">
       <a href="/lots.html" class="brand-link">
         <div class="brand-icon">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M12 2a10 10 0 0 1 10 10c0 5.523-4.477 10-10 10S2 17.523 2 12c0-2.2.7-4.2 1.9-5.9"/>
-            <path d="M12 6v6l4 2"/>
-            <path d="m4.93 4.93 4.24 4.24"/>
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+            stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 2a10 10 0 0 1 10 10c0 5.523-4.477 10-10 10S2 17.523 2 12c0-2.2.7-4.2 1.9-5.9" />
+            <path d="M12 6v6l4 2" />
+            <path d="m4.93 4.93 4.24 4.24" />
           </svg>
         </div>
         <div class="brand-info">
@@ -1098,12 +1120,34 @@
       </a>
 
       <nav class="nav-links" aria-label="Điều hướng chính">
-        <a href="/lots.html" class="nav-item active" id="navLots"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m7.5 4.27 9 5.15"/><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg><span>Lô hàng</span></a>
-        <a href="/farms.html" class="nav-item" id="navFarms"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 11v8a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-7a1 1 0 0 1 1-1h3"/><path d="M4 11V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v7"/><path d="M14 15v5a1 1 0 0 1-1 1h-2a1 1 0 0 1-1-1v-5"/><path d="M17 11V7a1 1 0 0 1 1-1h3a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1h-3a1 1 0 0 1-1-1v-3"/><path d="M3 21h18"/></svg><span>Thửa đất</span></a>
-        <a href="/products.html" class="nav-item" id="navProducts"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="m10 15 5-3-5-3v6Z"/></svg><span>Sản phẩm</span></a>
-        <a href="/harvest.html" class="nav-item" id="navHarvest"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg><span>Ghi nhận thu hoạch</span></a>
+        <a href="/lots.html" class="nav-item active" id="navLots"><svg width="17" height="17" viewBox="0 0 24 24"
+            fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="m7.5 4.27 9 5.15" />
+            <path
+              d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z" />
+            <path d="m3.3 7 8.7 5 8.7-5" />
+            <path d="M12 22V12" />
+          </svg><span>Lô hàng</span></a>
+        <a href="/farms.html" class="nav-item" id="navFarms"><svg width="17" height="17" viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M7 11v8a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-7a1 1 0 0 1 1-1h3" />
+            <path d="M4 11V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v7" />
+            <path d="M14 15v5a1 1 0 0 1-1 1h-2a1 1 0 0 1-1-1v-5" />
+            <path d="M17 11V7a1 1 0 0 1 1-1h3a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1h-3a1 1 0 0 1-1-1v-3" />
+            <path d="M3 21h18" />
+          </svg><span>Thửa đất</span></a>
+        <a href="/products.html" class="nav-item" id="navProducts"><svg width="17" height="17" viewBox="0 0 24 24"
+            fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10" />
+            <path d="m10 15 5-3-5-3v6Z" />
+          </svg><span>Sản phẩm</span></a>
+        <a href="/harvest.html" class="nav-item" id="navHarvest"><svg width="17" height="17" viewBox="0 0 24 24"
+            fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
+          </svg><span>Ghi nhận thu hoạch</span></a>
         <a href="/shipments.html" class="nav-item" id="navShipments">
-          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round">
             <rect x="1" y="3" width="15" height="13"></rect>
             <polygon points="16 8 20 8 23 11 23 16 16 16 8"></polygon>
             <circle cx="5.5" cy="18.5" r="2.5"></circle>
@@ -1111,8 +1155,19 @@
           </svg>
           <span>Vận chuyển lạnh</span>
         </a>
-        <a href="/integrity.html" class="nav-item" id="navIntegrity"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg><span>Kiểm tra toàn vẹn</span></a>
-        <a href="/audit-logs.html" class="nav-item" id="navAuditLogs"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg><span>Nhật ký thao tác</span></a>
+        <a href="/integrity.html" class="nav-item" id="navIntegrity"><svg width="17" height="17" viewBox="0 0 24 24"
+            fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+            <path d="m9 12 2 2 4-4" />
+          </svg><span>Kiểm tra toàn vẹn</span></a>
+        <a href="/audit-logs.html" class="nav-item" id="navAuditLogs"><svg width="17" height="17" viewBox="0 0 24 24"
+            fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+            <polyline points="14 2 14 8 20 8" />
+            <line x1="16" y1="13" x2="8" y2="13" />
+            <line x1="16" y1="17" x2="8" y2="17" />
+            <polyline points="10 9 9 9 8 9" />
+          </svg><span>Nhật ký thao tác</span></a>
       </nav>
 
       <div class="user-controls">
@@ -1126,8 +1181,15 @@
             </div>
           </div>
         </div>
-        <button id="logout" class="btn-logout" onclick="window.handleLogout ? window.handleLogout(event) : (sessionStorage.clear(), window.location.href='/index.html')" title="Đăng xuất khỏi hệ thống">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+        <button id="logout" class="btn-logout"
+          onclick="window.handleLogout ? window.handleLogout(event) : (sessionStorage.clear(), window.location.href='/index.html')"
+          title="Đăng xuất khỏi hệ thống">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round">
+            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+            <polyline points="16 17 21 12 16 7" />
+            <line x1="21" y1="12" x2="9" y2="12" />
+          </svg>
           <span>Đăng xuất</span>
         </button>
       </div>
@@ -1138,7 +1200,11 @@
   <main class="detail-container">
     <div class="top-nav-bar">
       <a href="/lots.html" class="btn-back">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+          stroke-linecap="round" stroke-linejoin="round">
+          <line x1="19" y1="12" x2="5" y2="12" />
+          <polyline points="12 19 5 12 12 5" />
+        </svg>
         <span>Danh sách lô hàng</span>
       </a>
 
@@ -1153,38 +1219,57 @@
     </div>
 
     <!-- Modal Bàn giao lô (lot-detail) -->
-    <div id="transferModal" class="modal-backdrop" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.45); z-index: 2000; align-items: center; justify-content: center;">
-      <div class="modal-card" style="background: #fff; border-radius: 16px; padding: 0; width: 100%; max-width: 520px; box-shadow: 0 24px 60px rgba(0,0,0,0.18); margin: 20px;">
-        <div class="modal-header" style="display: flex; align-items: center; justify-content: space-between; padding: 18px 22px; border-bottom: 1px solid var(--color-border);">
+    <div id="transferModal" class="modal-backdrop"
+      style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.45); z-index: 2000; align-items: center; justify-content: center;">
+      <div class="modal-card"
+        style="background: #fff; border-radius: 16px; padding: 0; width: 100%; max-width: 520px; box-shadow: 0 24px 60px rgba(0,0,0,0.18); margin: 20px;">
+        <div class="modal-header"
+          style="display: flex; align-items: center; justify-content: space-between; padding: 18px 22px; border-bottom: 1px solid var(--color-border);">
           <h3 style="margin: 0; font-size: 16px; font-weight: 700;">Bàn giao lô sang tổ chức khác</h3>
-          <button type="button" id="btnCloseTransferModal" style="background: none; border: none; font-size: 20px; cursor: pointer; color: var(--color-text-muted); line-height: 1;">✕</button>
+          <button type="button" id="btnCloseTransferModal"
+            style="background: none; border: none; font-size: 20px; cursor: pointer; color: var(--color-text-muted); line-height: 1;">✕</button>
         </div>
         <form id="transferForm">
           <div style="padding: 20px 22px;">
             <div id="transferModalAlert" style="display: none; margin-bottom: 14px;"></div>
-            <div style="background: rgba(36,138,61,0.06); border: 1px solid rgba(36,138,61,0.18); border-radius: 10px; padding: 12px 14px; margin-bottom: 16px;">
-              <div style="font-size: 11px; text-transform: uppercase; font-weight: 700; color: var(--color-primary); letter-spacing: 0.05em; margin-bottom: 4px;">Lô hàng</div>
-              <div style="font-size: 15px; font-weight: 700; color: var(--color-text-main);" id="transferLotTitle">--</div>
-              <div style="font-size: 13px; color: var(--color-text-muted); margin-top: 2px;">Mã lô: <code id="transferLotId" style="font-weight:700; color:var(--color-primary);">--</code></div>
+            <div
+              style="background: rgba(36,138,61,0.06); border: 1px solid rgba(36,138,61,0.18); border-radius: 10px; padding: 12px 14px; margin-bottom: 16px;">
+              <div
+                style="font-size: 11px; text-transform: uppercase; font-weight: 700; color: var(--color-primary); letter-spacing: 0.05em; margin-bottom: 4px;">
+                Lô hàng</div>
+              <div style="font-size: 15px; font-weight: 700; color: var(--color-text-main);" id="transferLotTitle">--
+              </div>
+              <div style="font-size: 13px; color: var(--color-text-muted); margin-top: 2px;">Mã lô: <code
+                  id="transferLotId" style="font-weight:700; color:var(--color-primary);">--</code></div>
             </div>
             <input type="hidden" id="transferLotIdInput" name="lotId">
             <div style="margin-bottom: 14px;">
-              <label style="display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px;">Tổ chức tiếp nhận <span style="color:#dc2626">*</span></label>
-              <select id="transferToOrg" required style="width:100%; height:40px; padding:0 12px; border-radius:8px; border:1px solid var(--color-border); font-size:13.5px; background:#fff;">
+              <label style="display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px;">Tổ chức tiếp nhận
+                <span style="color:#dc2626">*</span></label>
+              <select id="transferToOrg" required
+                style="width:100%; height:40px; padding:0 12px; border-radius:8px; border:1px solid var(--color-border); font-size:13.5px; background:#fff;">
                 <option value="">-- Chọn tổ chức tiếp nhận --</option>
               </select>
             </div>
             <div style="margin-bottom: 14px;">
-              <label style="display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px;">Ghi chú bàn giao</label>
-              <textarea id="transferNotes" rows="3" placeholder="Nhập thông tin người giao, phương tiện, lưu ý bảo quản..." style="width:100%; padding:10px 12px; border-radius:8px; border:1px solid var(--color-border); font-size:13px; font-family:inherit; resize:vertical; box-sizing:border-box;"></textarea>
+              <label style="display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px;">Ghi chú bàn
+                giao</label>
+              <textarea id="transferNotes" rows="3"
+                placeholder="Nhập thông tin người giao, phương tiện, lưu ý bảo quản..."
+                style="width:100%; padding:10px 12px; border-radius:8px; border:1px solid var(--color-border); font-size:13px; font-family:inherit; resize:vertical; box-sizing:border-box;"></textarea>
             </div>
-            <div style="background:rgba(245,158,11,0.08); border:1px solid rgba(245,158,11,0.25); border-radius:8px; padding:10px; font-size:12.5px; color:#b45309; line-height:1.5;">
-              <strong>Lưu ý (S-15):</strong> Lô sẽ ở trạng thái <strong>Chờ xác nhận (PENDING)</strong>. Quyền sở hữu vẫn thuộc tổ chức của bạn cho đến khi bên nhận bấm xác nhận.
+            <div
+              style="background:rgba(245,158,11,0.08); border:1px solid rgba(245,158,11,0.25); border-radius:8px; padding:10px; font-size:12.5px; color:#b45309; line-height:1.5;">
+              <strong>Lưu ý (S-15):</strong> Lô sẽ ở trạng thái <strong>Chờ xác nhận (PENDING)</strong>. Quyền sở hữu
+              vẫn thuộc tổ chức của bạn cho đến khi bên nhận bấm xác nhận.
             </div>
           </div>
-          <div style="display:flex; justify-content:flex-end; gap:10px; padding:14px 22px; border-top:1px solid var(--color-border);">
-            <button type="button" id="btnCancelTransfer" class="btn btn-secondary" style="height:38px; padding:0 16px;">Hủy bỏ</button>
-            <button type="submit" id="btnSubmitTransfer" class="btn btn-primary" style="height:38px; padding:0 18px;">Gửi yêu cầu bàn giao</button>
+          <div
+            style="display:flex; justify-content:flex-end; gap:10px; padding:14px 22px; border-top:1px solid var(--color-border);">
+            <button type="button" id="btnCancelTransfer" class="btn btn-secondary"
+              style="height:38px; padding:0 16px;">Hủy bỏ</button>
+            <button type="submit" id="btnSubmitTransfer" class="btn btn-primary"
+              style="height:38px; padding:0 18px;">Gửi yêu cầu bàn giao</button>
           </div>
         </form>
       </div>
@@ -1195,39 +1280,53 @@
       <div class="modal-card">
         <div class="modal-header">
           <h3 class="modal-title" style="color: #dc2626;">Từ chối tiếp nhận bàn giao</h3>
-          <button type="button" class="btn-icon" id="btnCloseRejectModal" title="Đóng" style="background: none; border: none; font-size: 18px; cursor: pointer; color: var(--color-text-muted);">✕</button>
+          <button type="button" class="btn-icon" id="btnCloseRejectModal" title="Đóng"
+            style="background: none; border: none; font-size: 18px; cursor: pointer; color: var(--color-text-muted);">✕</button>
         </div>
         <form id="rejectTransferForm">
           <div class="modal-body">
             <div id="rejectModalAlert" style="display: none; margin-bottom: 16px;"></div>
 
-            <div style="background: rgba(220, 38, 38, 0.05); border: 1px solid rgba(220, 38, 38, 0.2); border-radius: var(--radius-md); padding: 12px 16px; margin-bottom: 18px;">
-              <div style="font-size: 11px; text-transform: uppercase; font-weight: 700; color: #dc2626; letter-spacing: 0.05em; margin-bottom: 4px;">Thông tin yêu cầu bàn giao</div>
-              <div style="font-size: 15px; font-weight: 700; color: var(--color-text-main);" id="rejectLotTitle">--</div>
+            <div
+              style="background: rgba(220, 38, 38, 0.05); border: 1px solid rgba(220, 38, 38, 0.2); border-radius: var(--radius-md); padding: 12px 16px; margin-bottom: 18px;">
+              <div
+                style="font-size: 11px; text-transform: uppercase; font-weight: 700; color: #dc2626; letter-spacing: 0.05em; margin-bottom: 4px;">
+                Thông tin yêu cầu bàn giao</div>
+              <div style="font-size: 15px; font-weight: 700; color: var(--color-text-main);" id="rejectLotTitle">--
+              </div>
               <div style="font-size: 13px; color: var(--color-text-muted); margin-top: 2px;">
-                Mã lô: <code id="rejectLotId" style="font-weight: 700; color: var(--color-primary); background: rgba(36, 138, 61, 0.08); padding: 2px 6px; border-radius: 4px;">--</code>
+                Mã lô: <code id="rejectLotId"
+                  style="font-weight: 700; color: var(--color-primary); background: rgba(36, 138, 61, 0.08); padding: 2px 6px; border-radius: 4px;">--</code>
               </div>
             </div>
 
             <input type="hidden" id="rejectTransferIdInput" name="transferId">
 
             <div class="form-group" style="margin-bottom: 16px;">
-              <label class="form-label" for="rejectReason" style="display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px;">
+              <label class="form-label" for="rejectReason"
+                style="display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px;">
                 Lý do từ chối <span style="color: #dc2626;">*</span>
               </label>
-              <textarea id="rejectReason" class="form-control" rows="3" required placeholder="Nhập lý do từ chối tiếp nhận (tối thiểu 10 ký tự, ví dụ: Hàng không đúng số lượng thực tế, không đạt chất lượng...)" style="width: 100%; padding: 10px 12px; border-radius: var(--radius-md); border: 1px solid var(--color-border); font-size: 13px; font-family: inherit; resize: vertical; box-sizing: border-box;"></textarea>
+              <textarea id="rejectReason" class="form-control" rows="3" required
+                placeholder="Nhập lý do từ chối tiếp nhận (tối thiểu 10 ký tự, ví dụ: Hàng không đúng số lượng thực tế, không đạt chất lượng...)"
+                style="width: 100%; padding: 10px 12px; border-radius: var(--radius-md); border: 1px solid var(--color-border); font-size: 13px; font-family: inherit; resize: vertical; box-sizing: border-box;"></textarea>
               <small style="color: var(--color-text-light); font-size: 12px; display: block; margin-top: 4px;">
                 Yêu cầu ít nhất 10 ký tự (Jira T-38). Lý do này sẽ được ghi vào chuỗi sự kiện bảo chứng.
               </small>
             </div>
 
-            <div style="background: rgba(245, 158, 11, 0.08); border: 1px solid rgba(245, 158, 11, 0.25); border-radius: var(--radius-md); padding: 12px; font-size: 12.5px; color: #b45309; line-height: 1.5;">
-              <strong>Lưu ý (S-16):</strong> Sau khi từ chối, quyền sở hữu lô hàng vẫn thuộc về bên gửi. Bên gửi sẽ có thể tạo yêu cầu bàn giao mới nếu cần.
+            <div
+              style="background: rgba(245, 158, 11, 0.08); border: 1px solid rgba(245, 158, 11, 0.25); border-radius: var(--radius-md); padding: 12px; font-size: 12.5px; color: #b45309; line-height: 1.5;">
+              <strong>Lưu ý (S-16):</strong> Sau khi từ chối, quyền sở hữu lô hàng vẫn thuộc về bên gửi. Bên gửi sẽ có
+              thể tạo yêu cầu bàn giao mới nếu cần.
             </div>
           </div>
-          <div class="modal-footer" style="display: flex; justify-content: flex-end; gap: 10px; padding: 14px 22px; border-top: 1px solid var(--color-border);">
-            <button type="button" class="btn btn-secondary" id="btnCancelRejectModal" style="height: 38px; padding: 0 16px;">Hủy bỏ</button>
-            <button type="submit" class="btn btn-danger" id="btnSubmitReject" style="height: 38px; padding: 0 18px; background: #dc2626; color: #fff; border: none; border-radius: var(--radius-sm); font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 6px;">
+          <div class="modal-footer"
+            style="display: flex; justify-content: flex-end; gap: 10px; padding: 14px 22px; border-top: 1px solid var(--color-border);">
+            <button type="button" class="btn btn-secondary" id="btnCancelRejectModal"
+              style="height: 38px; padding: 0 16px;">Hủy bỏ</button>
+            <button type="submit" class="btn btn-danger" id="btnSubmitReject"
+              style="height: 38px; padding: 0 18px; background: #dc2626; color: #fff; border: none; border-radius: var(--radius-sm); font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 6px;">
               <span>Xác nhận từ chối</span>
             </button>
           </div>
@@ -1240,29 +1339,38 @@
       <div class="modal-card">
         <div class="modal-header">
           <h3 class="modal-title" style="color: #10b981; display: flex; align-items: center; gap: 8px;">
-            <span style="display: inline-flex; width: 22px; height: 22px; background: rgba(16, 185, 129, 0.15); border-radius: 50%; align-items: center; justify-content: center; font-size: 13px;">✓</span>
+            <span
+              style="display: inline-flex; width: 22px; height: 22px; background: rgba(16, 185, 129, 0.15); border-radius: 50%; align-items: center; justify-content: center; font-size: 13px;">✓</span>
             Xác nhận tiếp nhận lô hàng
           </h3>
-          <button type="button" class="btn-icon" id="btnCloseConfirmModal" title="Đóng" style="background: none; border: none; font-size: 18px; cursor: pointer; color: var(--color-text-muted);">✕</button>
+          <button type="button" class="btn-icon" id="btnCloseConfirmModal" title="Đóng"
+            style="background: none; border: none; font-size: 18px; cursor: pointer; color: var(--color-text-muted);">✕</button>
         </div>
         <div class="modal-body">
           <div id="confirmModalAlert" style="display: none; margin-bottom: 16px;"></div>
 
           <!-- Cảnh báo vi phạm nhiệt độ chuỗi lạnh trước khi tiếp nhận (Story S-45 / N2-279) -->
-          <div id="confirmModalViolationWarning" style="display: none; background: #fff1f2; border: 1.5px solid #f43f5e; border-radius: var(--radius-md); padding: 12px 16px; margin-bottom: 16px; color: #9f1239;">
-            <div style="font-weight: 700; font-size: 13.5px; display: flex; align-items: center; gap: 6px; margin-bottom: 4px;">
+          <div id="confirmModalViolationWarning"
+            style="display: none; background: #fff1f2; border: 1.5px solid #f43f5e; border-radius: var(--radius-md); padding: 12px 16px; margin-bottom: 16px; color: #9f1239;">
+            <div
+              style="font-weight: 700; font-size: 13.5px; display: flex; align-items: center; gap: 6px; margin-bottom: 4px;">
               <span>⚠️ CẢNH BÁO: LÔ HÀNG ĐÃ TỪNG GẶP SỰ CỐ VI PHẠM NHIỆT ĐỘ</span>
             </div>
             <div style="font-size: 12.5px; line-height: 1.5; color: #881337;">
-              Lô hàng này đã ghi nhận sự cố nhiệt độ vượt ngưỡng an toàn trong quá trình vận chuyển. Hãy kiểm tra kỹ chất lượng nông sản trên dòng thời gian trước khi xác nhận tiếp nhận.
+              Lô hàng này đã ghi nhận sự cố nhiệt độ vượt ngưỡng an toàn trong quá trình vận chuyển. Hãy kiểm tra kỹ
+              chất lượng nông sản trên dòng thời gian trước khi xác nhận tiếp nhận.
             </div>
           </div>
 
-          <div style="background: rgba(16, 185, 129, 0.06); border: 1px solid rgba(16, 185, 129, 0.25); border-radius: var(--radius-md); padding: 12px 16px; margin-bottom: 18px;">
-            <div style="font-size: 11px; text-transform: uppercase; font-weight: 700; color: #10b981; letter-spacing: 0.05em; margin-bottom: 4px;">Lô hàng tiếp nhận</div>
+          <div
+            style="background: rgba(16, 185, 129, 0.06); border: 1px solid rgba(16, 185, 129, 0.25); border-radius: var(--radius-md); padding: 12px 16px; margin-bottom: 18px;">
+            <div
+              style="font-size: 11px; text-transform: uppercase; font-weight: 700; color: #10b981; letter-spacing: 0.05em; margin-bottom: 4px;">
+              Lô hàng tiếp nhận</div>
             <div style="font-size: 15px; font-weight: 700; color: var(--color-text-main);" id="confirmLotTitle">--</div>
             <div style="font-size: 13px; color: var(--color-text-muted); margin-top: 2px;">
-              Mã lô: <code id="confirmLotId" style="font-weight: 700; color: var(--color-primary); background: rgba(36, 138, 61, 0.08); padding: 2px 6px; border-radius: 4px;">--</code>
+              Mã lô: <code id="confirmLotId"
+                style="font-weight: 700; color: var(--color-primary); background: rgba(36, 138, 61, 0.08); padding: 2px 6px; border-radius: 4px;">--</code>
             </div>
           </div>
 
@@ -1270,13 +1378,19 @@
             Bạn có chắc chắn muốn xác nhận tiếp nhận lô hàng này vào quyền quản lý của tổ chức?
           </p>
 
-          <div style="background: rgba(59, 130, 246, 0.08); border: 1px solid rgba(59, 130, 246, 0.2); border-radius: var(--radius-md); padding: 12px; font-size: 12.5px; color: #1d4ed8; line-height: 1.5;">
-            <strong>Hiệu lực chuyển giao (S-16):</strong> Quyền sở hữu lô hàng sẽ được chuyển giao chính thức sang tổ chức của bạn. Hệ thống sẽ lưu vết giao dịch và ghi nhận bảo chứng sự kiện <code>TRANSFER_CONFIRMED</code> vào chuỗi băm mật mã SHA-256 bất biến.
+          <div
+            style="background: rgba(59, 130, 246, 0.08); border: 1px solid rgba(59, 130, 246, 0.2); border-radius: var(--radius-md); padding: 12px; font-size: 12.5px; color: #1d4ed8; line-height: 1.5;">
+            <strong>Hiệu lực chuyển giao (S-16):</strong> Quyền sở hữu lô hàng sẽ được chuyển giao chính thức sang tổ
+            chức của bạn. Hệ thống sẽ lưu vết giao dịch và ghi nhận bảo chứng sự kiện <code>TRANSFER_CONFIRMED</code>
+            vào chuỗi băm mật mã SHA-256 bất biến.
           </div>
         </div>
-        <div class="modal-footer" style="display: flex; justify-content: flex-end; gap: 10px; padding: 14px 22px; border-top: 1px solid var(--color-border);">
-          <button type="button" class="btn btn-secondary" id="btnCancelConfirmModal" style="height: 38px; padding: 0 16px;">Hủy bỏ</button>
-          <button type="button" class="btn btn-primary" id="btnDoConfirmTransfer" style="height: 38px; padding: 0 18px; background: #10b981; border: none; border-radius: var(--radius-sm); font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 6px;">
+        <div class="modal-footer"
+          style="display: flex; justify-content: flex-end; gap: 10px; padding: 14px 22px; border-top: 1px solid var(--color-border);">
+          <button type="button" class="btn btn-secondary" id="btnCancelConfirmModal"
+            style="height: 38px; padding: 0 16px;">Hủy bỏ</button>
+          <button type="button" class="btn btn-primary" id="btnDoConfirmTransfer"
+            style="height: 38px; padding: 0 18px; background: #10b981; border: none; border-radius: var(--radius-sm); font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 6px;">
             <span>Tiếp nhận lô hàng</span>
           </button>
         </div>
@@ -1284,19 +1398,31 @@
     </div>
 
     <!-- Modal Tách lô hàng (S-17 / S-18) -->
-    <div id="splitLotModal" class="modal-backdrop" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 2000; align-items: center; justify-content: center; padding: 20px;">
-      <div class="modal-card" style="background: #fff; border-radius: 16px; padding: 0; width: 100%; max-width: 620px; max-height: 90vh; display: flex; flex-direction: column; box-shadow: 0 25px 60px rgba(0,0,0,0.22);">
-        <div class="modal-header" style="display: flex; align-items: center; justify-content: space-between; padding: 18px 24px; border-bottom: 1px solid var(--color-border);">
+    <div id="splitLotModal" class="modal-backdrop"
+      style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 2000; align-items: center; justify-content: center; padding: 20px;">
+      <div class="modal-card"
+        style="background: #fff; border-radius: 16px; padding: 0; width: 100%; max-width: 620px; max-height: 90vh; display: flex; flex-direction: column; box-shadow: 0 25px 60px rgba(0,0,0,0.22);">
+        <div class="modal-header"
+          style="display: flex; align-items: center; justify-content: space-between; padding: 18px 24px; border-bottom: 1px solid var(--color-border);">
           <div style="display: flex; align-items: center; gap: 10px;">
-            <div style="width: 32px; height: 32px; border-radius: 8px; background: rgba(37, 99, 235, 0.1); display: flex; align-items: center; justify-content: center; color: #2563eb;">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M13 6h3a2 2 0 0 1 2 2v7"/><line x1="6" y1="9" x2="6" y2="21"/></svg>
+            <div
+              style="width: 32px; height: 32px; border-radius: 8px; background: rgba(37, 99, 235, 0.1); display: flex; align-items: center; justify-content: center; color: #2563eb;">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+                <circle cx="18" cy="18" r="3" />
+                <circle cx="6" cy="6" r="3" />
+                <path d="M13 6h3a2 2 0 0 1 2 2v7" />
+                <line x1="6" y1="9" x2="6" y2="21" />
+              </svg>
             </div>
             <div>
-              <h3 style="margin: 0; font-size: 16.5px; font-weight: 700; color: var(--color-text-main);">Tách lô hàng thành các lô con</h3>
-              <div style="font-size: 12px; color: var(--color-text-muted);">Tính năng sơ chế & phân chia quy mô lô nông sản (S-17 / S-18)</div>
+              <h3 style="margin: 0; font-size: 16.5px; font-weight: 700; color: var(--color-text-main);">Tách lô hàng
+                thành các lô con</h3>
+              <div style="font-size: 12px; color: var(--color-text-muted);">Tính năng sơ chế & phân chia quy mô lô nông
+                sản (S-17 / S-18)</div>
             </div>
           </div>
-          <button type="button" id="btnCloseSplitModal" style="background: none; border: none; font-size: 20px; cursor: pointer; color: var(--color-text-muted); line-height: 1;">✕</button>
+          <button type="button" id="btnCloseSplitModal"
+            style="background: none; border: none; font-size: 20px; cursor: pointer; color: var(--color-text-muted); line-height: 1;">✕</button>
         </div>
 
         <form id="splitLotForm" style="display: flex; flex-direction: column; overflow: hidden; flex: 1;">
@@ -1304,27 +1430,39 @@
             <div id="splitModalAlert" style="display: none; margin-bottom: 16px;"></div>
 
             <!-- Parent Lot Info Box -->
-            <div style="background: rgba(37, 99, 235, 0.06); border: 1px solid rgba(37, 99, 235, 0.2); border-radius: 12px; padding: 14px 16px; margin-bottom: 18px;">
-              <div style="font-size: 11px; text-transform: uppercase; font-weight: 700; color: #2563eb; letter-spacing: 0.05em; margin-bottom: 4px;">Lô mẹ nguồn (Parent Lot)</div>
-              <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap;">
+            <div
+              style="background: rgba(37, 99, 235, 0.06); border: 1px solid rgba(37, 99, 235, 0.2); border-radius: 12px; padding: 14px 16px; margin-bottom: 18px;">
+              <div
+                style="font-size: 11px; text-transform: uppercase; font-weight: 700; color: #2563eb; letter-spacing: 0.05em; margin-bottom: 4px;">
+                Lô mẹ nguồn (Parent Lot)</div>
+              <div
+                style="display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap;">
                 <div>
-                  <div style="font-size: 15px; font-weight: 700; color: var(--color-text-main);" id="splitParentTitle">--</div>
+                  <div style="font-size: 15px; font-weight: 700; color: var(--color-text-main);" id="splitParentTitle">
+                    --</div>
                   <div style="font-size: 13px; color: var(--color-text-muted); margin-top: 2px;">
-                    Mã lô: <code id="splitParentLotId" style="font-weight:700; color:#2563eb; background: rgba(37, 99, 235, 0.08); padding: 1px 6px; border-radius: 4px;">--</code>
+                    Mã lô: <code id="splitParentLotId"
+                      style="font-weight:700; color:#2563eb; background: rgba(37, 99, 235, 0.08); padding: 1px 6px; border-radius: 4px;">--</code>
                   </div>
                 </div>
                 <div style="text-align: right;">
                   <div style="font-size: 11.5px; color: var(--color-text-muted);">Khối lượng khả dụng còn lại</div>
-                  <div style="font-size: 17px; font-weight: 800; color: var(--color-primary);" id="splitParentRemainingDisplay">0 kg</div>
+                  <div style="font-size: 17px; font-weight: 800; color: var(--color-primary);"
+                    id="splitParentRemainingDisplay">0 kg</div>
                 </div>
               </div>
             </div>
 
             <!-- Split Items List -->
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-              <label style="font-size: 13.5px; font-weight: 700; color: var(--color-text-main); margin: 0;">Danh sách các lô con cần tạo <span style="color:#dc2626">*</span></label>
-              <button type="button" id="btnAddSplitRow" class="btn btn-secondary" style="height: 30px; padding: 0 10px; font-size: 12px; gap: 4px; border-color: rgba(37,99,235,0.4); color: #2563eb;">
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+              <label style="font-size: 13.5px; font-weight: 700; color: var(--color-text-main); margin: 0;">Danh sách
+                các lô con cần tạo <span style="color:#dc2626">*</span></label>
+              <button type="button" id="btnAddSplitRow" class="btn btn-secondary"
+                style="height: 30px; padding: 0 10px; font-size: 12px; gap: 4px; border-color: rgba(37,99,235,0.4); color: #2563eb;">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                  <line x1="12" y1="5" x2="12" y2="19" />
+                  <line x1="5" y1="12" x2="19" y2="12" />
+                </svg>
                 <span>Thêm lô con</span>
               </button>
             </div>
@@ -1342,36 +1480,49 @@
                 </div>
                 <div>
                   <div style="font-size: 12px; color: var(--color-text-muted);">Khối lượng lô mẹ sau tách:</div>
-                  <div style="font-size: 16px; font-weight: 700; color: var(--color-text-main);" id="splitBalanceDisplay">0.000 kg</div>
+                  <div style="font-size: 16px; font-weight: 700; color: var(--color-text-main);"
+                    id="splitBalanceDisplay">0.000 kg</div>
                 </div>
               </div>
-              <div id="splitValidationWarning" style="display: none; font-size: 12.5px; color: #dc2626; font-weight: 600; padding-top: 6px; border-top: 1px dashed rgba(220,38,38,0.3);"></div>
+              <div id="splitValidationWarning"
+                style="display: none; font-size: 12.5px; color: #dc2626; font-weight: 600; padding-top: 6px; border-top: 1px dashed rgba(220,38,38,0.3);">
+              </div>
             </div>
 
-            <div style="margin-top: 14px; background: rgba(245,158,11,0.08); border: 1px solid rgba(245,158,11,0.25); border-radius: 8px; padding: 10px 12px; font-size: 12px; color: #b45309; line-height: 1.5;">
-              <strong>Bảo chứng nguồn gốc:</strong> Mỗi lô con sẽ tự động được gán <code>parent_lot_id</code> trỏ về lô mẹ. Hệ thống ghi nhận hai sự kiện bảo chứng <code>LOT_SPLIT</code> (lô mẹ) và <code>CREATED_FROM_SPLIT</code> (lô con) trên chuỗi hash SHA-256 bất biến.
+            <div
+              style="margin-top: 14px; background: rgba(245,158,11,0.08); border: 1px solid rgba(245,158,11,0.25); border-radius: 8px; padding: 10px 12px; font-size: 12px; color: #b45309; line-height: 1.5;">
+              <strong>Bảo chứng nguồn gốc:</strong> Mỗi lô con sẽ tự động được gán <code>parent_lot_id</code> trỏ về lô
+              mẹ. Hệ thống ghi nhận hai sự kiện bảo chứng <code>LOT_SPLIT</code> (lô mẹ) và
+              <code>CREATED_FROM_SPLIT</code> (lô con) trên chuỗi hash SHA-256 bất biến.
             </div>
           </div>
 
-          <div style="display:flex; justify-content:flex-end; gap:10px; padding:16px 24px; border-top:1px solid var(--color-border); background: #fafafa;">
-            <button type="button" id="btnCancelSplit" class="btn btn-secondary" style="height:38px; padding:0 16px;">Hủy bỏ</button>
-            <button type="submit" id="btnSubmitSplit" class="btn btn-primary" style="height:38px; padding:0 20px; background: #2563eb; border-color: #2563eb;">
+          <div
+            style="display:flex; justify-content:flex-end; gap:10px; padding:16px 24px; border-top:1px solid var(--color-border); background: #fafafa;">
+            <button type="button" id="btnCancelSplit" class="btn btn-secondary" style="height:38px; padding:0 16px;">Hủy
+              bỏ</button>
+            <button type="submit" id="btnSubmitSplit" class="btn btn-primary"
+              style="height:38px; padding:0 20px; background: #2563eb; border-color: #2563eb;">
               <span>Xác nhận tách lô</span>
             </button>
           </div>
         </form>
 
         <!-- Success Result View (T-41) -->
-        <div id="splitSuccessContainer" style="display: none; flex-direction: column; flex: 1; overflow-y: auto; padding: 24px;">
+        <div id="splitSuccessContainer"
+          style="display: none; flex-direction: column; flex: 1; overflow-y: auto; padding: 24px;">
           <div style="text-align: center; margin-bottom: 20px;">
-            <div style="width: 52px; height: 52px; border-radius: 50%; background: #dcfce7; color: #16a34a; font-size: 26px; display: inline-flex; align-items: center; justify-content: center; margin-bottom: 10px;">✓</div>
+            <div
+              style="width: 52px; height: 52px; border-radius: 50%; background: #dcfce7; color: #16a34a; font-size: 26px; display: inline-flex; align-items: center; justify-content: center; margin-bottom: 10px;">
+              ✓</div>
             <h3 style="margin: 0; font-size: 19px; font-weight: 800; color: #16a34a;">TÁCH LÔ HÀNG THÀNH CÔNG</h3>
             <p style="margin: 4px 0 0; font-size: 13px; color: var(--color-text-muted);">
               Các lô con mới đã được khởi tạo độc lập và liên kết với lô mẹ trong hệ thống.
             </p>
           </div>
 
-          <div style="background: rgba(36, 138, 61, 0.05); border: 1px solid rgba(36, 138, 61, 0.2); border-radius: 12px; padding: 12px 16px; margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center;">
+          <div
+            style="background: rgba(36, 138, 61, 0.05); border: 1px solid rgba(36, 138, 61, 0.2); border-radius: 12px; padding: 12px 16px; margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center;">
             <span style="font-size: 13px; color: var(--color-text-muted);">Khối lượng lô mẹ còn lại:</span>
             <strong id="splitSuccessParentRemaining" style="font-size: 15px; color: var(--color-primary);">--</strong>
           </div>
@@ -1384,8 +1535,10 @@
             <!-- Dynamically populated -->
           </div>
 
-          <div style="display: flex; justify-content: flex-end; gap: 10px; padding-top: 16px; border-top: 1px solid var(--color-border);">
-            <button type="button" id="btnFinishSplitSuccess" class="btn btn-primary" style="height: 38px; padding: 0 20px; background: #2563eb; border-color: #2563eb;">
+          <div
+            style="display: flex; justify-content: flex-end; gap: 10px; padding-top: 16px; border-top: 1px solid var(--color-border);">
+            <button type="button" id="btnFinishSplitSuccess" class="btn btn-primary"
+              style="height: 38px; padding: 0 20px; background: #2563eb; border-color: #2563eb;">
               <span>Hoàn tất & Cập nhật chi tiết</span>
             </button>
           </div>
@@ -1394,19 +1547,28 @@
     </div>
 
     <!-- Modal Gộp lô hàng (T-59 / S-19) -->
-    <div id="mergeLotModal" class="modal-backdrop" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 2000; align-items: center; justify-content: center; padding: 20px;">
-      <div class="modal-card" style="background: #fff; border-radius: 16px; padding: 0; width: 100%; max-width: 620px; max-height: 90vh; display: flex; flex-direction: column; box-shadow: 0 25px 60px rgba(0,0,0,0.22);">
-        <div class="modal-header" style="display: flex; align-items: center; justify-content: space-between; padding: 18px 24px; border-bottom: 1px solid var(--color-border);">
+    <div id="mergeLotModal" class="modal-backdrop"
+      style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 2000; align-items: center; justify-content: center; padding: 20px;">
+      <div class="modal-card"
+        style="background: #fff; border-radius: 16px; padding: 0; width: 100%; max-width: 620px; max-height: 90vh; display: flex; flex-direction: column; box-shadow: 0 25px 60px rgba(0,0,0,0.22);">
+        <div class="modal-header"
+          style="display: flex; align-items: center; justify-content: space-between; padding: 18px 24px; border-bottom: 1px solid var(--color-border);">
           <div style="display: flex; align-items: center; gap: 10px;">
-            <div style="width: 32px; height: 32px; border-radius: 8px; background: rgba(124, 58, 237, 0.1); display: flex; align-items: center; justify-content: center; color: #7c3aed;">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>
+            <div
+              style="width: 32px; height: 32px; border-radius: 8px; background: rgba(124, 58, 237, 0.1); display: flex; align-items: center; justify-content: center; color: #7c3aed;">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+                <path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01" />
+              </svg>
             </div>
             <div>
-              <h3 style="margin: 0; font-size: 16.5px; font-weight: 700; color: var(--color-text-main);">Gộp lô hàng (Sáp nhập quy mô)</h3>
-              <div style="font-size: 12px; color: var(--color-text-muted);">Sáp nhập nhiều lô cùng sản phẩm thành lô lớn tập trung (T-59 / S-19)</div>
+              <h3 style="margin: 0; font-size: 16.5px; font-weight: 700; color: var(--color-text-main);">Gộp lô hàng
+                (Sáp nhập quy mô)</h3>
+              <div style="font-size: 12px; color: var(--color-text-muted);">Sáp nhập nhiều lô cùng sản phẩm thành lô lớn
+                tập trung (T-59 / S-19)</div>
             </div>
           </div>
-          <button type="button" id="btnCloseMergeModal" style="background: none; border: none; font-size: 20px; cursor: pointer; color: var(--color-text-muted); line-height: 1;">✕</button>
+          <button type="button" id="btnCloseMergeModal"
+            style="background: none; border: none; font-size: 20px; cursor: pointer; color: var(--color-text-muted); line-height: 1;">✕</button>
         </div>
 
         <form id="mergeLotForm" style="display: flex; flex-direction: column; overflow: hidden; flex: 1;">
@@ -1414,30 +1576,41 @@
             <div id="mergeModalAlert" style="display: none; margin-bottom: 16px;"></div>
 
             <!-- Current Base Lot Info Box -->
-            <div style="background: rgba(124, 58, 237, 0.06); border: 1px solid rgba(124, 58, 237, 0.2); border-radius: 12px; padding: 14px 16px; margin-bottom: 18px;">
-              <div style="font-size: 11px; text-transform: uppercase; font-weight: 700; color: #7c3aed; letter-spacing: 0.05em; margin-bottom: 4px;">Lô nguồn hiện tại (Base Lot)</div>
-              <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap;">
+            <div
+              style="background: rgba(124, 58, 237, 0.06); border: 1px solid rgba(124, 58, 237, 0.2); border-radius: 12px; padding: 14px 16px; margin-bottom: 18px;">
+              <div
+                style="font-size: 11px; text-transform: uppercase; font-weight: 700; color: #7c3aed; letter-spacing: 0.05em; margin-bottom: 4px;">
+                Lô nguồn hiện tại (Base Lot)</div>
+              <div
+                style="display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap;">
                 <div>
-                  <div style="font-size: 15px; font-weight: 700; color: var(--color-text-main);" id="mergeBaseTitle">--</div>
+                  <div style="font-size: 15px; font-weight: 700; color: var(--color-text-main);" id="mergeBaseTitle">--
+                  </div>
                   <div style="font-size: 13px; color: var(--color-text-muted); margin-top: 2px;">
-                    Mã lô: <code id="mergeBaseLotId" style="font-weight:700; color:#7c3aed; background: rgba(124, 58, 237, 0.08); padding: 1px 6px; border-radius: 4px;">--</code>
-                    <span id="mergeBaseProductBadge" style="margin-left: 8px; font-size: 12px; color: var(--color-text-muted);"></span>
+                    Mã lô: <code id="mergeBaseLotId"
+                      style="font-weight:700; color:#7c3aed; background: rgba(124, 58, 237, 0.08); padding: 1px 6px; border-radius: 4px;">--</code>
+                    <span id="mergeBaseProductBadge"
+                      style="margin-left: 8px; font-size: 12px; color: var(--color-text-muted);"></span>
                   </div>
                 </div>
                 <div style="text-align: right;">
                   <div style="font-size: 11.5px; color: var(--color-text-muted);">Khối lượng khả dụng</div>
-                  <div style="font-size: 17px; font-weight: 800; color: #7c3aed;" id="mergeBaseRemainingDisplay">0 kg</div>
+                  <div style="font-size: 17px; font-weight: 800; color: #7c3aed;" id="mergeBaseRemainingDisplay">0 kg
+                  </div>
                 </div>
               </div>
             </div>
 
             <!-- Merge Candidates List -->
             <div style="margin-bottom: 16px;">
-              <label style="display: block; font-size: 13.5px; font-weight: 700; color: var(--color-text-main); margin-bottom: 8px;">
+              <label
+                style="display: block; font-size: 13.5px; font-weight: 700; color: var(--color-text-main); margin-bottom: 8px;">
                 Chọn các lô cùng loại nông sản để gộp:
               </label>
-              <div id="mergeCandidatesList" style="max-height: 200px; overflow-y: auto; border: 1px solid var(--color-border); border-radius: 10px; padding: 10px; background: #fafafa;">
-                <div style="font-size: 13px; color: var(--color-text-muted); text-align: center; padding: 12px;">Đang tải danh sách lô cùng loại...</div>
+              <div id="mergeCandidatesList"
+                style="max-height: 200px; overflow-y: auto; border: 1px solid var(--color-border); border-radius: 10px; padding: 10px; background: #fafafa;">
+                <div style="font-size: 13px; color: var(--color-text-muted); text-align: center; padding: 12px;">Đang
+                  tải danh sách lô cùng loại...</div>
               </div>
             </div>
 
@@ -1445,24 +1618,33 @@
               <label style="display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px;">
                 Tên lô hàng mới sau gộp
               </label>
-              <input type="text" id="mergeDetailNewLotName" class="form-control" placeholder="Nhập tên lô mới (ví dụ: Chè đặc sản gộp)...">
+              <input type="text" id="mergeDetailNewLotName" class="form-control"
+                placeholder="Nhập tên lô mới (ví dụ: Chè đặc sản gộp)...">
             </div>
 
-            <div class="split-summary-box" style="background: rgba(124, 58, 237, 0.04); border-color: rgba(124, 58, 237, 0.2);">
+            <div class="split-summary-box"
+              style="background: rgba(124, 58, 237, 0.04); border-color: rgba(124, 58, 237, 0.2);">
               <div style="display: flex; justify-content: space-between; align-items: center;">
-                <span style="font-size: 13px; font-weight: 600; color: var(--color-text-muted);">Tổng khối lượng sau khi gộp:</span>
-                <span style="font-size: 17px; font-weight: 800; color: #7c3aed;" id="mergeTotalEstimateDisplay">--</span>
+                <span style="font-size: 13px; font-weight: 600; color: var(--color-text-muted);">Tổng khối lượng sau khi
+                  gộp:</span>
+                <span style="font-size: 17px; font-weight: 800; color: #7c3aed;"
+                  id="mergeTotalEstimateDisplay">--</span>
               </div>
             </div>
 
-            <div style="margin-top: 14px; background: rgba(245,158,11,0.08); border: 1px solid rgba(245,158,11,0.25); border-radius: 8px; padding: 10px 12px; font-size: 12px; color: #b45309; line-height: 1.5; margin-bottom: 14px;">
-              <strong>Bảo chứng nguồn gốc (T-59 / S-19):</strong> Lô mới sáp nhập kế thừa đầy đủ phả hệ của tất cả các lô thành phần thông qua <code>batch_relations</code> và chuỗi sự kiện hash SHA-256 minh bạch.
+            <div
+              style="margin-top: 14px; background: rgba(245,158,11,0.08); border: 1px solid rgba(245,158,11,0.25); border-radius: 8px; padding: 10px 12px; font-size: 12px; color: #b45309; line-height: 1.5; margin-bottom: 14px;">
+              <strong>Bảo chứng nguồn gốc (T-59 / S-19):</strong> Lô mới sáp nhập kế thừa đầy đủ phả hệ của tất cả các
+              lô thành phần thông qua <code>batch_relations</code> và chuỗi sự kiện hash SHA-256 minh bạch.
             </div>
           </div>
 
-          <div style="display:flex; justify-content:flex-end; gap:10px; padding:16px 24px; border-top:1px solid var(--color-border); background: #fafafa;">
-            <button type="button" id="btnCancelMerge" class="btn btn-secondary" style="height:38px; padding:0 16px;">Đóng</button>
-            <button type="button" id="btnSubmitMerge" class="btn btn-primary" style="height:38px; padding:0 20px; background: #7c3aed; border-color: #7c3aed;">
+          <div
+            style="display:flex; justify-content:flex-end; gap:10px; padding:16px 24px; border-top:1px solid var(--color-border); background: #fafafa;">
+            <button type="button" id="btnCancelMerge" class="btn btn-secondary"
+              style="height:38px; padding:0 16px;">Đóng</button>
+            <button type="button" id="btnSubmitMerge" class="btn btn-primary"
+              style="height:38px; padding:0 20px; background: #7c3aed; border-color: #7c3aed;">
               <span>Tiến hành gộp lô</span>
             </button>
           </div>
@@ -1471,29 +1653,43 @@
     </div>
 
     <!-- Modal Ghi nhận Lô đã bán hết cho người tiêu dùng (S-29) -->
-    <div id="consumeLotModal" class="modal-backdrop" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 2000; align-items: center; justify-content: center; padding: 20px;">
-      <div class="modal-content" style="background: #fff; border-radius: 16px; width: 100%; max-width: 520px; overflow: hidden; box-shadow: 0 20px 40px rgba(0,0,0,0.2); display: flex; flex-direction: column;">
-        <div style="padding: 20px 24px; border-bottom: 1px solid var(--color-border); display: flex; justify-content: space-between; align-items: center; background: #fafafa;">
+    <div id="consumeLotModal" class="modal-backdrop"
+      style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 2000; align-items: center; justify-content: center; padding: 20px;">
+      <div class="modal-content"
+        style="background: #fff; border-radius: 16px; width: 100%; max-width: 520px; overflow: hidden; box-shadow: 0 20px 40px rgba(0,0,0,0.2); display: flex; flex-direction: column;">
+        <div
+          style="padding: 20px 24px; border-bottom: 1px solid var(--color-border); display: flex; justify-content: space-between; align-items: center; background: #fafafa;">
           <div style="display: flex; align-items: center; gap: 10px;">
-            <div style="width: 36px; height: 36px; border-radius: 8px; background: rgba(5, 150, 105, 0.12); color: #059669; display: flex; align-items: center; justify-content: center;">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
+            <div
+              style="width: 36px; height: 36px; border-radius: 8px; background: rgba(5, 150, 105, 0.12); color: #059669; display: flex; align-items: center; justify-content: center;">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z" />
+                <line x1="3" y1="6" x2="21" y2="6" />
+                <path d="M16 10a4 4 0 0 1-8 0" />
+              </svg>
             </div>
             <div>
-              <h3 style="font-size: 17px; font-weight: 700; color: var(--color-text-main); margin: 0;">Ghi nhận đã bán hết</h3>
-              <div style="font-size: 12px; color: var(--color-text-muted);">Xác nhận lô đã tiêu thụ hết tới người tiêu dùng (S-29)</div>
+              <h3 style="font-size: 17px; font-weight: 700; color: var(--color-text-main); margin: 0;">Ghi nhận đã bán
+                hết</h3>
+              <div style="font-size: 12px; color: var(--color-text-muted);">Xác nhận lô đã tiêu thụ hết tới người tiêu
+                dùng (S-29)</div>
             </div>
           </div>
-          <button type="button" id="btnCloseConsumeModal" style="background: none; border: none; font-size: 20px; cursor: pointer; color: var(--color-text-muted); line-height: 1;">✕</button>
+          <button type="button" id="btnCloseConsumeModal"
+            style="background: none; border: none; font-size: 20px; cursor: pointer; color: var(--color-text-muted); line-height: 1;">✕</button>
         </div>
 
         <form id="consumeLotForm" style="display: flex; flex-direction: column; overflow: hidden; flex: 1;">
           <div style="padding: 20px 24px; overflow-y: auto;">
             <div id="consumeModalAlert" style="display: none; margin-bottom: 16px;"></div>
 
-            <div style="background: #f8fafc; border: 1px solid var(--color-border); border-radius: 10px; padding: 14px 16px; margin-bottom: 16px;">
-              <div style="font-size: 14px; font-weight: 700; color: var(--color-text-main); margin-bottom: 4px;" id="consumeModalLotTitle">--</div>
+            <div
+              style="background: #f8fafc; border: 1px solid var(--color-border); border-radius: 10px; padding: 14px 16px; margin-bottom: 16px;">
+              <div style="font-size: 14px; font-weight: 700; color: var(--color-text-main); margin-bottom: 4px;"
+                id="consumeModalLotTitle">--</div>
               <div style="font-size: 13px; color: var(--color-text-muted);">
-                Mã lô: <code id="consumeModalLotId" style="font-weight: 700; color: #2563eb; background: rgba(37,99,235,0.08); padding: 1px 6px; border-radius: 4px;">--</code>
+                Mã lô: <code id="consumeModalLotId"
+                  style="font-weight: 700; color: #2563eb; background: rgba(37,99,235,0.08); padding: 1px 6px; border-radius: 4px;">--</code>
               </div>
               <div style="font-size: 13px; color: var(--color-text-muted); margin-top: 4px;">
                 Số lượng hiện còn: <strong id="consumeModalRemainingQty" style="color: #059669;">--</strong>
@@ -1501,20 +1697,29 @@
             </div>
 
             <div style="margin-bottom: 16px;">
-              <label for="consumeNotes" style="display: block; font-size: 13.5px; font-weight: 600; color: var(--color-text-main); margin-bottom: 6px;">
+              <label for="consumeNotes"
+                style="display: block; font-size: 13.5px; font-weight: 600; color: var(--color-text-main); margin-bottom: 6px;">
                 Ghi chú tiêu thụ / Kênh bán lẻ:
               </label>
-              <textarea id="consumeNotes" class="form-control" rows="3" placeholder="Ví dụ: Đã bán hết tại hệ thống siêu thị VinMart / Go!..." style="width: 100%; border: 1px solid var(--color-border); border-radius: 8px; padding: 10px 12px; font-size: 13.5px; font-family: inherit; resize: vertical;"></textarea>
+              <textarea id="consumeNotes" class="form-control" rows="3"
+                placeholder="Ví dụ: Đã bán hết tại hệ thống siêu thị VinMart / Go!..."
+                style="width: 100%; border: 1px solid var(--color-border); border-radius: 8px; padding: 10px 12px; font-size: 13.5px; font-family: inherit; resize: vertical;"></textarea>
             </div>
 
-            <div style="background: rgba(16, 185, 129, 0.08); border: 1px solid rgba(16, 185, 129, 0.25); border-radius: 8px; padding: 10px 12px; font-size: 12px; color: #047857; line-height: 1.5;">
-              <strong>Bảo chứng chuỗi lạnh (Story S-29):</strong> Khi xác nhận, trạng thái lô sẽ chuyển thành <code>Đã bán hết</code> và khối lượng còn lại về <code>0</code>. Sự kiện <code>LOT_CONSUMED</code> sẽ được ghi vào chuỗi băm SHA-256 bất biến.
+            <div
+              style="background: rgba(16, 185, 129, 0.08); border: 1px solid rgba(16, 185, 129, 0.25); border-radius: 8px; padding: 10px 12px; font-size: 12px; color: #047857; line-height: 1.5;">
+              <strong>Bảo chứng chuỗi lạnh (Story S-29):</strong> Khi xác nhận, trạng thái lô sẽ chuyển thành
+              <code>Đã bán hết</code> và khối lượng còn lại về <code>0</code>. Sự kiện <code>LOT_CONSUMED</code> sẽ được
+              ghi vào chuỗi băm SHA-256 bất biến.
             </div>
           </div>
 
-          <div style="display:flex; justify-content:flex-end; gap:10px; padding:16px 24px; border-top:1px solid var(--color-border); background: #fafafa;">
-            <button type="button" id="btnCancelConsume" class="btn btn-secondary" style="height:38px; padding:0 16px;">Hủy bỏ</button>
-            <button type="submit" id="btnSubmitConsume" class="btn btn-primary" style="height:38px; padding:0 20px; background: #059669; border-color: #059669;">
+          <div
+            style="display:flex; justify-content:flex-end; gap:10px; padding:16px 24px; border-top:1px solid var(--color-border); background: #fafafa;">
+            <button type="button" id="btnCancelConsume" class="btn btn-secondary"
+              style="height:38px; padding:0 16px;">Hủy bỏ</button>
+            <button type="submit" id="btnSubmitConsume" class="btn btn-primary"
+              style="height:38px; padding:0 20px; background: #059669; border-color: #059669;">
               <span>Xác nhận đã bán hết</span>
             </button>
           </div>
@@ -1523,19 +1728,29 @@
     </div>
 
     <!-- Modal Cập nhật Vị trí lưu kho & Cửa hàng bán lẻ (Story S-30) -->
-    <div id="updateLocationModal" class="modal-backdrop" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 2000; align-items: center; justify-content: center; padding: 20px;">
-      <div class="modal-content" style="background: #fff; border-radius: 16px; width: 100%; max-width: 520px; overflow: hidden; box-shadow: 0 20px 40px rgba(0,0,0,0.2); display: flex; flex-direction: column;">
-        <div style="padding: 20px 24px; border-bottom: 1px solid var(--color-border); display: flex; justify-content: space-between; align-items: center; background: #fafafa;">
+    <div id="updateLocationModal" class="modal-backdrop"
+      style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 2000; align-items: center; justify-content: center; padding: 20px;">
+      <div class="modal-content"
+        style="background: #fff; border-radius: 16px; width: 100%; max-width: 520px; overflow: hidden; box-shadow: 0 20px 40px rgba(0,0,0,0.2); display: flex; flex-direction: column;">
+        <div
+          style="padding: 20px 24px; border-bottom: 1px solid var(--color-border); display: flex; justify-content: space-between; align-items: center; background: #fafafa;">
           <div style="display: flex; align-items: center; gap: 10px;">
-            <div style="width: 36px; height: 36px; border-radius: 8px; background: rgba(37, 99, 235, 0.12); color: #2563eb; display: flex; align-items: center; justify-content: center;">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s-8-4.5-8-11.8A8 8 0 0 1 12 2a8 8 0 0 1 8 8.2c0 7.3-8 11.8-8 11.8z"/><circle cx="12" cy="10" r="3"/></svg>
+            <div
+              style="width: 36px; height: 36px; border-radius: 8px; background: rgba(37, 99, 235, 0.12); color: #2563eb; display: flex; align-items: center; justify-content: center;">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M12 22s-8-4.5-8-11.8A8 8 0 0 1 12 2a8 8 0 0 1 8 8.2c0 7.3-8 11.8-8 11.8z" />
+                <circle cx="12" cy="10" r="3" />
+              </svg>
             </div>
             <div>
-              <h3 style="font-size: 17px; font-weight: 700; color: var(--color-text-main); margin: 0;">Vị trí lưu kho & Điểm bán</h3>
-              <div style="font-size: 12px; color: var(--color-text-muted);">Gán kho lạnh, trung tâm phân phối hoặc cửa hàng bán lẻ (S-30)</div>
+              <h3 style="font-size: 17px; font-weight: 700; color: var(--color-text-main); margin: 0;">Vị trí lưu kho &
+                Điểm bán</h3>
+              <div style="font-size: 12px; color: var(--color-text-muted);">Gán kho lạnh, trung tâm phân phối hoặc cửa
+                hàng bán lẻ (S-30)</div>
             </div>
           </div>
-          <button type="button" id="btnCloseLocationModal" style="background: none; border: none; font-size: 20px; cursor: pointer; color: var(--color-text-muted); line-height: 1;">✕</button>
+          <button type="button" id="btnCloseLocationModal"
+            style="background: none; border: none; font-size: 20px; cursor: pointer; color: var(--color-text-muted); line-height: 1;">✕</button>
         </div>
 
         <form id="updateLocationForm" style="display: flex; flex-direction: column; overflow: hidden; flex: 1;">
@@ -1543,34 +1758,45 @@
             <div id="locationModalAlert" style="display: none; margin-bottom: 16px;"></div>
 
             <div style="margin-bottom: 16px;">
-              <label for="selectLocation" style="display: block; font-size: 13.5px; font-weight: 600; color: var(--color-text-main); margin-bottom: 6px;">
+              <label for="selectLocation"
+                style="display: block; font-size: 13.5px; font-weight: 600; color: var(--color-text-main); margin-bottom: 6px;">
                 Chọn địa điểm / kho bãi hiện có:
               </label>
-              <select id="selectLocation" class="form-control" style="width: 100%; height: 42px; border: 1px solid var(--color-border); border-radius: 8px; padding: 0 12px; font-size: 13.5px; font-family: inherit;">
+              <select id="selectLocation" class="form-control"
+                style="width: 100%; height: 42px; border: 1px solid var(--color-border); border-radius: 8px; padding: 0 12px; font-size: 13.5px; font-family: inherit;">
                 <option value="">-- Đang nạp danh sách địa điểm... --</option>
               </select>
             </div>
 
             <!-- Nút toggle tạo địa điểm mới -->
             <div style="margin-bottom: 16px;">
-              <button type="button" id="btnToggleNewLocationForm" style="background: none; border: none; color: #2563eb; font-size: 13px; font-weight: 600; cursor: pointer; padding: 0; display: inline-flex; align-items: center; gap: 4px;">
+              <button type="button" id="btnToggleNewLocationForm"
+                style="background: none; border: none; color: #2563eb; font-size: 13px; font-weight: 600; cursor: pointer; padding: 0; display: inline-flex; align-items: center; gap: 4px;">
                 <span>+ Hoặc tạo mới một địa điểm kho / cửa hàng</span>
               </button>
             </div>
 
-            <div id="newLocationFields" style="display: none; background: #f8fafc; border: 1px dashed var(--color-border); border-radius: 8px; padding: 14px; margin-bottom: 16px;">
-              <div style="font-weight: 600; font-size: 13px; margin-bottom: 8px; color: #1e3a8a;">Tạo nhanh địa điểm mới:</div>
+            <div id="newLocationFields"
+              style="display: none; background: #f8fafc; border: 1px dashed var(--color-border); border-radius: 8px; padding: 14px; margin-bottom: 16px;">
+              <div style="font-weight: 600; font-size: 13px; margin-bottom: 8px; color: #1e3a8a;">Tạo nhanh địa điểm
+                mới:</div>
               <div style="margin-bottom: 10px;">
-                <label style="font-size: 12px; font-weight: 600; display: block; margin-bottom: 4px;">Tên địa điểm / kho (*):</label>
-                <input type="text" id="newLocName" placeholder="VD: Kho Lạnh Q.12, Cửa hàng 24h..." style="width: 100%; height: 36px; padding: 0 10px; border: 1px solid var(--color-border); border-radius: 6px; font-size: 13px;" />
+                <label style="font-size: 12px; font-weight: 600; display: block; margin-bottom: 4px;">Tên địa điểm / kho
+                  (*):</label>
+                <input type="text" id="newLocName" placeholder="VD: Kho Lạnh Q.12, Cửa hàng 24h..."
+                  style="width: 100%; height: 36px; padding: 0 10px; border: 1px solid var(--color-border); border-radius: 6px; font-size: 13px;" />
               </div>
               <div style="margin-bottom: 10px;">
-                <label style="font-size: 12px; font-weight: 600; display: block; margin-bottom: 4px;">Địa chỉ chi tiết:</label>
-                <input type="text" id="newLocAddress" placeholder="VD: 123 Quốc lộ 1A, P. An Phú Đông, Q.12" style="width: 100%; height: 36px; padding: 0 10px; border: 1px solid var(--color-border); border-radius: 6px; font-size: 13px;" />
+                <label style="font-size: 12px; font-weight: 600; display: block; margin-bottom: 4px;">Địa chỉ chi
+                  tiết:</label>
+                <input type="text" id="newLocAddress" placeholder="VD: 123 Quốc lộ 1A, P. An Phú Đông, Q.12"
+                  style="width: 100%; height: 36px; padding: 0 10px; border: 1px solid var(--color-border); border-radius: 6px; font-size: 13px;" />
               </div>
               <div>
-                <label style="font-size: 12px; font-weight: 600; display: block; margin-bottom: 4px;">Loại hình địa điểm:</label>
-                <select id="newLocType" style="width: 100%; height: 36px; padding: 0 10px; border: 1px solid var(--color-border); border-radius: 6px; font-size: 13px;">
+                <label style="font-size: 12px; font-weight: 600; display: block; margin-bottom: 4px;">Loại hình địa
+                  điểm:</label>
+                <select id="newLocType"
+                  style="width: 100%; height: 36px; padding: 0 10px; border: 1px solid var(--color-border); border-radius: 6px; font-size: 13px;">
                   <option value="cold_storage">Kho lạnh (Cold Storage)</option>
                   <option value="retail_store">Cửa hàng bán lẻ (Retail Store)</option>
                   <option value="distribution_center">Trung tâm phân phối (Distribution Center)</option>
@@ -1579,13 +1805,17 @@
               </div>
             </div>
 
-            <div style="background: rgba(37, 99, 235, 0.08); border: 1px solid rgba(37, 99, 235, 0.2); border-radius: 8px; padding: 10px 12px; font-size: 12px; color: #1e40af; line-height: 1.5;">
-              <strong>Báo cáo thu hồi (Story S-27):</strong> Khi cập nhật, vị trí mới sẽ hiển thị tức thì trên bảng khoanh vùng thu hồi khẩn cấp và sơ đồ phả hệ cây tương tác.
+            <div
+              style="background: rgba(37, 99, 235, 0.08); border: 1px solid rgba(37, 99, 235, 0.2); border-radius: 8px; padding: 10px 12px; font-size: 12px; color: #1e40af; line-height: 1.5;">
+              <strong>Báo cáo thu hồi (Story S-27):</strong> Khi cập nhật, vị trí mới sẽ hiển thị tức thì trên bảng
+              khoanh vùng thu hồi khẩn cấp và sơ đồ phả hệ cây tương tác.
             </div>
           </div>
 
-          <div style="display:flex; justify-content:flex-end; gap:10px; padding:16px 24px; border-top:1px solid var(--color-border); background: #fafafa;">
-            <button type="button" id="btnCancelLocation" class="btn btn-secondary" style="height:38px; padding:0 16px;">Hủy bỏ</button>
+          <div
+            style="display:flex; justify-content:flex-end; gap:10px; padding:16px 24px; border-top:1px solid var(--color-border); background: #fafafa;">
+            <button type="button" id="btnCancelLocation" class="btn btn-secondary"
+              style="height:38px; padding:0 16px;">Hủy bỏ</button>
             <button type="submit" id="btnSubmitLocation" class="btn btn-primary" style="height:38px; padding:0 20px;">
               <span>Lưu vị trí lưu kho</span>
             </button>
@@ -1595,44 +1825,62 @@
     </div>
 
     <!-- Modal Mở lệnh thu hồi khẩn cấp (Story S-33 & S-34) -->
-    <div id="openRecallModal" class="modal-backdrop" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.55); z-index: 2100; align-items: center; justify-content: center; padding: 20px; backdrop-filter: blur(2px);">
-      <div class="modal-content" style="background: #fff; border-radius: 16px; width: 100%; max-width: 540px; overflow: hidden; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.25); display: flex; flex-direction: column;">
-        <div style="padding: 20px 24px; border-bottom: 1px solid #fee2e2; display: flex; justify-content: space-between; align-items: center; background: #fff1f2;">
+    <div id="openRecallModal" class="modal-backdrop"
+      style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.55); z-index: 2100; align-items: center; justify-content: center; padding: 20px; backdrop-filter: blur(2px);">
+      <div class="modal-content"
+        style="background: #fff; border-radius: 16px; width: 100%; max-width: 540px; overflow: hidden; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.25); display: flex; flex-direction: column;">
+        <div
+          style="padding: 20px 24px; border-bottom: 1px solid #fee2e2; display: flex; justify-content: space-between; align-items: center; background: #fff1f2;">
           <div style="display: flex; align-items: center; gap: 10px;">
-            <div style="width: 38px; height: 38px; border-radius: 10px; background: #fee2e2; color: #dc2626; display: flex; align-items: center; justify-content: center;">
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+            <div
+              style="width: 38px; height: 38px; border-radius: 10px; background: #fee2e2; color: #dc2626; display: flex; align-items: center; justify-content: center;">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+                <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+                <line x1="12" y1="9" x2="12" y2="13" />
+                <line x1="12" y1="17" x2="12.01" y2="17" />
+              </svg>
             </div>
             <div>
               <h3 style="font-size: 17px; font-weight: 700; color: #991b1b; margin: 0;">Mở lệnh thu hồi khẩn cấp</h3>
-              <div style="font-size: 12px; color: #b91c1c;">Khoanh vùng và truy vết toàn diện mọi lô hậu duệ (S-33 / S-34)</div>
+              <div style="font-size: 12px; color: #b91c1c;">Khoanh vùng và truy vết toàn diện mọi lô hậu duệ (S-33 /
+                S-34)</div>
             </div>
           </div>
-          <button type="button" id="btnCloseRecallModal" style="background: none; border: none; font-size: 20px; cursor: pointer; color: #991b1b; line-height: 1;">✕</button>
+          <button type="button" id="btnCloseRecallModal"
+            style="background: none; border: none; font-size: 20px; cursor: pointer; color: #991b1b; line-height: 1;">✕</button>
         </div>
 
         <form id="openRecallForm" style="display: flex; flex-direction: column; overflow: hidden; flex: 1;">
           <div style="padding: 20px 24px; overflow-y: auto;">
             <div id="recallModalAlert" style="display: none; margin-bottom: 16px;"></div>
 
-            <div style="background: #fff5f5; border: 1px solid #fecaca; border-radius: 10px; padding: 14px 16px; margin-bottom: 16px;">
-              <div style="font-size: 14px; font-weight: 700; color: #991b1b; margin-bottom: 4px;" id="recallModalLotTitle">--</div>
+            <div
+              style="background: #fff5f5; border: 1px solid #fecaca; border-radius: 10px; padding: 14px 16px; margin-bottom: 16px;">
+              <div style="font-size: 14px; font-weight: 700; color: #991b1b; margin-bottom: 4px;"
+                id="recallModalLotTitle">--</div>
               <div style="font-size: 13px; color: #7f1d1d;">
-                Mã lô gốc F0: <code id="recallModalLotId" style="font-weight: 700; color: #b91c1c; background: #fee2e2; padding: 1px 6px; border-radius: 4px;">--</code>
+                Mã lô gốc F0: <code id="recallModalLotId"
+                  style="font-weight: 700; color: #b91c1c; background: #fee2e2; padding: 1px 6px; border-radius: 4px;">--</code>
               </div>
             </div>
 
             <div style="margin-bottom: 16px;">
-              <label for="recallReason" style="display: block; font-size: 13.5px; font-weight: 600; color: var(--color-text-main); margin-bottom: 6px;">
+              <label for="recallReason"
+                style="display: block; font-size: 13.5px; font-weight: 600; color: var(--color-text-main); margin-bottom: 6px;">
                 Lý do mở lệnh thu hồi (*):
               </label>
-              <textarea id="recallReason" class="form-control" rows="3" required placeholder="Ví dụ: Phát hiện dư lượng hoạt chất thuốc bảo vệ thực vật vượt ngưỡng tối đa cho phép theo QCVN..." style="width: 100%; border: 1px solid var(--color-border); border-radius: 8px; padding: 10px 12px; font-size: 13.5px; font-family: inherit; resize: vertical;"></textarea>
+              <textarea id="recallReason" class="form-control" rows="3" required
+                placeholder="Ví dụ: Phát hiện dư lượng hoạt chất thuốc bảo vệ thực vật vượt ngưỡng tối đa cho phép theo QCVN..."
+                style="width: 100%; border: 1px solid var(--color-border); border-radius: 8px; padding: 10px 12px; font-size: 13.5px; font-family: inherit; resize: vertical;"></textarea>
             </div>
 
             <div style="margin-bottom: 16px;">
-              <label for="recallSeverity" style="display: block; font-size: 13.5px; font-weight: 600; color: var(--color-text-main); margin-bottom: 6px;">
+              <label for="recallSeverity"
+                style="display: block; font-size: 13.5px; font-weight: 600; color: var(--color-text-main); margin-bottom: 6px;">
                 Mức độ nghiêm trọng:
               </label>
-              <select id="recallSeverity" class="form-control" style="width: 100%; height: 40px; border: 1px solid var(--color-border); border-radius: 8px; padding: 0 12px; font-size: 13.5px; font-family: inherit;">
+              <select id="recallSeverity" class="form-control"
+                style="width: 100%; height: 40px; border: 1px solid var(--color-border); border-radius: 8px; padding: 0 12px; font-size: 13.5px; font-family: inherit;">
                 <option value="CRITICAL">🔴 Cực kỳ nghiêm trọng (CRITICAL - Thu hồi ngay lập tức)</option>
                 <option value="HIGH" selected>🟠 Nghiêm trọng (HIGH - Nguy cơ an toàn thực phẩm cao)</option>
                 <option value="MEDIUM">🟡 Trung bình (MEDIUM - Cảnh báo và kiểm tra bổ sung)</option>
@@ -1640,14 +1888,20 @@
               </select>
             </div>
 
-            <div style="background: rgba(239, 68, 68, 0.08); border: 1px solid rgba(239, 68, 68, 0.25); border-radius: 8px; padding: 10px 12px; font-size: 12px; color: #b91c1c; line-height: 1.5;">
-              <strong>Bảo chứng nghiệp vụ (S-33 / S-34):</strong> Lô hàng sẽ chuyển sang trạng thái <code>Có sự cố</code>. Sự kiện <code>RECALL_ORDER_CREATED</code> được đóng gói băm mật mã SHA-256 vào chuỗi sự kiện bất biến. Mọi lô hậu duệ kể cả lô gộp đa nguồn sẽ được tính toán động thời gian thực.
+            <div
+              style="background: rgba(239, 68, 68, 0.08); border: 1px solid rgba(239, 68, 68, 0.25); border-radius: 8px; padding: 10px 12px; font-size: 12px; color: #b91c1c; line-height: 1.5;">
+              <strong>Bảo chứng nghiệp vụ (S-33 / S-34):</strong> Lô hàng sẽ chuyển sang trạng thái
+              <code>Có sự cố</code>. Sự kiện <code>RECALL_ORDER_CREATED</code> được đóng gói băm mật mã SHA-256 vào
+              chuỗi sự kiện bất biến. Mọi lô hậu duệ kể cả lô gộp đa nguồn sẽ được tính toán động thời gian thực.
             </div>
           </div>
 
-          <div style="display:flex; justify-content:flex-end; gap:10px; padding:16px 24px; border-top:1px solid var(--color-border); background: #fafafa;">
-            <button type="button" id="btnCancelRecall" class="btn btn-secondary" style="height:38px; padding:0 16px;">Hủy bỏ</button>
-            <button type="submit" id="btnSubmitRecall" class="btn btn-primary" style="height:38px; padding:0 20px; background: #dc2626; border-color: #dc2626;">
+          <div
+            style="display:flex; justify-content:flex-end; gap:10px; padding:16px 24px; border-top:1px solid var(--color-border); background: #fafafa;">
+            <button type="button" id="btnCancelRecall" class="btn btn-secondary"
+              style="height:38px; padding:0 16px;">Hủy bỏ</button>
+            <button type="submit" id="btnSubmitRecall" class="btn btn-primary"
+              style="height:38px; padding:0 20px; background: #dc2626; border-color: #dc2626;">
               <span>Xác nhận Mở lệnh thu hồi</span>
             </button>
           </div>
@@ -1664,10 +1918,18 @@
 
     async function initPage() {
       currentUser = await initAppShell({ activeNav: "lots" });
-      if (!currentUser) return;
+      // if (!currentUser) return; // Bỏ qua kiểm tra bắt buộc đăng nhập để trang hoàn toàn public
+
+      // Khách truy cập công khai: ẩn thông tin tài khoản và nút đăng xuất nếu chưa đăng nhập
+      if (!currentUser || currentUser.isPublic || currentUser.roleId === "guest") {
+        const userPill = document.getElementById("userPill");
+        const logoutBtn = document.getElementById("logout");
+        if (userPill) userPill.style.display = "none";
+        if (logoutBtn) logoutBtn.style.display = "none";
+      }
 
       const urlParams = new URLSearchParams(window.location.search);
-      const lotId = urlParams.get("id") || urlParams.get("lotId");
+      const lotId = urlParams.get("id") || urlParams.get("lotId") || urlParams.get("lotCode") || urlParams.get("code") || "LOT-001";
 
       if (!lotId) {
         renderError("Thiếu mã định danh lô hàng", "Vui lòng chọn một lô hàng từ danh sách để xem chi tiết.");
@@ -1702,7 +1964,7 @@
             if (errJson && errJson.message) {
               errDetail = errJson.message;
             }
-          } catch (_) {}
+          } catch (_) { }
           renderError(`Lỗi máy chủ (${lotRes.status})`, errDetail);
           return;
         }
@@ -2176,7 +2438,7 @@
                     <span>Dòng thời gian sự kiện (${events.length} sự kiện)</span>
                   </h3>
                   ${events.length > 0 ? (
-                    integrity.isIntegrityValid ? `
+          integrity.isIntegrityValid ? `
                       <span class="status-pill success" style="display: inline-flex; align-items: center; gap: 5px; padding: 3px 10px; font-size: 12px; font-weight: 600;">
                         <span class="status-dot"></span> Chuỗi toàn vẹn (SHA-256)
                       </span>
@@ -2185,7 +2447,7 @@
                         <span class="status-dot" style="background: #dc2626;"></span> Lỗi toàn vẹn dữ liệu
                       </span>
                     `
-                  ) : ""}
+        ) : ""}
                 </div>
                 <p style="font-size: 13px; color: var(--color-text-muted); margin: 0;">Chuỗi sự kiện bất biến được liên kết bằng hàm băm mật mã cryptographic SHA-256 (K-01 / S-10 / S-13).</p>
               </div>
@@ -2227,46 +2489,46 @@
             ` : `
               <div class="timeline-list">
                 ${events.map((evt, idx) => {
-                  let payloadObj = null;
-                  if (evt.payload) {
-                    try {
-                      payloadObj = typeof evt.payload === "string" ? JSON.parse(evt.payload) : evt.payload;
-                    } catch (e) {
-                      payloadObj = null;
-                    }
-                  }
-                  const isTransfer = evt.eventType === "TRANSFER_INITIATED";
-                  const isConfirmed = evt.eventType === "TRANSFER_CONFIRMED";
-                  const isRejected = evt.eventType === "TRANSFER_REJECTED";
-                  const isHarvest = evt.eventType === "HARVEST_CREATED";
-                  const isViolation = evt.eventType === "TEMPERATURE_VIOLATION";
+          let payloadObj = null;
+          if (evt.payload) {
+            try {
+              payloadObj = typeof evt.payload === "string" ? JSON.parse(evt.payload) : evt.payload;
+            } catch (e) {
+              payloadObj = null;
+            }
+          }
+          const isTransfer = evt.eventType === "TRANSFER_INITIATED";
+          const isConfirmed = evt.eventType === "TRANSFER_CONFIRMED";
+          const isRejected = evt.eventType === "TRANSFER_REJECTED";
+          const isHarvest = evt.eventType === "HARVEST_CREATED";
+          const isViolation = evt.eventType === "TEMPERATURE_VIOLATION";
 
-                  let badgeLabel = escapeHtml(evt.eventType || "EVENT");
-                  let badgeStyle = "background: rgba(36, 138, 61, 0.1); color: var(--color-primary); border-color: rgba(36, 138, 61, 0.2);";
-                  let nodeStyle = "";
+          let badgeLabel = escapeHtml(evt.eventType || "EVENT");
+          let badgeStyle = "background: rgba(36, 138, 61, 0.1); color: var(--color-primary); border-color: rgba(36, 138, 61, 0.2);";
+          let nodeStyle = "";
 
-                  if (isHarvest) {
-                    badgeLabel = "🌾 Thu hoạch lô hàng (HARVEST_CREATED)";
-                    badgeStyle = "background: rgba(22, 163, 74, 0.12); color: #15803d; border-color: rgba(22, 163, 74, 0.3);";
-                  } else if (isTransfer) {
-                    badgeLabel = "🔄 Bàn giao lô (TRANSFER_INITIATED)";
-                    badgeStyle = "background: rgba(245, 158, 11, 0.12); color: #b45309; border-color: rgba(245, 158, 11, 0.3);";
-                    nodeStyle = 'style="border-color: #f59e0b; color: #b45309; box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.2);"';
-                  } else if (isConfirmed) {
-                    badgeLabel = "✅ Xác nhận nhận lô (TRANSFER_CONFIRMED)";
-                    badgeStyle = "background: rgba(5, 150, 105, 0.12); color: #047857; border-color: rgba(5, 150, 105, 0.3);";
-                    nodeStyle = 'style="border-color: #059669; color: #047857; box-shadow: 0 0 0 2px rgba(5, 150, 105, 0.2);"';
-                  } else if (isRejected) {
-                    badgeLabel = "❌ Từ chối nhận lô (TRANSFER_REJECTED)";
-                    badgeStyle = "background: rgba(220, 38, 38, 0.12); color: #b91c1c; border-color: rgba(220, 38, 38, 0.3);";
-                    nodeStyle = 'style="border-color: #dc2626; color: #b91c1c; box-shadow: 0 0 0 2px rgba(220, 38, 38, 0.2);"';
-                  } else if (isViolation) {
-                    badgeLabel = "⚠️ Vi phạm nhiệt độ chuỗi lạnh (TEMPERATURE_VIOLATION)";
-                    badgeStyle = "background: rgba(239, 68, 68, 0.12); color: #b91c1c; border-color: rgba(239, 68, 68, 0.3);";
-                    nodeStyle = 'style="border-color: #ef4444; color: #b91c1c; box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.2);"';
-                  }
+          if (isHarvest) {
+            badgeLabel = "🌾 Thu hoạch lô hàng (HARVEST_CREATED)";
+            badgeStyle = "background: rgba(22, 163, 74, 0.12); color: #15803d; border-color: rgba(22, 163, 74, 0.3);";
+          } else if (isTransfer) {
+            badgeLabel = "🔄 Bàn giao lô (TRANSFER_INITIATED)";
+            badgeStyle = "background: rgba(245, 158, 11, 0.12); color: #b45309; border-color: rgba(245, 158, 11, 0.3);";
+            nodeStyle = 'style="border-color: #f59e0b; color: #b45309; box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.2);"';
+          } else if (isConfirmed) {
+            badgeLabel = "✅ Xác nhận nhận lô (TRANSFER_CONFIRMED)";
+            badgeStyle = "background: rgba(5, 150, 105, 0.12); color: #047857; border-color: rgba(5, 150, 105, 0.3);";
+            nodeStyle = 'style="border-color: #059669; color: #047857; box-shadow: 0 0 0 2px rgba(5, 150, 105, 0.2);"';
+          } else if (isRejected) {
+            badgeLabel = "❌ Từ chối nhận lô (TRANSFER_REJECTED)";
+            badgeStyle = "background: rgba(220, 38, 38, 0.12); color: #b91c1c; border-color: rgba(220, 38, 38, 0.3);";
+            nodeStyle = 'style="border-color: #dc2626; color: #b91c1c; box-shadow: 0 0 0 2px rgba(220, 38, 38, 0.2);"';
+          } else if (isViolation) {
+            badgeLabel = "⚠️ Vi phạm nhiệt độ chuỗi lạnh (TEMPERATURE_VIOLATION)";
+            badgeStyle = "background: rgba(239, 68, 68, 0.12); color: #b91c1c; border-color: rgba(239, 68, 68, 0.3);";
+            nodeStyle = 'style="border-color: #ef4444; color: #b91c1c; box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.2);"';
+          }
 
-                  return `
+          return `
                   <div class="timeline-item">
                     <div class="timeline-node" ${nodeStyle}>${evt.sequenceNo || (idx + 1)}</div>
                     <div class="timeline-content">
@@ -2340,7 +2602,7 @@
                     </div>
                   </div>
                 `;
-                }).join("")}
+        }).join("")}
               </div>
             `}
           </div>
@@ -2350,10 +2612,10 @@
         <div class="lot-tab-pane" id="tabPaneLineage" role="tabpanel" aria-labelledby="tabBtnLineage">
           <!-- 1. Khối Vùng trồng & Thửa đất xuất xứ (Farm Origins Card - S-21 / T-50) -->
           ${(() => {
-            const rootLots = (originsData && Array.isArray(originsData.rootLots)) ? originsData.rootLots : [];
-            const hasRoots = rootLots.length > 0;
+          const rootLots = (originsData && Array.isArray(originsData.rootLots)) ? originsData.rootLots : [];
+          const hasRoots = rootLots.length > 0;
 
-            return `
+          return `
             <div class="farm-origins-card">
               <div class="farm-origins-header">
                 <div>
@@ -2366,10 +2628,10 @@
                   </h3>
                   <div style="font-size: 13px; color: var(--color-text-muted);">
                     ${originsData && originsData.isRoot
-                      ? "Lô hàng thu hoạch ban đầu trực tiếp từ nông trại (F0)."
-                      : (rootLots.length > 1
-                          ? `Lô hàng được cấu thành từ <strong>${rootLots.length} vùng trồng / nông trại gốc</strong> qua các đợt gộp lô.`
-                          : "Truy vết thành công nguồn gốc đến nông trại thu hoạch ban đầu.")}
+              ? "Lô hàng thu hoạch ban đầu trực tiếp từ nông trại (F0)."
+              : (rootLots.length > 1
+                ? `Lô hàng được cấu thành từ <strong>${rootLots.length} vùng trồng / nông trại gốc</strong> qua các đợt gộp lô.`
+                : "Truy vết thành công nguồn gốc đến nông trại thu hoạch ban đầu.")}
                   </div>
                 </div>
                 ${originsData && originsData.cached ? `
@@ -2382,13 +2644,13 @@
               ${hasRoots ? `
                 <div class="farm-origins-grid">
                   ${rootLots.map(rl => {
-                    const farm = rl.farm || {};
-                    const farmName = farm.name || farm.farm_name || rl.farmName || "Chưa gán thửa đất";
-                    const coords = farm.coordinates || rl.farmCoordinates || null;
-                    const area = farm.area !== null && farm.area !== undefined ? farm.area : (rl.farmArea || null);
-                    const orgName = rl.organizationName || rl.organizationId || "--";
+                  const farm = rl.farm || {};
+                  const farmName = farm.name || farm.farm_name || rl.farmName || "Chưa gán thửa đất";
+                  const coords = farm.coordinates || rl.farmCoordinates || null;
+                  const area = farm.area !== null && farm.area !== undefined ? farm.area : (rl.farmArea || null);
+                  const orgName = rl.organizationName || rl.organizationId || "--";
 
-                    return `
+                  return `
                     <div class="farm-origin-box">
                       <div class="farm-origin-title">
                         <span>🌱</span>
@@ -2419,7 +2681,7 @@
                       ` : ""}
                     </div>
                     `;
-                  }).join("")}
+                }).join("")}
                 </div>
               ` : `
                 <div class="lineage-empty-box">
@@ -2432,7 +2694,7 @@
               `}
             </div>
             `;
-          })()}
+        })()}
 
           <!-- 2. Direct Lineage: Parent & Child Lots (Phả hệ trực tiếp) -->
           <div class="lineage-card">
@@ -2453,12 +2715,12 @@
 
             <!-- Parent Lot Box -->
             ${(() => {
-              const parents = (Array.isArray(lot.parentLots) && lot.parentLots.length > 0)
-                ? lot.parentLots
-                : (lot.parentLot ? [lot.parentLot] : []);
-              
-              if (parents.length === 0) {
-                return `
+          const parents = (Array.isArray(lot.parentLots) && lot.parentLots.length > 0)
+            ? lot.parentLots
+            : (lot.parentLot ? [lot.parentLot] : []);
+
+          if (parents.length === 0) {
+            return `
                   <div class="lineage-block-title">Lô mẹ trực tiếp (Nguồn gốc trực tiếp)</div>
                   <div class="lineage-empty-box">
                     <div class="lineage-empty-icon">🌱</div>
@@ -2468,19 +2730,19 @@
                     </div>
                   </div>
                 `;
-              }
+          }
 
-              return `
+          return `
                 <div class="lineage-block-title">
                   <span>${parents.length > 1 ? `Các lô mẹ trực tiếp (${parents.length} lô ghép)` : "Lô mẹ trực tiếp (Nguồn gốc trực tiếp)"}</span>
                   <span class="count-badge">${parents.length}</span>
                 </div>
                 <div style="display: flex; flex-direction: column; gap: 12px;">
                   ${parents.map(p => {
-                    const pRem = (p.remainingQuantity !== null && p.remainingQuantity !== undefined)
-                      ? Number(p.remainingQuantity)
-                      : ((p.remaining_quantity !== null && p.remaining_quantity !== undefined) ? Number(p.remaining_quantity) : null);
-                    return `
+            const pRem = (p.remainingQuantity !== null && p.remainingQuantity !== undefined)
+              ? Number(p.remainingQuantity)
+              : ((p.remaining_quantity !== null && p.remaining_quantity !== undefined) ? Number(p.remaining_quantity) : null);
+            return `
                     <div class="parent-lot-box">
                       <div class="parent-lot-info">
                         <div class="parent-lot-code-tag">
@@ -2504,10 +2766,10 @@
                       </a>
                     </div>
                     `;
-                  }).join("")}
+          }).join("")}
                 </div>
               `;
-            })()}
+        })()}
 
             <!-- Child Lots Section -->
             <div class="lineage-block-title" style="margin-top: 22px;">
@@ -2518,10 +2780,10 @@
             ${(lot.childLots && lot.childLots.length > 0) ? `
               <div class="child-lots-grid">
                 ${lot.childLots.map(child => {
-                  const cRem = (child.remainingQuantity !== null && child.remainingQuantity !== undefined)
-                    ? Number(child.remainingQuantity)
-                    : ((child.remaining_quantity !== null && child.remaining_quantity !== undefined) ? Number(child.remaining_quantity) : null);
-                  return `
+          const cRem = (child.remainingQuantity !== null && child.remainingQuantity !== undefined)
+            ? Number(child.remainingQuantity)
+            : ((child.remaining_quantity !== null && child.remaining_quantity !== undefined) ? Number(child.remaining_quantity) : null);
+          return `
                   <div class="child-lot-card">
                     <div>
                       <div class="child-lot-top">
@@ -2544,7 +2806,7 @@
                     </div>
                   </div>
                 `;
-                }).join("")}
+        }).join("")}
               </div>
             ` : `
               <div class="lineage-empty-box">
@@ -2559,12 +2821,12 @@
 
           <!-- 3. Cây phả hệ phân tầng tổ tiên (Levels Tree T-50 / S-21 / S-22) -->
           ${(() => {
-            const levels = (originsData && Array.isArray(originsData.levels)) ? originsData.levels : [];
-            if (levels.length === 0) {
-              return "";
-            }
+          const levels = (originsData && Array.isArray(originsData.levels)) ? originsData.levels : [];
+          if (levels.length === 0) {
+            return "";
+          }
 
-            return `
+          return `
             <div class="levels-tree-card">
               <div class="lineage-header" style="margin-bottom: 16px;">
                 <h3 class="card-heading" style="margin-bottom: 0;">
@@ -2582,14 +2844,14 @@
 
               <div class="levels-container">
                 ${levels.map(lvl => {
-                  let levelTitle = `Tầng ${lvl.level}`;
-                  if (lvl.level === 1) levelTitle = "Tầng 1 (Lô mẹ)";
-                  else if (lvl.level === 2) levelTitle = "Tầng 2 (Lô ông bà)";
-                  else if (lvl.level === 3) levelTitle = "Tầng 3 (Lô cố)";
+            let levelTitle = `Tầng ${lvl.level}`;
+            if (lvl.level === 1) levelTitle = "Tầng 1 (Lô mẹ)";
+            else if (lvl.level === 2) levelTitle = "Tầng 2 (Lô ông bà)";
+            else if (lvl.level === 3) levelTitle = "Tầng 3 (Lô cố)";
 
-                  const badgeClass = lvl.level === 1 ? "level-1" : (lvl.level === 2 ? "level-2" : "level-3");
+            const badgeClass = lvl.level === 1 ? "level-1" : (lvl.level === 2 ? "level-2" : "level-3");
 
-                  return `
+            return `
                   <div class="level-block">
                     <div class="level-badge-pill ${badgeClass}">
                       <span>🌿</span>
@@ -2599,9 +2861,9 @@
 
                     <div class="level-lots-list">
                       ${(lvl.lots || []).map(l => {
-                        const relBadgeText = l.relationType === "MERGE" ? "Gộp vào" : "Tách ra";
-                        const relBadgeColor = l.relationType === "MERGE" ? "#7c3aed" : "#2563eb";
-                        return `
+              const relBadgeText = l.relationType === "MERGE" ? "Gộp vào" : "Tách ra";
+              const relBadgeColor = l.relationType === "MERGE" ? "#7c3aed" : "#2563eb";
+              return `
                         <div class="level-lot-item">
                           <div style="display: flex; justify-content: space-between; align-items: center;">
                             <a href="/lot-detail.html?id=${encodeURIComponent(l.id)}" class="font-mono" style="font-weight: 800; color: var(--color-primary); font-size: 13.5px; text-decoration: underline;">
@@ -2630,15 +2892,15 @@
                           </div>
                         </div>
                         `;
-                      }).join("")}
+            }).join("")}
                     </div>
                   </div>
                   `;
-                }).join("")}
+          }).join("")}
               </div>
             </div>
             `;
-          })()}
+        })()}
 
           <!-- Trace Forward & Recall Quarantine Section (S-26, S-27, S-28, S-29) -->
           <div class="trace-forward-card" id="traceForwardSection">
@@ -3269,22 +3531,22 @@
                 </div>
                 <div class="tree-level-grid">
                   ${(lvl.lots || []).map((lotItem) => {
-                    const isMultiMerge = lotItem.relationType === "MERGE" || lotItem.isMultiSourceMerge === true || (Array.isArray(lotItem.mergedSources) && lotItem.mergedSources.length >= 2);
-                    const isMerge = lotItem.relationType === "MERGE" || isMultiMerge;
-                    const badgeClass = isMultiMerge ? "tree-badge-merge" : (isMerge ? "tree-badge-merge" : "tree-badge-split");
-                    const badgeText = isMultiMerge
-                      ? `Gộp đa nguồn (${lotItem.sourcesCount || (lotItem.mergedSources ? lotItem.mergedSources.length : 2)})`
-                      : (isMerge ? "Gộp (MERGE - Đa nguồn)" : "Tách (SPLIT)");
-                    const unitStr = escapeHtml(lotItem.productUnit || "kg");
-                    const remKg = (lotItem.remainingQuantity !== null && lotItem.remainingQuantity !== undefined && !isNaN(Number(lotItem.remainingQuantity)))
-                      ? `${Number(lotItem.remainingQuantity).toFixed(2)} ${unitStr}`
-                      : "--";
-                    let consKg = "--";
-                    if (lotItem.consumedQuantity !== null && lotItem.consumedQuantity !== undefined && !isNaN(Number(lotItem.consumedQuantity))) {
-                      consKg = `${Number(lotItem.consumedQuantity).toFixed(2)} ${unitStr}`;
-                    }
+              const isMultiMerge = lotItem.relationType === "MERGE" || lotItem.isMultiSourceMerge === true || (Array.isArray(lotItem.mergedSources) && lotItem.mergedSources.length >= 2);
+              const isMerge = lotItem.relationType === "MERGE" || isMultiMerge;
+              const badgeClass = isMultiMerge ? "tree-badge-merge" : (isMerge ? "tree-badge-merge" : "tree-badge-split");
+              const badgeText = isMultiMerge
+                ? `Gộp đa nguồn (${lotItem.sourcesCount || (lotItem.mergedSources ? lotItem.mergedSources.length : 2)})`
+                : (isMerge ? "Gộp (MERGE - Đa nguồn)" : "Tách (SPLIT)");
+              const unitStr = escapeHtml(lotItem.productUnit || "kg");
+              const remKg = (lotItem.remainingQuantity !== null && lotItem.remainingQuantity !== undefined && !isNaN(Number(lotItem.remainingQuantity)))
+                ? `${Number(lotItem.remainingQuantity).toFixed(2)} ${unitStr}`
+                : "--";
+              let consKg = "--";
+              if (lotItem.consumedQuantity !== null && lotItem.consumedQuantity !== undefined && !isNaN(Number(lotItem.consumedQuantity))) {
+                consKg = `${Number(lotItem.consumedQuantity).toFixed(2)} ${unitStr}`;
+              }
 
-                    return `
+              return `
                       <div class="tree-lot-card">
                         <div>
                           <div class="tree-lot-top">
@@ -3313,7 +3575,7 @@
                         </div>
                       </div>
                     `;
-                  }).join("")}
+            }).join("")}
                 </div>
               </div>
             `;
@@ -3770,7 +4032,7 @@
           try {
             const errObj = await res.json();
             if (errObj && errObj.message) errText = errObj.message;
-          } catch (_) {}
+          } catch (_) { }
           if (statusEl) {
             statusEl.style.background = "#fee2e2";
             statusEl.style.borderColor = "#ef4444";
@@ -4299,7 +4561,7 @@
       try {
         const res = await fetch("/api/organizations", { credentials: "same-origin" });
         if (res.ok) { const d = await res.json(); _orgsCache = d.organizations || []; }
-      } catch (_) {}
+      } catch (_) { }
       return _orgsCache;
     }
 
@@ -5245,7 +5507,7 @@
                   const selected = loc.id === currentLocationId ? "selected" : "";
                   const typeLabel = loc.locationType === "cold_storage" ? "[Kho lạnh]"
                     : loc.locationType === "retail_store" ? "[Cửa hàng]"
-                    : loc.locationType === "distribution_center" ? "[TT Phân phối]" : "[Trạm]";
+                      : loc.locationType === "distribution_center" ? "[TT Phân phối]" : "[Trạm]";
                   return `<option value="${escapeHtml(loc.id)}" ${selected}>${escapeHtml(loc.name)} ${typeLabel} - ${escapeHtml(loc.address || "")}</option>`;
                 }).join("");
             }
@@ -5517,7 +5779,7 @@
           try {
             const errJson = await res.json();
             if (errJson && errJson.message) errMsg = errJson.message;
-          } catch (_) {}
+          } catch (_) { }
           alert(`Lỗi: ${errMsg}`);
           return;
         }
@@ -5550,4 +5812,5 @@
     initPage();
   </script>
 </body>
+
 </html>

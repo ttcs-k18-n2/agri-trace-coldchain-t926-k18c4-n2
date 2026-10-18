@@ -135,7 +135,7 @@
     try {
       sessionStorage.removeItem(STORAGE_KEY);
       sessionStorage.clear();
-    } catch (_) {}
+    } catch (_) { }
 
     try {
       await fetch("/api/logout", {
@@ -229,6 +229,11 @@
     // 2. Set up active nav link & logout handler
     setupActiveNav(options.activeNav);
     setupLogout();
+
+    // Ngoại lệ (whitelist) cho trang lot-detail.html: xem công khai không yêu cầu xác thực
+    if (typeof window !== "undefined" && window.location && window.location.pathname && window.location.pathname.includes("lot-detail")) {
+      return cachedUser || { roleId: "guest", isPublic: true };
+    }
 
     // 3. Silent revalidation against server (/api/me)
     try {
@@ -383,14 +388,14 @@
       // Fallback tự động tìm theo ID hoặc name
       if (!inputEl && scopeEl && scopeEl.querySelector) {
         inputEl = scopeEl.querySelector(`#input-${fieldName}`) ||
-                  scopeEl.querySelector(`#select-${fieldName}`) ||
-                  scopeEl.querySelector(`#${fieldName}`) ||
-                  scopeEl.querySelector(`[name="${fieldName}"]`);
+          scopeEl.querySelector(`#select-${fieldName}`) ||
+          scopeEl.querySelector(`#${fieldName}`) ||
+          scopeEl.querySelector(`[name="${fieldName}"]`);
       }
       if (!errorEl && scopeEl && scopeEl.querySelector) {
         errorEl = scopeEl.querySelector(`#error-${fieldName}`) ||
-                  scopeEl.querySelector(`#${fieldName}Error`) ||
-                  scopeEl.querySelector(`[data-error-for="${fieldName}"]`);
+          scopeEl.querySelector(`#${fieldName}Error`) ||
+          scopeEl.querySelector(`[data-error-for="${fieldName}"]`);
       }
 
       return { inputEl, errorEl };
