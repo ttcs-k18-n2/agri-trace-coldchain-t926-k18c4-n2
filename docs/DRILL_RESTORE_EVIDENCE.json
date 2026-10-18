@@ -1,10 +1,10 @@
 {
-  "drillId": "DRILL-1792325116391",
-  "timestamp": "2026-10-18T12:05:16.395Z",
+  "drillId": "DRILL-1792343470999",
+  "timestamp": "2026-10-18T17:11:11.002Z",
   "status": "DRILL_PASSED",
   "rtoDurationMs": 1,
   "rtoDurationSeconds": 0.001,
-  "rpoPoint": "backup-coldchain-2026-10-18T12-05-16-392Z.enc",
+  "rpoPoint": "backup-coldchain-2026-10-18T17-11-11-000Z.enc",
   "tableCountsRestored": {
     "organizations": 3,
     "users": 0,
@@ -22,7 +22,12 @@
     "recall_orders": 0,
     "recall_acknowledgments": 0,
     "audit_logs": 0,
-    "temperature_hourly_aggregates": 0
+    "temperature_hourly_aggregates": 0,
+    "public_lot_cache": 0,
+    "public_lot_rate_limits": 0,
+    "integrity_audit_jobs": 0,
+    "integrity_audit_logs": 0,
+    "farmer_anonymization_requests": 0
   },
   "integrityVerification": {
     "checked": true,
@@ -48,6 +53,6 @@
   "environment": {
     "platform": "win32",
     "nodeVersion": "v24.18.1",
-    "sandboxPath": "C:\\Users\\remote\\AppData\\Local\\Temp\\coldchain-drill-rfn9L6"
+    "sandboxPath": "C:\\Users\\remote\\AppData\\Local\\Temp\\coldchain-drill-8OUjiY"
   }
 }

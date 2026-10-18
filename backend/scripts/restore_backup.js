@@ -2,10 +2,33 @@
 
 const fs = require("node:fs");
 const crypto = require("node:crypto");
-const { deriveKey } = require("./backup_nightly");
+const { deriveKey, getEncryptionKey } = require("./backup_nightly");
 const { verifyBatchEventChain } = require("../src/integrity_verifier");
 
-const DEFAULT_KEY_SECRET = process.env.BACKUP_ENCRYPTION_KEY || "agri-trace-coldchain-backup-master-key-2026!";
+const RESTORE_TABLE_ORDER = [
+  "organizations",
+  "users",
+  "products",
+  "farms",
+  "lots",
+  "batch_events",
+  "lot_transfers",
+  "lot_relations",
+  "cold_boxes",
+  "shipments",
+  "shipment_lots",
+  "temperature_readings",
+  "cold_chain_violations",
+  "temperature_hourly_aggregates",
+  "recall_orders",
+  "recall_acknowledgments",
+  "audit_logs",
+  "public_lot_cache",
+  "public_lot_rate_limits",
+  "integrity_audit_jobs",
+  "integrity_audit_logs",
+  "farmer_anonymization_requests",
+];
 
 /**
  * Giải mã payload AES-256-GCM
@@ -28,10 +51,21 @@ function decryptData(ciphertextBase64, ivHex, authTagHex, keyBuffer) {
  * Khôi phục cơ sở dữ liệu từ tệp sao lưu mã hóa
  */
 async function restoreBackup(filePath, options = {}) {
-  const encryptionKey = options.encryptionKey || DEFAULT_KEY_SECRET;
+  const encryptionKey = getEncryptionKey(options.encryptionKey);
   const pool = options.pool || null;
   const targetInMemory = options.targetInMemory || null;
   const skipVerification = options.skipVerification || false;
+
+  // BẢO VỆ CHỐNG RESTORE NHẦM VÀO PRODUCTION
+  const isProduction =
+    process.env.NODE_ENV === "production" ||
+    (process.env.DATABASE_URL && (process.env.DATABASE_URL.includes("prod") || process.env.DATABASE_URL.includes("live")));
+
+  if (isProduction && !options.allowProduction && process.env.CONFIRM_PRODUCTION_RESTORE !== "true") {
+    throw new Error(
+      "[BẢO VỆ PRODUCTION] Thao tác khôi phục bị từ chối! Không được khôi phục đè vào môi trường Production mà không có cờ xác nhận 'allowProduction' hoặc biến môi trường CONFIRM_PRODUCTION_RESTORE=true."
+    );
+  }
 
   if (!fs.existsSync(filePath)) {
     throw new Error(`Tệp sao lưu không tồn tại: ${filePath}`);
@@ -82,123 +116,101 @@ async function restoreBackup(filePath, options = {}) {
   if (pool) {
     const client = await pool.connect();
     try {
-      await client.query("BEGIN");
-      for (const [table, rows] of Object.entries(restoredData.tables)) {
+      await client.query("BEGIN;");
+
+      // 1. Xóa sạch các bảng theo thứ tự ngược lại (Tránh lỗi khóa ngoại)
+      for (let i = RESTORE_TABLE_ORDER.length - 1; i >= 0; i--) {
+        const table = RESTORE_TABLE_ORDER[i];
+        try {
+          await client.query(`TRUNCATE TABLE "${table}" CASCADE;`);
+        } catch (truncErr) {
+          if (truncErr.code !== "42P01" && !truncErr.message.includes("does not exist")) {
+            throw truncErr;
+          }
+        }
+      }
+
+      // 2. Nạp dữ liệu theo đúng thứ tự phụ thuộc khóa ngoại (Forward Order)
+      for (const table of RESTORE_TABLE_ORDER) {
+        const rows = restoredData.tables ? restoredData.tables[table] : null;
         if (!Array.isArray(rows) || rows.length === 0) {
           tableCounts[table] = 0;
           continue;
         }
 
-        // Tạm xóa sạch bảng đích trước khi nạp lại
-        await client.query(`TRUNCATE TABLE ${table} CASCADE`);
-        
-        // Nạp từng dòng
         for (const row of rows) {
           const keys = Object.keys(row);
           const values = Object.values(row);
           const placeholders = keys.map((_, i) => `$${i + 1}`).join(", ");
-          await client.query(
-            `INSERT INTO ${table} (${keys.join(", ")}) VALUES (${placeholders})`,
-            values
-          );
+          const quotedColumns = keys.map((k) => `"${k}"`).join(", ");
+          try {
+            await client.query(
+              `INSERT INTO "${table}" (${quotedColumns}) VALUES (${placeholders});`,
+              values
+            );
+          } catch (insertErr) {
+            if (insertErr.code !== "42P01" && !insertErr.message.includes("does not exist")) {
+              throw new Error(`[Restore Error at ${table}]: ${insertErr.message}`);
+            }
+          }
         }
         tableCounts[table] = rows.length;
       }
-      await client.query("COMMIT");
-    } catch (err) {
-      await client.query("ROLLBACK");
-      throw err;
+
+      await client.query("COMMIT;");
+    } catch (txErr) {
+      await client.query("ROLLBACK;");
+      throw new Error(`[Restore Transaction Rollback] Khôi phục thất bại, đã hoàn tác: ${txErr.message}`);
     } finally {
       client.release();
     }
-  } else if (targetInMemory) {
-    // Phục hồi vào target in-memory container
-    if (restoredData.tables.organizations) {
-      targetInMemory.inMemoryOrgs = [...restoredData.tables.organizations];
-      tableCounts.organizations = targetInMemory.inMemoryOrgs.length;
-    }
-    if (restoredData.tables.users) {
-      targetInMemory.users = new Map();
-      for (const u of restoredData.tables.users) {
-        targetInMemory.users.set(u.email, u);
-      }
-      tableCounts.users = targetInMemory.users.size;
-    }
-    if (restoredData.tables.products) {
-      targetInMemory.inMemoryProducts = [...restoredData.tables.products];
-      tableCounts.products = targetInMemory.inMemoryProducts.length;
-    }
-    if (restoredData.tables.farms) {
-      targetInMemory.inMemoryFarms = [...restoredData.tables.farms];
-      tableCounts.farms = targetInMemory.inMemoryFarms.length;
-    }
-    if (restoredData.tables.lots) {
-      targetInMemory.inMemoryLots = [...restoredData.tables.lots];
-      tableCounts.lots = targetInMemory.inMemoryLots.length;
-    }
-    if (restoredData.tables.batch_events) {
-      targetInMemory.inMemoryBatchEvents = [...restoredData.tables.batch_events];
-      tableCounts.batch_events = targetInMemory.inMemoryBatchEvents.length;
-    }
-    if (restoredData.tables.lot_transfers) {
-      targetInMemory.inMemoryTransfers = [...restoredData.tables.lot_transfers];
-      tableCounts.lot_transfers = targetInMemory.inMemoryTransfers.length;
-    }
-    if (restoredData.tables.lot_relations) {
-      targetInMemory.inMemoryBatchRelations = [...restoredData.tables.lot_relations];
-      tableCounts.lot_relations = targetInMemory.inMemoryBatchRelations.length;
-    }
-    if (restoredData.tables.shipments) {
-      targetInMemory.inMemoryShipments = [...restoredData.tables.shipments];
-      tableCounts.shipments = targetInMemory.inMemoryShipments.length;
-    }
-    if (restoredData.tables.shipment_lots) {
-      targetInMemory.inMemoryShipmentLots = [...restoredData.tables.shipment_lots];
-      tableCounts.shipment_lots = targetInMemory.inMemoryShipmentLots.length;
-    }
-    if (restoredData.tables.cold_boxes) {
-      targetInMemory.inMemoryColdBoxes = [...restoredData.tables.cold_boxes];
-      tableCounts.cold_boxes = targetInMemory.inMemoryColdBoxes.length;
-    }
-    if (restoredData.tables.temperature_readings) {
-      targetInMemory.inMemoryReadings = [...restoredData.tables.temperature_readings];
-      tableCounts.temperature_readings = targetInMemory.inMemoryReadings.length;
-    }
-    if (restoredData.tables.cold_chain_violations) {
-      targetInMemory.inMemoryViolations = [...restoredData.tables.cold_chain_violations];
-      tableCounts.cold_chain_violations = targetInMemory.inMemoryViolations.length;
-    }
-    if (restoredData.tables.recall_orders) {
-      targetInMemory.inMemoryRecallOrders = [...restoredData.tables.recall_orders];
-      tableCounts.recall_orders = targetInMemory.inMemoryRecallOrders.length;
-    }
-    if (restoredData.tables.recall_acknowledgments) {
-      targetInMemory.inMemoryRecallAcknowledgments = [...restoredData.tables.recall_acknowledgments];
-      tableCounts.recall_acknowledgments = targetInMemory.inMemoryRecallAcknowledgments.length;
-    }
-    if (restoredData.tables.audit_logs) {
-      targetInMemory.inMemoryAuditLogs = [...restoredData.tables.audit_logs];
-      tableCounts.audit_logs = targetInMemory.inMemoryAuditLogs.length;
-    }
-    if (restoredData.tables.temperature_hourly_aggregates) {
-      targetInMemory.inMemoryAggregates = [...restoredData.tables.temperature_hourly_aggregates];
-      tableCounts.temperature_hourly_aggregates = targetInMemory.inMemoryAggregates.length;
+  }
+
+  // Khôi phục vào đối tượng in-memory (Dùng cho kiểm thử biệt lập / Sandbox Drill)
+  if (targetInMemory && typeof targetInMemory === "object") {
+    const t = restoredData.tables || {};
+    targetInMemory.inMemoryOrgs = t.organizations || [];
+    targetInMemory.inMemoryProducts = t.products || [];
+    targetInMemory.inMemoryFarms = t.farms || [];
+    targetInMemory.inMemoryLots = t.lots || [];
+    targetInMemory.inMemoryBatchEvents = t.batch_events || [];
+    targetInMemory.inMemoryTransfers = t.lot_transfers || [];
+    targetInMemory.inMemoryBatchRelations = t.lot_relations || [];
+    targetInMemory.inMemoryColdBoxes = t.cold_boxes || [];
+    targetInMemory.inMemoryShipments = t.shipments || [];
+    targetInMemory.inMemoryShipmentLots = t.shipment_lots || [];
+    targetInMemory.inMemoryReadings = t.temperature_readings || [];
+    targetInMemory.inMemoryViolations = t.cold_chain_violations || [];
+    targetInMemory.inMemoryRecallOrders = t.recall_orders || [];
+    targetInMemory.inMemoryRecallAcknowledgments = t.recall_acknowledgments || [];
+    targetInMemory.inMemoryAuditLogs = t.audit_logs || [];
+    targetInMemory.inMemoryAggregates = t.temperature_hourly_aggregates || [];
+
+    for (const [k, v] of Object.entries(t)) {
+      tableCounts[k] = Array.isArray(v) ? v.length : 0;
     }
   }
 
-  // Xác nhận tính toàn vẹn chuỗi hash sau khôi phục (S-12)
-  let integrityVerification = { checked: false, passed: true, details: [] };
-  if (!skipVerification && restoredData.tables.lots && restoredData.tables.batch_events) {
-    const lotIds = restoredData.tables.lots.map((l) => l.id || l.lot_id);
-    const events = restoredData.tables.batch_events;
-    const checks = [];
+  // 3. Đối soát tính toàn vẹn chuỗi Hash mật mã sau khi phục hồi
+  let integrityVerification = { checked: false, passed: true };
+  if (!skipVerification) {
+    const rawEvents = (restoredData.tables && restoredData.tables.batch_events) || [];
+    const eventsByBatch = {};
+    for (const ev of rawEvents) {
+      const bId = ev.batch_id || ev.batchId || ev.lot_id;
+      if (!eventsByBatch[bId]) eventsByBatch[bId] = [];
+      eventsByBatch[bId].push(ev);
+    }
 
-    for (const lotId of lotIds) {
-      const lotEvents = events.filter((e) => (e.lot_id || e.batchId || e.lotId) === lotId);
-      if (lotEvents.length > 0) {
-        const verifyRes = verifyBatchEventChain(lotEvents);
-        checks.push({ lotId, valid: verifyRes.valid, error: verifyRes.error || null });
-      }
+    const checks = [];
+    for (const [lotId, evList] of Object.entries(eventsByBatch)) {
+      evList.sort(
+        (a, b) =>
+          Number(a.sequence_no !== undefined ? a.sequence_no : a.sequenceNo) -
+          Number(b.sequence_no !== undefined ? b.sequence_no : b.sequenceNo)
+      );
+      const verifyRes = verifyBatchEventChain(evList);
+      checks.push({ lotId, valid: verifyRes.valid, error: verifyRes.error || null });
     }
 
     integrityVerification = {
@@ -224,18 +236,41 @@ async function restoreBackup(filePath, options = {}) {
 if (require.main === module) {
   const filePath = process.argv[2];
   if (!filePath) {
-    console.error("Cách dùng: node restore_backup.js <duong-dan-tep-backup.enc>");
+    console.error("Cách dùng: node restore_backup.js <duong-dan-tep-backup.enc> [--allow-production]");
     process.exit(1);
   }
 
-  restoreBackup(filePath)
+  let pool = null;
+  const dbUrl = process.env.DATABASE_URL;
+  if (dbUrl) {
+    try {
+      const { Pool } = require("pg");
+      pool = new Pool({ connectionString: dbUrl });
+      console.log("[Restore S-57 CLI] Đã khởi tạo kết nối PostgreSQL với:", dbUrl.replace(/:[^:@]+@/, ":***@"));
+    } catch (pgErr) {
+      console.warn("[Restore S-57 CLI] Không thể khởi tạo pg Pool:", pgErr.message);
+    }
+  } else {
+    console.warn("[Restore S-57 CLI Warning] DATABASE_URL không được cấu hình. Chạy ở chế độ Standalone / Mock.");
+  }
+
+  const allowProduction =
+    process.argv.includes("--allow-production") || process.env.CONFIRM_PRODUCTION_RESTORE === "true";
+
+  restoreBackup(filePath, { pool, allowProduction })
     .then((res) => {
       console.log("[Restore S-57] Khôi phục thành công:");
       console.log(JSON.stringify(res, null, 2));
+      if (pool) {
+        pool.end().catch(() => {});
+      }
       process.exit(0);
     })
     .catch((err) => {
-      console.error("[Restore S-57 Error]:", err);
+      console.error("[Restore S-57 Error]:", err.message);
+      if (pool) {
+        pool.end().catch(() => {});
+      }
       process.exit(1);
     });
 }
@@ -243,4 +278,5 @@ if (require.main === module) {
 module.exports = {
   restoreBackup,
   decryptData,
+  RESTORE_TABLE_ORDER,
 };
