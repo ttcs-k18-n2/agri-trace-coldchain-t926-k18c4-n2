@@ -1,0 +1,53 @@
+{
+  "drillId": "DRILL-1792325116391",
+  "timestamp": "2026-10-18T12:05:16.395Z",
+  "status": "DRILL_PASSED",
+  "rtoDurationMs": 1,
+  "rtoDurationSeconds": 0.001,
+  "rpoPoint": "backup-coldchain-2026-10-18T12-05-16-392Z.enc",
+  "tableCountsRestored": {
+    "organizations": 3,
+    "users": 0,
+    "products": 0,
+    "farms": 0,
+    "lots": 2,
+    "batch_events": 2,
+    "lot_transfers": 0,
+    "lot_relations": 0,
+    "shipments": 1,
+    "shipment_lots": 0,
+    "cold_boxes": 0,
+    "temperature_readings": 0,
+    "cold_chain_violations": 1,
+    "recall_orders": 0,
+    "recall_acknowledgments": 0,
+    "audit_logs": 0,
+    "temperature_hourly_aggregates": 0
+  },
+  "integrityVerification": {
+    "checked": true,
+    "totalLotsChecked": 1,
+    "passed": true,
+    "details": [
+      {
+        "lotId": "LOT-DRILL-01",
+        "valid": true,
+        "error": null
+      }
+    ]
+  },
+  "checks": {
+    "orgsParity": true,
+    "lotsParity": true,
+    "eventsParity": true,
+    "shipmentsParity": true,
+    "violationsParity": true,
+    "hashIntegrityPassed": true
+  },
+  "totalDrillDurationMs": 3,
+  "environment": {
+    "platform": "win32",
+    "nodeVersion": "v24.18.1",
+    "sandboxPath": "C:\\Users\\remote\\AppData\\Local\\Temp\\coldchain-drill-rfn9L6"
+  }
+}
