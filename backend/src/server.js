@@ -26,6 +26,12 @@ const { seedS22InMemory } = require("../scripts/seed_s22");
 const { seedS39InMemory } = require("../scripts/seed_s39");
 const { markOverdueTransfers, startTransferOverdueJob } = require("./transfer_overdue_job");
 const {
+  runTemperatureHourlyAggregationJob,
+  getHourlyAggregatesForShipment,
+  startNightlyTemperatureAggregationCron,
+  DEFAULT_CUTOFF_DAYS,
+} = require("./temperature_hourly_aggregation_service");
+const {
   isValidQuantity,
   toMilliUnits,
   fromMilliUnits,
@@ -8414,6 +8420,73 @@ app.get(
 );
 
 /**
+ * S-51 (Jira N2-114): Truy vấn dữ liệu nhiệt độ tổng hợp theo giờ cho chuyến vận chuyển
+ */
+app.get(
+  ["/api/shipments/:id/temperatures/hourly", "/api/temperatures/:id/hourly"],
+  requirePermission(["producer", "cooperative", "transporter", "distributor", "inspector", "org_admin", "admin"]),
+  async (req, res) => {
+    try {
+      // Đảm bảo tuân thủ cách ly và kiểm tra quyền truy cập chuyến vận chuyển
+      const shipmentCheck = await getShipmentTemperatures({
+        pool,
+        authContext: req.auth,
+        shipmentId: req.params.id,
+      });
+      if (shipmentCheck.status && shipmentCheck.status !== 200) {
+        return res.status(shipmentCheck.status).json(shipmentCheck);
+      }
+
+      const hourlyData = await getHourlyAggregatesForShipment({
+        pool,
+        shipmentId: req.params.id,
+      });
+
+      return res.status(200).json({
+        success: true,
+        shipmentId: req.params.id,
+        count: hourlyData.length,
+        temperatures: hourlyData,
+        data: hourlyData,
+      });
+    } catch (err) {
+      return res.status(500).json({ error: "INTERNAL_SERVER_ERROR", message: err.message });
+    }
+  }
+);
+
+/**
+ * S-51 (Jira N2-114): Endpoint quản trị kích hoạt job nén/tổng hợp nhiệt độ
+ */
+app.post(
+  "/api/maintenance/aggregate-temperatures",
+  requirePermission(["admin", "org_admin"]),
+  async (req, res) => {
+    try {
+      const parsedDays = parseInt(req.body?.cutoffDays || req.query?.cutoffDays, 10);
+      const cutoffDays = !isNaN(parsedDays) && parsedDays > 0 ? parsedDays : DEFAULT_CUTOFF_DAYS;
+
+      const result = await runTemperatureHourlyAggregationJob({
+        pool,
+        cutoffDays,
+        now: new Date(),
+      });
+
+      return res.status(200).json({
+        success: true,
+        message: "Thực thi job tổng hợp nhiệt độ theo giờ thành công.",
+        result,
+      });
+    } catch (err) {
+      return res.status(500).json({
+        error: "AGGREGATION_JOB_ERROR",
+        message: "Lỗi thực thi job tổng hợp nhiệt độ: " + err.message,
+      });
+    }
+  }
+);
+
+/**
  * S-43 Phase 2 (Jira N2-111): REST Violation Routes & RBAC Enforcement
  */
 app.get(
@@ -8555,6 +8628,9 @@ async function start() {
   // Khởi động job rà soát bàn giao quá hạn định kỳ (S-24 / T-56)
   startTransferOverdueJob({ pool, inMemoryTransfers });
 
+  // Khởi động job tổng hợp nhiệt độ định kỳ ban đêm (S-51 / N2-114)
+  startNightlyTemperatureAggregationCron({ pool });
+
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`Backend server running at http://0.0.0.0:${PORT}`);
   });
@@ -8672,6 +8748,9 @@ module.exports = {
   handleAcceptedTemperatureReading,
   getViolations,
   getShipmentViolations,
+  runTemperatureHourlyAggregationJob,
+  getHourlyAggregatesForShipment,
+  startNightlyTemperatureAggregationCron,
   getClientIp,
   checkPublicLotRateLimit,
   getPublicLotCache,
