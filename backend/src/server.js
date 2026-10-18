@@ -1589,6 +1589,9 @@ app.get(
     const orgId = req.auth.organizationId;
 
     const search = typeof req.query.search === "string" ? req.query.search.trim() : "";
+    const farmId = typeof req.query.farmId === "string" ? req.query.farmId.trim() : "";
+    const harvestedFrom = typeof req.query.harvestedFrom === "string" ? req.query.harvestedFrom.trim() : "";
+    const harvestedTo = typeof req.query.harvestedTo === "string" ? req.query.harvestedTo.trim() : "";
     const productId = typeof req.query.productId === "string" ? req.query.productId.trim() : "";
     const status = typeof req.query.status === "string" ? req.query.status.trim() : "";
     const limit = Math.min(Math.max(Number(req.query.limit) || 20, 1), 50);
@@ -1609,6 +1612,7 @@ app.get(
         let sql = `
           SELECT
             l.id, l.name, l.status, l.organization_id, l.created_at,
+            o.name AS organization_name,
             l.farm_id, f.name AS farm_name,
             l.product_id, p.name AS product_name, p.unit AS product_unit,
             l.initial_quantity, l.remaining_quantity, l.harvested_at,
@@ -1616,6 +1620,7 @@ app.get(
             o_to.name AS pending_to_org_name, lt.created_at AS pending_created_at,
             lt.is_overdue AS pending_is_overdue, lt.overdue_at AS pending_overdue_at
           FROM lots l
+          LEFT JOIN organizations o ON l.organization_id = o.id
           LEFT JOIN farms f ON l.farm_id = f.id
           LEFT JOIN products p ON l.product_id = p.id
           LEFT JOIN lot_transfers lt ON l.id = lt.lot_id AND lt.status = 'PENDING'
@@ -1630,10 +1635,26 @@ app.get(
           conditions.push(`l.organization_id = $${params.length}`);
         }
 
-        // 2. Tìm kiếm mã lô không phân biệt hoa/thường (S-14)
+        // 2. Tìm kiếm mã lô hoặc tên lô không phân biệt hoa/thường (S-14, S-52)
         if (search) {
           params.push(`%${search}%`);
-          conditions.push(`l.id ILIKE $${params.length}`);
+          conditions.push(`(l.id ILIKE $${params.length} OR l.name ILIKE $${params.length})`);
+        }
+
+        // 2b. Lọc theo vùng trồng / thửa đất (S-52)
+        if (farmId) {
+          params.push(farmId);
+          conditions.push(`l.farm_id = $${params.length}`);
+        }
+
+        // 2c. Lọc theo khoảng ngày thu hoạch (S-52)
+        if (harvestedFrom && /^\d{4}-\d{2}-\d{2}$/.test(harvestedFrom)) {
+          params.push(harvestedFrom);
+          conditions.push(`l.harvested_at >= $${params.length}`);
+        }
+        if (harvestedTo && /^\d{4}-\d{2}-\d{2}$/.test(harvestedTo)) {
+          params.push(harvestedTo);
+          conditions.push(`l.harvested_at <= $${params.length}`);
         }
 
         // 3. Lọc theo sản phẩm (S-14)
@@ -1691,6 +1712,38 @@ app.get(
           ).toString("base64url");
         }
 
+        // S-52: Ghi nhận nhật ký thao tác kiểm toán S-31 cho cán bộ kiểm tra
+        if (isInspector || req.auth.roleId === "inspector") {
+          try {
+            await recordAuditLog({
+              pool,
+              inMemoryLogs: inMemoryAuditLogs,
+              actorUserId: req.auth.id || req.auth.userId,
+              actorEmail: req.auth.email,
+              organizationId: req.auth.organizationId || "org-inspector",
+              action: "INSPECTOR_LOT_SEARCH",
+              resourceType: "lot",
+              resourceId: search || (rows.length === 1 ? rows[0].id : null),
+              ipAddress: req.ip || req.connection?.remoteAddress || "127.0.0.1",
+              userAgent: req.get("User-Agent"),
+              details: {
+                criteria: {
+                  search: search || null,
+                  farmId: farmId || null,
+                  harvestedFrom: harvestedFrom || null,
+                  harvestedTo: harvestedTo || null,
+                  productId: productId || null,
+                  status: status || null,
+                },
+                resultCount: rows.length,
+                hasMore,
+              },
+            });
+          } catch (auditErr) {
+            console.error("[S-52 AUDIT LOG ERROR]", auditErr.message);
+          }
+        }
+
         return res.status(200).json({
           organizationId: orgId,
           lots: rows.map((r) => ({
@@ -1698,6 +1751,7 @@ app.get(
             name: r.name,
             status: r.status,
             organizationId: r.organization_id,
+            organizationName: r.organization_name || r.organization_id,
             farmId: r.farm_id,
             farmName: r.farm_name,
             productId: r.product_id,
@@ -1732,7 +1786,29 @@ app.get(
 
     if (search) {
       const searchLower = search.toLowerCase();
-      filtered = filtered.filter((l) => l.id && l.id.toLowerCase().includes(searchLower));
+      filtered = filtered.filter(
+        (l) =>
+          (l.id && l.id.toLowerCase().includes(searchLower)) ||
+          (l.name && l.name.toLowerCase().includes(searchLower))
+      );
+    }
+
+    if (farmId) {
+      filtered = filtered.filter((l) => (l.farmId || l.farm_id) === farmId);
+    }
+
+    if (harvestedFrom && /^\d{4}-\d{2}-\d{2}$/.test(harvestedFrom)) {
+      filtered = filtered.filter((l) => {
+        const hAt = (l.harvestedAt || l.harvested_at || "").substring(0, 10);
+        return hAt && hAt >= harvestedFrom;
+      });
+    }
+
+    if (harvestedTo && /^\d{4}-\d{2}-\d{2}$/.test(harvestedTo)) {
+      filtered = filtered.filter((l) => {
+        const hAt = (l.harvestedAt || l.harvested_at || "").substring(0, 10);
+        return hAt && hAt <= harvestedTo;
+      });
     }
 
     if (productId) {
@@ -1787,6 +1863,38 @@ app.get(
       ).toString("base64url");
     }
 
+    // S-52: Ghi nhận nhật ký thao tác kiểm toán S-31 cho cán bộ kiểm tra (in-memory)
+    if (isInspector || req.auth.roleId === "inspector") {
+      try {
+        await recordAuditLog({
+          pool: null,
+          inMemoryLogs: inMemoryAuditLogs,
+          actorUserId: req.auth.id || req.auth.userId,
+          actorEmail: req.auth.email,
+          organizationId: req.auth.organizationId || "org-inspector",
+          action: "INSPECTOR_LOT_SEARCH",
+          resourceType: "lot",
+          resourceId: search || (sliced.length === 1 ? sliced[0].id : null),
+          ipAddress: req.ip || req.connection?.remoteAddress || "127.0.0.1",
+          userAgent: req.get("User-Agent"),
+          details: {
+            criteria: {
+              search: search || null,
+              farmId: farmId || null,
+              harvestedFrom: harvestedFrom || null,
+              harvestedTo: harvestedTo || null,
+              productId: productId || null,
+              status: status || null,
+            },
+            resultCount: sliced.length,
+            hasMore,
+          },
+        });
+      } catch (auditErr) {
+        console.error("[S-52 AUDIT LOG ERROR]", auditErr.message);
+      }
+    }
+
     return res.status(200).json({
       organizationId: orgId,
       lots: sliced.map((l) => {
@@ -1794,11 +1902,13 @@ app.get(
         const product = inMemoryProducts.find((p) => p.id === l.productId);
         const pending = inMemoryTransfers.find((t) => t.lotId === l.id && t.status === "PENDING");
         const toOrg = pending ? inMemoryOrganizations.find((o) => o.id === pending.toOrganizationId) : null;
+        const org = inMemoryOrganizations.find((o) => o.id === (l.organizationId || l.organization_id));
         return {
           id: l.id,
           name: l.name,
           status: l.status,
           organizationId: l.organizationId,
+          organizationName: org ? org.name : (ORG_NAME_FALLBACKS[l.organizationId] || l.organizationId),
           farmId: l.farmId,
           farmName: farm ? farm.name : null,
           productId: l.productId,
@@ -2230,8 +2340,28 @@ app.get(
 
       lot.pendingTransfer = pendingTransfer;
 
-      if (lot.hasTemperatureViolation === undefined) {
-        lot.hasTemperatureViolation = false;
+      if (lot && (req.auth?.isInspector || req.auth?.roleId === "inspector")) {
+        try {
+          await recordAuditLog({
+            pool,
+            inMemoryLogs: inMemoryAuditLogs,
+            actorUserId: req.auth.id || req.auth.userId,
+            actorEmail: req.auth.email,
+            organizationId: req.auth.organizationId || "org-inspector",
+            action: "INSPECTOR_LOT_VIEW",
+            resourceType: "lot",
+            resourceId: lot.id,
+            ipAddress: req.ip || req.connection?.remoteAddress || "127.0.0.1",
+            userAgent: req.get("User-Agent"),
+            details: {
+              lotId: lot.id,
+              lotName: lot.name,
+              organizationId: lot.organizationId,
+            },
+          });
+        } catch (auditErr) {
+          console.error("[S-52 AUDIT LOG ERROR]", auditErr.message);
+        }
       }
 
       return res.status(200).json({ lot });
