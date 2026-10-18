@@ -676,6 +676,8 @@ app.get(
     "/api/public/lots/:code/map",
     "/api/public/lots/:code/public-map",
     "/api/public/lots/:code/trace",
+    "/api/public/trace/:code",
+    "/api/public/trace/:lotCode",
   ],
   async (req, res) => {
     const clientIp = req.ip || req.socket.remoteAddress || "127.0.0.1";
@@ -686,7 +688,7 @@ app.get(
       });
     }
 
-    const rawCode = req.params.code;
+    const rawCode = req.params.code || req.params.lotCode;
     if (!rawCode || typeof rawCode !== "string") {
       return res.status(400).json({
         error: "INVALID_LOT_CODE",
@@ -6503,7 +6505,7 @@ app.get("/login", (req, res) => {
   if (fs.existsSync(frontendIndexPath)) {
     return sendFrontendFile(res, frontendIndexPath);
   }
-  return res.redirect("http://localhost:8080/index.html");
+  return res.redirect("/index.html");
 });
 
 const frontendFarmsPath = path.join(__dirname, "../../frontend/farms.html");
@@ -6512,14 +6514,14 @@ app.get("/farms", requireAuth, (req, res) => {
   if (fs.existsSync(frontendFarmsPath)) {
     return sendFrontendFile(res, frontendFarmsPath);
   }
-  return res.redirect("http://localhost:8080/farms.html");
+  return res.redirect("/farms.html");
 });
 
 app.get("/lots", requireAuth, (req, res) => {
   if (fs.existsSync(frontendLotsPath)) {
     return sendFrontendFile(res, frontendLotsPath);
   }
-  return res.redirect("http://localhost:8080/lots.html");
+  return res.redirect("/lots.html");
 });
 
 const frontendProductsPath = path.join(__dirname, "../../frontend/products.html");
@@ -6529,14 +6531,14 @@ app.get("/products", requireAuth, (req, res) => {
   if (fs.existsSync(frontendProductsPath)) {
     return sendFrontendFile(res, frontendProductsPath);
   }
-  return res.redirect("http://localhost:8080/products.html");
+  return res.redirect("/products.html");
 });
 
 app.get("/harvest", requireAuth, (req, res) => {
   if (fs.existsSync(frontendHarvestPath)) {
     return sendFrontendFile(res, frontendHarvestPath);
   }
-  return res.redirect("http://localhost:8080/harvest.html");
+  return res.redirect("/harvest.html");
 });
 
 
@@ -6557,7 +6559,7 @@ app.get(["/lot-detail", "/lot-detail.html"], requireAuth, (req, res) => {
     return sendFrontendFile(res, frontendLotDetailPath);
   }
   const query = req.url.includes("?") ? req.url.substring(req.url.indexOf("?")) : "";
-  return res.redirect("http://localhost:8080/lot-detail.html" + query);
+  return res.redirect("/lot-detail.html" + query);
 });
 
 if (fs.existsSync(path.join(__dirname, "../../frontend"))) {
