@@ -158,12 +158,12 @@ test("Story S-53: Xuất hồ sơ truy xuất đầy đủ của một lô ra PD
         },
       });
 
-      const pdfStr = result.pdfBuffer.toString("latin1");
+      const pdfStr = result.pdfBuffer.toString("utf8");
 
-      // 1. Thông tin lô hàng
+      // 1. Thông tin lô hàng - Kiểm tra hỗ trợ Unicode tiếng Việt đầy đủ dấu
       assert.ok(pdfStr.includes("LOT-S53-VERIFIED"), "Phải chứa mã lô hàng");
-      assert.ok(pdfStr.includes("Ca chua bi"), "Phải chứa tên sản phẩm");
-      assert.ok(pdfStr.includes("Thung Lung Vang"), "Phải chứa tên vùng trồng");
+      assert.ok(pdfStr.includes("Cà chua bi"), "Phải chứa tên sản phẩm có dấu tiếng Việt");
+      assert.ok(pdfStr.includes("Thung Lũng Vàng"), "Phải chứa tên vùng trồng có dấu tiếng Việt");
 
       // 2. Kiểm tra toàn vẹn và Head Hash (NFR N2-121)
       assert.equal(result.integrityValid, true, "Chuỗi sự kiện phải hợp lệ");
@@ -210,6 +210,78 @@ test("Story S-53: Xuất hồ sơ truy xuất đầy đủ của một lô ra PD
       const notFoundRes = await inspectorAgent.get("/api/lots/LOT-NOT-EXIST/export-pdf");
       assert.equal(notFoundRes.status, 404);
       assert.equal(notFoundRes.body.error, "LOT_NOT_FOUND");
+    }
+  );
+
+  await t.test(
+    "N2-238-VN: Kiểm thử xuất hồ sơ PDF với tiếng Việt đầy đủ dấu, tên dài, nhiều trang và dữ liệu thiếu",
+    async () => {
+      // 1. Lô có tên rất dài, nhiều ký tự tiếng Việt đặc thù (ơ, ư, đ, ê, dấu hỏi/ngã/nặng)
+      const longNameLotId = "LOT-S53-LONG-NAME-001";
+      const complexVietnameseLot = {
+        id: longNameLotId,
+        code: longNameLotId,
+        name: "Bưởi da xanh ruột hồng xuất khẩu chuẩn VietGAP tiêu chuẩn chất lượng cao vùng đồng bằng sông Cửu Long",
+        product_name: "Bưởi da xanh ruột hồng xuất khẩu chuẩn VietGAP tiêu chuẩn chất lượng cao vùng đồng bằng sông Cửu Long",
+        farm_name: "Hợp tác xã nông nghiệp hữu cơ ứng dụng công nghệ cao xã Mỹ Hòa Huyện Bình Minh Tỉnh Vĩnh Long",
+        organization_name: "Liên minh Hợp tác xã Nông nghiệp Sạch Miền Tây Nam Bộ",
+        status: "Đang lưu kho bảo quản lạnh sâu",
+        product_unit: "thùng 10kg",
+        initialQuantity: 5000,
+        remainingQuantity: 4800,
+      };
+
+      const resultLong = await exportLotDossierToPdf({
+        lotId: longNameLotId,
+        actorEmail: "inspector_vn@agri.gov.vn",
+        inMemoryContext: {
+          inMemoryLots: [complexVietnameseLot],
+          inMemoryOrgs: [],
+          inMemoryFarms: [],
+          inMemoryProducts: [],
+          inMemoryBatchEvents: [],
+        },
+      });
+
+      assert.equal(resultLong.status, 200);
+      assert.ok(resultLong.pdfBuffer.length > 500);
+      const strLong = resultLong.pdfBuffer.toString("utf8");
+      assert.ok(strLong.includes("Bưởi da xanh ruột hồng"), "Phải giữ trọn vẹn dấu tiếng Việt tên sản phẩm dài");
+      assert.ok(strLong.includes("Vĩnh Long"), "Phải giữ trọn vẹn dấu tiếng Việt tên vùng trồng");
+      assert.ok(strLong.includes("CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM"), "Phải in quốc hiệu tiếng Việt có dấu");
+
+      // 2. Lô dữ liệu thiếu (không có nông trại, không có sản phẩm, không có sự kiện) -> Không bị crash
+      const emptyLotId = "LOT-S53-SPARSE";
+      const resultSparse = await exportLotDossierToPdf({
+        lotId: emptyLotId,
+        actorEmail: "test@sparse.org",
+        inMemoryContext: {
+          inMemoryLots: [{ id: emptyLotId, code: emptyLotId }],
+        },
+      });
+
+      assert.equal(resultSparse.status, 200);
+      assert.ok(resultSparse.pdfBuffer.length > 500);
+      assert.equal(resultSparse.eventCount, 0);
+      assert.equal(resultSparse.integrityValid, true);
+    }
+  );
+
+  await t.test(
+    "N2-284-RBAC: Kiểm tra phân quyền xuất PDF cho các vai trò hợp lệ",
+    async () => {
+      setupS53Dataset();
+
+      // Các vai trò được cấp phép xuất PDF hồ sơ: producer, cooperative, transporter, distributor, inspector, org_admin, admin
+      const producerAgent = await loginAs("user@example.com"); // producer
+      const prodRes = await producerAgent.get("/api/lots/LOT-S53-VERIFIED/export-pdf");
+      assert.equal(prodRes.status, 200);
+      assert.equal(prodRes.headers["content-type"], "application/pdf");
+
+      const adminAgent = await loginAs("admin@example.com"); // admin
+      const adminRes = await adminAgent.get("/api/lots/LOT-S53-VERIFIED/export-pdf");
+      assert.equal(adminRes.status, 200);
+      assert.equal(adminRes.headers["content-type"], "application/pdf");
     }
   );
 });
