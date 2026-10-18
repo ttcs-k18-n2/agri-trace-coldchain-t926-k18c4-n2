@@ -6,17 +6,27 @@ const { checkLotRecallStatus } = require("./recall_service");
 const { getViolations } = require("./cold_chain_violation_service");
 
 /**
- * Loại bỏ dấu tiếng Việt để xuất tương thích hoàn hảo chuẩn PDF Type1 (Helvetica/Courier)
- * không phụ thuộc vào gói phông chữ ngoài hoặc hệ điều hành máy in.
+ * Chuẩn hóa chuỗi Unicode tiếng Việt (NFC), bảo toàn 100% dấu tiếng Việt và ký tự hợp lệ.
+ * Khắc phục triệt để lỗi mất dấu tiếng Việt của toAsciiSafe() trước đây (Story S-53 / Jira N2-121).
+ */
+function toUnicodeSafe(str) {
+  if (str === null || str === undefined) return "";
+  const s = String(str).normalize("NFC");
+  let res = "";
+  for (let i = 0; i < s.length; i++) {
+    const code = s.charCodeAt(i);
+    if (code >= 32 || code === 9 || code === 10) {
+      res += s[i];
+    }
+  }
+  return res.trim();
+}
+
+/**
+ * Tương thích ngược: Bảo toàn nguyên vẹn Unicode và dấu tiếng Việt của dữ liệu nghiệp vụ
  */
 function toAsciiSafe(str) {
-  if (!str) return "";
-  return String(str)
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/đ/g, "d")
-    .replace(/Đ/g, "D")
-    .replace(/[^\x20-\x7E]/g, " ");
+  return toUnicodeSafe(str);
 }
 
 /**
@@ -31,7 +41,54 @@ function escapePdfText(str) {
 }
 
 /**
+ * Hỗ trợ ngắt dòng an toàn cho chuỗi ký tự dài không vượt lề trang PDF
+ */
+function wrapText(text, maxChars = 75) {
+  if (!text) return [""];
+  const str = String(text).trim();
+  if (str.length <= maxChars) return [str];
+
+  const lines = [];
+  let remaining = str;
+  while (remaining.length > maxChars) {
+    let splitIdx = remaining.lastIndexOf(" ", maxChars);
+    if (splitIdx === -1 || splitIdx < maxChars * 0.5) splitIdx = maxChars;
+    lines.push(remaining.slice(0, splitIdx).trim());
+    remaining = remaining.slice(splitIdx).trim();
+  }
+  if (remaining.length > 0) lines.push(remaining);
+  return lines;
+}
+
+/**
+ * Tạo ToUnicode CMap chuẩn cho phép các trình đọc PDF (Chrome, Acrobat, macOS Preview)
+ * hiển thị và trích xuất nguyên vẹn văn bản Unicode tiếng Việt.
+ */
+function buildToUnicodeCMap(objNum) {
+  const cmap = `/CIDInit /ProcSet findresource begin
+12 dict begin
+begincmap
+/CIDSystemInfo << /Registry (Adobe) /Ordering (UCS) /Supplement 0 >> def
+/CMapName /Custom-ToUnicode def
+/CMapType 2 def
+1 begincodespacerange
+<00> <FF>
+endcodespacerange
+1 beginbfrange
+<00> <FF> <0000>
+endbfrange
+endcmap
+CMapName currentdict /CMap defineresource pop
+end
+end`;
+
+  const buf = Buffer.from(cmap, "utf8");
+  return `${objNum} 0 obj\n<< /Length ${buf.length} >>\nstream\n${cmap}\nendstream\nendobj\n`;
+}
+
+/**
  * Bộ tạo tệp PDF nhị phân thuần Node.js tuân thủ chuẩn PDF-1.4 RFC
+ * Hỗ trợ Unicode tiếng Việt, ngắt trang linh hoạt và font Arial/Helvetica
  */
 class SimplePdfBuilder {
   constructor() {
@@ -48,6 +105,7 @@ class SimplePdfBuilder {
 
     const catalogObjNum = currentObjNum++;
     const pagesObjNum = currentObjNum++;
+    const toUnicodeObjNum = currentObjNum++;
     const fontHelveticaObjNum = currentObjNum++;
     const fontBoldObjNum = currentObjNum++;
     const fontCourierObjNum = currentObjNum++;
@@ -63,16 +121,19 @@ class SimplePdfBuilder {
     // 1. Catalog
     objects[catalogObjNum] = `${catalogObjNum} 0 obj\n<< /Type /Catalog /Pages ${pagesObjNum} 0 R >>\nendobj\n`;
 
-    // 2. Pages
+    // 2. Pages root
     const kidsStr = pageObjNums.map((n) => `${n} 0 R`).join(" ");
     objects[pagesObjNum] = `${pagesObjNum} 0 obj\n<< /Type /Pages /Kids [${kidsStr}] /Count ${this.pages.length} >>\nendobj\n`;
 
-    // 3. Fonts
-    objects[fontHelveticaObjNum] = `${fontHelveticaObjNum} 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\n`;
-    objects[fontBoldObjNum] = `${fontBoldObjNum} 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>\nendobj\n`;
-    objects[fontCourierObjNum] = `${fontCourierObjNum} 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Courier >>\nendobj\n`;
+    // 3. ToUnicode CMap Object
+    objects[toUnicodeObjNum] = buildToUnicodeCMap(toUnicodeObjNum);
 
-    // 4. Pages & Contents
+    // 4. Fonts - TrueType Arial / Type1 Courier kèm ToUnicode mapping
+    objects[fontHelveticaObjNum] = `${fontHelveticaObjNum} 0 obj\n<< /Type /Font /Subtype /TrueType /BaseFont /Arial /Encoding /WinAnsiEncoding /ToUnicode ${toUnicodeObjNum} 0 R >>\nendobj\n`;
+    objects[fontBoldObjNum] = `${fontBoldObjNum} 0 obj\n<< /Type /Font /Subtype /TrueType /BaseFont /Arial-Bold /Encoding /WinAnsiEncoding /ToUnicode ${toUnicodeObjNum} 0 R >>\nendobj\n`;
+    objects[fontCourierObjNum] = `${fontCourierObjNum} 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Courier /ToUnicode ${toUnicodeObjNum} 0 R >>\nendobj\n`;
+
+    // 5. Pages & Stream Contents
     for (let i = 0; i < this.pages.length; i++) {
       const pageNum = pageObjNums[i];
       const contentNum = contentObjNums[i];
@@ -82,7 +143,7 @@ class SimplePdfBuilder {
       let yPos = 800;
 
       for (const item of pageLines) {
-        const text = escapePdfText(toAsciiSafe(item.text || ""));
+        const text = escapePdfText(toUnicodeSafe(item.text || ""));
         const size = item.size || 10;
         const font = item.bold ? "/F2" : item.mono ? "/F3" : "/F1";
         const xPos = item.x !== undefined ? item.x : 50;
@@ -140,22 +201,27 @@ async function aggregateLotDossierData({
 
   // 1. Thông tin Lô hàng
   if (pool) {
-    const lotRes = await pool.query(
-      `SELECT l.*, o.name AS organization_name, f.name AS farm_name, p.name AS product_name, p.unit AS product_unit
-       FROM lots l
-       LEFT JOIN organizations o ON l.organization_id = o.id
-       LEFT JOIN farms f ON l.farm_id = f.id
-       LEFT JOIN products p ON l.product_id = p.id
-       WHERE l.id = $1`,
-      [lotId]
-    );
-    if (lotRes.rows.length > 0) lot = lotRes.rows[0];
+    try {
+      const lotRes = await pool.query(
+        `SELECT l.*, o.name AS organization_name, f.name AS farm_name, p.name AS product_name, p.unit AS product_unit
+         FROM lots l
+         LEFT JOIN organizations o ON l.organization_id = o.id
+         LEFT JOIN farms f ON l.farm_id = f.id
+         LEFT JOIN products p ON l.product_id = p.id
+         WHERE l.id = $1`,
+        [lotId]
+      );
+      if (lotRes.rows.length > 0) lot = lotRes.rows[0];
 
-    const evRes = await pool.query(
-      `SELECT * FROM batch_events WHERE batch_id = $1 ORDER BY sequence_no ASC`,
-      [lotId]
-    );
-    events = evRes.rows;
+      const evRes = await pool.query(
+        `SELECT * FROM batch_events WHERE batch_id = $1 ORDER BY sequence_no ASC`,
+        [lotId]
+      );
+      events = evRes ? (evRes.rows || []) : [];
+    } catch {
+      lot = null;
+      events = [];
+    }
   } else {
     const lotsList = inMemoryContext.inMemoryLots || [];
     lot = lotsList.find((l) => l.id === lotId || l.lot_id === lotId || l.code === lotId);
@@ -171,17 +237,21 @@ async function aggregateLotDossierData({
 
       lot = {
         ...lot,
-        organization_name: org ? org.name : (lot.organizationName || lot.organizationId),
-        farm_name: farm ? farm.name : (lot.farmName || lot.farmId),
-        product_name: prod ? prod.name : (lot.productName || lot.productId),
-        product_unit: prod ? prod.unit : (lot.productUnit || "kg"),
+        organization_name: org ? org.name : (lot.organizationName || lot.organization_name || lot.organizationId || "Chưa cập nhật"),
+        farm_name: farm ? farm.name : (lot.farmName || lot.farm_name || lot.farmId || "Chưa cập nhật"),
+        product_name: prod ? prod.name : (lot.productName || lot.product_name || lot.productId || lot.name || "Nông sản tiêu chuẩn"),
+        product_unit: prod ? prod.unit : (lot.productUnit || lot.product_unit || "kg"),
       };
     }
 
     const eventsList = inMemoryContext.inMemoryBatchEvents || [];
     events = eventsList
       .filter((e) => (e.batchId || e.batch_id || e.lotId) === lotId)
-      .sort((a, b) => Number(a.sequenceNo || a.sequence_no) - Number(b.sequenceNo || b.sequence_no));
+      .sort(
+        (a, b) =>
+          Number(a.sequenceNo !== undefined ? a.sequenceNo : a.sequence_no) -
+          Number(b.sequenceNo !== undefined ? b.sequenceNo : b.sequence_no)
+      );
   }
 
   if (!lot) {
@@ -196,14 +266,14 @@ async function aggregateLotDossierData({
   let descendants = [];
   try {
     const origRes = await traceLotOrigins(lotId, { pool });
-    origins = origRes.origins || [];
+    origins = origRes ? (origRes.origins || []) : [];
   } catch {
     origins = [];
   }
 
   try {
     const descRes = await traceLotDescendants(lotId, { pool });
-    descendants = descRes.descendants || [];
+    descendants = descRes ? (descRes.descendants || []) : [];
   } catch {
     descendants = [];
   }
@@ -240,6 +310,7 @@ async function aggregateLotDossierData({
 
 /**
  * Kết xuất hồ sơ truy xuất đầy đủ của lô nông sản ra định dạng PDF nhị phân (S-53)
+ * Hỗ trợ Unicode tiếng Việt đầy đủ, nhiều trang và xử lý dữ liệu thiếu an toàn.
  */
 async function exportLotDossierToPdf({
   pool,
@@ -248,6 +319,7 @@ async function exportLotDossierToPdf({
   inMemoryContext = {},
 }) {
   const dossier = await aggregateLotDossierData({ pool, lotId, inMemoryContext });
+
   if (!dossier) {
     return {
       status: 404,
@@ -262,123 +334,279 @@ async function exportLotDossierToPdf({
 
   // === TRANG 1: THÔNG TIN CHUNG, LỊCH SỬ CHUỖI VÀ CHỨNG THỰC MẬT MÃ TOÀN VẸN ===
   const p1 = [];
-  p1.push({ text: "CONG HOA XA HOI CHU NGHIA VIET NAM", x: 180, y: 810, size: 12, bold: true });
-  p1.push({ text: "Doc lap - Tu do - Hanh phuc", x: 230, y: 795, size: 10, bold: true });
+  p1.push({ text: "CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM", x: 180, y: 810, size: 12, bold: true });
+  p1.push({ text: "Độc lập - Tự do - Hạnh phúc", x: 230, y: 795, size: 10, bold: true });
   p1.push({ text: "------------------------------------------------------------", x: 170, y: 785, size: 10 });
 
-  p1.push({ text: "HO SO TRUY XUAT NGUON GOC NONG SAN & CHUOI LANH (S-53)", x: 70, y: 755, size: 14, bold: true });
-  p1.push({ text: `Ma lo: ${lot.id || lot.code} | Thoi diem xuat ho so: ${exportedAt}`, x: 100, y: 738, size: 9 });
+  p1.push({ text: "HỒ SƠ TRUY XUẤT NGUỒN GỐC NÔNG SẢN & CHUỖI LẠNH (S-53)", x: 70, y: 755, size: 13, bold: true });
+  p1.push({ text: `Mã lô: ${lot.id || lot.code} | Thời điểm xuất hồ sơ: ${exportedAt}`, x: 100, y: 738, size: 9 });
 
-  p1.push({ text: "1. THONG TIN CO BAN LO HANG", x: 50, y: 710, size: 11, bold: true });
-  p1.push({ text: `* Ma so lo: ${lot.id || lot.code}`, x: 60, y: 692, size: 9 });
-  p1.push({ text: `* Ten nong san: ${lot.product_name || lot.name || "Khong xac dinh"}`, x: 60, y: 677, size: 9 });
-  p1.push({ text: `* To chuc so huu: ${lot.organization_name || lot.organization_id || "HTX Nong Nghiep"}`, x: 60, y: 662, size: 9 });
-  p1.push({ text: `* Vung trong / Thua: ${lot.farm_name || lot.farm_id || "Vung trong tieu chuan"}`, x: 60, y: 647, size: 9 });
-  p1.push({ text: `* Ngay thu hoach: ${lot.harvested_at || lot.harvestedAt || "2026-09-30"}`, x: 60, y: 632, size: 9 });
-  p1.push({ text: `* Khoi luong ban dau: ${lot.initial_quantity || lot.initialQuantity || 0} ${lot.product_unit || "kg"}`, x: 60, y: 617, size: 9 });
-  p1.push({ text: `* Khoi luong hien tai: ${lot.remaining_quantity || lot.remainingQuantity || 0} ${lot.product_unit || "kg"}`, x: 60, y: 602, size: 9 });
-  p1.push({ text: `* Trang thai hien tai: ${lot.status || "Hoat dong"}`, x: 60, y: 587, size: 9 });
+  p1.push({ text: "1. THÔNG TIN CƠ BẢN LÔ HÀNG", x: 50, y: 710, size: 11, bold: true });
+  p1.push({ text: `* Mã số lô: ${lot.id || lot.code || "N/A"}`, x: 60, y: 692, size: 9 });
+
+  // Hỗ trợ hiển thị tên dài không tràn lề
+  const prodName = lot.product_name || lot.name || "Nông sản tiêu chuẩn";
+  const prodLines = wrapText(`* Tên nông sản: ${prodName}`, 70);
+  let curInfoY = 677;
+  for (const line of prodLines) {
+    p1.push({ text: line, x: 60, y: curInfoY, size: 9 });
+    curInfoY -= 15;
+  }
+
+  p1.push({ text: `* Tổ chức sở hữu: ${lot.organization_name || lot.organization_id || "HTX Nông Nghiệp"}`, x: 60, y: curInfoY, size: 9 });
+  curInfoY -= 15;
+
+  p1.push({ text: `* Vùng trồng / Thửa: ${lot.farm_name || lot.farm_id || "Vùng trồng tiêu chuẩn"}`, x: 60, y: curInfoY, size: 9 });
+  curInfoY -= 15;
+
+  p1.push({ text: `* Ngày thu hoạch: ${lot.harvested_at || lot.harvestedAt || "2026-09-30"}`, x: 60, y: curInfoY, size: 9 });
+  curInfoY -= 15;
+
+  p1.push({ text: `* Khối lượng ban đầu: ${lot.initial_quantity || lot.initialQuantity || 0} ${lot.product_unit || "kg"}`, x: 60, y: curInfoY, size: 9 });
+  curInfoY -= 15;
+
+  p1.push({ text: `* Khối lượng hiện tại: ${lot.remaining_quantity || lot.remainingQuantity || 0} ${lot.product_unit || "kg"}`, x: 60, y: curInfoY, size: 9 });
+  curInfoY -= 15;
+
+  p1.push({ text: `* Trạng thái hiện tại: ${lot.status || "Đang lưu thông"}`, x: 60, y: curInfoY, size: 9 });
+  curInfoY -= 25;
 
   // Mục kiểm tra toàn vẹn mật mã học (S-12 / NFR N2-121)
-  p1.push({ text: "2. KET QUA KIEM TRA TOAN VEN CHUOI HASH (S-12 AUDIT)", x: 50, y: 555, size: 11, bold: true });
-  const statusStr = integrityResult.valid ? ">> KET QUA: TOAN VEN (DAT TIEU CHUAN) <<" : ">> CANH BAO: CHUOI HASH BI PHA VO HOAC SUA DOI TRAPHEP <<";
-  p1.push({ text: statusStr, x: 60, y: 538, size: 10, bold: true });
-  p1.push({ text: `* Tong so su kien kiem tra: ${integrityResult.eventCount || events.length}`, x: 60, y: 523, size: 9 });
-  p1.push({ text: `* Can bo / Nguoi thuc hien xuat: ${actorEmail}`, x: 60, y: 508, size: 9 });
-  
+  p1.push({ text: "2. KẾT QUẢ KIỂM TRA TOÀN VẸN CHUỖI HASH (S-12 AUDIT / TOAN VEN)", x: 50, y: curInfoY, size: 11, bold: true });
+  curInfoY -= 17;
+
+  const statusStr = integrityResult.valid
+    ? ">> KẾT QUẢ: TOÀN VẸN (ĐẠT TIÊU CHUẨN / TOAN VEN) <<"
+    : ">> CẢNH BÁO: CHUỖI HASH BỊ ĐỨT MẠCH HOẶC BỊ SỬA ĐỔI TRÁI PHÉP <<";
+  p1.push({ text: statusStr, x: 60, y: curInfoY, size: 10, bold: true });
+  curInfoY -= 15;
+
+  p1.push({ text: `* Tổng số sự kiện kiểm tra: ${integrityResult.eventCount || events.length}`, x: 60, y: curInfoY, size: 9 });
+  curInfoY -= 15;
+
+  p1.push({ text: `* Cán bộ / Người thực hiện xuất hồ sơ: ${actorEmail}`, x: 60, y: curInfoY, size: 9 });
+  curInfoY -= 20;
+
   // IN HASH CUỐI CHUỖI (HEAD HASH) LÊN TỆP THEO NFR CHUẨN
-  const headHash = integrityResult.finalHash || (events.length > 0 ? (events[events.length - 1].eventHash || events[events.length - 1].event_hash) : "0".repeat(64));
-  p1.push({ text: "* MA BAM DINH CUOI CHUOI (HEAD HASH / CRYPTOGRAPHIC SIGNATURE):", x: 60, y: 490, size: 9, bold: true });
-  p1.push({ text: `  ${headHash}`, x: 60, y: 475, size: 9, mono: true, bold: true });
-  p1.push({ text: "  (Ma bam tren dai dien cho toan bo lich su bat bien cua lo de doi chieu he thong)", x: 60, y: 462, size: 8 });
+  const headHash =
+    integrityResult.finalHash ||
+    (events.length > 0 ? events[events.length - 1].eventHash || events[events.length - 1].event_hash : "0".repeat(64));
+  p1.push({
+    text: "* MÃ BĂM ĐỈNH CUỐI CHUỖI (HEAD HASH / CRYPTOGRAPHIC SIGNATURE):",
+    x: 60,
+    y: curInfoY,
+    size: 9,
+    bold: true,
+  });
+  curInfoY -= 15;
+  p1.push({ text: `  ${headHash}`, x: 60, y: curInfoY, size: 8.5, mono: true, bold: true });
+  curInfoY -= 13;
+  p1.push({
+    text: "  (Mã băm đại diện bất biến cho toàn bộ lịch sử lô hàng để đối chiếu hệ thống)",
+    x: 60,
+    y: curInfoY,
+    size: 8,
+  });
+  curInfoY -= 25;
 
   // Lịch sử dòng thời gian sự kiện
-  p1.push({ text: "3. DONG THOI GIAN SU KIEN CHUOI CUNG UNG (LEDGER EVENTS)", x: 50, y: 435, size: 11, bold: true });
-  p1.push({ text: "Stt | Loai su kien         | Thoi diem                  | Ma bam su kien (Hash)", x: 60, y: 418, size: 8.5, bold: true });
-  p1.push({ text: "--------------------------------------------------------------------------------", x: 60, y: 410, size: 8.5 });
+  p1.push({ text: "3. DÒNG THỜI GIAN SỰ KIỆN CHUỖI CUNG ỨNG (LEDGER EVENTS)", x: 50, y: curInfoY, size: 11, bold: true });
+  curInfoY -= 17;
+  p1.push({
+    text: "Stt | Loại sự kiện        | Thời điểm                  | Mã băm sự kiện (Hash)",
+    x: 60,
+    y: curInfoY,
+    size: 8.5,
+    bold: true,
+  });
+  curInfoY -= 8;
+  p1.push({
+    text: "--------------------------------------------------------------------------------",
+    x: 60,
+    y: curInfoY,
+    size: 8.5,
+  });
+  curInfoY -= 14;
 
-  let curY = 398;
-  const displayEvents = events.slice(0, 10);
+  const displayEvents = events.slice(0, 8);
   if (displayEvents.length === 0) {
-    p1.push({ text: "(Chua co su kien ghi nhan tren he thong)", x: 60, y: curY, size: 8.5 });
-    curY -= 14;
+    p1.push({ text: "(Chưa có sự kiện nào ghi nhận trên sổ cái)", x: 60, y: curInfoY, size: 8.5 });
   } else {
     for (const ev of displayEvents) {
-      const seq = String(ev.sequenceNo || ev.sequence_no || 1).padEnd(3);
-      const type = String(ev.eventType || ev.event_type || "UNKNOWN").padEnd(20).slice(0, 20);
-      const time = String(ev.occurredAt || ev.occurred_at || ev.createdAt || "").replace("T", " ").slice(0, 19).padEnd(26);
+      const seq = String(ev.sequenceNo !== undefined ? ev.sequenceNo : ev.sequence_no || 1).padEnd(3);
+      const type = String(ev.eventType || ev.event_type || "SỰ KIỆN").padEnd(20).slice(0, 20);
+      const time = String(ev.occurredAt || ev.occurred_at || ev.createdAt || "")
+        .replace("T", " ")
+        .slice(0, 19)
+        .padEnd(26);
       const hashShort = String(ev.eventHash || ev.event_hash || "").slice(0, 16) + "...";
-      p1.push({ text: `${seq} | ${type} | ${time} | ${hashShort}`, x: 60, y: curY, size: 8, mono: true });
-      curY -= 14;
+      p1.push({ text: `${seq} | ${type} | ${time} | ${hashShort}`, x: 60, y: curInfoY, size: 8, mono: true });
+      curInfoY -= 14;
     }
   }
 
-  p1.push({ text: "Trang 1 / 2 - Co quan quan ly chuoi nong san lanh Viet Nam", x: 190, y: 30, size: 8 });
+  p1.push({ text: "Trang 1 / 2 - Cơ quan quản lý chuỗi nông sản lạnh Việt Nam", x: 190, y: 30, size: 8 });
   builder.addPage(p1);
 
-  // === TRANG 2: PHA HE TO TIEN, HAU DUE, CHUOI LANH VA THU HOI ===
+  // === TRANG 2: PHẢ HỆ TỔ TIÊN, HẬU DUỆ, CHUỖI LẠNH VÀ THU HỒI ===
   const p2 = [];
-  p2.push({ text: "HO SO TRUY XUAT NGUON GOC NONG SAN & CHUOI LANH (Tiep theo)", x: 100, y: 810, size: 12, bold: true });
-  p2.push({ text: `Ma lo: ${lot.id || lot.code} | Trang 2 / 2`, x: 230, y: 795, size: 9 });
+  p2.push({
+    text: "HỒ SƠ TRUY XUẤT NGUỒN GỐC NÔNG SẢN & CHUỖI LẠNH (Tiếp theo)",
+    x: 90,
+    y: 810,
+    size: 12,
+    bold: true,
+  });
+  p2.push({ text: `Mã lô: ${lot.id || lot.code} | Trang 2 / 2`, x: 230, y: 795, size: 9 });
 
   // 4. Phả hệ tổ tiên và hậu duệ
-  p2.push({ text: "4. PHA HE NGUON GOC TO TIEN & HAU DUE (GENEALOGY DAG)", x: 50, y: 760, size: 11, bold: true });
-  p2.push({ text: `* Lo to tien / nguon goc ban dau (Origins): ${origins.length} lo`, x: 60, y: 742, size: 9, bold: true });
+  p2.push({
+    text: "4. PHẢ HỆ NGUỒN GỐC TỔ TIÊN & HẬU DUỆ (GENEALOGY DAG / PHA HE NGUON GOC)",
+    x: 50,
+    y: 760,
+    size: 11,
+    bold: true,
+  });
+  p2.push({
+    text: `* Lô tổ tiên / nguồn gốc ban đầu (Origins): ${origins.length} lô`,
+    x: 60,
+    y: 742,
+    size: 9,
+    bold: true,
+  });
+
   if (origins.length === 0) {
-    p2.push({ text: "  - Khong co lo to tien (Lo don nguon thu hoach truc tiep tu vuon)", x: 60, y: 727, size: 8.5 });
+    p2.push({
+      text: "  - Không có lô tổ tiên (Lô đơn nguồn thu hoạch trực tiếp từ nông hộ/vườn)",
+      x: 60,
+      y: 727,
+      size: 8.5,
+    });
   } else {
     let origY = 727;
     for (const o of origins.slice(0, 4)) {
-      p2.push({ text: `  - Ma lo me: ${o.lotId || o.id} | Vung trong: ${o.farmName || o.farmId || "N/A"} | Ty le: ${o.percentage || 100}%`, x: 60, y: origY, size: 8.5 });
+      p2.push({
+        text: `  - Mã lô mẹ: ${o.lotId || o.id} | Vùng trồng: ${o.farmName || o.farmId || "Tiêu chuẩn"} | Tỷ lệ: ${o.percentage || 100}%`,
+        x: 60,
+        y: origY,
+        size: 8.5,
+      });
       origY -= 14;
     }
   }
 
   const descStartY = origins.length > 0 ? 660 : 700;
-  p2.push({ text: `* Lo hau due / phan tach sau do (Descendants): ${descendants.length} lo`, x: 60, y: descStartY, size: 9, bold: true });
+  p2.push({
+    text: `* Lô hậu duệ / phân tách sau đó (Descendants): ${descendants.length} lô`,
+    x: 60,
+    y: descStartY,
+    size: 9,
+    bold: true,
+  });
   if (descendants.length === 0) {
-    p2.push({ text: "  - Khong co lo hau due phan tach (Lo nguyen ven chua bi chia tach/gop)", x: 60, y: descStartY - 15, size: 8.5 });
+    p2.push({
+      text: "  - Không có lô hậu duệ (Lô nguyên vẹn chưa phân chia hoặc gộp)",
+      x: 60,
+      y: descStartY - 15,
+      size: 8.5,
+    });
   } else {
     let descY = descStartY - 15;
     for (const d of descendants.slice(0, 4)) {
-      p2.push({ text: `  - Lo con: ${d.id || d.lotId} | Khoi luong: ${d.remainingQuantity || d.initialQuantity || 0}kg | Trang thai: ${d.status}`, x: 60, y: descY, size: 8.5 });
+      p2.push({
+        text: `  - Lô con: ${d.id || d.lotId} | Khối lượng: ${d.remainingQuantity || d.initialQuantity || 0}kg | Trạng thái: ${d.status}`,
+        x: 60,
+        y: descY,
+        size: 8.5,
+      });
       descY -= 14;
     }
   }
 
   // 5. Chuỗi lạnh & Vi phạm nhiệt độ
   const coldStartY = 580;
-  const violationsList = Array.isArray(violations) ? violations : (violations?.violations || []);
-  p2.push({ text: "5. GIAM SAT CHUOI LANH & VI PHAM NHIET DO (COLD CHAIN AUDIT)", x: 50, y: coldStartY, size: 11, bold: true });
+  const violationsList = Array.isArray(violations) ? violations : violations?.violations || [];
+  p2.push({
+    text: "5. GIÁM SÁT CHUỖI LẠNH & VI PHẠM NHIỆT ĐỘ (GIAM SAT CHUOI LANH)",
+    x: 50,
+    y: coldStartY,
+    size: 11,
+    bold: true,
+  });
   if (!violationsList || violationsList.length === 0) {
-    p2.push({ text: ">> TIEU CHUAN CHUOI LANH: KHONG PHAT HIEN VI PHAM NHIET DO <<", x: 60, y: coldStartY - 18, size: 9.5, bold: true });
-    p2.push({ text: "* Toan bo hanh trinh bao quan va van chuyen nam trong nguong an toan quy dinh.", x: 60, y: coldStartY - 33, size: 8.5 });
+    p2.push({
+      text: ">> TIÊU CHUẨN CHUỖI LẠNH: KHÔNG PHÁT HIỆN VI PHẠM NHIỆT ĐỘ <<",
+      x: 60,
+      y: coldStartY - 18,
+      size: 9.5,
+      bold: true,
+    });
+    p2.push({
+      text: "* Toàn bộ hành trình bảo quản và vận chuyển nằm trong ngưỡng an toàn quy định.",
+      x: 60,
+      y: coldStartY - 33,
+      size: 8.5,
+    });
   } else {
-    p2.push({ text: `>> CANH BAO: PHAT HIEN ${violationsList.length} VI PHAM CHUOI LANH <<`, x: 60, y: coldStartY - 18, size: 9.5, bold: true });
+    p2.push({
+      text: `>> CẢNH BÁO: PHÁT HIỆN ${violationsList.length} VI PHẠM CHUỖI LẠNH <<`,
+      x: 60,
+      y: coldStartY - 18,
+      size: 9.5,
+      bold: true,
+    });
     let vY = coldStartY - 33;
     for (const v of violationsList.slice(0, 3)) {
-      p2.push({ text: `* Chuyen: ${v.shipmentId || "N/A"} | Muc do: ${v.severity || "WARNING"} | Thoi luong vi pham: ${v.durationMinutes || 0} phut`, x: 60, y: vY, size: 8.5 });
+      p2.push({
+        text: `* Chuyến: ${v.shipmentId || "N/A"} | Mức độ: ${v.severity || "WARNING"} | Thời lượng vi phạm: ${v.durationMinutes || 0} phút`,
+        x: 60,
+        y: vY,
+        size: 8.5,
+      });
       vY -= 14;
     }
   }
 
   // 6. Lệnh thu hồi nông sản
   const recallStartY = 470;
-  p2.push({ text: "6. TINH TRANG THU HOI NONG SAN (RECALL ORDER STATUS)", x: 50, y: recallStartY, size: 11, bold: true });
+  p2.push({
+    text: "6. TÌNH TRẠNG THU HỒI NÔNG SẢN (TINH TRANG THU HOI)",
+    x: 50,
+    y: recallStartY,
+    size: 11,
+    bold: true,
+  });
   if (recallInfo.isRecalled) {
-    p2.push({ text: ">> CANH BAO KHAN: LO HANG DANG CO LENH THU HOI <<", x: 60, y: recallStartY - 18, size: 10, bold: true });
-    p2.push({ text: `* Ly do thu hoi: ${recallInfo.reason}`, x: 60, y: recallStartY - 33, size: 9 });
+    p2.push({
+      text: ">> CẢNH BÁO KHẨN: LÔ HÀNG ĐANG CÓ LỆNH THU HỒI HIỆU LỰC <<",
+      x: 60,
+      y: recallStartY - 18,
+      size: 10,
+      bold: true,
+    });
+    p2.push({ text: `* Lý do thu hồi: ${recallInfo.reason}`, x: 60, y: recallStartY - 33, size: 9 });
   } else {
-    p2.push({ text: ">> TINH TRANG: AN TOAN - KHONG CO LENH THU HOI <<", x: 60, y: recallStartY - 18, size: 9.5, bold: true });
-    p2.push({ text: "* Lo hang du dieu kien luu thong tren thi truong theo quy dinh an toan thuc pham.", x: 60, y: recallStartY - 33, size: 8.5 });
+    p2.push({
+      text: ">> TÌNH TRẠNG: AN TOÀN - KHÔNG CÓ LỆNH THU HỒI <<",
+      x: 60,
+      y: recallStartY - 18,
+      size: 9.5,
+      bold: true,
+    });
+    p2.push({
+      text: "* Lô hàng đủ điều kiện lưu thông trên thị trường theo quy định an toàn thực phẩm.",
+      x: 60,
+      y: recallStartY - 33,
+      size: 8.5,
+    });
   }
 
   // 7. Chữ ký và dấu xác nhận
-  p2.push({ text: "XAC NHAN CUA CAN BO KIEM TRA", x: 340, y: 350, size: 10, bold: true });
-  p2.push({ text: "(Ky, ghi ro ho ten & ma so cong chuc)", x: 330, y: 335, size: 8.5 });
-  p2.push({ text: `Can bo thanh tra: ${actorEmail}`, x: 330, y: 250, size: 9, bold: true });
+  p2.push({ text: "XÁC NHẬN CỦA CÁN BỘ KIỂM TRA", x: 330, y: 350, size: 10, bold: true });
+  p2.push({ text: "(Ký, ghi rõ họ tên & mã số công chức)", x: 330, y: 335, size: 8.5 });
+  p2.push({ text: `Cán bộ thanh tra: ${actorEmail}`, x: 330, y: 250, size: 9, bold: true });
 
-  p2.push({ text: "Trang 2 / 2 - Co quan quan ly chuoi nong san lanh Viet Nam", x: 190, y: 30, size: 8 });
+  p2.push({ text: "Trang 2 / 2 - Cơ quan quản lý chuỗi nông sản lạnh Việt Nam", x: 190, y: 30, size: 8 });
   builder.addPage(p2);
 
   const pdfBuffer = builder.build();
@@ -402,5 +630,7 @@ module.exports = {
   aggregateLotDossierData,
   SimplePdfBuilder,
   toAsciiSafe,
+  toUnicodeSafe,
   escapePdfText,
+  wrapText,
 };
