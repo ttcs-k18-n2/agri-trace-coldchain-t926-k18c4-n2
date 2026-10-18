@@ -23,7 +23,7 @@ async function loginAs(email, password = "Password@123") {
   return agent;
 }
 
-test("S-56 (Jira N2-124): Cơ chế xóa định danh nông hộ tuân thủ Nghị định 13/2023/NĐ-CP & Bảo toàn chuỗi Hash", async (t) => {
+test("S-56 (Jira N2-124 / N2-286 / N2-243 / N2-300 / N2-244 / N2-301): Cơ chế xóa định danh nông hộ tuân thủ Nghị định 13/2023/NĐ-CP & Bảo toàn chuỗi Hash", async (t) => {
   await seedDemoUser();
 
   // Chuẩn bị dữ liệu thử nghiệm trong bộ nhớ
@@ -55,7 +55,7 @@ test("S-56 (Jira N2-124): Cơ chế xóa định danh nông hộ tuân thủ Ngh
     remainingQuantity: 1000,
   });
 
-  // Tạo chuỗi sự kiện mật mã học (S-12) chuẩn K-01 cho lô này
+  // Tạo chuỗi sự kiện mật mã học (S-12) chuẩn K-01 cho lô này (Tách PII khỏi payload)
   const ev1Data = {
     batchId: testLotId,
     sequenceNo: 1,
