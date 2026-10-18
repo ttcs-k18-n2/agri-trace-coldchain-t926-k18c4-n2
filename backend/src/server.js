@@ -31,6 +31,7 @@ const {
   startNightlyTemperatureAggregationCron,
   DEFAULT_CUTOFF_DAYS,
 } = require("./temperature_hourly_aggregation_service");
+const { getTransporterViolationReport } = require("./transporter_violation_report_service");
 const {
   isValidQuantity,
   toMilliUnits,
@@ -109,6 +110,7 @@ const {
   getShipmentViolations,
   getColdBoxViolations,
   ColdChainViolationDetector,
+  inMemoryViolations,
 } = require("./cold_chain_violation_service");
 const app = express();
 const PORT = Number(process.env.PORT || 3000);
@@ -6628,6 +6630,15 @@ app.get(["/lot-detail", "/lot-detail.html"], requireAuth, (req, res) => {
   return res.redirect("/lot-detail.html" + query);
 });
 
+const frontendTransporterViolationsPath = path.join(__dirname, "../../frontend/transporter-violations.html");
+
+app.get(["/reports/transporter-violations", "/transporter-violations", "/transporter-violations.html"], requireAuth, (req, res) => {
+  if (fs.existsSync(frontendTransporterViolationsPath)) {
+    return sendFrontendFile(res, frontendTransporterViolationsPath);
+  }
+  return res.redirect("/transporter-violations.html");
+});
+
 if (fs.existsSync(path.join(__dirname, "../../frontend"))) {
   app.use(
     express.static(path.join(__dirname, "../../frontend"), {
@@ -8525,6 +8536,44 @@ app.get(
 );
 
 /**
+ * S-54 (Jira N2-122): Báo cáo thống kê vi phạm chuỗi lạnh theo đơn vị vận chuyển
+ * Phân quyền: distributor, cooperative, producer, transporter, inspector, admin, org_admin
+ * Bảo mật: Tenant Isolation T-12 (nhà phân phối chỉ thấy chuyến chở lô hàng của mình)
+ */
+app.get(
+  ["/api/reports/transporter-violations", "/api/reports/transporters/violations"],
+  requirePermission(["distributor", "cooperative", "producer", "transporter", "inspector", "admin", "org_admin"]),
+  async (req, res) => {
+    try {
+      const fromDate = req.query.from || req.query.fromDate;
+      const toDate = req.query.to || req.query.toDate;
+      const targetOrgId = req.query.orgId || req.query.targetOrgId;
+
+      const report = await getTransporterViolationReport({
+        pool,
+        authContext: req.auth,
+        fromDate,
+        toDate,
+        targetOrgId,
+        inMemoryShipmentsList: inMemoryShipments,
+        inMemoryShipmentLotsList: inMemoryShipmentLots,
+        inMemoryViolationsList: inMemoryViolations,
+        inMemoryLotsList: inMemoryLots,
+        inMemoryOrgsList: inMemoryOrgs,
+      });
+
+      return res.status(report.status || 200).json(report);
+    } catch (err) {
+      console.error("[getTransporterViolationReport API Error]:", err);
+      return res.status(500).json({
+        error: "INTERNAL_SERVER_ERROR",
+        message: "Lỗi máy chủ khi trích xuất báo cáo thống kê vi phạm đơn vị vận chuyển: " + err.message,
+      });
+    }
+  }
+);
+
+/**
  * Danh mục thùng lạnh tiêu chuẩn chuỗi lạnh phục vụ S-40 (Jira N2-211)
  */
 app.get(
@@ -8758,6 +8807,7 @@ module.exports = {
   invalidatePublicLotCache,
   defaultInMemoryRateLimiter,
   defaultInMemoryCache,
+  getTransporterViolationReport,
 };
 
 // --- S-46: Sinh và xuất mã QR cho lô hàng (PNG / SVG) ---
