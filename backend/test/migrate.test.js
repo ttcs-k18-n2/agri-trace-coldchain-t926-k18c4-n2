@@ -366,7 +366,7 @@ test("S-40: Mock migration runner - already-applied 024 upgrade path applies onl
     "019_lot_consumed_status", "020_locations", "021_audit_logs",
     "022_consumed_lot_constraints", "023_public_map_areas", "023_recall_orders",
     "024_lot_custom_coordinates", "024_recall_acknowledgments", "024_shipments", "026_shipment_temperatures",
-    "027_shipment_temperature_violations", "028_product_temperature_thresholds", "029_public_cache_and_rate_limits", "030_temperature_hourly_aggregation", "031_lots_inspector_search_indices", "032_integrity_audit_logs"
+    "027_shipment_temperature_violations", "028_product_temperature_thresholds", "029_public_cache_and_rate_limits", "030_temperature_hourly_aggregation", "031_lots_inspector_search_indices", "032_integrity_audit_logs", "033_farmer_privacy_anonymization"
   ];
   const appliedMigrations = [...existingApplied];
 
@@ -721,6 +721,31 @@ test("S-55: Migration 032 creates integrity audit jobs and logs tables with roll
   // DOWN: drops tables
   assert.match(downSql, /DROP\s+TABLE\s+(IF\s+EXISTS\s+)?integrity_audit_logs/i, "Migration 032 rollback must drop integrity_audit_logs");
   assert.match(downSql, /DROP\s+TABLE\s+(IF\s+EXISTS\s+)?integrity_audit_jobs/i, "Migration 032 rollback must drop integrity_audit_jobs");
+});
+
+test("S-56: Migration 033 creates farmer anonymization columns and requests table with rollback", () => {
+  const fs = require("node:fs");
+  const path = require("node:path");
+
+  const upPath = path.resolve(__dirname, "../../db/migrations/033_farmer_privacy_anonymization.sql");
+  const downPath = path.resolve(__dirname, "../../db/migrations/down/033_farmer_privacy_anonymization.down.sql");
+
+  assert.ok(fs.existsSync(upPath), "Migration 033 UP file must exist");
+  assert.ok(fs.existsSync(downPath), "Migration 033 DOWN file must exist");
+
+  const upSql = fs.readFileSync(upPath, "utf-8");
+  const downSql = fs.readFileSync(downPath, "utf-8");
+
+  // UP: adds columns and creates requests table
+  assert.match(upSql, /farmer_name/i, "Migration 033 must add farmer_name column");
+  assert.match(upSql, /farmer_phone/i, "Migration 033 must add farmer_phone column");
+  assert.match(upSql, /is_anonymized/i, "Migration 033 must add is_anonymized column");
+  assert.match(upSql, /CREATE\s+TABLE\s+(IF\s+NOT\s+EXISTS\s+)?farmer_anonymization_requests/i, "Migration 033 must create farmer_anonymization_requests table");
+
+  // DOWN: drops requests table and columns
+  assert.match(downSql, /DROP\s+TABLE\s+(IF\s+EXISTS\s+)?farmer_anonymization_requests/i, "Migration 033 rollback must drop farmer_anonymization_requests");
+  assert.match(downSql, /DROP\s+COLUMN\s+(IF\s+EXISTS\s+)?farmer_name/i, "Migration 033 rollback must drop farmer_name");
+  assert.match(downSql, /DROP\s+COLUMN\s+(IF\s+EXISTS\s+)?is_anonymized/i, "Migration 033 rollback must drop is_anonymized");
 });
 
 if (process.env.DATABASE_URL) {

@@ -119,6 +119,11 @@ const {
   inMemoryIntegrityJobs,
   inMemoryIntegrityLogs,
 } = require("./integrity_periodic_job");
+const {
+  anonymizeFarmerData,
+  sanitizeFarmData,
+  inMemoryAnonymizationRequests,
+} = require("./farmer_privacy_service");
 const app = express();
 const PORT = Number(process.env.PORT || 3000);
 
@@ -4890,13 +4895,20 @@ app.get(
         });
         return res.status(200).json({
           organizationId: orgId,
-          farms: queryRes.rows.map((r) => ({
-            id: r.id,
-            name: r.name,
-            area: parseFloat(r.area),
-            coordinates: r.coordinates,
-            organizationId: r.organization_id,
-          })),
+          farms: queryRes.rows.map((r) =>
+            sanitizeFarmData({
+              id: r.id,
+              name: r.name,
+              area: parseFloat(r.area),
+              coordinates: r.coordinates,
+              organizationId: r.organization_id,
+              farmerName: r.farmer_name,
+              farmerPhone: r.farmer_phone,
+              farmerAddress: r.farmer_address,
+              isAnonymized: Boolean(r.is_anonymized),
+              anonymizedAt: r.anonymized_at,
+            })
+          ),
         });
       } catch (err) {
         return res.status(500).json({ message: err.message });
@@ -4909,7 +4921,7 @@ app.get(
 
     return res.status(200).json({
       organizationId: orgId,
-      farms: filtered,
+      farms: filtered.map((f) => sanitizeFarmData(f)),
     });
   }
 );
@@ -4953,6 +4965,11 @@ app.get(
             area: parseFloat(q.row.area),
             coordinates: q.row.coordinates,
             organizationId: q.row.organization_id,
+            farmerName: q.row.farmer_name,
+            farmerPhone: q.row.farmer_phone,
+            farmerAddress: q.row.farmer_address,
+            isAnonymized: Boolean(q.row.is_anonymized),
+            anonymizedAt: q.row.anonymized_at,
           };
         }
       } catch (err) {
@@ -4986,7 +5003,7 @@ app.get(
       return res.status(404).json({ message: "Không tìm thấy thửa đất." });
     }
 
-    return res.status(200).json({ farm });
+    return res.status(200).json({ farm: sanitizeFarmData(farm) });
   }
 );
 
@@ -8776,6 +8793,59 @@ app.get(
 );
 
 /**
+ * S-56 (Jira N2-124): Quyền xóa dữ liệu định danh nông hộ (Right to Erasure theo Nghị định 13/2023/NĐ-CP)
+ * Đảm bảo xóa sạch thông tin cá nhân (họ tên, SĐT, địa chỉ) mà không phá vỡ chuỗi hash mật mã học (S-12).
+ */
+app.post(
+  "/api/privacy/farmers/:id/anonymize",
+  requirePermission(["admin", "org_admin"]),
+  async (req, res) => {
+    try {
+      const farmId = req.params.id;
+      const { requesterName, requesterPhone, legalBasis, notes } = req.body || {};
+
+      const result = await anonymizeFarmerData({
+        pool,
+        farmId,
+        requesterName: requesterName || "Nông hộ chủ vườn",
+        requesterPhone: requesterPhone || null,
+        legalBasis: legalBasis || "Nghị định 13/2023/NĐ-CP",
+        processedBy: (req.auth && (req.auth.email || req.auth.userId)) || "privacy-officer@agri-trace.internal",
+        notes: notes || "Xóa thông tin cá nhân theo quyền của chủ thể dữ liệu",
+        inMemoryContext: {
+          inMemoryFarms,
+          inMemoryLots,
+          inMemoryBatchEvents,
+          inMemoryAuditLogs,
+        },
+      });
+
+      return res.status(result.status || 200).json(result);
+    } catch (err) {
+      return res.status(500).json({ error: "INTERNAL_SERVER_ERROR", message: err.message });
+    }
+  }
+);
+
+app.get(
+  "/api/privacy/anonymization-requests",
+  requirePermission(["admin", "org_admin", "inspector"]),
+  async (req, res) => {
+    try {
+      if (pool) {
+        const queryRes = await pool.query(
+          "SELECT * FROM farmer_anonymization_requests ORDER BY processed_at DESC LIMIT 100"
+        );
+        return res.status(200).json({ requests: queryRes.rows });
+      }
+      return res.status(200).json({ requests: inMemoryAnonymizationRequests });
+    } catch (err) {
+      return res.status(500).json({ error: "INTERNAL_SERVER_ERROR", message: err.message });
+    }
+  }
+);
+
+/**
  * S-43 Phase 2 (Jira N2-111): REST Violation Routes & RBAC Enforcement
  */
 app.get(
@@ -9086,6 +9156,9 @@ module.exports = {
   defaultInMemoryRateLimiter,
   defaultInMemoryCache,
   getTransporterViolationReport,
+  anonymizeFarmerData,
+  sanitizeFarmData,
+  inMemoryAnonymizationRequests,
 };
 
 // --- S-46: Sinh và xuất mã QR cho lô hàng (PNG / SVG) ---
