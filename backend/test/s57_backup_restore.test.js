@@ -176,4 +176,146 @@ test("Story S-57: Sao lưu cơ sở dữ liệu hằng đêm và diễn tập kh
       assert.equal(drillReport.checks.hashIntegrityPassed, true);
     }
   );
+
+  await t.test(
+    "Bảo mật: Bắt buộc cấu hình BACKUP_ENCRYPTION_KEY an toàn và từ chối khóa quá ngắn (< 16 ký tự)",
+    async () => {
+      const prevEnv = process.env.BACKUP_ENCRYPTION_KEY;
+      try {
+        delete process.env.BACKUP_ENCRYPTION_KEY;
+
+        // 1. Không truyền khóa -> ném lỗi bắt buộc cấu hình
+        await assert.rejects(
+          async () => {
+            await runNightlyBackup({ backupDir: tempBackupDir });
+          },
+          /Bắt buộc cấu hình BACKUP_ENCRYPTION_KEY/
+        );
+
+        // 2. Khóa quá ngắn (< 16 ký tự) -> ném lỗi bảo mật
+        await assert.rejects(
+          async () => {
+            await runNightlyBackup({ backupDir: tempBackupDir, encryptionKey: "12345" });
+          },
+          /Khóa BACKUP_ENCRYPTION_KEY phải có độ dài tối thiểu 16 ký tự/
+        );
+      } finally {
+        if (prevEnv) process.env.BACKUP_ENCRYPTION_KEY = prevEnv;
+      }
+    }
+  );
+
+  await t.test(
+    "Độ tin cậy: Không cho phép backup báo SUCCESS nếu truy vấn bảng thất bại",
+    async () => {
+      const failingPool = {
+        query: async (sql) => {
+          if (sql.includes("lots")) {
+            throw new Error("Mất kết nối mạng tới cụm cơ sở dữ liệu");
+          }
+          return { rows: [] };
+        },
+      };
+
+      await assert.rejects(
+        async () => {
+          await runNightlyBackup({
+            backupDir: tempBackupDir,
+            encryptionKey: "secure-test-key-minimum-16-chars",
+            pool: failingPool,
+          });
+        },
+        /Truy vấn bảng 'lots' thất bại/
+      );
+    }
+  );
+
+  await t.test(
+    "Bảo vệ dữ liệu: Chống thao tác restore nhầm vào Production khi thiếu cờ xác nhận",
+    async () => {
+      const mockContext = createDrillMockContext();
+      const secret = "secure-production-guard-key-16";
+
+      const backupRes = await runNightlyBackup({
+        backupDir: tempBackupDir,
+        encryptionKey: secret,
+        inMemoryContext: mockContext,
+      });
+
+      const prevEnv = process.env.NODE_ENV;
+      try {
+        process.env.NODE_ENV = "production";
+
+        // Thao tác khôi phục không có cờ allowProduction -> Bị từ chối ngay lập tức
+        await assert.rejects(
+          async () => {
+            await restoreBackup(backupRes.filePath, {
+              encryptionKey: secret,
+              targetInMemory: {},
+            });
+          },
+          /Thao tác khôi phục bị từ chối.*Production/
+        );
+
+        // Có cờ allowProduction -> Khôi phục an toàn
+        const allowedRes = await restoreBackup(backupRes.filePath, {
+          encryptionKey: secret,
+          targetInMemory: {},
+          allowProduction: true,
+        });
+        assert.equal(allowedRes.success, true);
+      } finally {
+        process.env.NODE_ENV = prevEnv;
+      }
+    }
+  );
+
+  await t.test(
+    "Toàn vẹn Transaction: Khôi phục qua PostgreSQL tuân thủ thứ tự khóa ngoại và ROLLBACK nếu lỗi",
+    async () => {
+      const mockContext = createDrillMockContext();
+      const secret = "secure-transaction-key-16-bytes";
+
+      const backupRes = await runNightlyBackup({
+        backupDir: tempBackupDir,
+        encryptionKey: secret,
+        inMemoryContext: mockContext,
+      });
+
+      const executedQueries = [];
+      let txStatus = null;
+
+      const mockPgClient = {
+        query: async (sql, _params) => {
+          executedQueries.push(sql);
+          if (sql === "BEGIN;") txStatus = "IN_TRANSACTION";
+          if (sql === "COMMIT;") txStatus = "COMMITTED";
+          if (sql === "ROLLBACK;") txStatus = "ROLLED_BACK";
+          if (sql.includes("lots") && sql.includes("INSERT")) {
+            throw new Error("Lỗi vi phạm ràng buộc dữ liệu tại bảng lots");
+          }
+          return { rowCount: 1 };
+        },
+        release: () => {},
+      };
+
+      const mockPool = {
+        connect: async () => mockPgClient,
+      };
+
+      await assert.rejects(
+        async () => {
+          await restoreBackup(backupRes.filePath, {
+            encryptionKey: secret,
+            pool: mockPool,
+          });
+        },
+        /Restore Transaction Rollback/
+      );
+
+      assert.equal(txStatus, "ROLLED_BACK", "Giao dịch phải được ROLLBACK an toàn khi có lỗi");
+      assert.ok(executedQueries.includes("BEGIN;"), "Phải khởi tạo BEGIN transaction");
+      assert.ok(executedQueries.includes("ROLLBACK;"), "Phải thực thi lệnh ROLLBACK");
+    }
+  );
 });
