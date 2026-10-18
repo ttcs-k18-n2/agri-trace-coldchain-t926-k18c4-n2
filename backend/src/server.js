@@ -25,6 +25,7 @@ const {
 const { seedS22InMemory } = require("../scripts/seed_s22");
 const { seedS39InMemory } = require("../scripts/seed_s39");
 const { markOverdueTransfers, startTransferOverdueJob } = require("./transfer_overdue_job");
+const { initIntegrityCheckJob, startIntegrityCheckJob } = require("./jobs/integrityCheckJob");
 const {
   runTemperatureHourlyAggregationJob,
   getHourlyAggregatesForShipment,
@@ -9025,6 +9026,9 @@ async function start() {
   // Khởi động job rà soát bàn giao quá hạn định kỳ (S-24 / T-56)
   startTransferOverdueJob({ pool, inMemoryTransfers });
 
+  // Khởi động job kiểm tra tính toàn vẹn chuỗi sự kiện định kỳ lúc 2:00 sáng (S-55 / N2-123)
+  initIntegrityCheckJob({ pool });
+
   // Khởi động job tổng hợp nhiệt độ định kỳ ban đêm (S-51 / N2-114)
   startNightlyTemperatureAggregationCron({ pool });
 
@@ -9086,6 +9090,8 @@ module.exports = {
   setAppendHookForTesting,
   markOverdueTransfers,
   startTransferOverdueJob,
+  initIntegrityCheckJob,
+  startIntegrityCheckJob,
   validateMergeLotInput,
   collectAncestorLotIds,
   collectDescendantLotIds,
