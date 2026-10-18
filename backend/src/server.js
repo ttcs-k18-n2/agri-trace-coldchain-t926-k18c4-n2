@@ -112,6 +112,7 @@ const {
   ColdChainViolationDetector,
   inMemoryViolations,
 } = require("./cold_chain_violation_service");
+const { exportLotDossierToPdf } = require("./lot_pdf_export_service");
 const app = express();
 const PORT = Number(process.env.PORT || 3000);
 
@@ -2367,6 +2368,78 @@ app.get(
       return res.status(200).json({ lot });
     } catch (err) {
       return res.status(500).json({ message: err.message });
+    }
+  }
+);
+
+/**
+ * Xuất hồ sơ truy xuất đầy đủ của một lô ra tệp PDF kèm kết quả kiểm toàn vẹn và head hash (Story S-53 / Jira N2-121)
+ */
+app.get(
+  ["/api/lots/:id/export-pdf", "/api/organization/lots/:id/export-pdf"],
+  requirePermission(["producer", "cooperative", "transporter", "distributor", "inspector", "org_admin", "admin"]),
+  async (req, res) => {
+    const lotId = req.params.id;
+    try {
+      const pdfResult = await exportLotDossierToPdf({
+        pool,
+        lotId,
+        actorEmail: req.auth?.email || "inspector@example.com",
+        inMemoryContext: {
+          inMemoryLots,
+          inMemoryOrgs,
+          inMemoryFarms,
+          inMemoryProducts,
+          inMemoryBatchEvents,
+          inMemoryShipments,
+          inMemoryViolations,
+          inMemoryRecallOrders,
+        },
+      });
+
+      if (pdfResult.status === 404) {
+        return res.status(404).json({
+          error: "LOT_NOT_FOUND",
+          message: pdfResult.message,
+        });
+      }
+
+      if (req.auth?.isInspector || req.auth?.roleId === "inspector") {
+        try {
+          await recordAuditLog({
+            pool,
+            inMemoryLogs: inMemoryAuditLogs,
+            actorUserId: req.auth.id || req.auth.userId,
+            actorEmail: req.auth.email,
+            organizationId: req.auth.organizationId || "org-inspector",
+            action: "INSPECTOR_LOT_PDF_EXPORT",
+            resourceType: "lot",
+            resourceId: lotId,
+            ipAddress: req.ip || req.connection?.remoteAddress || "127.0.0.1",
+            userAgent: req.get("User-Agent"),
+            details: {
+              lotId,
+              headHash: pdfResult.headHash,
+              integrityValid: pdfResult.integrityValid,
+              eventCount: pdfResult.eventCount,
+            },
+          });
+        } catch (auditErr) {
+          console.error("[S-53 AUDIT LOG ERROR]", auditErr.message);
+        }
+      }
+
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader("Content-Disposition", `attachment; filename="${pdfResult.filename}"`);
+      res.setHeader("X-Lot-Head-Hash", pdfResult.headHash);
+      res.setHeader("X-Integrity-Valid", String(pdfResult.integrityValid));
+      return res.status(200).send(pdfResult.pdfBuffer);
+    } catch (err) {
+      console.error("[S-53 PDF Export Error]:", err);
+      return res.status(500).json({
+        error: "INTERNAL_SERVER_ERROR",
+        message: "Lỗi kết xuất hồ sơ PDF: " + err.message,
+      });
     }
   }
 );
