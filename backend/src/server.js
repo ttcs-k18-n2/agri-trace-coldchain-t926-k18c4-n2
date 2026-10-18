@@ -35,6 +35,15 @@ const {
 } = require("./quantity");
 const { traceLotOrigins, traceLotDescendants, CycleDetectedError } = require("./lot_genealogy");
 const { getPublicLotMapData } = require("./public_trace_map");
+const {
+  getClientIp,
+  checkPublicLotRateLimit,
+  getPublicLotCache,
+  setPublicLotCache,
+  invalidatePublicLotCache,
+  defaultInMemoryRateLimiter,
+  defaultInMemoryCache,
+} = require("./public_cache_rate_limiter");
 
 const publicMapRateLimitMap = new Map();
 function checkPublicMapRateLimit(ip) {
@@ -680,7 +689,28 @@ app.get(
     "/api/public/trace/:lotCode",
   ],
   async (req, res) => {
-    const clientIp = req.ip || req.socket.remoteAddress || "127.0.0.1";
+    const clientIp = getClientIp(req);
+    const rawCode = req.params.code || req.params.lotCode;
+    const code = typeof rawCode === "string" ? rawCode.trim() : "";
+
+    // S-50 / Jira N2-119 / N2-282: Giới hạn tần suất chống dò quét mã lô (> 30 mã khác nhau trong 60s)
+    // Mã lô không tồn tại vẫn được tính vào hạn mức
+    const rateLimit = await checkPublicLotRateLimit({
+      pool,
+      clientIp,
+      lotCode: code,
+      inMemoryLimiter: defaultInMemoryRateLimiter,
+    });
+
+    if (!rateLimit.allowed) {
+      res.set("Retry-After", String(rateLimit.retryAfter || 60));
+      return res.status(429).json({
+        error: "TOO_MANY_REQUESTS",
+        message: "Quá nhiều yêu cầu truy xuất các mã lô khác nhau trong thời gian ngắn. Vui lòng thử lại sau.",
+        retryAfter: rateLimit.retryAfter || 60,
+      });
+    }
+
     if (!checkPublicMapRateLimit(clientIp)) {
       return res.status(429).json({
         error: "TOO_MANY_REQUESTS",
@@ -688,7 +718,6 @@ app.get(
       });
     }
 
-    const rawCode = req.params.code || req.params.lotCode;
     if (!rawCode || typeof rawCode !== "string") {
       return res.status(400).json({
         error: "INVALID_LOT_CODE",
@@ -696,7 +725,6 @@ app.get(
       });
     }
 
-    const code = rawCode.trim();
     // Giới hạn độ dài tối đa 50 ký tự và không chứa ký tự độc hại (Issue 33)
     if (!/^[A-Za-z0-9_-]{1,50}$/.test(code)) {
       return res.status(400).json({
@@ -705,10 +733,27 @@ app.get(
       });
     }
 
+    // S-50: Kiểm tra cache 60 giây (nếu có cache hit hợp lệ thì trả về ngay)
+    try {
+      const cachedData = await getPublicLotCache({
+        pool,
+        lotCode: code,
+        inMemoryCache: defaultInMemoryCache,
+        inMemoryRecallOrders,
+      });
+      if (cachedData) {
+        res.set("X-Cache", "HIT");
+        res.set("Cache-Control", "public, max-age=60");
+        return res.status(200).json(cachedData);
+      }
+    } catch (cacheErr) {
+      console.error("[PublicLotCache Read Error]:", cacheErr);
+    }
+
     try {
       const mapData = await getPublicLotMapData({
         pool,
-        lotCode: code.trim(),
+        lotCode: code,
         inMemoryLots,
         inMemoryBatchRelations,
         inMemoryBatchEvents,
@@ -720,6 +765,21 @@ app.get(
         inMemoryRecallOrders,
       });
 
+      // S-50: Lưu kết quả vào cache 60s
+      try {
+        await setPublicLotCache({
+          pool,
+          lotCode: code,
+          payload: mapData,
+          ttlSeconds: 60,
+          inMemoryCache: defaultInMemoryCache,
+        });
+      } catch (cacheErr) {
+        console.error("[PublicLotCache Write Error]:", cacheErr);
+      }
+
+      res.set("X-Cache", "MISS");
+      res.set("Cache-Control", "public, max-age=60");
       return res.status(200).json(mapData);
     } catch (err) {
       if (err.statusCode === 404 || err.code === "LOT_NOT_FOUND" || err.message?.includes("Không tìm thấy lô hàng")) {
@@ -7275,6 +7335,18 @@ app.post(
 
           await client.query("COMMIT");
 
+          // S-50: Vô hiệu hóa cache ngay lập tức khi lô bị thu hồi, không đợi 60s
+          try {
+            await invalidatePublicLotCache({
+              pool,
+              lotCodes: [lot.code],
+              lotIds: [lotId],
+              inMemoryCache: defaultInMemoryCache,
+            });
+          } catch (invErr) {
+            console.error("[invalidatePublicLotCache recall error]:", invErr);
+          }
+
           return res.status(201).json({
             message: "Mở lệnh thu hồi thành công.",
             recallOrder: {
@@ -7343,6 +7415,18 @@ app.post(
           userAgent: req.get("User-Agent"),
           details: { recallOrderId, lotId, reason, severity: upperSeverity },
         });
+
+        // S-50: Vô hiệu hóa cache ngay lập tức khi lô bị thu hồi, không đợi 60s
+        try {
+          await invalidatePublicLotCache({
+            pool: null,
+            lotCodes: [lot.code],
+            lotIds: [lotId],
+            inMemoryCache: defaultInMemoryCache,
+          });
+        } catch (invErr) {
+          console.error("[invalidatePublicLotCache recall inMemory error]:", invErr);
+        }
 
         return res.status(201).json({
           message: "Mở lệnh thu hồi thành công.",
@@ -8558,30 +8642,43 @@ module.exports = {
   getActiveShipmentForLot,
   recordShipmentTemperature,
   getShipmentTemperatures,
-  seedS22Data: () =>
-    seedS22InMemory({
+  seedS22Data: () => {
+    defaultInMemoryCache.clear();
+    defaultInMemoryRateLimiter.clear();
+    return seedS22InMemory({
       inMemoryLots,
       inMemoryBatchRelations,
       inMemoryBatchEvents,
       inMemoryOrgs,
       inMemoryProducts,
       inMemoryFarms,
-    }),
-  seedS39Data: () =>
-    seedS39InMemory({
+    });
+  },
+  seedS39Data: () => {
+    defaultInMemoryCache.clear();
+    defaultInMemoryRateLimiter.clear();
+    return seedS39InMemory({
       inMemoryLots,
       inMemoryBatchRelations,
       inMemoryBatchEvents,
       inMemoryOrgs,
       inMemoryProducts,
       inMemoryFarms,
-    }),
+    });
+  },
   inMemoryRecallOrders,
   getRecallOrderWithLiveDescendants,
   checkLotRecallStatus,
   handleAcceptedTemperatureReading,
   getViolations,
   getShipmentViolations,
+  getClientIp,
+  checkPublicLotRateLimit,
+  getPublicLotCache,
+  setPublicLotCache,
+  invalidatePublicLotCache,
+  defaultInMemoryRateLimiter,
+  defaultInMemoryCache,
 };
 
 // --- S-46: Sinh và xuất mã QR cho lô hàng (PNG / SVG) ---
