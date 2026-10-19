@@ -2443,7 +2443,7 @@ app.get(
 
       res.setHeader("Content-Type", "application/pdf");
       res.setHeader("Content-Disposition", `attachment; filename="${pdfResult.filename}"`);
-      res.setHeader("X-Lot-Head-Hash", pdfResult.headHash);
+      res.setHeader("X-Lot-Head-Hash", pdfResult.headHash ? String(pdfResult.headHash) : "Chưa có dữ liệu");
       res.setHeader("X-Integrity-Valid", String(pdfResult.integrityValid));
       return res.status(200).send(pdfResult.pdfBuffer);
     } catch (err) {
