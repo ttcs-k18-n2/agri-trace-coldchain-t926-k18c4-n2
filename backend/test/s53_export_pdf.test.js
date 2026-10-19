@@ -16,7 +16,7 @@ const {
   inMemoryAuditLogs,
 } = require("../src/server");
 const { inMemoryViolations } = require("../src/cold_chain_violation_service");
-const { exportLotDossierToPdf } = require("../src/lot_pdf_export_service");
+const { exportLotDossierToPdf, extractPdfText } = require("../src/lot_pdf_export_service");
 const { calculateEventHash, GENESIS_HASH } = require("../src/integrity");
 const { getAuditLogs } = require("../src/audit_logger");
 
@@ -107,7 +107,7 @@ test("Story S-53: Xuất hồ sơ truy xuất đầy đủ của một lô ra PD
   await seedDemoUser();
 
   await t.test(
-    "N2-237: Kết xuất hồ sơ PDF hợp lệ (chuẩn PDF-1.4, header binary %PDF và trailer %%EOF)",
+    "N2-237: Kết xuất hồ sơ PDF hợp lệ (chuẩn PDF-1.4, header binary %PDF-1.4, nhúng TrueType font và ToUnicode CMap)",
     async () => {
       setupS53Dataset();
 
@@ -136,6 +136,10 @@ test("Story S-53: Xuất hồ sơ truy xuất đầy đủ của một lô ra PD
       assert.ok(pdfStr.trim().endsWith("%%EOF"), "Tệp PDF phải kết thúc bằng %%EOF");
       assert.ok(pdfStr.includes("/Root"), "Tệp PDF phải có Root catalog");
       assert.ok(pdfStr.includes("xref"), "Tệp PDF phải có bảng tham chiếu xref");
+
+      // Đối soát cơ chế nhúng font Unicode tiếng Việt theo chuẩn ISO 32000-1
+      assert.ok(pdfStr.includes("/Identity-H"), "Tệp PDF phải cấu hình font với bảng mã /Identity-H");
+      assert.ok(pdfStr.includes("/ToUnicode"), "Tệp PDF phải nhúng bảng /ToUnicode CMap để giải mã tiếng Việt chuẩn xác");
     }
   );
 
@@ -158,23 +162,25 @@ test("Story S-53: Xuất hồ sơ truy xuất đầy đủ của một lô ra PD
         },
       });
 
-      const pdfStr = result.pdfBuffer.toString("utf8");
+      // 1. Trích xuất văn bản thực tế từ PDF thông qua cơ chế giải mã ToUnicode CMap
+      const extractedText = extractPdfText(result.pdfBuffer);
 
-      // 1. Thông tin lô hàng - Kiểm tra hỗ trợ Unicode tiếng Việt đầy đủ dấu
-      assert.ok(pdfStr.includes("LOT-S53-VERIFIED"), "Phải chứa mã lô hàng");
-      assert.ok(pdfStr.includes("Cà chua bi"), "Phải chứa tên sản phẩm có dấu tiếng Việt");
-      assert.ok(pdfStr.includes("Thung Lũng Vàng"), "Phải chứa tên vùng trồng có dấu tiếng Việt");
+      // Thông tin lô hàng - Bảo đảm hiển thị tiếng Việt trọn vẹn dấu
+      assert.ok(extractedText.includes("LOT-S53-VERIFIED"), "Phải chứa mã lô hàng");
+      assert.ok(extractedText.includes("Cà chua bi"), "Phải chứa tên sản phẩm có dấu tiếng Việt");
+      assert.ok(extractedText.includes("Thung Lũng Vàng"), "Phải chứa tên vùng trồng có dấu tiếng Việt");
+      assert.ok(extractedText.includes("2026-10-10"), "Phải hiển thị đúng ngày thu hoạch thực tế");
 
       // 2. Kiểm tra toàn vẹn và Head Hash (NFR N2-121)
       assert.equal(result.integrityValid, true, "Chuỗi sự kiện phải hợp lệ");
       assert.equal(result.headHash, ev2Hash, "Head Hash phải khớp với mã băm sự kiện cuối");
-      assert.ok(pdfStr.includes(ev2Hash), "Phải in chính xác mã băm đỉnh 64 ký tự lên hồ sơ PDF");
-      assert.ok(pdfStr.includes("TOAN VEN"), "Phải có trạng thái toàn vẹn ĐẠT TIÊU CHUẨN");
+      assert.ok(extractedText.includes(ev2Hash), "Phải in chính xác mã băm đỉnh 64 ký tự lên hồ sơ PDF");
+      assert.ok(extractedText.includes("TOAN VEN"), "Phải có trạng thái toàn vẹn ĐẠT TIÊU CHUẨN");
 
       // 3. Phả hệ & Chuỗi lạnh & Thu hồi
-      assert.ok(pdfStr.includes("PHA HE NGUON GOC"), "Phải có phần phả hệ");
-      assert.ok(pdfStr.includes("GIAM SAT CHUOI LANH"), "Phải có phần giám sát chuỗi lạnh");
-      assert.ok(pdfStr.includes("TINH TRANG THU HOI"), "Phải có phần tình trạng thu hồi");
+      assert.ok(extractedText.includes("PHA HE NGUON GOC"), "Phải có phần phả hệ");
+      assert.ok(extractedText.includes("GIAM SAT CHUOI LANH"), "Phải có phần giám sát chuỗi lạnh");
+      assert.ok(extractedText.includes("TINH TRANG THU HOI"), "Phải có phần tình trạng thu hồi");
     }
   );
 
@@ -214,7 +220,7 @@ test("Story S-53: Xuất hồ sơ truy xuất đầy đủ của một lô ra PD
   );
 
   await t.test(
-    "N2-238-VN: Kiểm thử xuất hồ sơ PDF với tiếng Việt đầy đủ dấu, tên dài, nhiều trang và dữ liệu thiếu",
+    "N2-238-VN: Kiểm thử xuất hồ sơ PDF với tiếng Việt đầy đủ dấu, tên dài, nhiều trang và dữ liệu thiếu (không bịa dữ liệu)",
     async () => {
       // 1. Lô có tên rất dài, nhiều ký tự tiếng Việt đặc thù (ơ, ư, đ, ê, dấu hỏi/ngã/nặng)
       const longNameLotId = "LOT-S53-LONG-NAME-001";
@@ -245,12 +251,12 @@ test("Story S-53: Xuất hồ sơ truy xuất đầy đủ của một lô ra PD
 
       assert.equal(resultLong.status, 200);
       assert.ok(resultLong.pdfBuffer.length > 500);
-      const strLong = resultLong.pdfBuffer.toString("utf8");
-      assert.ok(strLong.includes("Bưởi da xanh ruột hồng"), "Phải giữ trọn vẹn dấu tiếng Việt tên sản phẩm dài");
-      assert.ok(strLong.includes("Vĩnh Long"), "Phải giữ trọn vẹn dấu tiếng Việt tên vùng trồng");
-      assert.ok(strLong.includes("CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM"), "Phải in quốc hiệu tiếng Việt có dấu");
+      const textLong = extractPdfText(resultLong.pdfBuffer);
+      assert.ok(textLong.includes("Bưởi da xanh ruột hồng"), "Phải giữ trọn vẹn dấu tiếng Việt tên sản phẩm dài");
+      assert.ok(textLong.includes("Vĩnh Long"), "Phải giữ trọn vẹn dấu tiếng Việt tên vùng trồng");
+      assert.ok(textLong.includes("CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM"), "Phải in quốc hiệu tiếng Việt có dấu");
 
-      // 2. Lô dữ liệu thiếu (không có nông trại, không có sản phẩm, không có sự kiện) -> Không bị crash
+      // 2. Lô dữ liệu thiếu (không có ngày thu hoạch, không có nông trại, không có sản phẩm, không có sự kiện)
       const emptyLotId = "LOT-S53-SPARSE";
       const resultSparse = await exportLotDossierToPdf({
         lotId: emptyLotId,
@@ -264,6 +270,52 @@ test("Story S-53: Xuất hồ sơ truy xuất đầy đủ của một lô ra PD
       assert.ok(resultSparse.pdfBuffer.length > 500);
       assert.equal(resultSparse.eventCount, 0);
       assert.equal(resultSparse.integrityValid, true);
+
+      // Yêu cầu 1: Xóa ngày thu hoạch giả mặc định 2026-09-30
+      // Yêu cầu 2: Không được sinh mã hash giả 000000... nếu không có chuỗi sự kiện
+      // Yêu cầu 3: Nếu dữ liệu thiếu, thể hiện chính xác là "Chưa có dữ liệu" hoặc "Không thể xác minh"
+      assert.equal(resultSparse.headHash, null, "Không được sinh mã hash giả trong đối tượng trả về");
+      const textSparse = extractPdfText(resultSparse.pdfBuffer);
+      assert.ok(!textSparse.includes("2026-09-30"), "Tuyệt đối không được sinh ngày thu hoạch giả 2026-09-30");
+      assert.ok(!textSparse.includes("0000000000000000000000000000000000000000000000000000000000000000"), "Tuyệt đối không được in chuỗi hash giả 000000...");
+      assert.ok(textSparse.includes("Chưa có dữ liệu"), "Dữ liệu thiếu phải được ghi rõ là Chưa có dữ liệu");
+    }
+  );
+
+  await t.test(
+    "N2-238-TAMPER: Kiểm thử phát hiện chuỗi hash bị sửa đổi trái phép và hiển thị cảnh báo",
+    async () => {
+      setupS53Dataset();
+
+      // Sửa đổi trái phép hash của sự kiện 1 trong chuỗi
+      inMemoryBatchEvents[0].eventHash = "badhash111111111111111111111111111111111111111111111111111111111";
+
+      const resultTampered = await exportLotDossierToPdf({
+        lotId: "LOT-S53-VERIFIED",
+        actorEmail: "security_auditor@agri.gov.vn",
+        inMemoryContext: {
+          inMemoryLots,
+          inMemoryOrgs,
+          inMemoryFarms,
+          inMemoryProducts,
+          inMemoryBatchEvents,
+          inMemoryViolations,
+          inMemoryRecallOrders,
+        },
+      });
+
+      assert.equal(resultTampered.status, 200);
+      assert.equal(resultTampered.integrityValid, false, "Chuỗi hash bị sửa đổi phải trả về integrityValid = false");
+
+      const textTampered = extractPdfText(resultTampered.pdfBuffer);
+      assert.ok(
+        textTampered.includes("CẢNH BÁO: CHUỖI HASH BỊ ĐỨT MẠCH HOẶC BỊ SỬA ĐỔI TRÁI PHÉP"),
+        "Hồ sơ PDF phải hiển thị cảnh báo chuỗi hash bị can thiệp trái phép"
+      );
+      assert.ok(
+        textTampered.includes("Không thể xác minh"),
+        "Hồ sơ PDF phải thể hiện trạng thái Không thể xác minh khi chuỗi bị phá hủy"
+      );
     }
   );
 
