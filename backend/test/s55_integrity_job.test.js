@@ -215,4 +215,39 @@ test("Story S-55: Job kiểm tra toàn vẹn định kỳ mọi lô và cảnh b
       assert.ok(listRes.body.jobs.length >= 1);
     }
   );
+
+  await t.test(
+    "N2-241-DB-FAILURE: Khi cơ sở dữ liệu PostgreSQL phát sinh lỗi truy vấn, job phải chuyển sang trạng thái FAILED, không được báo PASSED",
+    async () => {
+      setupS55Dataset();
+
+      // Giả lập pool truy vấn cơ sở dữ liệu bị ngắt kết nối / ném lỗi
+      const failingPool = {
+        query: async () => {
+          throw new Error("connection to server on socket failed: Connection refused (0x0000274D/10061)");
+        },
+      };
+
+      const result = await runIntegrityAuditJob({
+        pool: failingPool,
+        batchSize: 10,
+        inMemoryContext: {
+          inMemoryLots,
+          inMemoryBatchEvents,
+          inMemoryAuditLogs,
+        },
+      });
+
+      assert.equal(result.success, false, "Khi CSDL lỗi, kết quả success phải bằng false");
+      assert.equal(result.status, "FAILED", "Job phải chuyển trạng thái FAILED thay vì PASSED");
+      assert.ok(result.error && result.error.includes("Connection refused"), "Phải ghi nhận chi tiết lỗi CSDL");
+      assert.equal(result.totalLotsScanned, 0, "Số lô quét phải bằng 0 khi ngắt kết nối ngay");
+
+      // Kiểm tra API trả về
+      const adminAgent = await loginAs("admin@example.com");
+      const latestRes = await adminAgent.get("/api/admin/integrity-audits/latest");
+      assert.equal(latestRes.status, 200);
+      assert.equal(latestRes.body.job.status, "FAILED");
+    }
+  );
 });

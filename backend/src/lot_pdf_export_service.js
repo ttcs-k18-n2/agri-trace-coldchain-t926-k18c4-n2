@@ -267,14 +267,26 @@ async function aggregateLotDossierData({
   let origins = [];
   let descendants = [];
   try {
-    const origRes = await traceLotOrigins(lotId, { pool });
-    origins = origRes ? (origRes.origins || []) : [];
+    const origRes = await traceLotOrigins(pool, lotId, {
+      inMemoryLots: inMemoryContext.inMemoryLots,
+      inMemoryBatchRelations: inMemoryContext.inMemoryBatchRelations,
+      inMemoryFarms: inMemoryContext.inMemoryFarms,
+    });
+    origins = origRes ? (origRes.rootLots || origRes.allAncestors || origRes.origins || []) : [];
   } catch {
     origins = [];
   }
 
   try {
-    const descRes = await traceLotDescendants(lotId, { pool });
+    const descRes = await traceLotDescendants({
+      pool,
+      startLotId: lotId,
+      inMemoryLots: inMemoryContext.inMemoryLots,
+      inMemoryBatchRelations: inMemoryContext.inMemoryBatchRelations,
+      inMemoryOrgs: inMemoryContext.inMemoryOrgs,
+      inMemoryProducts: inMemoryContext.inMemoryProducts,
+      inMemoryFarms: inMemoryContext.inMemoryFarms,
+    });
     descendants = descRes ? (descRes.descendants || []) : [];
   } catch {
     descendants = [];
@@ -282,8 +294,20 @@ async function aggregateLotDossierData({
 
   // 4. Vi phạm chuỗi lạnh
   try {
-    const vRes = await getViolations({ pool, batchId: lotId, inMemoryContext });
-    violations = Array.isArray(vRes) ? vRes : (vRes?.violations || []);
+    let rawViolations = [];
+    if (Array.isArray(inMemoryContext.inMemoryViolations)) {
+      rawViolations = inMemoryContext.inMemoryViolations.filter(
+        (v) => (v.lotId === lotId || v.batchId === lotId || v.lot_id === lotId || v.batch_id === lotId ||
+                (lot.shipmentId && (v.shipmentId === lot.shipmentId || v.shipment_id === lot.shipmentId)))
+      );
+      if (rawViolations.length === 0 && inMemoryContext.inMemoryViolations.length > 0) {
+        rawViolations = inMemoryContext.inMemoryViolations.filter((v) => !v.lotId && !v.batchId ? true : (v.lotId === lotId || v.batchId === lotId));
+      }
+    } else {
+      const vRes = await getViolations({ pool, batchId: lotId });
+      rawViolations = Array.isArray(vRes) ? vRes : (vRes?.violations || []);
+    }
+    violations = rawViolations;
   } catch {
     violations = [];
   }
@@ -291,9 +315,18 @@ async function aggregateLotDossierData({
   // 5. Trạng thái thu hồi
   let recallInfo = { isRecalled: false, reason: null };
   try {
-    const rc = await checkLotRecallStatus(lotId, { pool });
-    if (rc && rc.recalled) {
-      recallInfo = { isRecalled: true, reason: rc.reason || "Lệnh thu hồi đang hiệu lực" };
+    const rc = await checkLotRecallStatus({
+      pool,
+      lotId,
+      lot,
+      inMemoryRecallOrders: inMemoryContext.inMemoryRecallOrders,
+      inMemoryLots: inMemoryContext.inMemoryLots,
+    });
+    if (rc && (rc.isBlocked || rc.recallOrderId || rc.status === "OPEN" || rc.status === "INVESTIGATING" || rc.status === "Có sự cố" || rc.status === "Đang thu hồi" || rc.status === "Đã thu hồi")) {
+      recallInfo = {
+        isRecalled: true,
+        reason: rc.message || rc.blockReason || (rc.recallOrderId ? `Lệnh thu hồi ${rc.recallOrderId}` : "Lệnh thu hồi đang hiệu lực"),
+      };
     }
   } catch {
     recallInfo = { isRecalled: false, reason: null };
@@ -319,6 +352,8 @@ async function exportLotDossierToPdf({
   pool,
   lotId,
   actorEmail = "inspector@example.com",
+  callerOrgId = null,
+  isPrivileged = false,
   inMemoryContext = {},
 }) {
   const dossier = await aggregateLotDossierData({ pool, lotId, inMemoryContext });
@@ -332,6 +367,18 @@ async function exportLotDossierToPdf({
   }
 
   const { lot, events, integrityResult, origins, descendants, violations, recallInfo } = dossier;
+
+  // Kiểm tra phân quyền đa tổ chức (Tenant Isolation):
+  // Cán bộ thanh tra (inspector) và Admin hệ thống được phép xuất toàn bộ lô.
+  // Người dùng thuộc tổ chức chỉ được phép xuất hồ sơ lô của tổ chức mình.
+  const lotOrgId = lot.organization_id || lot.organizationId;
+  if (!isPrivileged && callerOrgId && lotOrgId && String(lotOrgId) !== String(callerOrgId)) {
+    return {
+      status: 403,
+      error: "FORBIDDEN",
+      message: `Bạn không có quyền truy cập hoặc xuất hồ sơ lô hàng thuộc tổ chức khác (${lotOrgId}).`,
+    };
+  }
   const exportedAt = new Date().toISOString();
 
   // Xác định headHash hợp lệ hoặc null (TUYỆT ĐỐI không sinh mã hash giả 000000...)
@@ -469,7 +516,8 @@ async function exportLotDossierToPdf({
       doc.text("  - Không có lô tổ tiên (Lô đơn nguồn thu hoạch trực tiếp từ nông hộ/vườn hoặc Chưa có dữ liệu)");
     } else {
       for (const o of origins.slice(0, 4)) {
-        doc.text(`  - Mã lô mẹ: ${o.lotId || o.id} | Vùng trồng: ${o.farmName || o.farmId || "Chưa có dữ liệu"} | Tỷ lệ: ${o.percentage || 100}%`);
+        const farmStr = (o.farm && o.farm.name) || o.farmName || o.farm_name || (o.farmId ? String(o.farmId) : "Chưa có dữ liệu");
+        doc.text(`  - Mã lô mẹ: ${o.lotId || o.id} | Vùng trồng: ${farmStr} | Tỷ lệ: ${o.percentage || 100}%`);
       }
     }
 

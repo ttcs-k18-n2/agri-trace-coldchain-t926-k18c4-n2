@@ -99,6 +99,7 @@ async function runIntegrityAuditJob(options = {}) {
   let batchesCount = 0;
   let offset = 0;
   let hasMore = true;
+  let dbError = null;
 
   try {
     while (hasMore) {
@@ -113,7 +114,10 @@ async function runIntegrityAuditJob(options = {}) {
           currentBatch = res ? (res.rows || []) : [];
         } catch (dbErr) {
           console.error("[S-55 DB Error] Lỗi truy vấn batch lô:", dbErr.message);
+          dbError = dbErr;
           currentBatch = [];
+          hasMore = false;
+          break;
         }
       } else {
         currentBatch = sourceLots.slice(offset, offset + limit);
@@ -250,17 +254,25 @@ async function runIntegrityAuditJob(options = {}) {
     }
   } catch (loopErr) {
     console.error("[S-55 Loop Error]:", loopErr.message);
+    if (!dbError) dbError = loopErr;
   }
 
   const completedAt = new Date().toISOString();
-  const finalStatus = invalidCount > 0 ? "COMPROMISED" : "PASSED";
+  let finalStatus;
+  if (dbError) {
+    finalStatus = "FAILED";
+  } else if (invalidCount > 0) {
+    finalStatus = "COMPROMISED";
+  } else {
+    finalStatus = "PASSED";
+  }
   const durationMs = Date.now() - startTime;
 
   jobRecord.completed_at = completedAt;
   jobRecord.total_lots_scanned = totalScanned;
   jobRecord.compromised_lots_count = invalidCount;
   jobRecord.status = finalStatus;
-  jobRecord.error_details = compromisedLots;
+  jobRecord.error_details = dbError ? { dbError: dbError.message, compromisedLots } : compromisedLots;
 
   if (isDbAuditLogging) {
     try {
@@ -268,7 +280,7 @@ async function runIntegrityAuditJob(options = {}) {
         `UPDATE integrity_audit_jobs
          SET completed_at = $1, total_lots_scanned = $2, compromised_lots_count = $3, status = $4, error_details = $5
          WHERE id = $6`,
-        [completedAt, totalScanned, invalidCount, finalStatus, JSON.stringify(compromisedLots), jobId]
+        [completedAt, totalScanned, invalidCount, finalStatus, JSON.stringify(jobRecord.error_details), jobId]
       );
     } catch {
       // ignore
@@ -279,7 +291,7 @@ async function runIntegrityAuditJob(options = {}) {
   inMemoryIntegrityLogs.push(...jobLogs);
 
   return {
-    success: true,
+    success: !dbError,
     jobId,
     startedAt,
     completedAt,
@@ -290,6 +302,7 @@ async function runIntegrityAuditJob(options = {}) {
     compromisedLotsCount: invalidCount,
     batchesCount,
     status: finalStatus,
+    error: dbError ? dbError.message : null,
     compromisedLots,
     invalidLots: compromisedLots,
     logs: jobLogs,
