@@ -234,8 +234,8 @@ test("S-41 PostgreSQL Integration Suite (Story S-41 / Jira N2-109)", async (t) =
 
       await pool.query(
         `INSERT INTO shipments (id, cold_box_id, status, organization_id, started_at)
-         VALUES ($1, $2, 'IN_TRANSIT', $3, NOW() - INTERVAL '1 day')
-         ON CONFLICT (id) DO UPDATE SET status = 'IN_TRANSIT', current_temperature = NULL, last_temperature_at = NULL, started_at = NOW() - INTERVAL '1 day'`,
+         VALUES ($1, $2, 'IN_TRANSIT', $3, '2026-10-17T00:00:00.000Z')
+         ON CONFLICT (id) DO UPDATE SET status = 'IN_TRANSIT', current_temperature = NULL, last_temperature_at = NULL, started_at = '2026-10-17T00:00:00.000Z'`,
         [shipId, coldBoxId, orgId]
       );
       await pool.query("DELETE FROM shipment_temperatures WHERE shipment_id = $1", [shipId]);
@@ -310,8 +310,8 @@ test("S-41 PostgreSQL Integration Suite (Story S-41 / Jira N2-109)", async (t) =
 
       await pool.query(
         `INSERT INTO shipments (id, cold_box_id, status, organization_id, started_at)
-         VALUES ($1, $2, 'IN_TRANSIT', $3, NOW() - INTERVAL '1 day')
-         ON CONFLICT (id) DO UPDATE SET status = 'IN_TRANSIT', current_temperature = NULL, last_temperature_at = NULL, started_at = NOW() - INTERVAL '1 day'`,
+         VALUES ($1, $2, 'IN_TRANSIT', $3, '2026-10-17T00:00:00.000Z')
+         ON CONFLICT (id) DO UPDATE SET status = 'IN_TRANSIT', current_temperature = NULL, last_temperature_at = NULL, started_at = '2026-10-17T00:00:00.000Z'`,
         [shipId, coldBoxId, orgId]
       );
       await pool.query("DELETE FROM shipment_temperatures WHERE shipment_id = $1", [shipId]);
@@ -484,8 +484,8 @@ test("S-41 PostgreSQL Integration Suite (Story S-41 / Jira N2-109)", async (t) =
       const coldBoxZero = "CB-PG-ZERO";
       await pool.query(
         `INSERT INTO shipments (id, cold_box_id, status, organization_id, started_at)
-         VALUES ($1, $2, 'IN_TRANSIT', $3, NOW() - INTERVAL '1 day')
-         ON CONFLICT (id) DO UPDATE SET current_temperature = NULL, last_temperature_at = NULL, started_at = NOW() - INTERVAL '1 day'`,
+         VALUES ($1, $2, 'IN_TRANSIT', $3, '2026-10-17T00:00:00.000Z')
+         ON CONFLICT (id) DO UPDATE SET current_temperature = NULL, last_temperature_at = NULL, started_at = '2026-10-17T00:00:00.000Z'`,
         [shipZeroId, coldBoxZero, orgId]
       );
       const timeZero = new Date("2026-10-17T12:00:00.000Z").toISOString();
@@ -500,8 +500,8 @@ test("S-41 PostgreSQL Integration Suite (Story S-41 / Jira N2-109)", async (t) =
       const coldBoxNeg = "CB-PG-NEG";
       await pool.query(
         `INSERT INTO shipments (id, cold_box_id, status, organization_id, started_at)
-         VALUES ($1, $2, 'IN_TRANSIT', $3, NOW() - INTERVAL '1 day')
-         ON CONFLICT (id) DO UPDATE SET current_temperature = NULL, last_temperature_at = NULL, started_at = NOW() - INTERVAL '1 day'`,
+         VALUES ($1, $2, 'IN_TRANSIT', $3, '2026-10-17T00:00:00.000Z')
+         ON CONFLICT (id) DO UPDATE SET current_temperature = NULL, last_temperature_at = NULL, started_at = '2026-10-17T00:00:00.000Z'`,
         [shipNegId, coldBoxNeg, orgId]
       );
       const timeNeg = new Date("2026-10-17T12:05:00.000Z").toISOString();
@@ -516,8 +516,8 @@ test("S-41 PostgreSQL Integration Suite (Story S-41 / Jira N2-109)", async (t) =
       const coldBoxNull = "CB-PG-NULL";
       await pool.query(
         `INSERT INTO shipments (id, cold_box_id, status, organization_id, started_at)
-         VALUES ($1, $2, 'IN_TRANSIT', $3, NOW() - INTERVAL '1 day')
-         ON CONFLICT (id) DO UPDATE SET current_temperature = NULL, last_temperature_at = NULL, started_at = NOW() - INTERVAL '1 day'`,
+         VALUES ($1, $2, 'IN_TRANSIT', $3, '2026-10-17T00:00:00.000Z')
+         ON CONFLICT (id) DO UPDATE SET current_temperature = NULL, last_temperature_at = NULL, started_at = '2026-10-17T00:00:00.000Z'`,
         [shipNullId, coldBoxNull, orgId]
       );
 
