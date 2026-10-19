@@ -185,6 +185,9 @@ async function restoreBackup(filePath, options = {}) {
     targetInMemory.inMemoryRecallAcknowledgments = t.recall_acknowledgments || [];
     targetInMemory.inMemoryAuditLogs = t.audit_logs || [];
     targetInMemory.inMemoryAggregates = t.temperature_hourly_aggregates || [];
+    targetInMemory.inMemoryIntegrityJobs = t.integrity_audit_jobs || [];
+    targetInMemory.inMemoryIntegrityLogs = t.integrity_audit_logs || [];
+    targetInMemory.inMemoryAnonymizationRequests = t.farmer_anonymization_requests || [];
 
     for (const [k, v] of Object.entries(t)) {
       tableCounts[k] = Array.isArray(v) ? v.length : 0;

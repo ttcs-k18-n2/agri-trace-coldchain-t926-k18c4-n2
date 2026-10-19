@@ -9,6 +9,9 @@ const os = require("node:os");
 const {
   runNightlyBackup,
   rotateBackups,
+  startNightlyBackupCron,
+  extractAllData,
+  MANDATORY_TABLES,
 } = require("../scripts/backup_nightly");
 const { restoreBackup } = require("../scripts/restore_backup");
 const { runRestoreDrill, createDrillMockContext } = require("../scripts/verify_restore_drill");
@@ -316,6 +319,104 @@ test("Story S-57: Sao lưu cơ sở dữ liệu hằng đêm và diễn tập kh
       assert.equal(txStatus, "ROLLED_BACK", "Giao dịch phải được ROLLBACK an toàn khi có lỗi");
       assert.ok(executedQueries.includes("BEGIN;"), "Phải khởi tạo BEGIN transaction");
       assert.ok(executedQueries.includes("ROLLBACK;"), "Phải thực thi lệnh ROLLBACK");
+    }
+  );
+
+  await t.test(
+    "S-57 Production Guard: Chặn sao lưu ở chế độ production khi không có DATABASE_URL",
+    async () => {
+      const prevEnv = process.env.NODE_ENV;
+      const prevDbUrl = process.env.DATABASE_URL;
+      try {
+        process.env.NODE_ENV = "production";
+        delete process.env.DATABASE_URL;
+
+        await assert.rejects(
+          async () => {
+            await runNightlyBackup({
+              backupDir: tempBackupDir,
+              encryptionKey: "secure-key-16-bytes!",
+              pool: null,
+            });
+          },
+          /BẢO MẬT PRODUCTION/
+        );
+      } finally {
+        process.env.NODE_ENV = prevEnv;
+        if (prevDbUrl) process.env.DATABASE_URL = prevDbUrl;
+      }
+    }
+  );
+
+  await t.test(
+    "S-57 Data Integrity Guard: Từ chối tạo file backup rỗng khi context rỗng hoặc không có dữ liệu bắt buộc",
+    async () => {
+      // 1. Không có pool và không có dữ liệu in-memory -> Thất bại ngay
+      await assert.rejects(
+        async () => {
+          await runNightlyBackup({
+            backupDir: tempBackupDir,
+            encryptionKey: "secure-key-16-bytes!",
+            inMemoryContext: {},
+          });
+        },
+        /Không có kết nối database và không có dữ liệu nguồn/
+      );
+
+      // 2. Không được tạo file rỗng và báo SUCCESS khi các bảng bắt buộc rỗng
+      await assert.rejects(
+        async () => {
+          await runNightlyBackup({
+            backupDir: tempBackupDir,
+            encryptionKey: "secure-key-16-bytes!",
+            inMemoryContext: {
+              inMemoryOrgs: [],
+              inMemoryLots: [],
+              inMemoryBatchEvents: [],
+            },
+          });
+        },
+        /Không tạo file backup rỗng rồi báo SUCCESS/
+      );
+    }
+  );
+
+  await t.test(
+    "S-57 Mandatory Tables: Ném lỗi nghiêm trọng khi bảng bắt buộc cốt lõi bị thiếu hoặc không tồn tại",
+    async () => {
+      assert.ok(Array.isArray(MANDATORY_TABLES) && MANDATORY_TABLES.includes("lots"));
+      const mockPoolMissingMandatory = {
+        query: async (sql) => {
+          if (sql.includes("lots") || sql.includes("batch_events")) {
+            const err = new Error('relation "lots" does not exist');
+            err.code = "42P01";
+            throw err;
+          }
+          return { rows: [] };
+        },
+      };
+
+      await assert.rejects(
+        async () => {
+          await extractAllData({ pool: mockPoolMissingMandatory });
+        },
+        /Bảng bắt buộc 'lots' chưa tồn tại hoặc bị thiếu/
+      );
+    }
+  );
+
+  await t.test(
+    "S-57 Nightly Backup Cron: Khởi tạo và dừng cron job sao lưu tự động ban đêm thành công",
+    () => {
+      const task = startNightlyBackupCron({
+        cronExpression: "0 2 * * *",
+        backupDir: tempBackupDir,
+        encryptionKey: "secure-key-16-bytes!",
+      });
+
+      assert.ok(task, "Phải khởi tạo thành công cron task");
+      assert.equal(typeof task.stop, "function", "Task phải có hàm stop");
+      task.stop(); // Hủy task sau test
     }
   );
 });
