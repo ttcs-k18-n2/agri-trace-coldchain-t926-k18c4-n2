@@ -124,6 +124,7 @@ const {
   anonymizeFarmerData,
   sanitizeFarmData,
   inMemoryAnonymizationRequests,
+  ANONYMIZED_REQUESTER_TAG,
 } = require("./farmer_privacy_service");
 const app = express();
 const PORT = Number(process.env.PORT || 3000);
@@ -8845,12 +8846,20 @@ app.get(
       const callerOrgId = req.auth ? (req.auth.organizationId || req.auth.organization_id) : null;
       const isPrivileged = callerRole === "admin" || callerRole === "inspector" || Boolean(req.auth && req.auth.isInspector);
 
+      const sanitizeRequestRecord = (r) => ({
+        ...r,
+        requesterName: ANONYMIZED_REQUESTER_TAG,
+        requester_name: ANONYMIZED_REQUESTER_TAG,
+        requesterPhone: null,
+        requester_phone: null,
+      });
+
       if (pool) {
         if (isPrivileged) {
           const queryRes = await pool.query(
             "SELECT * FROM farmer_anonymization_requests ORDER BY processed_at DESC LIMIT 100"
           );
-          return res.status(200).json({ requests: queryRes.rows });
+          return res.status(200).json({ requests: queryRes.rows.map(sanitizeRequestRecord) });
         } else {
           // org_admin: Chỉ xem các yêu cầu thuộc phạm vi tổ chức của mình, chống IDOR / rò rỉ dữ liệu chéo tổ chức
           const queryRes = await pool.query(
@@ -8861,12 +8870,12 @@ app.get(
              ORDER BY r.processed_at DESC LIMIT 100`,
             [callerOrgId]
           );
-          return res.status(200).json({ requests: queryRes.rows });
+          return res.status(200).json({ requests: queryRes.rows.map(sanitizeRequestRecord) });
         }
       }
 
       if (isPrivileged) {
-        return res.status(200).json({ requests: inMemoryAnonymizationRequests });
+        return res.status(200).json({ requests: inMemoryAnonymizationRequests.map(sanitizeRequestRecord) });
       }
 
       // In-memory: Lọc theo organizationId của nông hộ
@@ -8878,7 +8887,7 @@ app.get(
       const filtered = inMemoryAnonymizationRequests.filter((r) =>
         r.organizationId === callerOrgId || orgFarmIds.has(r.farmId || r.farm_id)
       );
-      return res.status(200).json({ requests: filtered });
+      return res.status(200).json({ requests: filtered.map(sanitizeRequestRecord) });
     } catch (err) {
       return res.status(500).json({ error: "INTERNAL_SERVER_ERROR", message: err.message });
     }
@@ -9204,6 +9213,7 @@ module.exports = {
   anonymizeFarmerData,
   sanitizeFarmData,
   inMemoryAnonymizationRequests,
+  ANONYMIZED_REQUESTER_TAG,
 };
 
 // --- S-46: Sinh và xuất mã QR cho lô hàng (PNG / SVG) ---

@@ -386,4 +386,67 @@ test("S-56 (Jira N2-124 / N2-286 / N2-243 / N2-300 / N2-244 / N2-301): Cơ chế
     assert.ok(executedQueries.some((q) => q.sql === "BEGIN;"), "Phải có BEGIN");
     assert.ok(executedQueries.some((q) => q.sql === "ROLLBACK;"), "Phải có ROLLBACK");
   });
+
+  // 13. S-56 Hardening: Che giấu triệt để requester_name, requester_phone và chỉ lưu minimal metadata trong audit logs
+  await t.test(
+    "13. S-56 Hardening: Che giấu triệt để requester_name, requester_phone và chỉ lưu minimal metadata trong audit logs",
+    async () => {
+      const farmHardened = {
+        id: "FARM-HARDEN-001",
+        name: "Vườn măng cụt của anh Vũ",
+        area: 3.0,
+        organizationId: "org-001",
+        farmerName: "Vũ Văn V",
+        farmerPhone: "0901112233",
+        farmerAddress: "Bến Tre",
+        phone: "0901112233",
+        address: "Bến Tre",
+        isAnonymized: false,
+      };
+      inMemoryFarms.push(farmHardened);
+
+      const adminAgent = await loginAs("admin@example.com");
+      const res = await adminAgent
+        .post(`/api/privacy/farmers/${farmHardened.id}/anonymize`)
+        .send({
+          requesterName: "Vũ Văn V (chính chủ)",
+          requesterPhone: "0901112233",
+          legalBasis: "Điều 16 Nghị định 13/2023/NĐ-CP",
+          notes: "Nông hộ yêu cầu xóa sạch PII trên hệ thống",
+        });
+
+      assert.strictEqual(res.status, 200);
+      assert.strictEqual(res.body.success, true);
+
+      // 1. Kiểm tra sanitizedFarm không còn phone, address, farmerPhone, farmerAddress
+      const sFarm = res.body.sanitizedFarm;
+      assert.strictEqual(sFarm.farmerPhone, null);
+      assert.strictEqual(sFarm.farmerAddress, null);
+      assert.strictEqual(sFarm.phone, null);
+      assert.strictEqual(sFarm.address, null);
+      assert.match(sFarm.farmerName, /ẨN DANH/);
+
+      // 2. Kiểm tra hồ sơ yêu cầu anonymization requests không lưu PII thô
+      const reqListRes = await adminAgent.get("/api/privacy/anonymization-requests");
+      assert.strictEqual(reqListRes.status, 200);
+      const reqRecord = reqListRes.body.requests.find((r) => (r.farmId || r.farm_id) === farmHardened.id);
+      assert.ok(reqRecord);
+      assert.strictEqual(reqRecord.requesterName, "[CHỦ THỂ DỮ LIỆU - NÔNG HỘ]");
+      assert.strictEqual(reqRecord.requesterPhone, null);
+      assert.doesNotMatch(JSON.stringify(reqRecord), /0901112233/);
+      assert.doesNotMatch(JSON.stringify(reqRecord), /Vũ Văn V \(chính chủ\)/);
+
+      // 3. Kiểm tra audit log chỉ lưu minimal metadata
+      const auditRec = inMemoryAuditLogs.find(
+        (log) => log.action === "FARMER_PII_ANONYMIZED" && log.resourceId === farmHardened.id
+      );
+      assert.ok(auditRec);
+      assert.strictEqual(auditRec.details.requestId, res.body.requestId);
+      assert.strictEqual(auditRec.details.legalBasis, "Điều 16 Nghị định 13/2023/NĐ-CP");
+      assert.ok(auditRec.details.timestamp);
+      assert.strictEqual(auditRec.details.notes, undefined, "Không được lưu notes trong audit log");
+      assert.doesNotMatch(JSON.stringify(auditRec.details), /0901112233/);
+      assert.doesNotMatch(JSON.stringify(auditRec.details), /Vũ Văn V/);
+    }
+  );
 });
