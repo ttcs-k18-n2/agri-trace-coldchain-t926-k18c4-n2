@@ -15,6 +15,7 @@ const {
   verifyBatchEventChain,
   users,
   hashPassword,
+  inMemoryAnonymizationRequests,
 } = require("../src/server");
 const { anonymizeFarmerData } = require("../src/farmer_privacy_service");
 
@@ -386,4 +387,134 @@ test("S-56 (Jira N2-124 / N2-286 / N2-243 / N2-300 / N2-244 / N2-301): Cơ chế
     assert.ok(executedQueries.some((q) => q.sql === "BEGIN;"), "Phải có BEGIN");
     assert.ok(executedQueries.some((q) => q.sql === "ROLLBACK;"), "Phải có ROLLBACK");
   });
+
+  // 13. S-56 Hardening: Che giấu triệt để requester_name, requester_phone và chỉ lưu minimal metadata trong audit logs
+  await t.test(
+    "13. S-56 Hardening: Che giấu triệt để requester_name, requester_phone và chỉ lưu minimal metadata trong audit logs",
+    async () => {
+      const farmHardened = {
+        id: "FARM-HARDEN-001",
+        name: "Vườn măng cụt của anh Vũ",
+        area: 3.0,
+        organizationId: "org-001",
+        farmerName: "Vũ Văn V",
+        farmerPhone: "0901112233",
+        farmerAddress: "Bến Tre",
+        phone: "0901112233",
+        address: "Bến Tre",
+        isAnonymized: false,
+      };
+      inMemoryFarms.push(farmHardened);
+
+      const adminAgent = await loginAs("admin@example.com");
+      const res = await adminAgent
+        .post(`/api/privacy/farmers/${farmHardened.id}/anonymize`)
+        .send({
+          requesterName: "Vũ Văn V (chính chủ)",
+          requesterPhone: "0901112233",
+          legalBasis: "Điều 16 Nghị định 13/2023/NĐ-CP",
+          notes: "Nông hộ yêu cầu xóa sạch PII trên hệ thống",
+        });
+
+      assert.strictEqual(res.status, 200);
+      assert.strictEqual(res.body.success, true);
+
+      // 1. Kiểm tra sanitizedFarm không còn phone, address, farmerPhone, farmerAddress
+      const sFarm = res.body.sanitizedFarm;
+      assert.strictEqual(sFarm.farmerPhone, null);
+      assert.strictEqual(sFarm.farmerAddress, null);
+      assert.strictEqual(sFarm.phone, null);
+      assert.strictEqual(sFarm.address, null);
+      assert.match(sFarm.farmerName, /ẨN DANH/);
+
+      // 2. Kiểm tra hồ sơ yêu cầu anonymization requests không lưu PII thô
+      const reqListRes = await adminAgent.get("/api/privacy/anonymization-requests");
+      assert.strictEqual(reqListRes.status, 200);
+      const reqRecord = reqListRes.body.requests.find((r) => (r.farmId || r.farm_id) === farmHardened.id);
+      assert.ok(reqRecord);
+      assert.strictEqual(reqRecord.requesterName, "[CHỦ THỂ DỮ LIỆU - NÔNG HỘ]");
+      assert.strictEqual(reqRecord.requesterPhone, null);
+      assert.doesNotMatch(JSON.stringify(reqRecord), /0901112233/);
+      assert.doesNotMatch(JSON.stringify(reqRecord), /Vũ Văn V \(chính chủ\)/);
+
+      // 3. Kiểm tra audit log chỉ lưu minimal metadata
+      const auditRec = inMemoryAuditLogs.find(
+        (log) => log.action === "FARMER_PII_ANONYMIZED" && log.resourceId === farmHardened.id
+      );
+      assert.ok(auditRec);
+      assert.strictEqual(auditRec.details.requestId, res.body.requestId);
+      assert.strictEqual(auditRec.details.legalBasis, "Điều 16 Nghị định 13/2023/NĐ-CP");
+      assert.ok(auditRec.details.timestamp);
+      assert.strictEqual(auditRec.details.notes, undefined, "Không được lưu notes trong audit log");
+      assert.doesNotMatch(JSON.stringify(auditRec.details), /0901112233/);
+      assert.doesNotMatch(JSON.stringify(auditRec.details), /Vũ Văn V/);
+    }
+  );
+
+  await t.test(
+    "14. S-56 Hardening: Làm sạch triệt để PII trong trường notes và dữ liệu lịch sử đã lưu trước đây",
+    async () => {
+      const adminAgent = await loginAs("admin@example.com");
+
+      const farmWithNotesPII = {
+        id: "FARM-NOTES-PII-001",
+        name: "Vườn Sầu Riêng Nguyễn Văn Nhạy Cảm",
+        area: 4.2,
+        farmer_name: "Nguyễn Văn Nhạy Cảm",
+        farmer_phone: "0912345678",
+        farmer_address: "123 Đường Nông Thôn, Huyện A",
+        organization_id: "org-001",
+      };
+      inMemoryFarms.push(farmWithNotesPII);
+
+      // Cố tình truyền notes chứa họ tên, số điện thoại, email
+      const rawNotesWithPII = "Nông hộ Nguyễn Văn Nhạy Cảm yêu cầu xóa, SĐT liên hệ 0912345678, email nhaycam@example.com";
+      const res = await adminAgent
+        .post(`/api/privacy/farmers/${farmWithNotesPII.id}/anonymize`)
+        .send({
+          requesterName: "Nguyễn Văn Nhạy Cảm",
+          requesterPhone: "0912345678",
+          legalBasis: "Nghị định 13/2023/NĐ-CP",
+          notes: rawNotesWithPII,
+        });
+
+      assert.strictEqual(res.status, 200);
+
+      // 1. Kiểm tra API GET /api/privacy/anonymization-requests: notes đã được lọc sạch PII
+      const reqListRes = await adminAgent.get("/api/privacy/anonymization-requests");
+      assert.strictEqual(reqListRes.status, 200);
+      const reqRecord = reqListRes.body.requests.find((r) => (r.farmId || r.farm_id) === farmWithNotesPII.id);
+      assert.ok(reqRecord);
+
+      // Không chứa số điện thoại, email, hoặc tên nông hộ trong toàn bộ bản ghi trả về
+      assert.doesNotMatch(JSON.stringify(reqRecord), /0912345678/);
+      assert.doesNotMatch(JSON.stringify(reqRecord), /nhaycam@example\.com/);
+      assert.doesNotMatch(JSON.stringify(reqRecord), /Nguyễn Văn Nhạy Cảm/);
+      assert.match(reqRecord.notes, /\[SĐT ĐÃ ẨN\]/);
+      assert.match(reqRecord.notes, /\[EMAIL ĐÃ ẨN\]/);
+      assert.match(reqRecord.notes, /\[TÊN NÔNG HỘ ĐÃ ẨN\]/);
+
+      // 2. Giả lập một bản ghi lịch sử cũ tồn tại từ trước có chứa PII trong notes và requester
+      inMemoryAnonymizationRequests.push({
+        id: "REQ-HISTORICAL-001",
+        farmId: "FARM-HISTORICAL-001",
+        farm_id: "FARM-HISTORICAL-001",
+        organizationId: "org-001",
+        requesterName: "Ông Lịch Sử Cũ",
+        requesterPhone: "0988776655",
+        notes: "Ghi chú cũ chứa số 0988776655 và email lichsu@old.vn",
+        processedAt: new Date().toISOString(),
+      });
+
+      const histRes = await adminAgent.get("/api/privacy/anonymization-requests");
+      const histRecord = histRes.body.requests.find((r) => (r.id || r.requestId) === "REQ-HISTORICAL-001");
+      assert.ok(histRecord);
+      assert.strictEqual(histRecord.requesterName, "[CHỦ THỂ DỮ LIỆU - NÔNG HỘ]");
+      assert.strictEqual(histRecord.requesterPhone, null);
+      assert.doesNotMatch(histRecord.notes, /0988776655/);
+      assert.doesNotMatch(histRecord.notes, /lichsu@old\.vn/);
+      assert.match(histRecord.notes, /\[SĐT ĐÃ ẨN\]/);
+      assert.match(histRecord.notes, /\[EMAIL ĐÃ ẨN\]/);
+    }
+  );
 });

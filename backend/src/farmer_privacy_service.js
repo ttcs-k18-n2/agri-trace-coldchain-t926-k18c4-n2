@@ -7,6 +7,7 @@ const { verifyBatchEventChain } = require("./integrity_verifier");
 const inMemoryAnonymizationRequests = [];
 
 const ANONYMIZED_NAME_TAG = "[ĐÃ ẨN DANH THEO NĐ 13/2023]";
+const ANONYMIZED_REQUESTER_TAG = "[CHỦ THỂ DỮ LIỆU - NÔNG HỘ]";
 
 /**
  * Làm sạch và che giấu dữ liệu định danh nông hộ đối với vùng trồng đã yêu cầu xóa PII
@@ -28,6 +29,8 @@ function sanitizeFarmData(farm, _isPrivileged = false) {
   sanitized.farmerPhone = null;
   sanitized.farmer_address = null;
   sanitized.farmerAddress = null;
+  if ("phone" in sanitized) sanitized.phone = null;
+  if ("address" in sanitized) sanitized.address = null;
   sanitized.is_anonymized = true;
   sanitized.isAnonymized = true;
 
@@ -40,6 +43,26 @@ function sanitizeFarmData(farm, _isPrivileged = false) {
 }
 
 /**
+ * Làm sạch trường ghi chú (notes) nhằm ngăn ngừa rò rỉ PII (họ tên, SĐT, Email)
+ */
+function sanitizeNotes(notes, rawFarmerName = null) {
+  if (!notes || typeof notes !== "string") {
+    return "Xóa thông tin cá nhân theo quyền của chủ thể dữ liệu (Nghị định 13/2023/NĐ-CP)";
+  }
+  let safe = notes;
+  // Loại bỏ số điện thoại (10-11 chữ số hoặc đầu số +84)
+  safe = safe.replace(/(?:\+84|0)[1-9]\d{8,9}\b/g, "[SĐT ĐÃ ẨN]");
+  // Loại bỏ email
+  safe = safe.replace(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g, "[EMAIL ĐÃ ẨN]");
+  // Nếu có tên nông hộ cần làm sạch
+  const nameToMask = typeof rawFarmerName === "string" ? rawFarmerName : (rawFarmerName && (rawFarmerName.farmer_name || rawFarmerName.farmerName));
+  if (nameToMask && nameToMask !== ANONYMIZED_NAME_TAG && nameToMask.trim().length > 1) {
+    safe = safe.split(nameToMask).join("[TÊN NÔNG HỘ ĐÃ ẨN]");
+  }
+  return safe;
+}
+
+/**
  * Xử lý yêu cầu xóa dữ liệu định danh cá nhân nông hộ (Right to Erasure theo Nghị định 13/2023/NĐ-CP)
  * - Xóa sạch PII trên database và API
  * - Giữ nguyên vẹn mã định danh farmId và chuỗi Hash mật mã học (S-12)
@@ -49,8 +72,8 @@ async function anonymizeFarmerData({
   farmId,
   organizationId = null,
   isSystemAdmin = false,
-  requesterName = "Nông hộ chủ vườn",
-  requesterPhone = null,
+  _requesterName = "Nông hộ chủ vườn",
+  _requesterPhone = null,
   legalBasis = "Nghị định 13/2023/NĐ-CP",
   processedBy = "privacy-officer@agri-trace.internal",
   notes = "Xóa thông tin cá nhân theo quyền của chủ thể dữ liệu",
@@ -60,6 +83,7 @@ async function anonymizeFarmerData({
   const processedAt = new Date().toISOString();
 
   let targetFarm = null;
+  let originalFarmerName = null;
 
   if (pool) {
     const client = await pool.connect();
@@ -79,6 +103,7 @@ async function anonymizeFarmerData({
         };
       }
       targetFarm = farmRes.rows[0];
+      originalFarmerName = targetFarm.farmer_name;
 
       // Chống IDOR: org_admin chỉ được xóa nông hộ thuộc tổ chức của mình
       if (!isSystemAdmin && organizationId && targetFarm.organization_id !== organizationId) {
@@ -109,20 +134,32 @@ async function anonymizeFarmerData({
         ]
       );
 
-      // Lưu vào bảng theo dõi yêu cầu trong cùng transaction
+      const safeRequesterName = ANONYMIZED_REQUESTER_TAG;
+      const safeRequesterPhone = null;
+      const safeNotes = sanitizeNotes(notes, targetFarm);
+
+      // Cập nhật làm sạch các bản ghi yêu cầu cũ của nông hộ này (nếu có)
+      await client.query(
+        `UPDATE farmer_anonymization_requests
+         SET requester_name = $1, requester_phone = NULL, notes = $2
+         WHERE farm_id = $3`,
+        [safeRequesterName, safeNotes, farmId]
+      );
+
+      // Lưu vào bảng theo dõi yêu cầu trong cùng transaction - không lưu PII thô
       await client.query(
         `INSERT INTO farmer_anonymization_requests (id, farm_id, requester_name, requester_phone, legal_basis, status, processed_at, processed_by, notes)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
         [
           requestId,
           farmId,
-          requesterName,
-          requesterPhone,
+          safeRequesterName,
+          safeRequesterPhone,
           legalBasis,
           "COMPLETED",
           processedAt,
           processedBy,
-          notes,
+          safeNotes,
         ]
       );
 
@@ -155,6 +192,7 @@ async function anonymizeFarmerData({
     }
 
     targetFarm = found;
+    originalFarmerName = found.farmer_name || found.farmerName;
     found.farmerName = ANONYMIZED_NAME_TAG;
     found.farmer_name = ANONYMIZED_NAME_TAG;
     found.farmerPhone = null;
@@ -169,13 +207,30 @@ async function anonymizeFarmerData({
   }
 
   const farmOrg = targetFarm.organization_id || targetFarm.organizationId || "system";
+  const safeRequesterName = ANONYMIZED_REQUESTER_TAG;
+  const safeRequesterPhone = null;
+  const safeNotes = sanitizeNotes(notes, originalFarmerName);
+
+  // Làm sạch các bản ghi yêu cầu cũ trước đây trong bộ nhớ cho nông hộ này
+  for (const prev of inMemoryAnonymizationRequests) {
+    if ((prev.farmId || prev.farm_id) === farmId) {
+      prev.requesterName = safeRequesterName;
+      prev.requester_name = safeRequesterName;
+      prev.requesterPhone = null;
+      prev.requester_phone = null;
+      prev.notes = sanitizeNotes(prev.notes, originalFarmerName);
+    }
+  }
+
   const anonRecord = {
     id: requestId,
     farmId,
     farm_id: farmId,
     organizationId: farmOrg,
-    requesterName,
-    requester_name: requesterName,
+    requesterName: safeRequesterName,
+    requester_name: safeRequesterName,
+    requesterPhone: safeRequesterPhone,
+    requester_phone: safeRequesterPhone,
     legalBasis,
     legal_basis: legalBasis,
     status: "COMPLETED",
@@ -183,11 +238,11 @@ async function anonymizeFarmerData({
     processed_at: processedAt,
     processedBy,
     processed_by: processedBy,
-    notes,
+    notes: safeNotes,
   };
   inMemoryAnonymizationRequests.unshift(anonRecord);
 
-  // Ghi nhật ký kiểm toán S-31
+  // Ghi nhật ký kiểm toán S-31: chỉ lưu metadata tối thiểu (requestId, legalBasis, processedBy, timestamp), không lưu PII
   await recordAuditLog({
     pool,
     inMemoryLogs: inMemoryContext.inMemoryAuditLogs,
@@ -201,7 +256,7 @@ async function anonymizeFarmerData({
       requestId,
       legalBasis,
       processedBy,
-      notes,
+      timestamp: processedAt,
     },
   });
 
@@ -253,6 +308,8 @@ async function anonymizeFarmerData({
 module.exports = {
   anonymizeFarmerData,
   sanitizeFarmData,
+  sanitizeNotes,
   inMemoryAnonymizationRequests,
   ANONYMIZED_NAME_TAG,
+  ANONYMIZED_REQUESTER_TAG,
 };
