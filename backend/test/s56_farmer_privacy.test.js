@@ -13,7 +13,10 @@ const {
   GENESIS_HASH,
   calculateEventHash,
   verifyBatchEventChain,
+  users,
+  hashPassword,
 } = require("../src/server");
+const { anonymizeFarmerData } = require("../src/farmer_privacy_service");
 
 // Helper to authenticate agents
 async function loginAs(email, password = "Password@123") {
@@ -201,5 +204,186 @@ test("S-56 (Jira N2-124 / N2-286 / N2-243 / N2-300 / N2-244 / N2-301): Cơ chế
       .post("/api/privacy/farmers/NON-EXISTENT-FARM/anonymize")
       .send({ requesterName: "Ai đó" });
     assert.strictEqual(notFoundRes.status, 404);
+  });
+
+  // 9. org_admin chỉ được thao tác với nông hộ thuộc tổ chức của mình
+  await t.test("9. org_admin thuộc tổ chức org-001 được phép ẩn danh nông hộ của org-001", async () => {
+    const testFarmOrg1 = {
+      id: "FARM-ORG1-002",
+      name: "Vườn thanh long Hoàng Trang",
+      area: 2.5,
+      coordinates: "10.7500, 106.6500",
+      organizationId: "org-001",
+      farmerName: "Trần Thị B",
+      farmerPhone: "0987654321",
+      farmerAddress: "Ấp 2, Xã Chợ Gạo, Tiền Giang",
+      isAnonymized: false,
+    };
+    inMemoryFarms.push(testFarmOrg1);
+
+    const orgAdminAgent = await loginAs("orgadmin@example.com"); // org-001
+    const res = await orgAdminAgent
+      .post(`/api/privacy/farmers/${testFarmOrg1.id}/anonymize`)
+      .send({
+        requesterName: "Trần Thị B",
+        legalBasis: "Nghị định 13/2023/NĐ-CP",
+      });
+
+    assert.strictEqual(res.status, 200);
+    assert.strictEqual(res.body.success, true);
+    assert.strictEqual(res.body.farmId, testFarmOrg1.id);
+    assert.strictEqual(res.body.sanitizedFarm.isAnonymized, true);
+    assert.strictEqual(res.body.sanitizedFarm.farmerPhone, null);
+  });
+
+  // 10. Chống IDOR: org_admin của tổ chức B không được thao tác trên nông hộ của tổ chức A
+  await t.test("10. Chống IDOR: org_admin thuộc org-002 bị từ chối 403 khi cố ẩn danh nông hộ của org-001", async () => {
+    // Tạo user orgadmin cho org-002
+    const passHash = await hashPassword("Password@123");
+    users.set("orgadmin-org2@example.com", {
+      id: "usr-orgadmin-002",
+      email: "orgadmin-org2@example.com",
+      passwordHash: passHash,
+      failedCount: 0,
+      lockedUntil: null,
+      organizationId: "org-002",
+      roleId: "org_admin",
+    });
+
+    const testFarmOrg1New = {
+      id: "FARM-ORG1-SECURE",
+      name: "Vườn chanh không hạt org-001",
+      area: 1.2,
+      organizationId: "org-001",
+      farmerName: "Lê Văn C",
+      farmerPhone: "0909123456",
+      farmerAddress: "Long An",
+      isAnonymized: false,
+    };
+    inMemoryFarms.push(testFarmOrg1New);
+
+    const org2AdminAgent = await loginAs("orgadmin-org2@example.com");
+
+    // org_admin org-002 cố tình gửi kèm body organizationId: 'org-001' để giả mạo (spoofing)
+    const idorRes = await org2AdminAgent
+      .post(`/api/privacy/farmers/${testFarmOrg1New.id}/anonymize`)
+      .send({
+        organizationId: "org-001", // Client spoofing
+        requesterName: "Lê Văn C",
+      });
+
+    assert.strictEqual(idorRes.status, 403, "Phải trả về 403 FORBIDDEN khi thao tác chéo tổ chức");
+    assert.match(idorRes.body.message, /quyền/i);
+
+    // Xác nhận dữ liệu nông hộ ở org-001 KHÔNG bị thay đổi
+    const checkFarm = inMemoryFarms.find((f) => f.id === testFarmOrg1New.id);
+    assert.strictEqual(checkFarm.isAnonymized, false, "Nông hộ chưa bị ẩn danh");
+    assert.strictEqual(checkFarm.farmerName, "Lê Văn C", "Tên nông hộ vẫn giữ nguyên");
+  });
+
+  // 11. Kiểm tra API GET /api/privacy/anonymization-requests lọc đúng theo tổ chức của org_admin
+  await t.test("11. API GET /api/privacy/anonymization-requests cách ly danh sách theo tổ chức, không rò rỉ dữ liệu liên tổ chức", async () => {
+    // Thêm 1 nông hộ thuộc org-002 và ẩn danh bởi org_admin org-002
+    const farmOrg2 = {
+      id: "FARM-ORG2-PRIVATE",
+      name: "Vườn bơ Booth org-002",
+      organizationId: "org-002",
+      farmerName: "Phạm Văn D",
+      farmerPhone: "0933445566",
+      isAnonymized: false,
+    };
+    inMemoryFarms.push(farmOrg2);
+
+    const org2AdminAgent = await loginAs("orgadmin-org2@example.com");
+    const anonResOrg2 = await org2AdminAgent
+      .post(`/api/privacy/farmers/${farmOrg2.id}/anonymize`)
+      .send({ requesterName: "Phạm Văn D" });
+    assert.strictEqual(anonResOrg2.status, 200);
+
+    // org_admin org-001 truy vấn danh sách yêu cầu
+    const org1AdminAgent = await loginAs("orgadmin@example.com");
+    const listOrg1 = await org1AdminAgent.get("/api/privacy/anonymization-requests");
+    assert.strictEqual(listOrg1.status, 200);
+
+    // Đảm bảo org-001 KHÔNG nhìn thấy yêu cầu của org-002
+    const hasOrg2Request = listOrg1.body.requests.some(
+      (r) => (r.farmId || r.farm_id) === farmOrg2.id
+    );
+    assert.strictEqual(hasOrg2Request, false, "org_admin org-001 không được nhìn thấy yêu cầu của org-002");
+
+    // org_admin org-002 truy vấn danh sách yêu cầu
+    const listOrg2 = await org2AdminAgent.get("/api/privacy/anonymization-requests");
+    assert.strictEqual(listOrg2.status, 200);
+    const hasOnlyOrg2 = listOrg2.body.requests.every(
+      (r) => (r.farmId || r.farm_id) === farmOrg2.id
+    );
+    assert.strictEqual(hasOnlyOrg2, true, "org_admin org-002 chỉ thấy các yêu cầu thuộc org-002");
+
+    // admin toàn hệ thống truy vấn danh sách -> Thấy cả hai
+    const adminAgent = await loginAs("admin@example.com");
+    const listAdmin = await adminAgent.get("/api/privacy/anonymization-requests");
+    assert.strictEqual(listAdmin.status, 200);
+    assert.ok(listAdmin.body.requests.length >= 2, "Admin toàn hệ thống thấy toàn bộ yêu cầu");
+  });
+
+  // 12. Kiểm tra tính nguyên tử (Transaction Atomicity & Rollback)
+  await t.test("12. Quá trình ẩn danh phải thực thi trong Transaction và Rollback toàn bộ nếu có lỗi xảy ra", async () => {
+    let txStatus = null;
+    const executedQueries = [];
+
+    const mockPgClient = {
+      query: async (sql, params) => {
+        executedQueries.push({ sql, params });
+        if (sql === "BEGIN;") txStatus = "IN_TX";
+        if (sql === "COMMIT;") txStatus = "COMMITTED";
+        if (sql === "ROLLBACK;") txStatus = "ROLLED_BACK";
+
+        if (sql.includes("SELECT") && sql.includes("farms")) {
+          return {
+            rows: [
+              {
+                id: "FARM-TX-001",
+                name: "Vườn sầu riêng Ri6",
+                organization_id: "org-001",
+                farmer_name: "Hoàng Văn E",
+                is_anonymized: false,
+              },
+            ],
+          };
+        }
+
+        if (sql.includes("UPDATE farms")) {
+          return { rowCount: 1 };
+        }
+
+        // Mô phỏng lỗi khi ghi nhận yêu cầu vào farmer_anonymization_requests
+        if (sql.includes("INSERT INTO farmer_anonymization_requests")) {
+          throw new Error("Lỗi kết nối cơ sở dữ liệu khi ghi bản ghi yêu cầu ẩn danh");
+        }
+
+        return { rows: [] };
+      },
+      release: () => {},
+    };
+
+    const mockPool = {
+      connect: async () => mockPgClient,
+    };
+
+    await assert.rejects(
+      async () => {
+        await anonymizeFarmerData({
+          pool: mockPool,
+          farmId: "FARM-TX-001",
+          organizationId: "org-001",
+          isSystemAdmin: false,
+        });
+      },
+      /Lỗi kết nối cơ sở dữ liệu/
+    );
+
+    assert.strictEqual(txStatus, "ROLLED_BACK", "Transaction phải được ROLLBACK khi có lỗi");
+    assert.ok(executedQueries.some((q) => q.sql === "BEGIN;"), "Phải có BEGIN");
+    assert.ok(executedQueries.some((q) => q.sql === "ROLLBACK;"), "Phải có ROLLBACK");
   });
 });

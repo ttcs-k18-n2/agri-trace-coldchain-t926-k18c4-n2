@@ -48,6 +48,7 @@ async function anonymizeFarmerData({
   pool,
   farmId,
   organizationId = null,
+  isSystemAdmin = false,
   requesterName = "Nông hộ chủ vườn",
   requesterPhone = null,
   legalBasis = "Nghị định 13/2023/NĐ-CP",
@@ -61,55 +62,77 @@ async function anonymizeFarmerData({
   let targetFarm = null;
 
   if (pool) {
-    const farmRes = await pool.query(
-      "SELECT id, name, area, coordinates, organization_id, farmer_name, is_anonymized FROM farms WHERE id = $1 AND ($2::text IS NULL OR organization_id = $2)",
-      [farmId, organizationId]
-    );
-    if (farmRes.rows.length === 0) {
-      return {
-        status: 404,
-        error: "FARM_NOT_FOUND",
-        message: `Không tìm thấy vùng trồng / nông hộ với mã: ${farmId}`,
-      };
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN;");
+
+      const farmRes = await client.query(
+        "SELECT id, name, area, coordinates, organization_id, farmer_name, is_anonymized FROM farms WHERE id = $1 FOR UPDATE",
+        [farmId]
+      );
+      if (farmRes.rows.length === 0) {
+        await client.query("ROLLBACK;");
+        return {
+          status: 404,
+          error: "FARM_NOT_FOUND",
+          message: `Không tìm thấy vùng trồng / nông hộ với mã: ${farmId}`,
+        };
+      }
+      targetFarm = farmRes.rows[0];
+
+      // Chống IDOR: org_admin chỉ được xóa nông hộ thuộc tổ chức của mình
+      if (!isSystemAdmin && organizationId && targetFarm.organization_id !== organizationId) {
+        await client.query("ROLLBACK;");
+        return {
+          status: 403,
+          error: "FORBIDDEN",
+          message: "Truy cập bị từ chối: bạn không có quyền xóa định danh nông hộ của tổ chức khác.",
+        };
+      }
+
+      // Cập nhật ẩn danh trên Database trong cùng transaction
+      await client.query(
+        `UPDATE farms
+         SET farmer_name = $1,
+             farmer_phone = NULL,
+             farmer_address = NULL,
+             name = $2,
+             is_anonymized = TRUE,
+             anonymized_at = $3,
+             updated_at = $3
+         WHERE id = $4`,
+        [
+          ANONYMIZED_NAME_TAG,
+          `Vùng trồng ${farmId} (Đã ẩn danh theo NĐ 13/2023)`,
+          processedAt,
+          farmId,
+        ]
+      );
+
+      // Lưu vào bảng theo dõi yêu cầu trong cùng transaction
+      await client.query(
+        `INSERT INTO farmer_anonymization_requests (id, farm_id, requester_name, requester_phone, legal_basis, status, processed_at, processed_by, notes)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+        [
+          requestId,
+          farmId,
+          requesterName,
+          requesterPhone,
+          legalBasis,
+          "COMPLETED",
+          processedAt,
+          processedBy,
+          notes,
+        ]
+      );
+
+      await client.query("COMMIT;");
+    } catch (txErr) {
+      await client.query("ROLLBACK;").catch(() => {});
+      throw txErr;
+    } finally {
+      client.release();
     }
-    targetFarm = farmRes.rows[0];
-
-    // Cập nhật ẩn danh trên Database với ràng buộc organization_id
-    await pool.query(
-      `UPDATE farms
-       SET farmer_name = $1,
-           farmer_phone = NULL,
-           farmer_address = NULL,
-           name = $2,
-           is_anonymized = TRUE,
-           anonymized_at = $3,
-           updated_at = $3
-       WHERE id = $4 AND ($5::text IS NULL OR organization_id = $5)`,
-      [
-        ANONYMIZED_NAME_TAG,
-        `Vùng trồng ${farmId} (Đã ẩn danh theo NĐ 13/2023)`,
-        processedAt,
-        farmId,
-        organizationId,
-      ]
-    );
-
-    // Lưu vào bảng theo dõi yêu cầu
-    await pool.query(
-      `INSERT INTO farmer_anonymization_requests (id, farm_id, requester_name, requester_phone, legal_basis, status, processed_at, processed_by, notes)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-      [
-        requestId,
-        farmId,
-        requesterName,
-        requesterPhone,
-        legalBasis,
-        "COMPLETED",
-        processedAt,
-        processedBy,
-        notes,
-      ]
-    );
   } else {
     // In-memory fallback
     const farms = inMemoryContext.inMemoryFarms || [];
@@ -119,6 +142,15 @@ async function anonymizeFarmerData({
         status: 404,
         error: "FARM_NOT_FOUND",
         message: `Không tìm thấy vùng trồng / nông hộ với mã: ${farmId}`,
+      };
+    }
+
+    const farmOrgId = found.organizationId || found.organization_id;
+    if (!isSystemAdmin && organizationId && farmOrgId !== organizationId) {
+      return {
+        status: 403,
+        error: "FORBIDDEN",
+        message: "Truy cập bị từ chối: bạn không có quyền xóa định danh nông hộ của tổ chức khác.",
       };
     }
 
@@ -136,10 +168,12 @@ async function anonymizeFarmerData({
     found.anonymized_at = processedAt;
   }
 
+  const farmOrg = targetFarm.organization_id || targetFarm.organizationId || "system";
   const anonRecord = {
     id: requestId,
     farmId,
     farm_id: farmId,
+    organizationId: farmOrg,
     requesterName,
     requester_name: requesterName,
     legalBasis,
@@ -159,7 +193,7 @@ async function anonymizeFarmerData({
     inMemoryLogs: inMemoryContext.inMemoryAuditLogs,
     actorUserId: "privacy-officer",
     actorEmail: processedBy,
-    organizationId: targetFarm.organization_id || targetFarm.organizationId || "system",
+    organizationId: farmOrg,
     action: "FARMER_PII_ANONYMIZED",
     resourceType: "farm",
     resourceId: farmId,

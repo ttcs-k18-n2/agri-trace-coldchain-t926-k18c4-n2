@@ -8805,9 +8805,17 @@ app.post(
       const farmId = req.params.id;
       const { requesterName, requesterPhone, legalBasis, notes } = req.body || {};
 
+      // S-56: Lấy organizationId từ phiên xác thực phía server (req.auth), không lấy từ client payload
+      const callerRole = req.auth ? req.auth.roleId : null;
+      const callerOrgId = req.auth ? (req.auth.organizationId || req.auth.organization_id) : null;
+      const isSystemAdmin = callerRole === "admin";
+      const organizationId = isSystemAdmin ? null : callerOrgId;
+
       const result = await anonymizeFarmerData({
         pool,
         farmId,
+        organizationId,
+        isSystemAdmin,
         requesterName: requesterName || "Nông hộ chủ vườn",
         requesterPhone: requesterPhone || null,
         legalBasis: legalBasis || "Nghị định 13/2023/NĐ-CP",
@@ -8833,13 +8841,44 @@ app.get(
   requirePermission(["admin", "org_admin", "inspector"]),
   async (req, res) => {
     try {
+      const callerRole = req.auth ? req.auth.roleId : null;
+      const callerOrgId = req.auth ? (req.auth.organizationId || req.auth.organization_id) : null;
+      const isPrivileged = callerRole === "admin" || callerRole === "inspector" || Boolean(req.auth && req.auth.isInspector);
+
       if (pool) {
-        const queryRes = await pool.query(
-          "SELECT * FROM farmer_anonymization_requests ORDER BY processed_at DESC LIMIT 100"
-        );
-        return res.status(200).json({ requests: queryRes.rows });
+        if (isPrivileged) {
+          const queryRes = await pool.query(
+            "SELECT * FROM farmer_anonymization_requests ORDER BY processed_at DESC LIMIT 100"
+          );
+          return res.status(200).json({ requests: queryRes.rows });
+        } else {
+          // org_admin: Chỉ xem các yêu cầu thuộc phạm vi tổ chức của mình, chống IDOR / rò rỉ dữ liệu chéo tổ chức
+          const queryRes = await pool.query(
+            `SELECT r.*
+             FROM farmer_anonymization_requests r
+             JOIN farms f ON r.farm_id = f.id
+             WHERE f.organization_id = $1
+             ORDER BY r.processed_at DESC LIMIT 100`,
+            [callerOrgId]
+          );
+          return res.status(200).json({ requests: queryRes.rows });
+        }
       }
-      return res.status(200).json({ requests: inMemoryAnonymizationRequests });
+
+      if (isPrivileged) {
+        return res.status(200).json({ requests: inMemoryAnonymizationRequests });
+      }
+
+      // In-memory: Lọc theo organizationId của nông hộ
+      const orgFarmIds = new Set(
+        inMemoryFarms
+          .filter((f) => (f.organizationId || f.organization_id) === callerOrgId)
+          .map((f) => f.id)
+      );
+      const filtered = inMemoryAnonymizationRequests.filter((r) =>
+        r.organizationId === callerOrgId || orgFarmIds.has(r.farmId || r.farm_id)
+      );
+      return res.status(200).json({ requests: filtered });
     } catch (err) {
       return res.status(500).json({ error: "INTERNAL_SERVER_ERROR", message: err.message });
     }
