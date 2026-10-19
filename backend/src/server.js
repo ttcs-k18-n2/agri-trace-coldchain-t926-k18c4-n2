@@ -2399,21 +2399,40 @@ app.get(
   async (req, res) => {
     const lotId = req.params.id;
     try {
+      const callerOrgId = req.auth?.organizationId || req.auth?.organization_id || null;
+      const isPrivileged = Boolean(
+        req.auth?.isInspector ||
+        req.auth?.roleId === "admin" ||
+        req.auth?.roleId === "inspector" ||
+        req.auth?.role === "admin" ||
+        req.auth?.role === "inspector"
+      );
+
       const pdfResult = await exportLotDossierToPdf({
         pool,
         lotId,
         actorEmail: req.auth?.email || "inspector@example.com",
+        callerOrgId,
+        isPrivileged,
         inMemoryContext: {
           inMemoryLots,
           inMemoryOrgs,
           inMemoryFarms,
           inMemoryProducts,
           inMemoryBatchEvents,
+          inMemoryBatchRelations,
           inMemoryShipments,
           inMemoryViolations,
           inMemoryRecallOrders,
         },
       });
+
+      if (pdfResult.status === 403) {
+        return res.status(403).json({
+          error: "FORBIDDEN",
+          message: pdfResult.message || "Bạn không có quyền xuất hồ sơ lô hàng của tổ chức khác.",
+        });
+      }
 
       if (pdfResult.status === 404) {
         return res.status(404).json({
@@ -8751,8 +8770,10 @@ app.post(
       });
 
       return res.status(200).json({
-        success: true,
-        message: "Thực thi job kiểm tra toàn vẹn chuỗi hash thành công.",
+        success: result.success,
+        message: result.status === "FAILED"
+          ? "Job kiểm tra toàn vẹn thất bại do lỗi cơ sở dữ liệu: " + (result.error || "")
+          : "Thực thi job kiểm tra toàn vẹn chuỗi hash thành công.",
         result,
       });
     } catch (err) {

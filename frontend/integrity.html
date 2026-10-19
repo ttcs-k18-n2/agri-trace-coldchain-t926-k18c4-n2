@@ -465,7 +465,7 @@
       <p class="page-subtitle">Kiểm toán mật mã học chuỗi sự kiện hash-chain và nhật ký thao tác người dùng (S-12 / S-31 / K-01) dành riêng cho Cán bộ kiểm tra và Quản trị viên.</p>
     </div>
 
-    <!-- Navigation Tabs (S-31) -->
+    <!-- Navigation Tabs (S-31 / S-55) -->
     <div class="integrity-nav-tabs">
       <button type="button" class="integrity-tab-btn active" id="tabBtnHash">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><polyline points="9 12 11 14 15 10"/></svg>
@@ -474,6 +474,10 @@
       <button type="button" class="integrity-tab-btn" id="tabBtnAuditLogs">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
         <span>Nhật ký thao tác hệ thống (Audit Logs - S-31)</span>
+      </button>
+      <button type="button" class="integrity-tab-btn" id="tabBtnPeriodicAudit">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+        <span>Quét định kỳ toàn hệ thống (S-55)</span>
       </button>
     </div>
 
@@ -638,6 +642,135 @@
               </tr>
             </tbody>
           </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- Panel 3: Periodic System Integrity Audit Dashboard (Story S-55) -->
+    <div id="panelPeriodicAuditSection" style="display: none;">
+      <div class="audit-card">
+        <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; flex-wrap: wrap; gap: 14px;">
+          <div>
+            <h3 style="font-size: 18px; font-weight: 700; color: var(--color-text-main); margin: 0 0 4px 0; display: flex; align-items: center; gap: 8px;">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--color-primary)" stroke-width="2.2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg>
+              Dashboard Quét Toàn Vẹn Định Kỳ Hệ Thống (S-55 / Jira N2-123)
+            </h3>
+            <div style="font-size: 13px; color: var(--color-text-muted);">
+              Tự động rà soát mật mã học chuỗi Hash-Chain của mọi lô hàng trong hệ thống theo lịch trình đêm (02:00 VN) để phát hiện sớm các hành vi can thiệp trái phép.
+            </div>
+          </div>
+          <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+            <div style="display: flex; align-items: center; gap: 6px;">
+              <label for="periodicBatchSize" style="font-size: 12.5px; font-weight: 600; color: var(--color-text-muted);">Cỡ mẻ (Batch):</label>
+              <select id="periodicBatchSize" class="audit-input" style="height: 38px; width: 85px; padding: 0 8px; font-size: 13px;">
+                <option value="10">10</option>
+                <option value="25" selected>25</option>
+                <option value="50">50</option>
+                <option value="100">100</option>
+              </select>
+            </div>
+            <button type="button" class="btn btn-primary" id="btnRunPeriodicAudit" style="height: 38px; padding: 0 16px; font-size: 13px; display: inline-flex; align-items: center; gap: 6px;">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+              <span>Thực thi quét ngay</span>
+            </button>
+            <button type="button" class="btn btn-outline" id="btnRefreshPeriodicData" style="height: 38px; padding: 0 14px; font-size: 13px; display: inline-flex; align-items: center; gap: 6px;">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+              <span>Làm mới</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Metric KPI Cards -->
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 14px; margin-bottom: 20px;">
+          <div style="background: rgba(0, 0, 0, 0.02); border: 1px solid var(--color-border); border-radius: 10px; padding: 14px;">
+            <div style="font-size: 12px; color: var(--color-text-muted); font-weight: 600; text-transform: uppercase;">Lần quét gần nhất</div>
+            <div id="statLastRun" style="font-size: 14px; font-weight: 700; color: var(--color-text-main); margin-top: 4px;">--</div>
+          </div>
+          <div style="background: rgba(0, 0, 0, 0.02); border: 1px solid var(--color-border); border-radius: 10px; padding: 14px;">
+            <div style="font-size: 12px; color: var(--color-text-muted); font-weight: 600; text-transform: uppercase;">Tổng số lô đã quét</div>
+            <div id="statTotalScanned" style="font-size: 20px; font-weight: 700; color: var(--color-text-main); margin-top: 4px;">0</div>
+          </div>
+          <div style="background: rgba(0, 0, 0, 0.02); border: 1px solid var(--color-border); border-radius: 10px; padding: 14px;">
+            <div style="font-size: 12px; color: var(--color-text-muted); font-weight: 600; text-transform: uppercase;">Số lô lỗi / Can thiệp</div>
+            <div id="statBrokenLots" style="font-size: 20px; font-weight: 700; color: var(--color-text-main); margin-top: 4px;">0</div>
+          </div>
+          <div style="background: rgba(0, 0, 0, 0.02); border: 1px solid var(--color-border); border-radius: 10px; padding: 14px;">
+            <div style="font-size: 12px; color: var(--color-text-muted); font-weight: 600; text-transform: uppercase;">Trạng thái hệ thống</div>
+            <div id="statAuditStatus" style="font-size: 15px; font-weight: 700; margin-top: 4px;">--</div>
+          </div>
+        </div>
+
+        <!-- Alert Banner (Breach or Failure) -->
+        <div id="periodicBreachBanner" style="display: none; background: rgba(220, 38, 38, 0.1); border: 1px solid rgba(220, 38, 38, 0.35); border-radius: 8px; padding: 14px 18px; margin-bottom: 20px; align-items: center; gap: 12px;">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#dc2626" stroke-width="2" style="flex-shrink:0;"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+          <div>
+            <div style="font-weight: 700; color: #b91c1c; font-size: 14px;">CẢNH BÁO NGUY CẤP: PHÁT HIỆN LÔ HÀNG BỊ XÂM NHẬP HOẶC ĐỨT MẠCH HASH!</div>
+            <div id="periodicBreachDesc" style="font-size: 13px; color: #991b1b; margin-top: 2px;">Hệ thống phát hiện bất thường trong cấu trúc chuỗi khối dữ liệu. Đã phát cảnh báo khẩn cấp đến Quản trị viên.</div>
+          </div>
+        </div>
+
+        <!-- Alert Banner (DB Failure) -->
+        <div id="periodicFailureBanner" style="display: none; background: rgba(245, 158, 11, 0.1); border: 1px solid rgba(245, 158, 11, 0.35); border-radius: 8px; padding: 14px 18px; margin-bottom: 20px; align-items: center; gap: 12px;">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#d97706" stroke-width="2" style="flex-shrink:0;"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+          <div>
+            <div style="font-weight: 700; color: #b45309; font-size: 14px;">LỖI HỆ THỐNG: QUÉT TOÀN VẸN THẤT BẠI</div>
+            <div id="periodicFailureDesc" style="font-size: 13px; color: #92400e; margin-top: 2px;">Không thể hoàn tất kiểm tra do sự cố kết nối cơ sở dữ liệu.</div>
+          </div>
+        </div>
+
+        <!-- Section 1: Compromised Lots List -->
+        <div style="margin-top: 10px;">
+          <h4 style="font-size: 15px; font-weight: 700; color: var(--color-text-main); margin-bottom: 10px;">
+            Danh sách lô có dấu hiệu bất thường / Bị can thiệp
+          </h4>
+          <div style="overflow-x: auto; border: 1px solid var(--color-border); border-radius: 8px; margin-bottom: 24px;">
+            <table class="audit-table">
+              <thead>
+                <tr>
+                  <th>Mã lô (Lot ID)</th>
+                  <th>Loại lỗi toàn vẹn</th>
+                  <th>Sự kiện sai đầu tiên</th>
+                  <th>Thời điểm ghi nhận</th>
+                  <th>Chi tiết thông điệp</th>
+                </tr>
+              </thead>
+              <tbody id="periodicCompromisedTableBody">
+                <tr>
+                  <td colspan="5" style="text-align: center; padding: 18px; color: var(--color-text-muted);">
+                    Đang tải dữ liệu lô bất thường...
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Section 2: Recent Periodic Job Runs History -->
+        <div>
+          <h4 style="font-size: 15px; font-weight: 700; color: var(--color-text-main); margin-bottom: 10px;">
+            Lịch sử các lần thực thi Job kiểm tra toàn vẹn định kỳ
+          </h4>
+          <div style="overflow-x: auto; border: 1px solid var(--color-border); border-radius: 8px;">
+            <table class="audit-table">
+              <thead>
+                <tr>
+                  <th>Mã Job (Job ID)</th>
+                  <th>Bắt đầu</th>
+                  <th>Hoàn tất</th>
+                  <th>Số lô quét</th>
+                  <th>Số lô lỗi</th>
+                  <th>Trạng thái</th>
+                </tr>
+              </thead>
+              <tbody id="periodicJobsHistoryTableBody">
+                <tr>
+                  <td colspan="6" style="text-align: center; padding: 18px; color: var(--color-text-muted);">
+                    Đang tải lịch sử thực thi job...
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
     </div>
@@ -846,29 +979,67 @@
       const tabBtnAuditLogs = document.getElementById("tabBtnAuditLogs");
       const panelHashSection = document.getElementById("panelHashSection");
       const panelAuditLogsSection = document.getElementById("panelAuditLogsSection");
+      const panelPeriodicAuditSection = document.getElementById("panelPeriodicAuditSection");
+      const tabBtnPeriodicAudit = document.getElementById("tabBtnPeriodicAudit");
       const filterAuditAction = document.getElementById("filterAuditAction");
       const btnRefreshAuditLogs = document.getElementById("btnRefreshAuditLogs");
       const auditLogsTableBody = document.getElementById("auditLogsTableBody");
 
+      // Story S-55 Periodic Audit DOM Elements
+      const btnRunPeriodicAudit = document.getElementById("btnRunPeriodicAudit");
+      const btnRefreshPeriodicData = document.getElementById("btnRefreshPeriodicData");
+      const periodicBatchSize = document.getElementById("periodicBatchSize");
+      const statLastRun = document.getElementById("statLastRun");
+      const statTotalScanned = document.getElementById("statTotalScanned");
+      const statBrokenLots = document.getElementById("statBrokenLots");
+      const statAuditStatus = document.getElementById("statAuditStatus");
+      const periodicBreachBanner = document.getElementById("periodicBreachBanner");
+      const periodicBreachDesc = document.getElementById("periodicBreachDesc");
+      const periodicFailureBanner = document.getElementById("periodicFailureBanner");
+      const periodicFailureDesc = document.getElementById("periodicFailureDesc");
+      const periodicCompromisedTableBody = document.getElementById("periodicCompromisedTableBody");
+      const periodicJobsHistoryTableBody = document.getElementById("periodicJobsHistoryTableBody");
+
+      function escapeHtml(unsafe) {
+        if (unsafe === null || unsafe === undefined) return "";
+        return String(unsafe)
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;")
+          .replace(/'/g, "&#039;");
+      }
+
       function switchIntegrityTab(tabName) {
+        tabBtnHash.classList.remove("active");
+        tabBtnAuditLogs.classList.remove("active");
+        if (tabBtnPeriodicAudit) tabBtnPeriodicAudit.classList.remove("active");
+
+        panelHashSection.style.display = "none";
+        panelAuditLogsSection.style.display = "none";
+        if (panelPeriodicAuditSection) panelPeriodicAuditSection.style.display = "none";
+
         if (tabName === "hash") {
           tabBtnHash.classList.add("active");
-          tabBtnAuditLogs.classList.remove("active");
           panelHashSection.style.display = "block";
-          panelAuditLogsSection.style.display = "none";
-        } else {
-          tabBtnHash.classList.remove("active");
+        } else if (tabName === "audit") {
           tabBtnAuditLogs.classList.add("active");
-          panelHashSection.style.display = "none";
           panelAuditLogsSection.style.display = "block";
           loadAuditLogs();
+        } else if (tabName === "periodic") {
+          if (tabBtnPeriodicAudit) tabBtnPeriodicAudit.classList.add("active");
+          if (panelPeriodicAuditSection) panelPeriodicAuditSection.style.display = "block";
+          loadPeriodicAuditData();
         }
       }
 
       if (tabBtnHash) tabBtnHash.addEventListener("click", () => switchIntegrityTab("hash"));
       if (tabBtnAuditLogs) tabBtnAuditLogs.addEventListener("click", () => switchIntegrityTab("audit"));
+      if (tabBtnPeriodicAudit) tabBtnPeriodicAudit.addEventListener("click", () => switchIntegrityTab("periodic"));
       if (filterAuditAction) filterAuditAction.addEventListener("change", () => loadAuditLogs());
       if (btnRefreshAuditLogs) btnRefreshAuditLogs.addEventListener("click", () => loadAuditLogs());
+      if (btnRefreshPeriodicData) btnRefreshPeriodicData.addEventListener("click", () => loadPeriodicAuditData());
+      if (btnRunPeriodicAudit) btnRunPeriodicAudit.addEventListener("click", () => runPeriodicAudit());
 
       async function loadAuditLogs() {
         if (!auditLogsTableBody) return;
@@ -901,16 +1072,6 @@
               </tr>
             `;
             return;
-          }
-
-          function escapeHtml(unsafe) {
-            if (unsafe === null || unsafe === undefined) return "";
-            return String(unsafe)
-              .replace(/&/g, "&amp;")
-              .replace(/</g, "&lt;")
-              .replace(/>/g, "&gt;")
-              .replace(/"/g, "&quot;")
-              .replace(/'/g, "&#039;");
           }
 
           auditLogsTableBody.innerHTML = logs.map(log => {
@@ -948,6 +1109,167 @@
               </td>
             </tr>
           `;
+        }
+      }
+
+      // --- Story S-55: Periodic Integrity Audit Controller ---
+      async function loadPeriodicAuditData() {
+        if (!statLastRun) return;
+
+        try {
+          // 1. Tải kết quả quét gần nhất
+          const latestRes = await fetch("/api/admin/integrity-audits/latest", { credentials: "same-origin" });
+          if (latestRes.ok) {
+            const latestData = await latestRes.json();
+            const job = latestData.job;
+            const compLogs = Array.isArray(latestData.compromisedLogs) ? latestData.compromisedLogs : [];
+
+            if (job) {
+              const runTime = job.completedAt || job.completed_at || job.startedAt || job.started_at;
+              statLastRun.textContent = runTime ? new Date(runTime).toLocaleString("vi-VN") : "Chưa có lần chạy";
+              const total = job.totalLotsScanned !== undefined ? job.totalLotsScanned : (job.total_lots_scanned || 0);
+              const broken = job.compromisedLotsCount !== undefined ? job.compromisedLotsCount : (job.compromised_lots_count || 0);
+
+              statTotalScanned.textContent = String(total);
+              statBrokenLots.textContent = String(broken);
+
+              const status = job.status || "UNKNOWN";
+              if (status === "PASSED") {
+                statAuditStatus.innerHTML = '<span style="color: #10B981;">✓ AN TOÀN (PASSED)</span>';
+                if (periodicBreachBanner) periodicBreachBanner.style.display = "none";
+                if (periodicFailureBanner) periodicFailureBanner.style.display = "none";
+              } else if (status === "COMPROMISED") {
+                statAuditStatus.innerHTML = '<span style="color: #DC2626;">⚠ ĐỨT MẠCH (COMPROMISED)</span>';
+                if (periodicBreachBanner) {
+                  periodicBreachBanner.style.display = "flex";
+                  if (periodicBreachDesc) {
+                    periodicBreachDesc.textContent = `Phát hiện ${broken} lô có chuỗi sự kiện bị can thiệp trái phép hoặc đứt mạch liên kết hash.`;
+                  }
+                }
+                if (periodicFailureBanner) periodicFailureBanner.style.display = "none";
+              } else if (status === "FAILED") {
+                statAuditStatus.innerHTML = '<span style="color: #D97706;">✖ THẤT BẠI (FAILED)</span>';
+                if (periodicFailureBanner) {
+                  periodicFailureBanner.style.display = "flex";
+                  if (periodicFailureDesc) {
+                    const errDetail = typeof job.error_details === "string" ? job.error_details : JSON.stringify(job.error_details || "");
+                    periodicFailureDesc.textContent = `Lỗi hệ thống trong quá trình quét: ${errDetail || "Lỗi truy vấn cơ sở dữ liệu."}`;
+                  }
+                }
+                if (periodicBreachBanner) periodicBreachBanner.style.display = "none";
+              } else {
+                statAuditStatus.innerHTML = `<span style="color: var(--color-primary);">${escapeHtml(status)}</span>`;
+                if (periodicBreachBanner) periodicBreachBanner.style.display = "none";
+                if (periodicFailureBanner) periodicFailureBanner.style.display = "none";
+              }
+            } else {
+              statLastRun.textContent = "Chưa có dữ liệu";
+              statTotalScanned.textContent = "0";
+              statBrokenLots.textContent = "0";
+              statAuditStatus.innerHTML = '<span style="color: var(--color-text-muted);">Chưa quét</span>';
+            }
+
+            // Render bảng lô bị xâm nhập
+            if (periodicCompromisedTableBody) {
+              if (compLogs.length === 0) {
+                periodicCompromisedTableBody.innerHTML = `
+                  <tr>
+                    <td colspan="5" style="text-align: center; padding: 20px; color: #10B981; font-weight: 600;">
+                      ✓ Không có lô nào bị can thiệp hoặc đứt mạch trong lần quét gần nhất.
+                    </td>
+                  </tr>
+                `;
+              } else {
+                periodicCompromisedTableBody.innerHTML = compLogs.map(item => `
+                  <tr style="background: rgba(220, 38, 38, 0.04);">
+                    <td style="font-weight: 700; font-family: monospace;">${escapeHtml(item.lot_id || item.lotId || "--")}</td>
+                    <td><span class="badge-tampered">${escapeHtml(item.error_type || item.errorType || "BROKEN_CHAIN")}</span></td>
+                    <td style="font-weight: 600;">#${escapeHtml(item.first_invalid_sequence || item.firstInvalidSequence || "--")}</td>
+                    <td style="font-size: 12px; color: var(--color-text-muted);">${item.inspected_at ? escapeHtml(new Date(item.inspected_at).toLocaleString("vi-VN")) : "--"}</td>
+                    <td style="font-size: 12px; color: #b91c1c;">${escapeHtml(item.error_message || item.error || "--")}</td>
+                  </tr>
+                `).join("");
+              }
+            }
+          }
+
+          // 2. Tải lịch sử các lần chạy
+          const jobsRes = await fetch("/api/admin/integrity-audits", { credentials: "same-origin" });
+          if (jobsRes.ok && periodicJobsHistoryTableBody) {
+            const jobsData = await jobsRes.json();
+            const jobs = Array.isArray(jobsData.jobs) ? jobsData.jobs : [];
+
+            if (jobs.length === 0) {
+              periodicJobsHistoryTableBody.innerHTML = `
+                <tr>
+                  <td colspan="6" style="text-align: center; padding: 18px; color: var(--color-text-muted);">
+                    Chưa có lịch sử thực thi job kiểm tra toàn vẹn định kỳ.
+                  </td>
+                </tr>
+              `;
+            } else {
+              periodicJobsHistoryTableBody.innerHTML = jobs.map(j => {
+                const jStatus = j.status || "UNKNOWN";
+                const badgeColor = jStatus === "PASSED" ? "var(--color-primary-light); color: var(--color-primary);"
+                  : jStatus === "COMPROMISED" ? "#fee2e2; color: #dc2626;"
+                  : jStatus === "FAILED" ? "#fef3c7; color: #d97706;" : "#f1f5f9; color: #475569;";
+
+                const sTime = j.startedAt || j.started_at;
+                const cTime = j.completedAt || j.completed_at;
+
+                return `
+                  <tr>
+                    <td style="font-family: monospace; font-weight: 700; font-size: 12px;">${escapeHtml(j.id || "--")}</td>
+                    <td style="font-size: 12px; color: var(--color-text-muted);">${sTime ? escapeHtml(new Date(sTime).toLocaleString("vi-VN")) : "--"}</td>
+                    <td style="font-size: 12px; color: var(--color-text-muted);">${cTime ? escapeHtml(new Date(cTime).toLocaleString("vi-VN")) : "--"}</td>
+                    <td style="font-weight: 600;">${escapeHtml(j.totalLotsScanned !== undefined ? j.totalLotsScanned : (j.total_lots_scanned || 0))}</td>
+                    <td style="font-weight: 700; color: ${j.compromisedLotsCount > 0 || j.compromised_lots_count > 0 ? '#dc2626' : 'inherit'};">
+                      ${escapeHtml(j.compromisedLotsCount !== undefined ? j.compromisedLotsCount : (j.compromised_lots_count || 0))}
+                    </td>
+                    <td>
+                      <span style="display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 700; background: ${badgeColor}">
+                        ${escapeHtml(jStatus)}
+                      </span>
+                    </td>
+                  </tr>
+                `;
+              }).join("");
+            }
+          }
+        } catch (err) {
+          console.error("[S-55 UI Error]:", err);
+        }
+      }
+
+      async function runPeriodicAudit() {
+        if (!btnRunPeriodicAudit) return;
+        btnRunPeriodicAudit.disabled = true;
+        const origHtml = btnRunPeriodicAudit.innerHTML;
+        btnRunPeriodicAudit.innerHTML = `
+          <div class="spinner-small" style="width:14px;height:14px;border:2px solid #fff;border-top-color:transparent;border-radius:50%;animation:spin 0.6s linear infinite;display:inline-block;vertical-align:middle;margin-right:6px;"></div>
+          <span>Đang quét...</span>
+        `;
+
+        try {
+          const batchSize = periodicBatchSize ? Number(periodicBatchSize.value) : 25;
+          const res = await fetch("/api/admin/integrity-audits/run", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            credentials: "same-origin",
+            body: JSON.stringify({ batchSize }),
+          });
+
+          const data = await res.json();
+          if (!res.ok) {
+            throw new Error(data.message || data.error || "Không thể thực thi job kiểm tra.");
+          }
+
+          await loadPeriodicAuditData();
+        } catch (err) {
+          alert("Lỗi khi chạy job kiểm tra toàn vẹn: " + err.message);
+        } finally {
+          btnRunPeriodicAudit.disabled = false;
+          btnRunPeriodicAudit.innerHTML = origHtml;
         }
       }
     });

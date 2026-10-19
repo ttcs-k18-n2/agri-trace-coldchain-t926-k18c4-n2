@@ -12,6 +12,7 @@ const {
   inMemoryProducts,
   inMemoryOrgs,
   inMemoryBatchEvents,
+  inMemoryBatchRelations,
   inMemoryRecallOrders,
   inMemoryAuditLogs,
 } = require("../src/server");
@@ -33,6 +34,7 @@ function setupS53Dataset() {
   inMemoryProducts.length = 0;
   inMemoryOrgs.length = 0;
   inMemoryBatchEvents.length = 0;
+  inMemoryBatchRelations.length = 0;
   inMemoryViolations.length = 0;
   inMemoryRecallOrders.length = 0;
   inMemoryAuditLogs.length = 0;
@@ -334,6 +336,115 @@ test("Story S-53: Xuất hồ sơ truy xuất đầy đủ của một lô ra PD
       const adminRes = await adminAgent.get("/api/lots/LOT-S53-VERIFIED/export-pdf");
       assert.equal(adminRes.status, 200);
       assert.equal(adminRes.headers["content-type"], "application/pdf");
+    }
+  );
+
+  await t.test(
+    "N2-238-GENEALOGY-RECALL: Xuất hồ sơ PDF hiển thị chính xác phả hệ tổ tiên/hậu duệ và cảnh báo thu hồi đang hiệu lực",
+    async () => {
+      setupS53Dataset();
+
+      // Thiết lập phả hệ: LOT-PARENT-01 -> LOT-S53-VERIFIED -> LOT-CHILD-01
+      inMemoryLots.push(
+        {
+          id: "LOT-PARENT-01",
+          code: "LOT-PARENT-01",
+          name: "Lô Cà chua gốc nông trại",
+          organizationId: "org-001",
+          farmId: "FARM-DL-01",
+          status: "Đã phân tách",
+          initialQuantity: 2000,
+          remainingQuantity: 0,
+        },
+        {
+          id: "LOT-CHILD-01",
+          code: "LOT-CHILD-01",
+          name: "Lô con phân phối siêu thị",
+          organizationId: "org-001",
+          status: "Đang lưu thông",
+          initialQuantity: 300,
+          remainingQuantity: 300,
+        }
+      );
+
+      // Quan hệ cha-con
+      inMemoryBatchRelations.push(
+        {
+          parentBatchId: "LOT-PARENT-01",
+          childBatchId: "LOT-S53-VERIFIED",
+          relationType: "SPLIT",
+          quantity: 1000,
+        },
+        {
+          parentBatchId: "LOT-S53-VERIFIED",
+          childBatchId: "LOT-CHILD-01",
+          relationType: "SPLIT",
+          quantity: 300,
+        }
+      );
+
+      // Lệnh thu hồi đang hiệu lực cho lô này
+      inMemoryRecallOrders.push({
+        id: "REC-2026-001",
+        lotId: "LOT-S53-VERIFIED",
+        status: "OPEN",
+        reason: "Phát hiện dư lượng thuốc BVTV vượt ngưỡng quy định",
+        severity: "CRITICAL",
+        createdAt: "2026-10-18T12:00:00.000Z",
+      });
+
+      const result = await exportLotDossierToPdf({
+        lotId: "LOT-S53-VERIFIED",
+        actorEmail: "inspector@example.com",
+        inMemoryContext: {
+          inMemoryLots,
+          inMemoryOrgs,
+          inMemoryFarms,
+          inMemoryProducts,
+          inMemoryBatchEvents,
+          inMemoryBatchRelations,
+          inMemoryViolations,
+          inMemoryRecallOrders,
+        },
+      });
+
+      assert.equal(result.status, 200);
+      assert.ok(Buffer.isBuffer(result.pdfBuffer));
+
+      const pdfText = extractPdfText(result.pdfBuffer);
+
+      // Kiểm tra phả hệ: phải có mã lô mẹ và lô con
+      assert.ok(pdfText.includes("PHA HE NGUON GOC"), "Phải có tiêu đề phả hệ nguồn gốc");
+      assert.ok(pdfText.includes("LOT-PARENT-01"), "Phải hiển thị mã lô mẹ LOT-PARENT-01");
+      assert.ok(pdfText.includes("LOT-CHILD-01"), "Phải hiển thị mã lô con LOT-CHILD-01");
+
+      // Kiểm tra cảnh báo thu hồi
+      assert.ok(pdfText.includes("TINH TRANG THU HOI"), "Phải có tiêu đề tình trạng thu hồi");
+      assert.ok(pdfText.includes("CẢNH BÁO KHẨN: LÔ HÀNG ĐANG CÓ LỆNH THU HỒI HIỆU LỰC"), "Phải có thông báo cảnh báo thu hồi khẩn");
+    }
+  );
+
+  await t.test(
+    "N2-284-TENANT-ISOLATION: Chặn người dùng xuất hồ sơ PDF của tổ chức khác (403 Forbidden)",
+    async () => {
+      setupS53Dataset();
+
+      // LOT-S53-VERIFIED thuộc org-001
+      // user2@example.com thuộc org-002 (role: cooperative)
+      const user2Agent = await loginAs("user2@example.com");
+      const crossOrgRes = await user2Agent.get("/api/lots/LOT-S53-VERIFIED/export-pdf");
+      assert.equal(crossOrgRes.status, 403, "Người dùng thuộc tổ chức khác phải bị chặn với 403 Forbidden");
+      assert.equal(crossOrgRes.body.error, "FORBIDDEN");
+
+      // user@example.com thuộc org-001 được xuất thành công lô của org-001
+      const user1Agent = await loginAs("user@example.com");
+      const sameOrgRes = await user1Agent.get("/api/lots/LOT-S53-VERIFIED/export-pdf");
+      assert.equal(sameOrgRes.status, 200, "Người dùng cùng tổ chức phải xuất được PDF thành công");
+
+      // inspector@example.com (role: inspector) được xuất bất kỳ tổ chức nào
+      const inspectorAgent = await loginAs("inspector@example.com");
+      const inspectorRes = await inspectorAgent.get("/api/lots/LOT-S53-VERIFIED/export-pdf");
+      assert.equal(inspectorRes.status, 200, "Thanh tra viên được xuất PDF của mọi tổ chức");
     }
   );
 });

@@ -1,10 +1,10 @@
 {
-  "drillId": "DRILL-1792422063976",
-  "timestamp": "2026-10-19T15:01:03.986Z",
+  "drillId": "DRILL-1792422909421",
+  "timestamp": "2026-10-19T15:15:09.444Z",
   "status": "DRILL_PASSED",
   "rtoDurationMs": 1,
   "rtoDurationSeconds": 0.001,
-  "rpoPoint": "backup-coldchain-2026-10-19T15-01-03-976Z.enc",
+  "rpoPoint": "backup-coldchain-2026-10-19T15-15-09-422Z.enc",
   "tableCountsRestored": {
     "organizations": 3,
     "users": 0,
@@ -73,10 +73,10 @@
       "errorCaught": true
     }
   },
-  "totalDrillDurationMs": 10,
+  "totalDrillDurationMs": 23,
   "environment": {
     "platform": "win32",
     "nodeVersion": "v24.18.1",
-    "sandboxPath": "C:\\Users\\remote\\AppData\\Local\\Temp\\coldchain-drill-KW2yx5"
+    "sandboxPath": "C:\\Users\\remote\\AppData\\Local\\Temp\\coldchain-drill-UfWiui"
   }
 }
