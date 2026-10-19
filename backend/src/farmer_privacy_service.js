@@ -43,6 +43,26 @@ function sanitizeFarmData(farm, _isPrivileged = false) {
 }
 
 /**
+ * Làm sạch trường ghi chú (notes) nhằm ngăn ngừa rò rỉ PII (họ tên, SĐT, Email)
+ */
+function sanitizeNotes(notes, rawFarmerName = null) {
+  if (!notes || typeof notes !== "string") {
+    return "Xóa thông tin cá nhân theo quyền của chủ thể dữ liệu (Nghị định 13/2023/NĐ-CP)";
+  }
+  let safe = notes;
+  // Loại bỏ số điện thoại (10-11 chữ số hoặc đầu số +84)
+  safe = safe.replace(/(?:\+84|0)[1-9]\d{8,9}\b/g, "[SĐT ĐÃ ẨN]");
+  // Loại bỏ email
+  safe = safe.replace(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g, "[EMAIL ĐÃ ẨN]");
+  // Nếu có tên nông hộ cần làm sạch
+  const nameToMask = typeof rawFarmerName === "string" ? rawFarmerName : (rawFarmerName && (rawFarmerName.farmer_name || rawFarmerName.farmerName));
+  if (nameToMask && nameToMask !== ANONYMIZED_NAME_TAG && nameToMask.trim().length > 1) {
+    safe = safe.split(nameToMask).join("[TÊN NÔNG HỘ ĐÃ ẨN]");
+  }
+  return safe;
+}
+
+/**
  * Xử lý yêu cầu xóa dữ liệu định danh cá nhân nông hộ (Right to Erasure theo Nghị định 13/2023/NĐ-CP)
  * - Xóa sạch PII trên database và API
  * - Giữ nguyên vẹn mã định danh farmId và chuỗi Hash mật mã học (S-12)
@@ -63,6 +83,7 @@ async function anonymizeFarmerData({
   const processedAt = new Date().toISOString();
 
   let targetFarm = null;
+  let originalFarmerName = null;
 
   if (pool) {
     const client = await pool.connect();
@@ -82,6 +103,7 @@ async function anonymizeFarmerData({
         };
       }
       targetFarm = farmRes.rows[0];
+      originalFarmerName = targetFarm.farmer_name;
 
       // Chống IDOR: org_admin chỉ được xóa nông hộ thuộc tổ chức của mình
       if (!isSystemAdmin && organizationId && targetFarm.organization_id !== organizationId) {
@@ -114,6 +136,15 @@ async function anonymizeFarmerData({
 
       const safeRequesterName = ANONYMIZED_REQUESTER_TAG;
       const safeRequesterPhone = null;
+      const safeNotes = sanitizeNotes(notes, targetFarm);
+
+      // Cập nhật làm sạch các bản ghi yêu cầu cũ của nông hộ này (nếu có)
+      await client.query(
+        `UPDATE farmer_anonymization_requests
+         SET requester_name = $1, requester_phone = NULL, notes = $2
+         WHERE farm_id = $3`,
+        [safeRequesterName, safeNotes, farmId]
+      );
 
       // Lưu vào bảng theo dõi yêu cầu trong cùng transaction - không lưu PII thô
       await client.query(
@@ -128,7 +159,7 @@ async function anonymizeFarmerData({
           "COMPLETED",
           processedAt,
           processedBy,
-          notes,
+          safeNotes,
         ]
       );
 
@@ -161,6 +192,7 @@ async function anonymizeFarmerData({
     }
 
     targetFarm = found;
+    originalFarmerName = found.farmer_name || found.farmerName;
     found.farmerName = ANONYMIZED_NAME_TAG;
     found.farmer_name = ANONYMIZED_NAME_TAG;
     found.farmerPhone = null;
@@ -177,6 +209,18 @@ async function anonymizeFarmerData({
   const farmOrg = targetFarm.organization_id || targetFarm.organizationId || "system";
   const safeRequesterName = ANONYMIZED_REQUESTER_TAG;
   const safeRequesterPhone = null;
+  const safeNotes = sanitizeNotes(notes, originalFarmerName);
+
+  // Làm sạch các bản ghi yêu cầu cũ trước đây trong bộ nhớ cho nông hộ này
+  for (const prev of inMemoryAnonymizationRequests) {
+    if ((prev.farmId || prev.farm_id) === farmId) {
+      prev.requesterName = safeRequesterName;
+      prev.requester_name = safeRequesterName;
+      prev.requesterPhone = null;
+      prev.requester_phone = null;
+      prev.notes = sanitizeNotes(prev.notes, originalFarmerName);
+    }
+  }
 
   const anonRecord = {
     id: requestId,
@@ -194,7 +238,7 @@ async function anonymizeFarmerData({
     processed_at: processedAt,
     processedBy,
     processed_by: processedBy,
-    notes,
+    notes: safeNotes,
   };
   inMemoryAnonymizationRequests.unshift(anonRecord);
 
@@ -264,6 +308,7 @@ async function anonymizeFarmerData({
 module.exports = {
   anonymizeFarmerData,
   sanitizeFarmData,
+  sanitizeNotes,
   inMemoryAnonymizationRequests,
   ANONYMIZED_NAME_TAG,
   ANONYMIZED_REQUESTER_TAG,

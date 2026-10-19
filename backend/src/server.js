@@ -123,6 +123,7 @@ const {
 const {
   anonymizeFarmerData,
   sanitizeFarmData,
+  sanitizeNotes,
   inMemoryAnonymizationRequests,
   ANONYMIZED_REQUESTER_TAG,
 } = require("./farmer_privacy_service");
@@ -8852,6 +8853,7 @@ app.get(
         requester_name: ANONYMIZED_REQUESTER_TAG,
         requesterPhone: null,
         requester_phone: null,
+        notes: sanitizeNotes(r.notes),
       });
 
       if (pool) {
