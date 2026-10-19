@@ -206,7 +206,7 @@ async function runNightlyBackup(options = {}) {
     );
   }
 
-  const backupDir = options.backupDir || DEFAULT_BACKUP_DIR;
+  const backupDir = options.backupDir || process.env.BACKUP_DIR || DEFAULT_BACKUP_DIR;
   const encryptionKey = getEncryptionKey(options.encryptionKey);
   const maxRetention = options.maxRetention || MAX_BACKUP_RETENTION;
   const inMemoryContext = options.inMemoryContext || {};
@@ -222,102 +222,174 @@ async function runNightlyBackup(options = {}) {
     fs.mkdirSync(backupDir, { recursive: true });
   }
 
-  const startTime = Date.now();
-  const rawData = await extractAllData({ pool, inMemoryContext });
+  let client = null;
+  let lockAcquired = false;
+  let dbExecutor = pool;
 
-  // 3. Kiểm tra dữ liệu bắt buộc trước khi xác nhận backup thành công
-  const totalMandatoryRows = MANDATORY_TABLES.reduce(
-    (acc, tbl) => acc + (Array.isArray(rawData.tables[tbl]) ? rawData.tables[tbl].length : 0),
-    0
-  );
-
-  if (totalMandatoryRows === 0 && options.allowEmptyDatabase !== true && !options.allowEmpty) {
-    throw new Error(
-      "[Backup Data Error] Cơ sở dữ liệu hoặc context không chứa bất kỳ bản ghi nào trong các bảng bắt buộc. Không tạo file backup rỗng rồi báo SUCCESS."
-    );
-  }
-
-  const plaintext = JSON.stringify(rawData);
-
-  // Tính SHA-256 checksum của dữ liệu gốc
-  const plaintextSha256 = crypto.createHash("sha256").update(plaintext).digest("hex");
-
-  // Mã hóa AES-256-GCM
-  const keyBuffer = deriveKey(encryptionKey);
-  const encryptedPayload = encryptData(plaintext, keyBuffer);
-
-  const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
-  const filename = `backup-coldchain-${timestamp}.enc`;
-  const filePath = path.join(backupDir, filename);
-
-  const fileEnvelope = {
-    metadata: {
-      filename,
-      createdAt: new Date().toISOString(),
-      algorithm: encryptedPayload.algorithm,
-      iv: encryptedPayload.iv,
-      authTag: encryptedPayload.authTag,
-      plaintextSha256,
-      tableSummary: Object.fromEntries(
-        Object.entries(rawData.tables).map(([k, v]) => [k, Array.isArray(v) ? v.length : 0])
-      ),
-    },
-    ciphertext: encryptedPayload.ciphertext,
-  };
-
-  const fileContent = JSON.stringify(fileEnvelope, null, 2);
-  fs.writeFileSync(filePath, fileContent, "utf8");
-
-  // Checksum của tệp mã hóa sau ghi
-  const ciphertextSha256 = crypto.createHash("sha256").update(fileContent).digest("hex");
-  const fileSize = fs.statSync(filePath).size;
-
-  // Xoay vòng bản sao lưu (giữ tối đa 14 bản)
-  const prunedFiles = rotateBackups(backupDir, maxRetention);
-
-  // Cập nhật manifest
-  const manifestPath = path.join(backupDir, "backup-manifest.json");
-  let manifest = { lastUpdated: new Date().toISOString(), backups: [] };
-  if (fs.existsSync(manifestPath)) {
+  // Chống duplicate backup khi nhiều replica backend: Dùng PostgreSQL Advisory Lock pg_try_advisory_lock
+  if (pool && options.useAdvisoryLock !== false) {
     try {
-      manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
-    } catch {
-      manifest = { lastUpdated: new Date().toISOString(), backups: [] };
+      if (typeof pool.connect === "function") {
+        client = await pool.connect();
+        dbExecutor = client;
+        const lockRes = await client.query(
+          "SELECT pg_try_advisory_lock(hashtext('coldchain_backup_lock')) AS locked;"
+        );
+        const locked = lockRes?.rows?.[0]?.locked;
+        if (locked === false) {
+          console.warn("[Backup Advisory Lock] Bản sao lưu đang được xử lý bởi replica khác (advisory lock held). Bỏ qua lần chạy này.");
+          client.release();
+          return {
+            success: false,
+            skipped: true,
+            reason: "ADVISORY_LOCK_HELD",
+            message: "Một replica khác đang thực hiện sao lưu. Đã bỏ qua để tránh trùng lặp.",
+          };
+        }
+        if (locked === true) {
+          lockAcquired = true;
+        }
+      } else if (typeof pool.query === "function") {
+        const lockRes = await pool.query(
+          "SELECT pg_try_advisory_lock(hashtext('coldchain_backup_lock')) AS locked;"
+        );
+        const locked = lockRes?.rows?.[0]?.locked;
+        if (locked === false) {
+          console.warn("[Backup Advisory Lock] Bản sao lưu đang được xử lý bởi replica khác (advisory lock held). Bỏ qua lần chạy này.");
+          return {
+            success: false,
+            skipped: true,
+            reason: "ADVISORY_LOCK_HELD",
+            message: "Một replica khác đang thực hiện sao lưu. Đã bỏ qua để tránh trùng lặp.",
+          };
+        }
+        if (locked === true) {
+          lockAcquired = true;
+        }
+      }
+    } catch (lockErr) {
+      console.warn("[Backup Advisory Lock Warning] Không thể kiểm tra advisory lock:", lockErr.message);
     }
   }
 
-  // Lọc lại manifest chỉ giữ các tệp còn tồn tại trên đĩa
-  manifest.backups = (manifest.backups || []).filter((b) =>
-    fs.existsSync(path.join(backupDir, b.filename))
-  );
+  try {
+    const startTime = Date.now();
+    const rawData = await extractAllData({ pool: dbExecutor, inMemoryContext });
 
-  manifest.backups.unshift({
-    filename,
-    createdAt: fileEnvelope.metadata.createdAt,
-    sizeBytes: fileSize,
-    plaintextSha256,
-    ciphertextSha256,
-    algorithm: fileEnvelope.metadata.algorithm,
-    tableSummary: fileEnvelope.metadata.tableSummary,
-    status: "SUCCESS",
-  });
+    // 3. Kiểm tra dữ liệu bắt buộc trước khi xác nhận backup thành công
+    const totalMandatoryRows = MANDATORY_TABLES.reduce(
+      (acc, tbl) => acc + (Array.isArray(rawData.tables[tbl]) ? rawData.tables[tbl].length : 0),
+      0
+    );
 
-  manifest.lastUpdated = new Date().toISOString();
-  fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2), "utf8");
+    if (totalMandatoryRows === 0 && options.allowEmptyDatabase !== true && !options.allowEmpty) {
+      throw new Error(
+        "[Backup Data Error] Cơ sở dữ liệu hoặc context không chứa bất kỳ bản ghi nào trong các bảng bắt buộc. Không tạo file backup rỗng rồi báo SUCCESS."
+      );
+    }
 
-  const elapsedMs = Date.now() - startTime;
+    const plaintext = JSON.stringify(rawData);
 
-  return {
-    success: true,
-    filename,
-    filePath,
-    fileSize,
-    plaintextSha256,
-    ciphertextSha256,
-    prunedFiles,
-    totalRemainingBackups: manifest.backups.length,
-    elapsedMs,
-  };
+    // Tính SHA-256 checksum của dữ liệu gốc
+    const plaintextSha256 = crypto.createHash("sha256").update(plaintext).digest("hex");
+
+    // Mã hóa AES-256-GCM
+    const keyBuffer = deriveKey(encryptionKey);
+    const encryptedPayload = encryptData(plaintext, keyBuffer);
+
+    const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+    const filename = `backup-coldchain-${timestamp}.enc`;
+    const filePath = path.join(backupDir, filename);
+
+    const fileEnvelope = {
+      metadata: {
+        filename,
+        createdAt: new Date().toISOString(),
+        algorithm: encryptedPayload.algorithm,
+        iv: encryptedPayload.iv,
+        authTag: encryptedPayload.authTag,
+        plaintextSha256,
+        tableSummary: Object.fromEntries(
+          Object.entries(rawData.tables).map(([k, v]) => [k, Array.isArray(v) ? v.length : 0])
+        ),
+      },
+      ciphertext: encryptedPayload.ciphertext,
+    };
+
+    const fileContent = JSON.stringify(fileEnvelope, null, 2);
+    fs.writeFileSync(filePath, fileContent, "utf8");
+
+    // Checksum của tệp mã hóa sau ghi
+    const ciphertextSha256 = crypto.createHash("sha256").update(fileContent).digest("hex");
+    const fileSize = fs.statSync(filePath).size;
+
+    // Xoay vòng bản sao lưu (giữ tối đa 14 bản)
+    const prunedFiles = rotateBackups(backupDir, maxRetention);
+
+    // Cập nhật manifest
+    const manifestPath = path.join(backupDir, "backup-manifest.json");
+    let manifest = { lastUpdated: new Date().toISOString(), backups: [] };
+    if (fs.existsSync(manifestPath)) {
+      try {
+        manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+      } catch {
+        manifest = { lastUpdated: new Date().toISOString(), backups: [] };
+      }
+    }
+
+    // Lọc lại manifest chỉ giữ các tệp còn tồn tại trên đĩa
+    manifest.backups = (manifest.backups || []).filter((b) =>
+      fs.existsSync(path.join(backupDir, b.filename))
+    );
+
+    manifest.backups.unshift({
+      filename,
+      createdAt: fileEnvelope.metadata.createdAt,
+      sizeBytes: fileSize,
+      plaintextSha256,
+      ciphertextSha256,
+      algorithm: fileEnvelope.metadata.algorithm,
+      tableSummary: fileEnvelope.metadata.tableSummary,
+      status: "SUCCESS",
+    });
+
+    if (manifest.backups.length > maxRetention) {
+      manifest.backups = manifest.backups.slice(0, maxRetention);
+    }
+
+    manifest.lastStatus = "SUCCESS";
+    manifest.lastBackupAt = fileEnvelope.metadata.createdAt;
+    manifest.lastError = null;
+    manifest.lastUpdated = new Date().toISOString();
+    fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2), "utf8");
+
+    const elapsedMs = Date.now() - startTime;
+
+    return {
+      success: true,
+      filename,
+      filePath,
+      fileSize,
+      plaintextSha256,
+      ciphertextSha256,
+      prunedFiles,
+      totalRemainingBackups: manifest.backups.length,
+      elapsedMs,
+    };
+  } finally {
+    if (lockAcquired && dbExecutor) {
+      try {
+        await dbExecutor.query("SELECT pg_advisory_unlock(hashtext('coldchain_backup_lock'));");
+      } catch (unlockErr) {
+        console.warn("[Backup Advisory Lock Warning] Lỗi giải phóng advisory lock:", unlockErr.message);
+      }
+    }
+    if (client && typeof client.release === "function") {
+      try {
+        client.release();
+      } catch {}
+    }
+  }
 }
 
 /**
@@ -326,26 +398,55 @@ async function runNightlyBackup(options = {}) {
 function startNightlyBackupCron(options = {}) {
   const cronExpression = options.cronExpression || process.env.BACKUP_CRON_SCHEDULE || "0 2 * * *";
   const pool = options.pool || null;
-  const backupDir = options.backupDir || DEFAULT_BACKUP_DIR;
+  const backupDir = options.backupDir || process.env.BACKUP_DIR || DEFAULT_BACKUP_DIR;
+  const timezone = options.timezone || process.env.TZ || "Asia/Ho_Chi_Minh";
 
   try {
     const cron = require("node-cron");
-    const task = cron.schedule(cronExpression, async () => {
-      console.log(`[Backup Cron S-57] Đang thực thi sao lưu tự động ban đêm (Lịch: ${cronExpression})...`);
-      try {
-        const encryptionKey = process.env.BACKUP_ENCRYPTION_KEY || options.encryptionKey;
-        const res = await runNightlyBackup({
-          pool,
-          backupDir,
-          encryptionKey,
-        });
-        console.log(`[Backup Cron S-57] Hoàn thành sao lưu tự động: ${res.filename} (${res.fileSize} bytes)`);
-      } catch (err) {
-        console.error(`[Backup Cron S-57 Error] Thất bại khi sao lưu tự động:`, err.message);
+    const task = cron.schedule(
+      cronExpression,
+      async () => {
+        console.log(`[Backup Cron S-57] Đang thực thi sao lưu tự động ban đêm (Lịch: ${cronExpression}, Timezone: ${timezone})...`);
+        try {
+          const encryptionKey = options.encryptionKey || process.env.BACKUP_ENCRYPTION_KEY;
+          const res = await runNightlyBackup({
+            pool,
+            backupDir,
+            encryptionKey,
+            inMemoryContext: options.inMemoryContext,
+          });
+          if (res && res.skipped) {
+            console.log(`[Backup Cron S-57] ${res.message || res.reason}`);
+          } else if (res && res.filename) {
+            console.log(`[Backup Cron S-57] Hoàn thành sao lưu tự động: ${res.filename} (${res.fileSize} bytes)`);
+          }
+        } catch (err) {
+          console.error(`[Backup Cron S-57 Error] Thất bại khi sao lưu tự động lúc ${new Date().toISOString()}:`, err.message);
+          try {
+            const manifestPath = path.join(backupDir, "backup-manifest.json");
+            let manifest = { lastUpdated: new Date().toISOString(), backups: [] };
+            if (fs.existsSync(manifestPath)) {
+              try {
+                manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+              } catch {}
+            }
+            manifest.lastError = {
+              failedAt: new Date().toISOString(),
+              errorMessage: err.message,
+            };
+            manifest.lastStatus = "FAILED";
+            manifest.lastUpdated = new Date().toISOString();
+            fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2), "utf8");
+          } catch (_) {}
+        }
+      },
+      {
+        scheduled: true,
+        timezone,
       }
-    });
+    );
 
-    console.log(`[Backup Scheduler S-57] Đã kích hoạt lịch sao lưu tự động ban đêm: ${cronExpression}`);
+    console.log(`[Backup Scheduler S-57] Đã kích hoạt lịch sao lưu tự động ban đêm: ${cronExpression} (Múi giờ: ${timezone})`);
     return task;
   } catch (err) {
     console.warn(`[Backup Scheduler S-57] Không thể khởi động cron sao lưu:`, err.message);
@@ -356,6 +457,7 @@ function startNightlyBackupCron(options = {}) {
 if (require.main === module) {
   const isProduction = process.env.NODE_ENV === "production";
   const dbUrl = process.env.DATABASE_URL;
+  const isScheduleMode = process.argv.includes("--schedule");
 
   if (isProduction && !dbUrl) {
     console.error("[Backup Fatal] Không cho phép chạy backup ở chế độ production nếu không có DATABASE_URL.");
@@ -375,22 +477,45 @@ if (require.main === module) {
     console.warn("[Backup S-57 CLI Warning] DATABASE_URL không được cấu hình. Chạy ở chế độ Standalone / Mock.");
   }
 
-  runNightlyBackup({ pool })
-    .then((res) => {
-      console.log("[Backup S-57] Hoàn thành sao lưu cơ sở dữ liệu:");
-      console.log(JSON.stringify(res, null, 2));
+  const backupDir = process.env.BACKUP_DIR || DEFAULT_BACKUP_DIR;
+
+  if (isScheduleMode) {
+    console.log("[Backup S-57 CLI] Chế độ Scheduler độc lập đã kích hoạt (--schedule). Đang chờ kích hoạt theo lịch...");
+    const task = startNightlyBackupCron({ pool, backupDir });
+
+    const handleShutdown = async (signal) => {
+      console.log(`[Backup S-57 CLI] Nhận tín hiệu ${signal}. Đang tắt dịch vụ backup scheduler...`);
+      if (task && typeof task.stop === "function") {
+        task.stop();
+      }
       if (pool) {
-        pool.end().catch(() => {});
+        try {
+          await pool.end();
+        } catch {}
       }
       process.exit(0);
-    })
-    .catch((err) => {
-      console.error("[Backup S-57 Error]:", err.message);
-      if (pool) {
-        pool.end().catch(() => {});
-      }
-      process.exit(1);
-    });
+    };
+
+    process.on("SIGINT", () => handleShutdown("SIGINT"));
+    process.on("SIGTERM", () => handleShutdown("SIGTERM"));
+  } else {
+    runNightlyBackup({ pool, backupDir })
+      .then((res) => {
+        console.log("[Backup S-57] Hoàn thành sao lưu cơ sở dữ liệu:");
+        console.log(JSON.stringify(res, null, 2));
+        if (pool) {
+          pool.end().catch(() => {});
+        }
+        process.exit(0);
+      })
+      .catch((err) => {
+        console.error("[Backup S-57 Error]:", err.message);
+        if (pool) {
+          pool.end().catch(() => {});
+        }
+        process.exit(1);
+      });
+  }
 }
 
 module.exports = {

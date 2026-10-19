@@ -61,9 +61,14 @@ async function restoreBackup(filePath, options = {}) {
     process.env.NODE_ENV === "production" ||
     (process.env.DATABASE_URL && (process.env.DATABASE_URL.includes("prod") || process.env.DATABASE_URL.includes("live")));
 
-  if (isProduction && !options.allowProduction && process.env.CONFIRM_PRODUCTION_RESTORE !== "true") {
+  const hasProductionConfirm =
+    process.env.CONFIRM_PRODUCTION_RESTORE === "true" ||
+    options.allowProduction === true ||
+    options.confirmProductionRestore === true;
+
+  if (isProduction && !hasProductionConfirm) {
     throw new Error(
-      "[BẢO VỆ PRODUCTION] Thao tác khôi phục bị từ chối! Không được khôi phục đè vào môi trường Production mà không có cờ xác nhận 'allowProduction' hoặc biến môi trường CONFIRM_PRODUCTION_RESTORE=true."
+      "[BẢO VỆ PRODUCTION] Thao tác khôi phục bị từ chối! Không được khôi phục đè vào môi trường Production khi thiếu xác nhận CONFIRM_PRODUCTION_RESTORE=true."
     );
   }
 
@@ -157,9 +162,36 @@ async function restoreBackup(filePath, options = {}) {
         tableCounts[table] = rows.length;
       }
 
+      // 3. Đối soát tính toàn vẹn chuỗi hash trước khi COMMIT (khi có yêu cầu enforceIntegrity)
+      if (!skipVerification && options.enforceIntegrity) {
+        const rawEvents = (restoredData.tables && restoredData.tables.batch_events) || [];
+        const eventsByBatch = {};
+        for (const ev of rawEvents) {
+          const bId = ev.batch_id || ev.batchId || ev.lot_id;
+          if (!eventsByBatch[bId]) eventsByBatch[bId] = [];
+          eventsByBatch[bId].push(ev);
+        }
+
+        for (const [lotId, evList] of Object.entries(eventsByBatch)) {
+          evList.sort(
+            (a, b) =>
+              Number(a.sequence_no !== undefined ? a.sequence_no : a.sequenceNo) -
+              Number(b.sequence_no !== undefined ? b.sequence_no : b.sequenceNo)
+          );
+          const verifyRes = verifyBatchEventChain(evList);
+          if (!verifyRes.valid) {
+            throw new Error(`Lỗi toàn vẹn chuỗi hash tại lô ${lotId}: ${verifyRes.error}`);
+          }
+        }
+      }
+
       await client.query("COMMIT;");
     } catch (txErr) {
-      await client.query("ROLLBACK;");
+      try {
+        await client.query("ROLLBACK;");
+      } catch {
+        // Bỏ qua lỗi ROLLBACK thứ cấp nếu kết nối cơ sở dữ liệu đã bị gián đoạn
+      }
       throw new Error(`[Restore Transaction Rollback] Khôi phục thất bại, đã hoàn tác: ${txErr.message}`);
     } finally {
       client.release();
@@ -213,7 +245,12 @@ async function restoreBackup(filePath, options = {}) {
           Number(b.sequence_no !== undefined ? b.sequence_no : b.sequenceNo)
       );
       const verifyRes = verifyBatchEventChain(evList);
-      checks.push({ lotId, valid: verifyRes.valid, error: verifyRes.error || null });
+      checks.push({
+        lotId,
+        valid: verifyRes.valid,
+        error: verifyRes.error || null,
+        type: verifyRes.type || null,
+      });
     }
 
     integrityVerification = {
@@ -222,6 +259,13 @@ async function restoreBackup(filePath, options = {}) {
       passed: checks.every((c) => c.valid),
       details: checks,
     };
+
+    if (options.enforceIntegrity && !integrityVerification.passed) {
+      const failed = integrityVerification.details.find((c) => !c.valid);
+      throw new Error(
+        `[Restore Hash Integrity Error] Chuỗi hash sự kiện không hợp lệ tại lô ${failed ? failed.lotId : "unknown"}: ${failed ? failed.error : "Unknown error"}`
+      );
+    }
   }
 
   const elapsedMs = Date.now() - startTime;
