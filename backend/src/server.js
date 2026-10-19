@@ -32,6 +32,10 @@ const {
   startNightlyTemperatureAggregationCron,
   DEFAULT_CUTOFF_DAYS,
 } = require("./temperature_hourly_aggregation_service");
+const {
+  startNightlyBackupCron,
+  DEFAULT_BACKUP_DIR,
+} = require("../scripts/backup_nightly");
 const { getTransporterViolationReport } = require("./transporter_violation_report_service");
 const {
   isValidQuantity,
@@ -8796,6 +8800,62 @@ app.get(
 );
 
 /**
+ * S-57 (Jira N2-125): Trạng thái sao lưu cơ sở dữ liệu hằng đêm
+ * Quyền: Chỉ admin hệ thống mới có quyền truy cập
+ */
+app.get(
+  "/api/admin/backup-status",
+  requirePermission(["admin"]),
+  async (req, res) => {
+    try {
+      const backupDir = process.env.BACKUP_DIR || DEFAULT_BACKUP_DIR;
+      const manifestPath = path.join(backupDir, "backup-manifest.json");
+
+      let manifest = null;
+      let manifestExists = false;
+
+      if (fs.existsSync(manifestPath)) {
+        try {
+          const raw = fs.readFileSync(manifestPath, "utf8");
+          manifest = JSON.parse(raw);
+          manifestExists = true;
+        } catch (parseErr) {
+          console.warn("[Backup Status API] Lỗi phân tích cú pháp manifest:", parseErr.message);
+        }
+      }
+
+      const backups = manifest && Array.isArray(manifest.backups) ? manifest.backups : [];
+      const latestBackup = backups.length > 0 ? backups[0] : null;
+      const totalBackups = backups.length;
+      const lastStatus = latestBackup
+        ? latestBackup.status
+        : manifest && manifest.lastStatus
+        ? manifest.lastStatus
+        : manifestExists
+        ? "NO_BACKUPS"
+        : "NOT_INITIALIZED";
+      const lastBackupAt = latestBackup ? latestBackup.createdAt : null;
+
+      return res.status(200).json({
+        status: "OK",
+        backupDir,
+        manifestExists,
+        manifestLastUpdated: manifest ? manifest.lastUpdated : null,
+        totalBackups,
+        latestBackup,
+        lastStatus,
+        lastBackupAt,
+        lastError: manifest && manifest.lastError ? manifest.lastError : null,
+        manifest,
+      });
+    } catch (err) {
+      console.error("[Backup Status Error]:", err);
+      return res.status(500).json({ error: "INTERNAL_SERVER_ERROR", message: err.message });
+    }
+  }
+);
+
+/**
  * S-56 (Jira N2-124): Quyền xóa dữ liệu định danh nông hộ (Right to Erasure theo Nghị định 13/2023/NĐ-CP)
  * Đảm bảo xóa sạch thông tin cá nhân (họ tên, SĐT, địa chỉ) mà không phá vỡ chuỗi hash mật mã học (S-12).
  */
@@ -9082,6 +9142,12 @@ async function start() {
   // Khởi động job tổng hợp nhiệt độ định kỳ ban đêm (S-51 / N2-114)
   startNightlyTemperatureAggregationCron({ pool });
 
+  // Khởi động job sao lưu tự động ban đêm nếu bật ENABLE_BACKUP_CRON === 'true' (S-57 / Jira N2-125)
+  if (process.env.ENABLE_BACKUP_CRON === "true") {
+    console.log("[Backup S-57 Server] ENABLE_BACKUP_CRON='true' - Khởi động cron sao lưu tự động ban đêm...");
+    startNightlyBackupCron({ pool });
+  }
+
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`Backend server running at http://0.0.0.0:${PORT}`);
   });
@@ -9216,6 +9282,7 @@ module.exports = {
   sanitizeFarmData,
   inMemoryAnonymizationRequests,
   ANONYMIZED_REQUESTER_TAG,
+  startNightlyBackupCron,
 };
 
 // --- S-46: Sinh và xuất mã QR cho lô hàng (PNG / SVG) ---

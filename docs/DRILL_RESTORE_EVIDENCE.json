@@ -1,15 +1,15 @@
 {
-  "drillId": "DRILL-1792402604505",
-  "timestamp": "2026-10-19T09:36:44.508Z",
+  "drillId": "DRILL-1792422063976",
+  "timestamp": "2026-10-19T15:01:03.986Z",
   "status": "DRILL_PASSED",
   "rtoDurationMs": 1,
   "rtoDurationSeconds": 0.001,
-  "rpoPoint": "backup-coldchain-2026-10-19T09-36-44-506Z.enc",
+  "rpoPoint": "backup-coldchain-2026-10-19T15-01-03-976Z.enc",
   "tableCountsRestored": {
     "organizations": 3,
     "users": 0,
     "products": 0,
-    "farms": 0,
+    "farms": 1,
     "lots": 2,
     "batch_events": 2,
     "lot_transfers": 0,
@@ -37,23 +37,46 @@
       {
         "lotId": "LOT-DRILL-01",
         "valid": true,
-        "error": null
+        "error": null,
+        "type": null
       }
     ]
   },
   "checks": {
     "orgsParity": true,
+    "farmsParity": true,
     "lotsParity": true,
     "eventsParity": true,
     "shipmentsParity": true,
     "violationsParity": true,
     "anonymizationParity": true,
+    "foreignKeysValid": true,
     "hashIntegrityPassed": true
   },
-  "totalDrillDurationMs": 2,
+  "exceptionScenarios": {
+    "wrongKey": {
+      "passed": true,
+      "detectedError": "Giải mã thất bại - Dữ liệu bị giả mạo hoặc khóa không khớp: Unsupported state or unable to authenticate data"
+    },
+    "tamperedCiphertext": {
+      "passed": true,
+      "detectedError": "Giải mã thất bại - Dữ liệu bị giả mạo hoặc khóa không khớp: Unsupported state or unable to authenticate data"
+    },
+    "tamperedAuthTag": {
+      "passed": true,
+      "detectedError": "Giải mã thất bại - Dữ liệu bị giả mạo hoặc khóa không khớp: Unsupported state or unable to authenticate data"
+    },
+    "transactionRollback": {
+      "passed": true,
+      "beginExecuted": true,
+      "rollbackExecuted": true,
+      "errorCaught": true
+    }
+  },
+  "totalDrillDurationMs": 10,
   "environment": {
     "platform": "win32",
     "nodeVersion": "v24.18.1",
-    "sandboxPath": "C:\\Users\\remote\\AppData\\Local\\Temp\\coldchain-drill-dfYRPR"
+    "sandboxPath": "C:\\Users\\remote\\AppData\\Local\\Temp\\coldchain-drill-KW2yx5"
   }
 }
