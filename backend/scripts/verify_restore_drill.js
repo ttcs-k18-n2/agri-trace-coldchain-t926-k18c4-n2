@@ -3,6 +3,7 @@
 const fs = require("node:fs");
 const path = require("node:path");
 const os = require("node:os");
+const crypto = require("node:crypto");
 const { runNightlyBackup } = require("./backup_nightly");
 const { restoreBackup } = require("./restore_backup");
 const { calculateEventHash, GENESIS_HASH } = require("../src/integrity");
@@ -79,12 +80,26 @@ function createDrillMockContext() {
     },
   ];
 
+  const anonymizationRequests = [
+    {
+      id: "REQ-DRILL-001",
+      farmId: "FARM-DL-01",
+      requesterName: "Nông hộ chủ vườn Nguyễn Văn A",
+      legalBasis: "Nghị định 13/2023/NĐ-CP",
+      status: "COMPLETED",
+      processedAt: "2026-10-18T07:00:00.000Z",
+      processedBy: "privacy-officer@agri-trace.internal",
+      notes: "Yêu cầu ẩn danh theo quyền chủ thể dữ liệu",
+    },
+  ];
+
   return {
     inMemoryOrgs: orgs,
     inMemoryLots: lots,
     inMemoryBatchEvents: events,
     inMemoryShipments: shipments,
     inMemoryViolations: violations,
+    inMemoryAnonymizationRequests: anonymizationRequests,
   };
 }
 
@@ -95,6 +110,10 @@ async function runRestoreDrill(options = {}) {
   const drillId = "DRILL-" + Date.now();
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "coldchain-drill-"));
   const drillStartTime = Date.now();
+  const encryptionKey =
+    options.encryptionKey ||
+    process.env.BACKUP_ENCRYPTION_KEY ||
+    ("drill-secret-" + crypto.randomBytes(16).toString("hex"));
 
   console.log(`[Diễn tập S-57] Bắt đầu diễn tập khôi phục thảm họa (Drill ID: ${drillId})`);
   console.log(`[Diễn tập S-57] Môi trường tạm biệt lập: ${tempDir}`);
@@ -105,7 +124,7 @@ async function runRestoreDrill(options = {}) {
   
   const backupRes = await runNightlyBackup({
     backupDir: tempDir,
-    encryptionKey: "drill-secret-key-super-secure-2026!",
+    encryptionKey,
     inMemoryContext: mockContext,
   });
 
@@ -118,6 +137,7 @@ async function runRestoreDrill(options = {}) {
     inMemoryBatchEvents: [],
     inMemoryShipments: [],
     inMemoryViolations: [],
+    inMemoryAnonymizationRequests: [],
   };
 
   // 3. Khôi phục lên môi trường tạm & đo thời gian
@@ -125,7 +145,7 @@ async function runRestoreDrill(options = {}) {
   const restoreStart = Date.now();
 
   const restoreRes = await restoreBackup(backupRes.filePath, {
-    encryptionKey: "drill-secret-key-super-secure-2026!",
+    encryptionKey,
     targetInMemory: sandboxTarget,
     skipVerification: false,
   });
@@ -141,6 +161,9 @@ async function runRestoreDrill(options = {}) {
     eventsParity: sandboxTarget.inMemoryBatchEvents.length === mockContext.inMemoryBatchEvents.length,
     shipmentsParity: sandboxTarget.inMemoryShipments.length === mockContext.inMemoryShipments.length,
     violationsParity: sandboxTarget.inMemoryViolations.length === mockContext.inMemoryViolations.length,
+    anonymizationParity:
+      (sandboxTarget.inMemoryAnonymizationRequests || []).length ===
+      (mockContext.inMemoryAnonymizationRequests || []).length,
     hashIntegrityPassed: restoreRes.integrityVerification.passed,
   };
 

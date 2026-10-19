@@ -54,6 +54,21 @@ function encryptData(plaintextString, keyBuffer) {
   };
 }
 
+const MANDATORY_TABLES = [
+  "organizations",
+  "users",
+  "products",
+  "farms",
+  "lots",
+  "batch_events",
+  "cold_boxes",
+  "shipments",
+  "cold_chain_violations",
+  "recall_orders",
+  "audit_logs",
+  "farmer_anonymization_requests",
+];
+
 /**
  * Lấy dữ liệu toàn bộ bảng từ database hoặc in-memory
  */
@@ -95,11 +110,16 @@ async function extractAllData({ pool, inMemoryContext = {} }) {
   if (pool) {
     for (const tbl of tables) {
       try {
-        const res = await pool.query(`SELECT * FROM ${tbl}`);
+        const res = await pool.query(`SELECT * FROM "${tbl}"`);
         dump.tables[tbl] = res ? (res.rows || []) : [];
       } catch (err) {
         // Mã 42P01: undefined_table (bảng chưa tồn tại do migration chưa chạy)
-        if (err.code === "42P01" || (err.message && err.message.includes("does not exist"))) {
+        const isMissingTable = err.code === "42P01" || (err.message && err.message.includes("does not exist"));
+        if (isMissingTable) {
+          // Bảng bắt buộc cốt lõi KHÔNG được âm thầm bỏ qua
+          if (MANDATORY_TABLES.includes(tbl)) {
+            throw new Error(`[Backup Fatal] Bảng bắt buộc '${tbl}' chưa tồn tại hoặc bị thiếu: ${err.message}`);
+          }
           dump.tables[tbl] = [];
         } else {
           // Bất kỳ lỗi kết nối hoặc truy vấn nào khác -> KHÔNG được bỏ qua, ném lỗi để dừng backup
@@ -176,11 +196,27 @@ function rotateBackups(backupDir, maxRetention = MAX_BACKUP_RETENTION) {
  * Hàm chính thực hiện sao lưu hằng đêm
  */
 async function runNightlyBackup(options = {}) {
+  const isProduction = process.env.NODE_ENV === "production";
+  const pool = options.pool || null;
+
+  // 1. Không cho phép chạy backup ở chế độ production nếu không có DATABASE_URL
+  if (isProduction && !pool && !process.env.DATABASE_URL) {
+    throw new Error(
+      "[BẢO MẬT PRODUCTION] Chạy backup ở chế độ production bắt buộc phải có DATABASE_URL kết nối cơ sở dữ liệu thực."
+    );
+  }
+
   const backupDir = options.backupDir || DEFAULT_BACKUP_DIR;
   const encryptionKey = getEncryptionKey(options.encryptionKey);
   const maxRetention = options.maxRetention || MAX_BACKUP_RETENTION;
-  const pool = options.pool || null;
   const inMemoryContext = options.inMemoryContext || {};
+
+  // 2. Khi chưa có database và inMemoryContext rỗng, không được tạo file rỗng rồi báo SUCCESS
+  if (!pool && Object.keys(inMemoryContext).length === 0 && !options.allowEmpty) {
+    throw new Error(
+      "[Backup Error] Không có kết nối database và không có dữ liệu nguồn. Hủy bỏ sao lưu."
+    );
+  }
 
   if (!fs.existsSync(backupDir)) {
     fs.mkdirSync(backupDir, { recursive: true });
@@ -189,16 +225,16 @@ async function runNightlyBackup(options = {}) {
   const startTime = Date.now();
   const rawData = await extractAllData({ pool, inMemoryContext });
 
-  // Kiểm tra tính toàn vẹn dữ liệu: không cho phép sao lưu rỗng bất thường khi có kết nối pool
-  if (pool) {
-    const essentialTables = ["organizations", "users", "products", "farms", "lots"];
-    const allEssentialMissing = essentialTables.every(
-      (tbl) => !rawData.tables[tbl] || rawData.tables[tbl].length === 0
+  // 3. Kiểm tra dữ liệu bắt buộc trước khi xác nhận backup thành công
+  const totalMandatoryRows = MANDATORY_TABLES.reduce(
+    (acc, tbl) => acc + (Array.isArray(rawData.tables[tbl]) ? rawData.tables[tbl].length : 0),
+    0
+  );
+
+  if (totalMandatoryRows === 0 && options.allowEmptyDatabase !== true && !options.allowEmpty) {
+    throw new Error(
+      "[Backup Data Error] Cơ sở dữ liệu hoặc context không chứa bất kỳ bản ghi nào trong các bảng bắt buộc. Không tạo file backup rỗng rồi báo SUCCESS."
     );
-    // Nếu có pool nhưng tất cả bảng cốt lõi đều rỗng bất thường -> cảnh báo
-    if (allEssentialMissing && options.allowEmptyDatabase !== true) {
-      console.warn("[Backup Notice] CSDL đang ở trạng thái rỗng hoặc mới khởi tạo.");
-    }
   }
 
   const plaintext = JSON.stringify(rawData);
@@ -284,9 +320,49 @@ async function runNightlyBackup(options = {}) {
   };
 }
 
+/**
+ * Khởi động lịch sao lưu tự động hằng đêm bằng node-cron
+ */
+function startNightlyBackupCron(options = {}) {
+  const cronExpression = options.cronExpression || process.env.BACKUP_CRON_SCHEDULE || "0 2 * * *";
+  const pool = options.pool || null;
+  const backupDir = options.backupDir || DEFAULT_BACKUP_DIR;
+
+  try {
+    const cron = require("node-cron");
+    const task = cron.schedule(cronExpression, async () => {
+      console.log(`[Backup Cron S-57] Đang thực thi sao lưu tự động ban đêm (Lịch: ${cronExpression})...`);
+      try {
+        const encryptionKey = process.env.BACKUP_ENCRYPTION_KEY || options.encryptionKey;
+        const res = await runNightlyBackup({
+          pool,
+          backupDir,
+          encryptionKey,
+        });
+        console.log(`[Backup Cron S-57] Hoàn thành sao lưu tự động: ${res.filename} (${res.fileSize} bytes)`);
+      } catch (err) {
+        console.error(`[Backup Cron S-57 Error] Thất bại khi sao lưu tự động:`, err.message);
+      }
+    });
+
+    console.log(`[Backup Scheduler S-57] Đã kích hoạt lịch sao lưu tự động ban đêm: ${cronExpression}`);
+    return task;
+  } catch (err) {
+    console.warn(`[Backup Scheduler S-57] Không thể khởi động cron sao lưu:`, err.message);
+    return null;
+  }
+}
+
 if (require.main === module) {
-  let pool = null;
+  const isProduction = process.env.NODE_ENV === "production";
   const dbUrl = process.env.DATABASE_URL;
+
+  if (isProduction && !dbUrl) {
+    console.error("[Backup Fatal] Không cho phép chạy backup ở chế độ production nếu không có DATABASE_URL.");
+    process.exit(1);
+  }
+
+  let pool = null;
   if (dbUrl) {
     try {
       const { Pool } = require("pg");
@@ -319,11 +395,13 @@ if (require.main === module) {
 
 module.exports = {
   runNightlyBackup,
+  startNightlyBackupCron,
   encryptData,
   deriveKey,
   getEncryptionKey,
   rotateBackups,
   extractAllData,
+  MANDATORY_TABLES,
   DEFAULT_BACKUP_DIR,
   MAX_BACKUP_RETENTION,
 };
