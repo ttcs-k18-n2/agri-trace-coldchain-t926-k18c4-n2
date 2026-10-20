@@ -563,6 +563,34 @@
       background: var(--color-surface-subtle);
     }
 
+    /* S-40: Keep the create-shipment form within the viewport, and scroll the form body.
+       Without a flex/min-height:0 wrapper on the form, the content grows beyond
+       .modal-card's overflow:hidden and hides the submit/cancel footer. */
+    #modalCreateShipment .modal-card {
+      height: min(90dvh, calc(100dvh - 32px));
+      max-height: calc(100dvh - 32px);
+    }
+
+    #modalCreateShipment .modal-header,
+    #modalCreateShipment .modal-footer {
+      flex: 0 0 auto;
+    }
+
+    #formCreateShipment {
+      display: flex;
+      flex-direction: column;
+      flex: 1 1 auto;
+      min-height: 0;
+      overflow: hidden;
+    }
+
+    #formCreateShipment .modal-body {
+      flex: 1 1 auto;
+      min-height: 0;
+      overflow-y: auto;
+      overscroll-behavior-y: contain;
+    }
+
     /* Multi-lot Selector in Modal */
     .lot-picker-card {
       border: 1px solid var(--color-border);
