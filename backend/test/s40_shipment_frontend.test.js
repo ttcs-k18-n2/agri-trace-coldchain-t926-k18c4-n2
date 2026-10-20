@@ -156,6 +156,15 @@ test("S-40 UI: shipments.html contains full layout, form, and detail modal", () 
   assert.match(html, /src=["'][^"']*shipments\.js[^"']*["']/);
 });
 
+test("S-40 Modal: create-shipment form scrolls without hiding submit actions", () => {
+  const html = fs.readFileSync(path.join(frontendDir, "shipments.html"), "utf8");
+  assert.match(html, /#modalCreateShipment \.modal-card\s*\{[^}]*height:\s*min\(90dvh/);
+  assert.match(html, /#formCreateShipment\s*\{[^}]*display:\s*flex;[^}]*flex-direction:\s*column;[^}]*min-height:\s*0;[^}]*overflow:\s*hidden;/);
+  assert.match(html, /#formCreateShipment \.modal-body\s*\{[^}]*min-height:\s*0;[^}]*overflow-y:\s*auto;/);
+  assert.match(html, /#modalCreateShipment \.modal-footer\s*\{[^}]*flex:\s*0 0 auto;/);
+  assert.match(html, /id="formCreateShipment"[\s\S]*class="modal-body"[\s\S]*class="modal-footer"[\s\S]*id="btnSubmitShipment"/);
+});
+
 test("S-40 Navigation Integration: All major authenticated pages link to /shipments.html", () => {
   const pages = ["lots.html", "farms.html", "products.html", "harvest.html", "integrity.html", "audit-logs.html", "lot-detail.html"];
 
