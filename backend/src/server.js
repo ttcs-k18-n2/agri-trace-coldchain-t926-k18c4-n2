@@ -1774,10 +1774,15 @@ app.get(
             farmId: r.farm_id,
             farmName: r.farm_name,
             productId: r.product_id,
-            productName: r.product_name,
-            productUnit: r.product_unit,
+            productUnit: r.product_unit || "kg",
+            product_unit: r.product_unit || "kg",
+            unit: r.product_unit || "kg",
             initialQuantity: r.initial_quantity !== null && r.initial_quantity !== undefined ? Number(r.initial_quantity) : null,
-            remainingQuantity: r.remaining_quantity !== null && r.remaining_quantity !== undefined ? Number(r.remaining_quantity) : null,
+            initial_quantity: r.initial_quantity !== null && r.initial_quantity !== undefined ? Number(r.initial_quantity) : null,
+            remainingQuantity: r.remaining_quantity !== null && r.remaining_quantity !== undefined ? Number(r.remaining_quantity) : (r.initial_quantity !== null && r.initial_quantity !== undefined ? Number(r.initial_quantity) : null),
+            remaining_quantity: r.remaining_quantity !== null && r.remaining_quantity !== undefined ? Number(r.remaining_quantity) : (r.initial_quantity !== null && r.initial_quantity !== undefined ? Number(r.initial_quantity) : null),
+            current_quantity: r.remaining_quantity !== null && r.remaining_quantity !== undefined ? Number(r.remaining_quantity) : (r.initial_quantity !== null && r.initial_quantity !== undefined ? Number(r.initial_quantity) : 0),
+            quantity: r.remaining_quantity !== null && r.remaining_quantity !== undefined ? Number(r.remaining_quantity) : (r.initial_quantity !== null && r.initial_quantity !== undefined ? Number(r.initial_quantity) : 0),
             harvestedAt: r.harvested_at,
             createdAt: r.created_at,
             pendingTransfer: r.pending_transfer_id ? {
@@ -1922,6 +1927,8 @@ app.get(
         const pending = inMemoryTransfers.find((t) => t.lotId === l.id && t.status === "PENDING");
         const toOrg = pending ? inMemoryOrganizations.find((o) => o.id === pending.toOrganizationId) : null;
         const org = inMemoryOrganizations.find((o) => o.id === (l.organizationId || l.organization_id));
+        const initQ = l.initialQuantity !== undefined ? Number(l.initialQuantity) : (l.initial_quantity !== undefined ? Number(l.initial_quantity) : 100);
+        const remQ = l.remainingQuantity !== undefined ? Number(l.remainingQuantity) : (l.remaining_quantity !== undefined ? Number(l.remaining_quantity) : (l.current_quantity !== undefined ? Number(l.current_quantity) : initQ));
         return {
           id: l.id,
           name: l.name,
@@ -1933,8 +1940,14 @@ app.get(
           productId: l.productId,
           productName: product ? product.name : null,
           productUnit: product ? product.unit : "kg",
-          initialQuantity: l.initialQuantity !== undefined ? l.initialQuantity : 100,
-          remainingQuantity: l.remainingQuantity !== undefined ? l.remainingQuantity : (l.remaining_quantity !== undefined ? l.remaining_quantity : 100),
+          product_unit: product ? product.unit : "kg",
+          unit: product ? product.unit : "kg",
+          initialQuantity: initQ,
+          initial_quantity: initQ,
+          remainingQuantity: remQ,
+          remaining_quantity: remQ,
+          current_quantity: remQ,
+          quantity: remQ,
           harvestedAt: l.harvestedAt || "2026-09-30",
           createdAt: l.createdAt || "2026-09-30T00:00:00.000Z",
           pendingTransfer: pending ? {
@@ -9060,55 +9073,84 @@ app.get(
   "/api/cold-containers",
   requirePermission(["producer", "cooperative", "transporter", "distributor", "inspector", "org_admin", "admin"]),
   async (_req, res) => {
+    const rawContainers = [
+      {
+        id: "CONT-COLD-01",
+        name: "Thùng lạnh chuyên dụng 50L (Vắc-xin & Nông sản nhạy cảm)",
+        tempMin: 2,
+        tempMax: 8,
+        capacityLiters: 50,
+        sensorModel: "IoT DHT22 Pro",
+        status: "READY",
+      },
+      {
+        id: "CONT-COLD-02",
+        name: "Thùng lạnh siêu tốc 120L (Rau củ quả tươi cao cấp)",
+        tempMin: 0,
+        tempMax: 4,
+        capacityLiters: 120,
+        sensorModel: "PT100 Industrial",
+        status: "READY",
+      },
+      {
+        id: "CONT-FREEZE-01",
+        name: "Thùng đông sâu 200L (Thủy hải sản & Đông lạnh)",
+        tempMin: -20,
+        tempMax: -10,
+        capacityLiters: 200,
+        sensorModel: "K-Type Thermocouple",
+        status: "READY",
+      },
+      {
+        id: "CONT-CHILL-01",
+        name: "Thùng mát tiêu chuẩn 80L (Trái cây ôn đới & Nấm)",
+        tempMin: 8,
+        tempMax: 15,
+        capacityLiters: 80,
+        sensorModel: "Sensirion SHT30",
+        status: "READY",
+      },
+      {
+        id: "CBX-001",
+        name: "Thùng lạnh mẫu tiêu chuẩn S-40",
+        tempMin: 2,
+        tempMax: 4,
+        capacityLiters: 60,
+        sensorModel: "Sensirion SHT35 Pro",
+        status: "READY",
+      },
+    ];
+
+    let activeBoxIds = new Set();
+    if (pool) {
+      try {
+        const activeRes = await pool.query(
+          "SELECT cold_box_id FROM shipments WHERE status = 'IN_TRANSIT'"
+        );
+        activeBoxIds = new Set(activeRes.rows.map((r) => r.cold_box_id));
+      } catch {
+        /* ignore */
+      }
+    } else {
+      activeBoxIds = new Set(
+        inMemoryShipments
+          .filter((s) => s.status === "IN_TRANSIT" || s.status === "RUNNING")
+          .map((s) => s.coldBoxId)
+      );
+    }
+
+    const containers = rawContainers.map((c) => {
+      const inUse = activeBoxIds.has(c.id);
+      return {
+        ...c,
+        status: inUse ? "IN_USE" : "READY",
+        inUse,
+      };
+    });
+
     return res.status(200).json({
       success: true,
-      containers: [
-        {
-          id: "CONT-COLD-01",
-          name: "Thùng lạnh chuyên dụng 50L (Vắc-xin & Nông sản nhạy cảm)",
-          tempMin: 2,
-          tempMax: 8,
-          capacityLiters: 50,
-          sensorModel: "IoT DHT22 Pro",
-          status: "READY",
-        },
-        {
-          id: "CONT-COLD-02",
-          name: "Thùng lạnh siêu tốc 120L (Rau củ quả tươi cao cấp)",
-          tempMin: 0,
-          tempMax: 4,
-          capacityLiters: 120,
-          sensorModel: "PT100 Industrial",
-          status: "READY",
-        },
-        {
-          id: "CONT-FREEZE-01",
-          name: "Thùng đông sâu 200L (Thủy hải sản & Đông lạnh)",
-          tempMin: -20,
-          tempMax: -10,
-          capacityLiters: 200,
-          sensorModel: "K-Type Thermocouple",
-          status: "READY",
-        },
-        {
-          id: "CONT-CHILL-01",
-          name: "Thùng mát tiêu chuẩn 80L (Trái cây ôn đới & Nấm)",
-          tempMin: 8,
-          tempMax: 15,
-          capacityLiters: 80,
-          sensorModel: "Sensirion SHT30",
-          status: "READY",
-        },
-        {
-          id: "CBX-001",
-          name: "Thùng lạnh mẫu tiêu chuẩn S-40",
-          tempMin: 2,
-          tempMax: 4,
-          capacityLiters: 60,
-          sensorModel: "Sensirion SHT35 Pro",
-          status: "READY",
-        },
-      ],
+      containers,
     });
   }
 );

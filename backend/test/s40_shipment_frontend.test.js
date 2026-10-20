@@ -322,3 +322,120 @@ test("S-40 Permissions: Inspector has read-only access and cannot create or comp
   assert.equal(hasPermission("admin", "shipment.create"), true);
   assert.equal(hasPermission("admin", "shipment.complete"), true);
 });
+
+test("S-40 Weight Accuracy: Filters 0 kg lots, accurately parses 25 kg lots, and rejects 0 kg lots in validation", async () => {
+  const originalFetch = global.fetch;
+  try {
+    global.fetch = async () => ({
+      status: 200,
+      ok: true,
+      json: async () => ({
+        lots: [
+          {
+            id: "LOT-ZERO-01",
+            name: "Lô Dưa 0kg",
+            remainingQuantity: 0,
+            initialQuantity: 100,
+            status: "ACTIVE",
+            productUnit: "kg",
+          },
+          {
+            id: "LOT-CONSUMED-01",
+            name: "Lô đã bán hết",
+            remainingQuantity: 0,
+            initialQuantity: 50,
+            status: "Đã bán hết",
+            productUnit: "kg",
+          },
+          {
+            id: "LOT-25KG-01",
+            name: "Lô Cà chua còn 25kg",
+            remainingQuantity: 25,
+            initialQuantity: 100,
+            status: "ACTIVE",
+            productUnit: "kg",
+          },
+          {
+            id: "LOT-SNAKE-25KG",
+            name: "Lô Dâu tây snake_case 25kg",
+            remaining_quantity: 25,
+            initial_quantity: 50,
+            status: "ACTIVE",
+            product_unit: "kg",
+          },
+        ],
+      }),
+    });
+
+    const lotsRes = await ShipmentAdapter.fetchAvailableLots();
+    assert.equal(lotsRes.success, true);
+    // Should filter out LOT-ZERO-01 and LOT-CONSUMED-01
+    assert.equal(lotsRes.lots.length, 2);
+    assert.ok(!lotsRes.lots.some((l) => l.id === "LOT-ZERO-01"), "Lô 0 kg phải bị loại khỏi danh sách khả dụng");
+    assert.ok(!lotsRes.lots.some((l) => l.id === "LOT-CONSUMED-01"), "Lô đã bán hết phải bị loại khỏi danh sách khả dụng");
+
+    const lot25 = lotsRes.lots.find((l) => l.id === "LOT-25KG-01");
+    assert.ok(lot25, "Lô 25kg có trong danh sách khả dụng");
+    assert.equal(lot25.current_quantity, 25, "Lô còn 25 kg phải hiển thị đúng 25 kg");
+    assert.equal(lot25.remainingQuantity, 25);
+    assert.equal(lot25.unit, "kg");
+
+    const lotSnake25 = lotsRes.lots.find((l) => l.id === "LOT-SNAKE-25KG");
+    assert.ok(lotSnake25);
+    assert.equal(lotSnake25.current_quantity, 25);
+
+    // Test payload validation rejects lot with 0 kg
+    const invalidPayloadRes = ShipmentAdapter.validateShipmentPayload({
+      shipmentCode: "SHP-TEST-001",
+      containerId: "CONT-01",
+      lotIds: ["LOT-ZERO-01"],
+      origin: "Kho A",
+      destination: "Kho B",
+      departureTime: new Date().toISOString(),
+      selectedLotsList: [{ id: "LOT-ZERO-01", remainingQuantity: 0, current_quantity: 0 }],
+    });
+    assert.equal(invalidPayloadRes.isValid, false);
+    assert.ok(invalidPayloadRes.errors.lotIds);
+    assert.match(invalidPayloadRes.errors.lotIds, /0 kg/);
+
+    // Test payload validation accepts valid 25 kg lot
+    const validPayloadRes = ShipmentAdapter.validateShipmentPayload({
+      shipmentCode: "SHP-TEST-001",
+      containerId: "CONT-01",
+      lotIds: ["LOT-25KG-01"],
+      origin: "Kho A",
+      destination: "Kho B",
+      departureTime: new Date().toISOString(),
+      selectedLotsList: [{ id: "LOT-25KG-01", remainingQuantity: 25, current_quantity: 25 }],
+    });
+    assert.equal(validPayloadRes.isValid, true);
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
+test("S-40 Modal Scroll & Layout: shipments.html has proper flex container and scroll rules", () => {
+  const htmlPath = path.join(frontendDir, "shipments.html");
+  const htmlContent = fs.readFileSync(htmlPath, "utf-8");
+
+  // Verify formCreateShipment is a flex container with flex: 1 and min-height: 0
+  assert.match(htmlContent, /#formCreateShipment\s*\{[^}]*display:\s*flex;/i);
+  assert.match(htmlContent, /#formCreateShipment\s*\{[^}]*flex-direction:\s*column;/i);
+  assert.match(htmlContent, /#formCreateShipment\s*\{[^}]*flex:\s*1;/i);
+  assert.match(htmlContent, /#formCreateShipment\s*\{[^}]*min-height:\s*0;/i);
+
+  // Verify modal-body is scrollable with flex: 1 and min-height: 0
+  assert.match(htmlContent, /\.modal-body\s*\{[^}]*overflow-y:\s*auto;/i);
+  assert.match(htmlContent, /\.modal-body\s*\{[^}]*flex:\s*1;/i);
+  assert.match(htmlContent, /\.modal-body\s*\{[^}]*min-height:\s*0;/i);
+
+  // Verify modal-header and modal-footer have flex-shrink: 0
+  assert.match(htmlContent, /\.modal-header\s*\{[^}]*flex-shrink:\s*0;/i);
+  assert.match(htmlContent, /\.modal-footer\s*\{[^}]*flex-shrink:\s*0;/i);
+
+  // Verify modal-backdrop has overflow-y: auto
+  assert.match(htmlContent, /\.modal-backdrop\s*\{[^}]*overflow-y:\s*auto;/i);
+
+  // Verify responsive media query for small/zoomed screens (max-height: 800px)
+  assert.match(htmlContent, /@media\s*\(\s*max-height:\s*800px\s*\)/i);
+});
