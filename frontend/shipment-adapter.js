@@ -478,6 +478,21 @@
     const lotIds = Array.isArray(payload.lotIds) ? payload.lotIds.filter(Boolean) : [];
     if (!lotIds || lotIds.length === 0) {
       errors.lotIds = "Vui lòng chọn ít nhất một lô hàng đính kèm vào chuyến vận chuyển.";
+    } else if (Array.isArray(payload.selectedLotsList) && payload.selectedLotsList.length > 0) {
+      const invalidLots = payload.selectedLotsList.filter((l) => {
+        const qty = l.remainingQuantity !== undefined && l.remainingQuantity !== null
+          ? Number(l.remainingQuantity)
+          : (l.remaining_quantity !== undefined && l.remaining_quantity !== null
+            ? Number(l.remaining_quantity)
+            : (l.current_quantity !== undefined && l.current_quantity !== null
+              ? Number(l.current_quantity)
+              : (l.quantity != null ? Number(l.quantity) : 0)));
+        const st = String(l.status || "").toUpperCase();
+        return qty <= 0 || isNaN(qty) || st === "CONSUMED" || st === "RECALLED" || l.status === "Đã bán hết" || l.status === "Đã tiêu thụ" || l.status === "Có sự cố";
+      });
+      if (invalidLots.length > 0) {
+        errors.lotIds = `Lô hàng ${invalidLots.map((l) => l.id).join(", ")} không còn khối lượng khả dụng (0 kg) hoặc đã kết thúc, không thể đưa vào chuyến.`;
+      }
     }
 
     // 4. Điểm xuất phát (Origin)
@@ -578,15 +593,16 @@
           success: false,
           isConflict: true,
           error: errJson.error || "LOT_ALREADY_IN_ACTIVE_SHIPMENT",
-          message: errJson.message || "Một hoặc nhiều lô hàng đã được gắn vào chuyến vận chuyển đang hoạt động khác.",
+          message: errJson.message || "Một hoặc nhiều lô hàng hoặc thùng lạnh đã được gắn vào chuyến vận chuyển đang hoạt động khác.",
         };
       }
 
-      if (res.status === 400 || res.status === 422) {
+      if (res.status === 400 || res.status === 404 || res.status === 422) {
         const errJson = await res.json().catch(() => ({}));
         return {
           success: false,
-          errors: errJson.errors || {},
+          errors: (errJson.errors && Object.keys(errJson.errors).length > 0) ? errJson.errors : null,
+          error: errJson.error,
           message: errJson.message || "Dữ liệu không hợp lệ theo quy định máy chủ.",
         };
       }
@@ -796,10 +812,23 @@
   /**
    * Lấy danh sách lô hàng khả dụng từ endpoint hiện có của Backend (/api/organization/lots)
    * Phục vụ lựa chọn nhiều lô trong form mở chuyến.
+   * Hỗ trợ tìm kiếm từ máy chủ và phân trang cursor (S-40).
+   * @param {Object} [options]
+   * @param {string} [options.search]
+   * @param {string} [options.cursor]
+   * @param {number} [options.limit]
    */
-  async function fetchAvailableLots() {
+  async function fetchAvailableLots(options = {}) {
     try {
-      const res = await fetch("/api/organization/lots?limit=50", {
+      const search = options && options.search ? String(options.search).trim() : "";
+      const cursor = options && options.cursor ? String(options.cursor).trim() : "";
+      const limit = (options && Number(options.limit)) || 50;
+
+      let url = `/api/organization/lots?limit=${encodeURIComponent(limit)}`;
+      if (search) url += `&search=${encodeURIComponent(search)}`;
+      if (cursor) url += `&cursor=${encodeURIComponent(cursor)}`;
+
+      const res = await fetch(url, {
         method: "GET",
         headers: { Accept: "application/json" },
         credentials: "same-origin",
@@ -811,26 +840,91 @@
 
       if (res.ok) {
         const data = await res.json();
-        const lots = Array.isArray(data.lots) ? data.lots : (Array.isArray(data) ? data : []);
-        // Lọc các lô còn khả dụng (chưa tiêu thụ hết)
-        const availableLots = lots.filter(l => l.status !== "CONSUMED" && l.status !== "RECALLED");
-        return {
-          success: true,
-          lots: availableLots.map(l => ({
+        const rawLots = Array.isArray(data.lots) ? data.lots : (Array.isArray(data) ? data : []);
+
+        const blockedStatuses = new Set([
+          "CONSUMED",
+          "RECALLED",
+          "Đã bán hết",
+          "Đã tiêu thụ",
+          "Đang thu hồi",
+          "Đã thu hồi",
+          "Có sự cố",
+        ]);
+
+        function normalizeLot(l) {
+          if (!l) return null;
+          const rawQty = l.remainingQuantity ?? l.remaining_quantity ?? l.current_quantity ?? l.quantity;
+          const qty = rawQty == null || rawQty === "" ? null : Number(rawQty);
+          const initialQty = l.initialQuantity ?? l.initial_quantity;
+          const initParsed = initialQty == null || initialQty === "" ? null : Number(initialQty);
+          const status = l.status || "ACTIVE";
+          const pendingTransfer = l.pendingTransfer ?? null;
+
+          const isEligible = (
+            Number.isFinite(qty) &&
+            qty > 0 &&
+            !blockedStatuses.has(status) &&
+            !pendingTransfer
+          );
+
+          return {
             id: l.id,
             name: l.name || l.id,
-            product_name: l.product_name || l.productName || "Nông sản sạch",
-            current_quantity: l.current_quantity != null ? l.current_quantity : (l.remaining_quantity != null ? l.remaining_quantity : (l.quantity || 0)),
-            unit: l.unit || "kg",
-            status: l.status || "ACTIVE",
+            product_name: l.productName ?? l.product_name ?? "Chưa xác định",
+            current_quantity: Number.isFinite(qty) ? qty : null,
+            remaining_quantity: Number.isFinite(qty) ? qty : null,
+            remainingQuantity: Number.isFinite(qty) ? qty : null,
+            initial_quantity: Number.isFinite(initParsed) ? initParsed : null,
+            initialQuantity: Number.isFinite(initParsed) ? initParsed : null,
+            unit: l.productUnit ?? l.product_unit ?? l.unit ?? "kg",
+            status: status,
+            pendingTransfer: pendingTransfer,
+            isEligible: isEligible,
             harvested_at: l.harvested_at || l.harvestDate || l.created_at,
-          })),
+          };
+        }
+
+        const normalizedLots = rawLots.map(normalizeLot).filter(Boolean);
+
+        // Lọc các lô còn khả dụng: phải có khối lượng > 0 và trạng thái hợp lệ
+        const availableLots = normalizedLots.filter((l) => l.isEligible);
+        return {
+          success: true,
+          lots: availableLots,
+          allLots: normalizedLots,
+          nextCursor: data.nextCursor || null,
+          hasMore: Boolean(data.hasMore),
         };
       }
 
       return { success: false, lots: [], message: `Không thể tải danh sách lô (HTTP ${res.status})` };
     } catch (err) {
       return { success: false, lots: [], message: err.message || "Lỗi mạng tải lô" };
+    }
+  }
+
+  /**
+   * Lấy danh sách địa điểm khả dụng từ /api/locations (Story S-30)
+   */
+  async function fetchLocations() {
+    try {
+      const res = await fetch("/api/locations", {
+        method: "GET",
+        headers: { Accept: "application/json" },
+        credentials: "same-origin",
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        return {
+          success: true,
+          locations: Array.isArray(data.locations) ? data.locations : [],
+        };
+      }
+      return { success: false, locations: [], message: `Không thể tải địa điểm (HTTP ${res.status})` };
+    } catch (err) {
+      return { success: false, locations: [], message: err.message || "Lỗi mạng tải địa điểm" };
     }
   }
 
@@ -901,6 +995,7 @@
     completeShipment,
     validateShipmentPayload,
     fetchAvailableLots,
+    fetchLocations,
     fetchColdContainers,
     formatShipmentStatus,
     normalizeShipment,

@@ -366,7 +366,7 @@ test("S-40: Mock migration runner - already-applied 024 upgrade path applies onl
     "019_lot_consumed_status", "020_locations", "021_audit_logs",
     "022_consumed_lot_constraints", "023_public_map_areas", "023_recall_orders",
     "024_lot_custom_coordinates", "024_recall_acknowledgments", "024_shipments", "026_shipment_temperatures",
-    "027_shipment_temperature_violations", "028_product_temperature_thresholds", "029_public_cache_and_rate_limits", "030_temperature_hourly_aggregation", "031_lots_inspector_search_indices", "032_integrity_audit_logs", "033_farmer_privacy_anonymization"
+    "027_shipment_temperature_violations", "028_product_temperature_thresholds", "029_public_cache_and_rate_limits", "030_temperature_hourly_aggregation", "031_lots_inspector_search_indices", "032_integrity_audit_logs", "033_farmer_privacy_anonymization", "034_shipments_custom_code"
   ];
   const appliedMigrations = [...existingApplied];
 
@@ -746,6 +746,26 @@ test("S-56: Migration 033 creates farmer anonymization columns and requests tabl
   assert.match(downSql, /DROP\s+TABLE\s+(IF\s+EXISTS\s+)?farmer_anonymization_requests/i, "Migration 033 rollback must drop farmer_anonymization_requests");
   assert.match(downSql, /DROP\s+COLUMN\s+(IF\s+EXISTS\s+)?farmer_name/i, "Migration 033 rollback must drop farmer_name");
   assert.match(downSql, /DROP\s+COLUMN\s+(IF\s+EXISTS\s+)?is_anonymized/i, "Migration 033 rollback must drop is_anonymized");
+});
+
+test("S-40: Migration 034 adds shipment_code column and unique partial index with rollback", () => {
+  const fs = require("node:fs");
+  const path = require("node:path");
+
+  const upPath = path.resolve(__dirname, "../../db/migrations/034_shipments_custom_code.sql");
+  const downPath = path.resolve(__dirname, "../../db/migrations/down/034_shipments_custom_code.down.sql");
+
+  assert.ok(fs.existsSync(upPath), "Migration 034 UP file must exist");
+  assert.ok(fs.existsSync(downPath), "Migration 034 DOWN file must exist");
+
+  const upSql = fs.readFileSync(upPath, "utf-8");
+  const downSql = fs.readFileSync(downPath, "utf-8");
+
+  assert.match(upSql, /shipment_code/i, "Migration 034 must add shipment_code column");
+  assert.match(upSql, /idx_shipments_shipment_code/i, "Migration 034 must create unique index idx_shipments_shipment_code");
+
+  assert.match(downSql, /DROP\s+INDEX\s+(IF\s+EXISTS\s+)?idx_shipments_shipment_code/i, "Migration 034 rollback must drop index idx_shipments_shipment_code");
+  assert.match(downSql, /DROP\s+COLUMN\s+(IF\s+EXISTS\s+)?shipment_code/i, "Migration 034 rollback must drop shipment_code column");
 });
 
 if (process.env.DATABASE_URL) {

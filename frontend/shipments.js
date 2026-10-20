@@ -14,6 +14,12 @@
   let availableLots = [];
   let availableContainers = [];
   let selectedLotIds = new Set();
+  let selectedLotsMap = new Map();
+  let currentLotSearch = "";
+  let lotsNextCursor = null;
+  let lotsHasMore = false;
+  let lotSearchDebounceTimer = null;
+  let availableLocations = [];
   let currentShipments = [];
   let formErrorHandler = null;
   let isSubmitting = false;
@@ -28,6 +34,7 @@
     elements.btnToggleSandbox = document.getElementById("btnToggleSandbox");
     elements.contractNoticeBanner = document.getElementById("contractNoticeBanner");
     elements.alertBanner = document.getElementById("alertBanner");
+    elements.modalCreateAlert = document.getElementById("modalCreateAlert");
 
     // KPI Summary
     elements.kpiTotal = document.getElementById("kpiTotal");
@@ -59,6 +66,9 @@
     elements.btnSelectAllLots = document.getElementById("btnSelectAllLots");
     elements.btnClearAllLots = document.getElementById("btnClearAllLots");
     elements.lotsTableBody = document.getElementById("lotsTableBody");
+    elements.lotsLoadMoreWrap = document.getElementById("lotsLoadMoreWrap");
+    elements.btnLoadMoreLots = document.getElementById("btnLoadMoreLots");
+    elements.locationsList = document.getElementById("locationsList");
     elements.selectedLotsSummary = document.getElementById("selectedLotsSummary");
     elements.selectedLotsCount = document.getElementById("selectedLotsCount");
     elements.selectedLotsWeight = document.getElementById("selectedLotsWeight");
@@ -84,7 +94,7 @@
     if (typeof window.createFormErrorHandler === "function") {
       formErrorHandler = window.createFormErrorHandler({
         scope: elements.formCreateShipment,
-        globalAlert: elements.alertBanner,
+        globalAlert: elements.modalCreateAlert || elements.alertBanner,
         fields: {
           shipmentCode: { input: elements.inputShipmentCode, error: document.getElementById("error-shipment-code") },
           containerId: { input: elements.selectContainer, error: document.getElementById("error-container") },
@@ -459,7 +469,14 @@
       availableContainers.forEach((c) => {
         const opt = document.createElement("option");
         opt.value = c.id;
-        opt.textContent = `${c.id} - ${c.name} (${c.tempMin}°C đến ${c.tempMax}°C)`;
+        const isBusy = c.inUse || c.status === "IN_USE";
+        if (isBusy) {
+          opt.textContent = `${c.id} - ${c.name} [Đang bận trên chuyến khác]`;
+          opt.disabled = true;
+          opt.style.color = "#94a3b8";
+        } else {
+          opt.textContent = `${c.id} - ${c.name} (${c.tempMin}°C đến ${c.tempMax}°C)`;
+        }
         elements.selectContainer.appendChild(opt);
       });
     } catch {
@@ -485,13 +502,15 @@
       return;
     }
 
+    const isBusy = container.inUse || container.status === "IN_USE";
+
     elements.containerInfoBox.style.display = "block";
     elements.containerInfoBox.innerHTML = `
       <div class="container-spec-grid">
         <div class="spec-item"><span class="spec-label">Dung tích:</span> <strong>${container.capacityLiters || 50} Lít</strong></div>
         <div class="spec-item"><span class="spec-label">Dải nhiệt chuẩn:</span> <strong class="badge-temp-range">${container.tempMin}°C ~ ${container.tempMax}°C</strong></div>
         <div class="spec-item"><span class="spec-label">Cảm biến nhiệt:</span> <span>${escapeHtml(container.sensorModel || "IoT Standard")}</span></div>
-        <div class="spec-item"><span class="spec-label">Trạng thái:</span> <span class="badge-status-running" style="font-size:11px; padding:2px 8px;">Sẵn sàng hoạt động</span></div>
+        <div class="spec-item"><span class="spec-label">Trạng thái:</span> <span class="${isBusy ? "badge-status-recalled" : "badge-status-running"}" style="font-size:11px; padding:2px 8px;">${isBusy ? "Đang sử dụng trên chuyến khác" : "Sẵn sàng hoạt động"}</span></div>
       </div>
     `;
 
@@ -499,20 +518,65 @@
   }
 
   /**
-   * Tải danh sách lô hàng khả dụng từ /api/organization/lots
+   * Tải danh sách địa điểm khả dụng (S-30) phục vụ datalist gợi ý lộ trình
    */
-  async function loadLotsForForm() {
+  async function loadLocationsForForm() {
+    if (!elements.locationsList) return;
+    try {
+      const res = await window.ShipmentAdapter.fetchLocations();
+      availableLocations = res.locations || [];
+      elements.locationsList.innerHTML = "";
+      availableLocations.forEach((loc) => {
+        const opt = document.createElement("option");
+        opt.value = loc.name || loc.id;
+        opt.label = `${loc.id} - ${loc.name} (${loc.type || "Địa điểm"})`;
+        elements.locationsList.appendChild(opt);
+      });
+    } catch {
+      /* ignore */
+    }
+  }
+
+  /**
+   * Tải danh sách lô hàng khả dụng từ /api/organization/lots (hỗ trợ phân trang và server-side search)
+   */
+  async function loadLotsForForm(isAppend = false) {
     if (!elements.lotsTableBody) return;
-    elements.lotsTableBody.innerHTML = '<tr><td colspan="5" class="table-loading">Đang tải danh sách lô hàng khả dụng...</td></tr>';
+    if (!isAppend) {
+      elements.lotsTableBody.innerHTML = '<tr><td colspan="5" class="table-loading">Đang tải danh sách lô hàng khả dụng...</td></tr>';
+      lotsNextCursor = null;
+    }
 
     try {
-      const res = await window.ShipmentAdapter.fetchAvailableLots();
-      availableLots = res.lots || [];
+      const res = await window.ShipmentAdapter.fetchAvailableLots({
+        search: currentLotSearch,
+        cursor: isAppend ? lotsNextCursor : null,
+        limit: 50,
+      });
 
-      if (availableLots.length === 0) {
-        elements.lotsTableBody.innerHTML = '<tr><td colspan="5" class="table-empty">Không có lô hàng khả dụng nào để thêm vào chuyến.</td></tr>';
-        return;
+      lotsNextCursor = res.nextCursor || null;
+      lotsHasMore = Boolean(res.hasMore);
+
+      if (elements.lotsLoadMoreWrap) {
+        elements.lotsLoadMoreWrap.style.display = lotsHasMore ? "block" : "none";
       }
+
+      const incomingLots = res.lots || [];
+      if (isAppend) {
+        const existingIds = new Set(availableLots.map((l) => l.id));
+        incomingLots.forEach((l) => {
+          if (!existingIds.has(l.id)) availableLots.push(l);
+        });
+      } else {
+        availableLots = incomingLots;
+      }
+
+      // Bảo toàn thông tin các lô đã chọn
+      availableLots.forEach((l) => {
+        if (selectedLotIds.has(l.id)) {
+          selectedLotsMap.set(l.id, l);
+        }
+      });
 
       renderLotsTable(availableLots);
     } catch (err) {
@@ -534,13 +598,22 @@
 
     lotsToRender.forEach((lot) => {
       const tr = document.createElement("tr");
-      tr.className = selectedLotIds.has(lot.id) ? "row-selected" : "";
-
       const isChecked = selectedLotIds.has(lot.id);
+      const qty = lot.current_quantity;
+      const isEligible = lot.isEligible !== false && (qty != null && Number.isFinite(Number(qty)) && Number(qty) > 0);
+
+      if (isChecked) {
+        tr.classList.add("row-selected");
+      }
+      if (!isEligible) {
+        tr.classList.add("row-disabled");
+        tr.style.opacity = "0.6";
+        tr.style.cursor = "not-allowed";
+      }
 
       tr.innerHTML = `
         <td style="text-align: center; width: 40px;">
-          <input type="checkbox" class="lot-checkbox" data-id="${escapeHtml(lot.id)}" ${isChecked ? "checked" : ""}>
+          <input type="checkbox" class="lot-checkbox" data-id="${escapeHtml(lot.id)}" ${isChecked ? "checked" : ""} ${!isEligible ? "disabled" : ""}>
         </td>
         <td>
           <strong class="lot-code-label">${escapeHtml(lot.id)}</strong>
@@ -548,18 +621,21 @@
         </td>
         <td>${escapeHtml(lot.product_name)}</td>
         <td style="text-align: right; font-weight: 600;">
-          ${Number(lot.current_quantity).toLocaleString("vi-VN")} ${escapeHtml(lot.unit)}
+          ${qty != null && Number.isFinite(Number(qty)) ? Number(qty).toLocaleString("vi-VN") : "--"} ${escapeHtml(lot.unit || "kg")}
         </td>
         <td>
-          <span class="badge-status-completed" style="font-size: 11px; padding: 2px 7px;">${escapeHtml(lot.status)}</span>
+          <span class="${!isEligible ? "badge-status-recalled" : "badge-status-completed"}" style="font-size: 11px; padding: 2px 7px;">
+            ${!isEligible ? (qty == null || qty <= 0 ? "0 kg / Hết hàng" : (lot.pendingTransfer ? "Đang chờ bàn giao" : escapeHtml(lot.status))) : escapeHtml(lot.status)}
+          </span>
         </td>
       `;
 
-      // Click row toggles checkbox
+      // Click row toggles checkbox only if eligible
       tr.addEventListener("click", (e) => {
+        if (!isEligible) return;
         if (e.target.type !== "checkbox") {
           const cb = tr.querySelector(".lot-checkbox");
-          if (cb) {
+          if (cb && !cb.disabled) {
             cb.checked = !cb.checked;
             handleLotCheckToggle(lot.id, cb.checked, tr);
           }
@@ -569,6 +645,10 @@
       const cb = tr.querySelector(".lot-checkbox");
       if (cb) {
         cb.addEventListener("change", () => {
+          if (!isEligible) {
+            cb.checked = false;
+            return;
+          }
           handleLotCheckToggle(lot.id, cb.checked, tr);
         });
       }
@@ -580,11 +660,24 @@
   }
 
   function handleLotCheckToggle(lotId, checked, rowEl) {
+    const lot = availableLots.find((l) => l.id === lotId) || selectedLotsMap.get(lotId);
+    const qty = lot ? (lot.current_quantity != null ? Number(lot.current_quantity) : 0) : 0;
+    const isEligible = lot ? (lot.isEligible !== false && Number.isFinite(qty) && qty > 0) : false;
+
+    if (checked && !isEligible) {
+      if (formErrorHandler) {
+        formErrorHandler.showErrors({ lotIds: `Lô hàng ${lotId} không đủ điều kiện (0 kg, đã bán hết hoặc đang chờ bàn giao).` });
+      }
+      return;
+    }
+
     if (checked) {
       selectedLotIds.add(lotId);
+      if (lot) selectedLotsMap.set(lotId, lot);
       if (rowEl) rowEl.classList.add("row-selected");
     } else {
       selectedLotIds.delete(lotId);
+      selectedLotsMap.delete(lotId);
       if (rowEl) rowEl.classList.remove("row-selected");
     }
 
@@ -597,25 +690,38 @@
 
   /**
    * Cập nhật thông tin tóm tắt các lô đã chọn (Số lượng & Khối lượng & Chip thẻ)
+   * Hỗ trợ chuẩn hoá và cộng dồn nhiều đơn vị khác nhau (kg, hộp, v.v.)
    */
   function updateSelectedLotsSummary() {
     const count = selectedLotIds.size;
-    let totalWeight = 0;
+    const unitTotals = {};
     const chips = [];
 
     selectedLotIds.forEach((id) => {
-      const lot = availableLots.find(l => l.id === id);
+      const lot = selectedLotsMap.get(id) || availableLots.find((l) => l.id === id);
       if (lot) {
-        const qty = Number(lot.current_quantity) || 0;
-        totalWeight += qty;
-        chips.push({ id: lot.id, name: lot.name, product: lot.product_name, qty, unit: lot.unit });
+        const qty = lot.current_quantity != null && Number.isFinite(Number(lot.current_quantity)) ? Number(lot.current_quantity) : 0;
+        const unit = lot.unit || "kg";
+        unitTotals[unit] = (unitTotals[unit] || 0) + qty;
+        chips.push({ id: lot.id, name: lot.name, product: lot.product_name, qty, unit });
       } else {
         chips.push({ id, name: id, product: "Lô hàng", qty: 0, unit: "kg" });
       }
     });
 
     if (elements.selectedLotsCount) elements.selectedLotsCount.textContent = count;
-    if (elements.selectedLotsWeight) elements.selectedLotsWeight.textContent = totalWeight.toLocaleString("vi-VN");
+    if (elements.selectedLotsWeight) {
+      const entries = Object.entries(unitTotals);
+      if (entries.length === 0) {
+        elements.selectedLotsWeight.textContent = "0";
+      } else if (entries.length === 1 && (entries[0][0].toLowerCase() === "kg" || !entries[0][0])) {
+        elements.selectedLotsWeight.textContent = entries[0][1].toLocaleString("vi-VN");
+      } else {
+        elements.selectedLotsWeight.textContent = entries
+          .map(([u, q]) => `${q.toLocaleString("vi-VN")} ${u}`)
+          .join(" + ");
+      }
+    }
 
     if (elements.selectedLotsChips) {
       if (count === 0) {
@@ -633,6 +739,7 @@
           chip.querySelector(".btn-remove-chip").addEventListener("click", (e) => {
             e.stopPropagation();
             selectedLotIds.delete(c.id);
+            selectedLotsMap.delete(c.id);
             // Cập nhật lại checkbox trong bảng nếu đang hiển thị
             const cb = elements.lotsTableBody ? elements.lotsTableBody.querySelector(`.lot-checkbox[data-id="${c.id}"]`) : null;
             if (cb) {
@@ -654,12 +761,24 @@
   function openCreateModal() {
     if (!elements.modalCreateShipment) return;
 
+    if (elements.modalCreateAlert) {
+      elements.modalCreateAlert.style.display = "none";
+      elements.modalCreateAlert.textContent = "";
+    }
     if (formErrorHandler) formErrorHandler.clear();
     selectedLotIds.clear();
+    selectedLotsMap.clear();
 
     if (elements.formCreateShipment) {
       elements.formCreateShipment.reset();
     }
+
+    if (elements.lotSearchInput) {
+      elements.lotSearchInput.value = "";
+    }
+    currentLotSearch = "";
+    lotsNextCursor = null;
+    lotsHasMore = false;
 
     autoGenerateShipmentCode();
 
@@ -671,7 +790,8 @@
     }
 
     loadContainersForForm();
-    loadLotsForForm();
+    loadLocationsForForm();
+    loadLotsForForm(false);
     updateSelectedLotsSummary();
 
     elements.modalCreateShipment.style.display = "flex";
@@ -682,6 +802,10 @@
     if (!elements.modalCreateShipment) return;
     elements.modalCreateShipment.style.display = "none";
     document.body.style.overflow = "";
+    if (elements.modalCreateAlert) {
+      elements.modalCreateAlert.style.display = "none";
+      elements.modalCreateAlert.textContent = "";
+    }
     if (formErrorHandler) formErrorHandler.clear();
   }
 
@@ -697,6 +821,10 @@
       return;
     }
 
+    if (elements.modalCreateAlert) {
+      elements.modalCreateAlert.style.display = "none";
+      elements.modalCreateAlert.textContent = "";
+    }
     if (formErrorHandler) formErrorHandler.clear();
 
     const shipmentCode = elements.inputShipmentCode ? elements.inputShipmentCode.value.trim() : "";
@@ -719,7 +847,7 @@
       driverName,
       vehiclePlate,
       notes,
-      selectedLotsList: availableLots.filter(l => selectedLotIds.has(l.id)),
+      selectedLotsList: Array.from(selectedLotIds).map((id) => selectedLotsMap.get(id) || availableLots.find((l) => l.id === id) || { id }),
     };
 
     // Client-side validation qua Adapter
@@ -744,9 +872,10 @@
         if (res.isForbidden) {
           showAlert(res.message || "Tài khoản của bạn không có quyền mở chuyến vận chuyển.", "error");
         } else if (res.isConflict) {
-          showAlert(res.message || "Một hoặc nhiều lô hàng đã được gắn vào chuyến vận chuyển khác.", "error");
-        } else if (res.errors && formErrorHandler) {
+          showAlert(res.message || "Một hoặc nhiều lô hàng hoặc thùng lạnh đã được gắn vào chuyến vận chuyển khác.", "error");
+        } else if (res.errors && Object.keys(res.errors).length > 0 && formErrorHandler) {
           formErrorHandler.showErrors(res.errors);
+          showAlert(res.message || "Vui lòng kiểm tra lại các trường thông tin.", "error");
         } else {
           showAlert(res.message || "Không thể tạo chuyến vận chuyển.", "error");
         }
@@ -937,16 +1066,31 @@
    * Alert Banner Helper
    */
   function showAlert(msg, type = "info") {
-    if (!elements.alertBanner) return;
-    elements.alertBanner.className = `alert-box alert-${type}`;
-    elements.alertBanner.textContent = msg;
-    elements.alertBanner.style.display = "block";
-    elements.alertBanner.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    // 1. Cập nhật banner chính trên trang
+    if (elements.alertBanner) {
+      elements.alertBanner.className = `alert-box alert-${type}`;
+      elements.alertBanner.textContent = msg;
+      elements.alertBanner.style.display = "block";
+      elements.alertBanner.scrollIntoView({ behavior: "smooth", block: "nearest" });
 
-    if (type === "success") {
-      setTimeout(() => {
-        if (elements.alertBanner) elements.alertBanner.style.display = "none";
-      }, 5000);
+      if (type === "success") {
+        setTimeout(() => {
+          if (elements.alertBanner) elements.alertBanner.style.display = "none";
+        }, 5000);
+      }
+    }
+
+    // 2. Nếu modal tạo chuyến đang mở, hiển thị thêm ngay trong hộp alert bên trong modal
+    if (
+      elements.modalCreateShipment &&
+      elements.modalCreateShipment.style.display === "flex" &&
+      elements.modalCreateAlert &&
+      (type === "error" || type === "warning")
+    ) {
+      elements.modalCreateAlert.className = `alert-box alert-${type}`;
+      elements.modalCreateAlert.textContent = msg;
+      elements.modalCreateAlert.style.display = "block";
+      elements.modalCreateAlert.scrollIntoView({ behavior: "smooth", block: "nearest" });
     }
   }
 
@@ -980,30 +1124,42 @@
 
   /**
    * Lọc lô hàng trong form mở chuyến khi gõ vào ô tìm kiếm
+   * Hỗ trợ tìm kiếm từ máy chủ kết hợp debounce
    */
   function handleLotSearchInput() {
     if (!elements.lotSearchInput) return;
-    const query = elements.lotSearchInput.value.toLowerCase().trim();
-    if (!query) {
-      renderLotsTable(availableLots);
-      return;
-    }
-    const filtered = availableLots.filter(l =>
-      l.id.toLowerCase().includes(query) ||
-      (l.name && l.name.toLowerCase().includes(query)) ||
-      (l.product_name && l.product_name.toLowerCase().includes(query))
-    );
-    renderLotsTable(filtered);
+    const query = elements.lotSearchInput.value.trim();
+    clearTimeout(lotSearchDebounceTimer);
+    lotSearchDebounceTimer = setTimeout(() => {
+      currentLotSearch = query;
+      loadLotsForForm(false);
+    }, 300);
   }
 
   /**
    * Chọn tất cả hoặc bỏ chọn tất cả lô
+   * Chỉ chọn các lô hiển thị và thực sự đủ điều kiện
    */
   function selectAllLots() {
-    availableLots.forEach(l => selectedLotIds.add(l.id));
+    const targetLots = availableLots.filter((l) => {
+      const q = l.current_quantity != null ? Number(l.current_quantity) : 0;
+      return l.isEligible !== false && Number.isFinite(q) && q > 0;
+    });
+
+    targetLots.forEach((l) => {
+      selectedLotIds.add(l.id);
+      selectedLotsMap.set(l.id, l);
+    });
+
     if (elements.lotsTableBody) {
-      elements.lotsTableBody.querySelectorAll("tr").forEach(tr => tr.classList.add("row-selected"));
-      elements.lotsTableBody.querySelectorAll(".lot-checkbox").forEach(cb => { cb.checked = true; });
+      elements.lotsTableBody.querySelectorAll(".lot-checkbox").forEach((cb) => {
+        const lotId = cb.getAttribute("data-id");
+        if (targetLots.some((l) => l.id === lotId) && !cb.disabled) {
+          cb.checked = true;
+          const tr = cb.closest("tr");
+          if (tr) tr.classList.add("row-selected");
+        }
+      });
     }
     updateSelectedLotsSummary();
     if (formErrorHandler) formErrorHandler.clearFieldError("lotIds");
@@ -1011,9 +1167,12 @@
 
   function clearAllLots() {
     selectedLotIds.clear();
+    selectedLotsMap.clear();
     if (elements.lotsTableBody) {
-      elements.lotsTableBody.querySelectorAll("tr").forEach(tr => tr.classList.remove("row-selected"));
-      elements.lotsTableBody.querySelectorAll(".lot-checkbox").forEach(cb => { cb.checked = false; });
+      elements.lotsTableBody.querySelectorAll("tr").forEach((tr) => tr.classList.remove("row-selected"));
+      elements.lotsTableBody.querySelectorAll(".lot-checkbox").forEach((cb) => {
+        cb.checked = false;
+      });
     }
     updateSelectedLotsSummary();
   }
@@ -1058,6 +1217,9 @@
     }
     if (elements.btnClearAllLots) {
       elements.btnClearAllLots.addEventListener("click", clearAllLots);
+    }
+    if (elements.btnLoadMoreLots) {
+      elements.btnLoadMoreLots.addEventListener("click", () => loadLotsForForm(true));
     }
 
     if (elements.formCreateShipment) {
