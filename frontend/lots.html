@@ -518,7 +518,15 @@
     </div>
 
 
-    <!-- Filter & Search Toolbar (S-14) -->
+    <!-- Inspector Mode Banner (S-52) -->
+    <div id="inspectorBanner" style="display: none; background: rgba(59, 130, 246, 0.08); border: 1px solid rgba(59, 130, 246, 0.25); border-radius: var(--radius-md); padding: 12px 18px; margin-bottom: 20px; font-size: 13.5px; color: #1e40af; align-items: center; justify-content: space-between; gap: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.03);">
+      <div style="display: flex; align-items: center; gap: 10px;">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg>
+        <span><strong>Chế độ Cán bộ kiểm tra (S-52):</strong> Bạn có thẩm quyền tra cứu lô hàng trên toàn bộ các tổ chức ở chế độ chỉ đọc. Mọi lượt tra cứu đều được ghi tự động vào nhật ký kiểm toán S-31.</span>
+      </div>
+    </div>
+
+    <!-- Filter & Search Toolbar (S-14 & S-52) -->
     <div class="filter-toolbar" id="filterToolbar">
       <div class="search-box">
         <span class="search-icon">
@@ -528,16 +536,32 @@
           type="text"
           id="searchInput"
           class="search-input"
-          placeholder="Tìm kiếm mã lô (vd: LOT-X82KP92A)..."
+          placeholder="Tìm kiếm mã lô (vd: LOT-001)..."
           autocomplete="off"
         >
       </div>
 
-      <div class="product-filter-box" style="min-width: 180px;">
+      <div class="farm-filter-box" id="farmFilterBox" style="min-width: 190px;">
+        <select id="farmFilter" class="search-input" style="padding-left: 14px; cursor: pointer;">
+          <option value="">Tất cả vùng trồng / thửa</option>
+        </select>
+      </div>
+
+      <div class="date-filter-box" id="dateFilterBox" style="display: flex; align-items: center; gap: 6px;">
+        <input type="date" id="harvestedFrom" class="search-input" title="Thu hoạch từ ngày" style="width: 140px; padding-left: 10px; cursor: pointer;">
+        <span style="color: var(--color-text-muted); font-size: 12px;">đến</span>
+        <input type="date" id="harvestedTo" class="search-input" title="Thu hoạch đến ngày" style="width: 140px; padding-left: 10px; cursor: pointer;">
+      </div>
+
+      <div class="product-filter-box" style="min-width: 170px;">
         <select id="productFilter" class="search-input" style="padding-left: 14px; cursor: pointer;">
           <option value="">Tất cả sản phẩm</option>
         </select>
       </div>
+
+      <button type="button" id="btnResetFilters" class="filter-btn" style="height: 36px; padding: 0 14px; font-weight: 600; background: rgba(0,0,0,0.04); border: 1px solid var(--color-border); border-radius: var(--radius-full); cursor: pointer;" onclick="resetFilters()">
+        <span>Đặt lại</span>
+      </button>
     </div>
 
     <!-- Lots Container -->
@@ -829,6 +853,12 @@
         currentUser = await initAppShell({ activeNav: "lots" });
         if (!currentUser) return;
 
+        const isInspectorRole = currentUser.roleId === "inspector";
+        if (isInspectorRole) {
+          const inspectorBanner = document.getElementById("inspectorBanner");
+          if (inspectorBanner) inspectorBanner.style.display = "flex";
+        }
+
         const canHarvest = (typeof window.hasPermission === "function")
           ? window.hasPermission(currentUser.roleId, "harvest.create")
           : ["producer", "cooperative", "org_admin", "admin"].includes(currentUser.roleId);
@@ -863,9 +893,10 @@
             if (productSelect) productSelect.value = paramProductId;
           }
         });
+        const farmsPromise = loadFarmsDropdown();
         const badgePromise = updateIncomingBadge();
 
-        await Promise.allSettled([lotsPromise, productsPromise, badgePromise]);
+        await Promise.allSettled([lotsPromise, productsPromise, farmsPromise, badgePromise]);
 
         if (urlParams.get("tab") === "incoming") {
           switchLotsTab("incoming");
@@ -896,6 +927,26 @@
       }
     }
 
+    async function loadFarmsDropdown() {
+      try {
+        const res = await fetch("/api/farms", { credentials: "same-origin" });
+        if (res.ok) {
+          const data = await res.json();
+          const select = document.getElementById("farmFilter");
+          if (!select) return;
+          const farms = data.farms || [];
+          farms.forEach((f) => {
+            const opt = document.createElement("option");
+            opt.value = f.id;
+            opt.textContent = `${f.name} (${f.id})`;
+            select.appendChild(opt);
+          });
+        }
+      } catch (err) {
+        console.warn("Could not load farms dropdown", err);
+      }
+    }
+
     async function fetchLots(isReset = true, overrideProductId = null) {
       if (isLoading) return;
       isLoading = true;
@@ -914,11 +965,17 @@
       }
 
       const searchVal = document.getElementById("searchInput").value.trim();
-      const productVal = overrideProductId !== null ? overrideProductId : document.getElementById("productFilter").value;
+      const productVal = overrideProductId !== null ? overrideProductId : (document.getElementById("productFilter") ? document.getElementById("productFilter").value : "");
+      const farmVal = document.getElementById("farmFilter") ? document.getElementById("farmFilter").value : "";
+      const harvestedFromVal = document.getElementById("harvestedFrom") ? document.getElementById("harvestedFrom").value : "";
+      const harvestedToVal = document.getElementById("harvestedTo") ? document.getElementById("harvestedTo").value : "";
 
       const queryParams = new URLSearchParams({ limit: 20 });
       if (searchVal) queryParams.append("search", searchVal);
       if (productVal) queryParams.append("productId", productVal);
+      if (farmVal) queryParams.append("farmId", farmVal);
+      if (harvestedFromVal) queryParams.append("harvestedFrom", harvestedFromVal);
+      if (harvestedToVal) queryParams.append("harvestedTo", harvestedToVal);
       if (!isReset && currentCursor) queryParams.append("cursor", currentCursor);
 
       try {
@@ -1099,6 +1156,17 @@
               ${remainingQtyFormatted}
             </span>
           </div>
+          ${(lot.organizationName || lot.organizationId) ? `
+            <div class="lot-meta-item">
+              <span class="lot-meta-label">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                Tổ chức:
+              </span>
+              <span class="lot-meta-value" style="font-size: 11.5px; max-width: 170px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${escapeHtml(lot.organizationName || lot.organizationId)}">
+                ${escapeHtml(lot.organizationName || lot.organizationId)}
+              </span>
+            </div>
+          ` : ""}
         </div>
 
         <div class="lot-card-actions">
@@ -2435,8 +2503,16 @@
     }
 
     function resetFilters() {
-      document.getElementById("searchInput").value = "";
-      document.getElementById("productFilter").value = "";
+      const searchEl = document.getElementById("searchInput");
+      const prodEl = document.getElementById("productFilter");
+      const farmEl = document.getElementById("farmFilter");
+      const fromEl = document.getElementById("harvestedFrom");
+      const toEl = document.getElementById("harvestedTo");
+      if (searchEl) searchEl.value = "";
+      if (prodEl) prodEl.value = "";
+      if (farmEl) farmEl.value = "";
+      if (fromEl) fromEl.value = "";
+      if (toEl) toEl.value = "";
       fetchLots(true);
     }
 
@@ -2455,6 +2531,29 @@
     const productFilter = document.getElementById("productFilter");
     if (productFilter) {
       productFilter.addEventListener("change", () => {
+        fetchLots(true);
+      });
+    }
+
+    // Farm filter change (S-52)
+    const farmFilter = document.getElementById("farmFilter");
+    if (farmFilter) {
+      farmFilter.addEventListener("change", () => {
+        fetchLots(true);
+      });
+    }
+
+    // Harvest date range changes (S-52)
+    const harvestedFrom = document.getElementById("harvestedFrom");
+    if (harvestedFrom) {
+      harvestedFrom.addEventListener("change", () => {
+        fetchLots(true);
+      });
+    }
+
+    const harvestedTo = document.getElementById("harvestedTo");
+    if (harvestedTo) {
+      harvestedTo.addEventListener("change", () => {
         fetchLots(true);
       });
     }

@@ -475,10 +475,66 @@
     </div>
   </div>
 
+  <!-- Modal Xóa Định Danh Nông Hộ (Nghị định 13/2023/NĐ-CP - Story S-56) -->
+  <div id="modal-anonymize-farm" class="modal-backdrop" style="display: none;">
+    <div class="modal-card" style="max-width: 540px;">
+      <div class="modal-header">
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <span style="font-size: 20px;">🛡️</span>
+          <h2 class="modal-title" style="font-size: 16px; font-weight: 700;">Quyền Xóa Dữ Liệu Cá Nhân Nông Hộ</h2>
+        </div>
+        <button id="btn-close-anon-modal" class="btn-icon" aria-label="Đóng">&times;</button>
+      </div>
+      <form id="form-anonymize-farm">
+        <div class="modal-body" style="padding: 16px;">
+          <div style="background: rgba(14, 165, 233, 0.08); border-left: 3px solid #0284c7; padding: 10px 14px; border-radius: 4px; font-size: 12.5px; color: var(--color-text-main); margin-bottom: 14px; line-height: 1.5;">
+            <strong>Căn cứ Điều 16 Nghị định 13/2023/NĐ-CP:</strong> Hệ thống sẽ làm sạch triệt để họ tên, số điện thoại, địa chỉ của nông hộ trên vùng trồng đã chọn. Mã định danh và chuỗi hash mật mã học của lô hàng sẽ được <strong>bảo toàn nguyên vẹn 100%</strong>.
+          </div>
+
+          <input type="hidden" id="anon-farm-id">
+
+          <div class="form-group" style="margin-bottom: 12px;">
+            <label class="form-label" style="font-size: 12px; font-weight: 600;">Vùng trồng cần xử lý</label>
+            <input type="text" id="anon-farm-display" class="form-input" readonly style="background: var(--color-bg-subtle); color: var(--color-text-muted);">
+          </div>
+
+          <div class="form-group" style="margin-bottom: 12px;">
+            <label class="form-label" style="font-size: 12px; font-weight: 600;">Họ và tên người yêu cầu / nông hộ <span class="req" style="color: var(--color-danger);">*</span></label>
+            <input type="text" id="anon-requester-name" class="form-input" required placeholder="Ví dụ: Nguyễn Văn A">
+          </div>
+
+          <div class="form-group" style="margin-bottom: 12px;">
+            <label class="form-label" style="font-size: 12px; font-weight: 600;">Số điện thoại nông hộ (nếu có)</label>
+            <input type="text" id="anon-requester-phone" class="form-input" placeholder="Ví dụ: 0912345678">
+          </div>
+
+          <div class="form-group" style="margin-bottom: 12px;">
+            <label class="form-label" style="font-size: 12px; font-weight: 600;">Căn cứ pháp lý <span class="req" style="color: var(--color-danger);">*</span></label>
+            <input type="text" id="anon-legal-basis" class="form-input" required value="Khoản 1 Điều 16 Nghị định 13/2023/NĐ-CP">
+          </div>
+
+          <div class="form-group" style="margin-bottom: 8px;">
+            <label class="form-label" style="font-size: 12px; font-weight: 600;">Ghi chú / Lý do xóa</label>
+            <textarea id="anon-notes" class="form-input" rows="2" placeholder="Nông hộ chấm dứt hợp đồng canh tác và yêu cầu xóa thông tin cá nhân..."></textarea>
+          </div>
+
+          <div id="anon-modal-alert" style="display: none; padding: 8px 12px; border-radius: 4px; font-size: 12px; margin-top: 10px;"></div>
+        </div>
+        <div class="modal-footer" style="padding: 12px 16px; display: flex; justify-content: flex-end; gap: 8px; border-top: 1px solid var(--color-border);">
+          <button type="button" id="btn-cancel-anon" class="btn btn-secondary" style="padding: 6px 14px; font-size: 13px;">Hủy bỏ</button>
+          <button type="submit" id="btn-submit-anon" class="btn btn-danger" style="padding: 6px 14px; font-size: 13px; background: #e11d48; color: #fff; border: none; border-radius: 4px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 6px;">
+            <span>Xác nhận xóa định danh PII</span>
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <script src="/app-shell.js?v=20261014"></script>
   <script>
     let isSubmitting = false;
     let currentUserRole = "";
+    let currentFarms = [];
 
     async function checkAuthAndLoad() {
       try {
@@ -721,6 +777,7 @@
         }
         const data = await res.json();
         const farms = data.farms || [];
+        currentFarms = farms;
 
         // Update stats
         document.getElementById("statTotalFarms").textContent = farms.length;
@@ -747,24 +804,60 @@
             ? window.hasPermission(currentUserRole, "farm.write")
             : ["producer", "cooperative", "org_admin", "admin"].includes(currentUserRole);
 
+          const isAnon = Boolean(
+            f.isAnonymized ||
+            f.is_anonymized ||
+            (f.name && f.name.includes("Đã ẩn danh theo NĐ 13/2023")) ||
+            (f.farmerName && f.farmerName.includes("ĐÃ ẨN DANH"))
+          );
+          const canAnonymize = ["org_admin", "admin"].includes(currentUserRole) && !isAnon;
+
+          const anonBadgeHtml = isAnon
+            ? `<span style="display: inline-flex; align-items: center; gap: 4px; padding: 2px 7px; border-radius: 4px; background: rgba(14, 165, 233, 0.12); color: #0284c7; font-size: 11px; font-weight: 600; border: 1px solid rgba(14, 165, 233, 0.3);">
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                [ĐÃ ẨN DANH THEO NĐ 13/2023]
+              </span>`
+            : "";
+
+          const farmDisplayName = isAnon
+            ? (f.name && f.name.includes("Đã ẩn danh theo NĐ 13/2023") ? f.name : `Vùng trồng ${f.id} (Đã ẩn danh theo NĐ 13/2023)`)
+            : (f.name || `Thửa đất ${f.id}`);
+
+          const anonBtnHtml = canAnonymize
+            ? `<button type="button" class="btn-anonymize" style="margin-left: 6px; padding: 4px 8px; font-size: 11px; border-radius: 4px; border: 1px solid #e11d48; color: #e11d48; background: rgba(225, 29, 72, 0.05); cursor: pointer; display: inline-flex; align-items: center; gap: 4px; font-weight: 600;" onclick="openAnonymizeModal('${escapeHtml(f.id)}', '${encodeURIComponent(farmDisplayName)}')">
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/><line x1="18" y1="8" x2="23" y2="13"/><line x1="23" y1="8" x2="18" y2="13"/></svg>
+                <span>Xóa PII (NĐ 13)</span>
+              </button>`
+            : "";
+
           const editBtnHtml = !canWriteFarm 
             ? `<span style="font-size: 11px; color: var(--color-text-muted);">(Chỉ xem)</span>`
-            : `<button class="btn-edit" onclick="startEdit('${f.id}', '${encodeURIComponent(f.name)}', ${f.area}, '${encodeURIComponent(f.coordinates || '')}')">
+            : `<button class="btn-edit" onclick="startEdit('${escapeHtml(f.id)}', '${encodeURIComponent(farmDisplayName)}', ${f.area}, '${encodeURIComponent(f.coordinates || '')}', ${isAnon})">
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>
                 <span>Sửa</span>
               </button>`;
 
+          // Khi đã ẩn danh: Tuyệt đối không hiển thị SĐT, địa chỉ cá nhân hay họ tên cũ của nông hộ
+          const farmerInfoHtml = isAnon
+            ? `<span style="color: var(--color-text-muted);">Chủ hộ: <strong>[ĐÃ ẨN DANH THEO NĐ 13/2023]</strong></span>`
+            : (f.farmerName ? `<span>Chủ hộ: <strong>${escapeHtml(f.farmerName)}</strong></span>` : "");
+
           div.innerHTML = `
             <div>
-              <div class="farm-title">${f.name}</div>
+              <div class="farm-title" style="display: flex; align-items: center; gap: 8px;">
+                <span>${escapeHtml(farmDisplayName)}</span>
+                ${anonBadgeHtml}
+              </div>
               <div class="farm-detail-row">
-                <span class="farm-detail-tag">${f.id}</span>
-                <span>Diện tích: <strong style="color: var(--color-text-main);">${f.area} ha</strong></span>
-                <span>Tọa độ: ${f.coordinates || "Chưa cập nhật"}</span>
+                <span class="farm-detail-tag">${escapeHtml(f.id)}</span>
+                <span>Diện tích: <strong style="color: var(--color-text-main);">${Number(f.area || 0).toFixed(2)} ha</strong></span>
+                <span>Tọa độ: ${escapeHtml(f.coordinates || "Chưa cập nhật")}</span>
+                ${farmerInfoHtml}
               </div>
             </div>
-            <div>
+            <div style="display: flex; align-items: center;">
               ${editBtnHtml}
+              ${anonBtnHtml}
             </div>
           `;
           container.appendChild(div);
@@ -830,7 +923,7 @@
       alert.style.display = "block";
     }
 
-    window.startEdit = function(id, encName, area, encCoords) {
+    window.startEdit = function(id, encName, area, encCoords, isAnon = false) {
       const canWriteFarm = (typeof window.hasPermission === "function")
         ? window.hasPermission(currentUserRole, "farm.write")
         : ["producer", "cooperative", "org_admin", "admin"].includes(currentUserRole);
@@ -840,22 +933,31 @@
         return;
       }
       document.getElementById("farmId").value = id;
-      document.getElementById("farmName").value = decodeURIComponent(encName);
+      document.getElementById("farmName").value = decodeURIComponent(encName || "");
       document.getElementById("farmArea").value = area;
-      document.getElementById("farmCoordinates").value = decodeURIComponent(encCoords);
+      document.getElementById("farmCoordinates").value = decodeURIComponent(encCoords || "");
       document.getElementById("formTitle").textContent = "Chỉnh sửa thửa đất (" + id + ")";
+      if (isAnon) {
+        document.getElementById("farmName").readOnly = true;
+        document.getElementById("farmName").title = "Thửa đất đã được ẩn danh theo NĐ 13/2023, không thể đổi tên định danh.";
+      } else {
+        document.getElementById("farmName").readOnly = false;
+        document.getElementById("farmName").title = "";
+      }
       document.getElementById("submitFarmBtn").innerHTML = `
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/></svg>
         <span>Cập nhật thửa đất</span>
       `;
       document.getElementById("cancelEditBtn").style.display = "block";
       clearErrors();
-      document.getElementById("farmName").focus();
+      document.getElementById("farmArea").focus();
     };
 
     document.getElementById("cancelEditBtn").addEventListener("click", () => {
       document.getElementById("farmId").value = "";
       document.getElementById("farmForm").reset();
+      document.getElementById("farmName").readOnly = false;
+      document.getElementById("farmName").title = "";
       document.getElementById("formTitle").textContent = "Khai báo thửa đất mới";
       document.getElementById("submitFarmBtn").innerHTML = `
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
@@ -946,6 +1048,99 @@
             <span>Cập nhật thửa đất</span>
           `;
         }
+      }
+    });
+
+    // S-56: Anonymization modal logic
+    function openAnonymizeModal(id, encodedName) {
+      const farm = (currentFarms || []).find((f) => f.id === id);
+      const isAnon = farm ? Boolean(farm.isAnonymized || farm.is_anonymized || (farm.name && farm.name.includes("Đã ẩn danh theo NĐ 13/2023"))) : false;
+      const alertBox = document.getElementById("anon-modal-alert");
+      const submitBtn = document.getElementById("btn-submit-anon");
+
+      // Reset form hoàn toàn để bảo đảm triệt để không lộ thông tin cá nhân cũ
+      document.getElementById("form-anonymize-farm").reset();
+      document.getElementById("anon-farm-id").value = id;
+
+      if (isAnon) {
+        document.getElementById("anon-farm-display").value = `Vùng trồng ${id} [ĐÃ ẨN DANH THEO NĐ 13/2023]`;
+        alertBox.style.display = "block";
+        alertBox.style.background = "rgba(14, 165, 233, 0.1)";
+        alertBox.style.color = "#0284c7";
+        alertBox.textContent = "Thửa đất này đã được xóa định danh cá nhân tuân thủ Nghị định 13/2023/NĐ-CP.";
+        submitBtn.disabled = true;
+      } else {
+        document.getElementById("anon-farm-display").value = `Mã định danh: ${id}`;
+        alertBox.style.display = "none";
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = "<span>Xác nhận xóa định danh PII</span>";
+      }
+
+      document.getElementById("anon-requester-name").value = "";
+      document.getElementById("anon-requester-phone").value = "";
+      document.getElementById("anon-notes").value = "Nông hộ chấm dứt hợp đồng canh tác và yêu cầu xóa thông tin cá nhân";
+      document.getElementById("modal-anonymize-farm").style.display = "flex";
+    }
+
+    function closeAnonymizeModal() {
+      document.getElementById("modal-anonymize-farm").style.display = "none";
+      document.getElementById("form-anonymize-farm").reset();
+      document.getElementById("anon-farm-id").value = "";
+      document.getElementById("anon-farm-display").value = "";
+      document.getElementById("anon-requester-name").value = "";
+      document.getElementById("anon-requester-phone").value = "";
+      document.getElementById("anon-modal-alert").style.display = "none";
+    }
+
+    document.getElementById("btn-close-anon-modal").addEventListener("click", closeAnonymizeModal);
+    document.getElementById("btn-cancel-anon").addEventListener("click", closeAnonymizeModal);
+
+    document.getElementById("form-anonymize-farm").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const farmId = document.getElementById("anon-farm-id").value;
+      const requesterName = document.getElementById("anon-requester-name").value.trim();
+      const requesterPhone = document.getElementById("anon-requester-phone").value.trim();
+      const legalBasis = document.getElementById("anon-legal-basis").value.trim();
+      const notes = document.getElementById("anon-notes").value.trim();
+      const alertBox = document.getElementById("anon-modal-alert");
+      const submitBtn = document.getElementById("btn-submit-anon");
+
+      if (!requesterName) {
+        alertBox.style.display = "block";
+        alertBox.style.background = "rgba(225, 29, 72, 0.1)";
+        alertBox.style.color = "#e11d48";
+        alertBox.textContent = "Vui lòng nhập họ và tên người yêu cầu.";
+        return;
+      }
+
+      submitBtn.disabled = true;
+      submitBtn.innerHTML = "<span>Đang xử lý...</span>";
+
+      try {
+        const res = await fetch(`/api/privacy/farmers/${encodeURIComponent(farmId)}/anonymize`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ requesterName, requesterPhone, legalBasis, notes }),
+        });
+        const data = await res.json();
+        if (res.ok && data.success) {
+          closeAnonymizeModal();
+          showAlert(`Đã xóa dữ liệu định danh nông hộ cho ${farmId} thành công (Mã yêu cầu: ${data.requestId}). Chuỗi hash mật mã được bảo toàn 100%!`, true);
+          await loadFarms();
+        } else {
+          alertBox.style.display = "block";
+          alertBox.style.background = "rgba(225, 29, 72, 0.1)";
+          alertBox.style.color = "#e11d48";
+          alertBox.textContent = data.message || "Không thể thực hiện xóa dữ liệu định danh.";
+        }
+      } catch (err) {
+        alertBox.style.display = "block";
+        alertBox.style.background = "rgba(225, 29, 72, 0.1)";
+        alertBox.style.color = "#e11d48";
+        alertBox.textContent = "Lỗi kết nối máy chủ.";
+      } finally {
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = "<span>Xác nhận xóa định danh PII</span>";
       }
     });
 

@@ -1,0 +1,82 @@
+{
+  "drillId": "DRILL-1792422909421",
+  "timestamp": "2026-10-19T15:15:09.444Z",
+  "status": "DRILL_PASSED",
+  "rtoDurationMs": 1,
+  "rtoDurationSeconds": 0.001,
+  "rpoPoint": "backup-coldchain-2026-10-19T15-15-09-422Z.enc",
+  "tableCountsRestored": {
+    "organizations": 3,
+    "users": 0,
+    "products": 0,
+    "farms": 1,
+    "lots": 2,
+    "batch_events": 2,
+    "lot_transfers": 0,
+    "lot_relations": 0,
+    "shipments": 1,
+    "shipment_lots": 0,
+    "cold_boxes": 0,
+    "temperature_readings": 0,
+    "cold_chain_violations": 1,
+    "recall_orders": 0,
+    "recall_acknowledgments": 0,
+    "audit_logs": 0,
+    "temperature_hourly_aggregates": 0,
+    "public_lot_cache": 0,
+    "public_lot_rate_limits": 0,
+    "integrity_audit_jobs": 0,
+    "integrity_audit_logs": 0,
+    "farmer_anonymization_requests": 1
+  },
+  "integrityVerification": {
+    "checked": true,
+    "totalLotsChecked": 1,
+    "passed": true,
+    "details": [
+      {
+        "lotId": "LOT-DRILL-01",
+        "valid": true,
+        "error": null,
+        "type": null
+      }
+    ]
+  },
+  "checks": {
+    "orgsParity": true,
+    "farmsParity": true,
+    "lotsParity": true,
+    "eventsParity": true,
+    "shipmentsParity": true,
+    "violationsParity": true,
+    "anonymizationParity": true,
+    "foreignKeysValid": true,
+    "hashIntegrityPassed": true
+  },
+  "exceptionScenarios": {
+    "wrongKey": {
+      "passed": true,
+      "detectedError": "Giải mã thất bại - Dữ liệu bị giả mạo hoặc khóa không khớp: Unsupported state or unable to authenticate data"
+    },
+    "tamperedCiphertext": {
+      "passed": true,
+      "detectedError": "Giải mã thất bại - Dữ liệu bị giả mạo hoặc khóa không khớp: Unsupported state or unable to authenticate data"
+    },
+    "tamperedAuthTag": {
+      "passed": true,
+      "detectedError": "Giải mã thất bại - Dữ liệu bị giả mạo hoặc khóa không khớp: Unsupported state or unable to authenticate data"
+    },
+    "transactionRollback": {
+      "passed": true,
+      "beginExecuted": true,
+      "rollbackExecuted": true,
+      "errorCaught": true
+    }
+  },
+  "totalDrillDurationMs": 23,
+  "environment": {
+    "platform": "win32",
+    "nodeVersion": "v24.18.1",
+    "sandboxPath": "C:\\Users\\remote\\AppData\\Local\\Temp\\coldchain-drill-UfWiui"
+  }
+}

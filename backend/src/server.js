@@ -25,6 +25,18 @@ const {
 const { seedS22InMemory } = require("../scripts/seed_s22");
 const { seedS39InMemory } = require("../scripts/seed_s39");
 const { markOverdueTransfers, startTransferOverdueJob } = require("./transfer_overdue_job");
+const { initIntegrityCheckJob, startIntegrityCheckJob } = require("./jobs/integrityCheckJob");
+const {
+  runTemperatureHourlyAggregationJob,
+  getHourlyAggregatesForShipment,
+  startNightlyTemperatureAggregationCron,
+  DEFAULT_CUTOFF_DAYS,
+} = require("./temperature_hourly_aggregation_service");
+const {
+  startNightlyBackupCron,
+  DEFAULT_BACKUP_DIR,
+} = require("../scripts/backup_nightly");
+const { getTransporterViolationReport } = require("./transporter_violation_report_service");
 const {
   isValidQuantity,
   toMilliUnits,
@@ -35,6 +47,15 @@ const {
 } = require("./quantity");
 const { traceLotOrigins, traceLotDescendants, CycleDetectedError } = require("./lot_genealogy");
 const { getPublicLotMapData } = require("./public_trace_map");
+const {
+  getClientIp,
+  checkPublicLotRateLimit,
+  getPublicLotCache,
+  setPublicLotCache,
+  invalidatePublicLotCache,
+  defaultInMemoryRateLimiter,
+  defaultInMemoryCache,
+} = require("./public_cache_rate_limiter");
 
 const publicMapRateLimitMap = new Map();
 function checkPublicMapRateLimit(ip) {
@@ -94,7 +115,22 @@ const {
   getShipmentViolations,
   getColdBoxViolations,
   ColdChainViolationDetector,
+  inMemoryViolations,
 } = require("./cold_chain_violation_service");
+const { exportLotDossierToPdf } = require("./lot_pdf_export_service");
+const {
+  runIntegrityAuditJob,
+  getLatestIntegrityAudit,
+  inMemoryIntegrityJobs,
+  inMemoryIntegrityLogs,
+} = require("./integrity_periodic_job");
+const {
+  anonymizeFarmerData,
+  sanitizeFarmData,
+  sanitizeNotes,
+  inMemoryAnonymizationRequests,
+  ANONYMIZED_REQUESTER_TAG,
+} = require("./farmer_privacy_service");
 const app = express();
 const PORT = Number(process.env.PORT || 3000);
 
@@ -671,9 +707,37 @@ app.get("/api/health", checkHealth);
  * - Tuyệt đối không trả về số điện thoại, mã định danh người dùng nội bộ, hay dữ liệu nhạy cảm.
  */
 app.get(
-  ["/api/public/lots/:code/map", "/api/public/lots/:code/public-map"],
+  [
+    "/api/public/lots/:code",
+    "/api/public/lots/:code/map",
+    "/api/public/lots/:code/public-map",
+    "/api/public/lots/:code/trace",
+    "/api/public/trace/:code",
+    "/api/public/trace/:lotCode",
+  ],
   async (req, res) => {
-    const clientIp = req.ip || req.socket.remoteAddress || "127.0.0.1";
+    const clientIp = getClientIp(req);
+    const rawCode = req.params.code || req.params.lotCode;
+    const code = typeof rawCode === "string" ? rawCode.trim() : "";
+
+    // S-50 / Jira N2-119 / N2-282: Giới hạn tần suất chống dò quét mã lô (> 30 mã khác nhau trong 60s)
+    // Mã lô không tồn tại vẫn được tính vào hạn mức
+    const rateLimit = await checkPublicLotRateLimit({
+      pool,
+      clientIp,
+      lotCode: code,
+      inMemoryLimiter: defaultInMemoryRateLimiter,
+    });
+
+    if (!rateLimit.allowed) {
+      res.set("Retry-After", String(rateLimit.retryAfter || 60));
+      return res.status(429).json({
+        error: "TOO_MANY_REQUESTS",
+        message: "Quá nhiều yêu cầu truy xuất các mã lô khác nhau trong thời gian ngắn. Vui lòng thử lại sau.",
+        retryAfter: rateLimit.retryAfter || 60,
+      });
+    }
+
     if (!checkPublicMapRateLimit(clientIp)) {
       return res.status(429).json({
         error: "TOO_MANY_REQUESTS",
@@ -681,7 +745,6 @@ app.get(
       });
     }
 
-    const rawCode = req.params.code;
     if (!rawCode || typeof rawCode !== "string") {
       return res.status(400).json({
         error: "INVALID_LOT_CODE",
@@ -689,7 +752,6 @@ app.get(
       });
     }
 
-    const code = rawCode.trim();
     // Giới hạn độ dài tối đa 50 ký tự và không chứa ký tự độc hại (Issue 33)
     if (!/^[A-Za-z0-9_-]{1,50}$/.test(code)) {
       return res.status(400).json({
@@ -698,10 +760,27 @@ app.get(
       });
     }
 
+    // S-50: Kiểm tra cache 60 giây (nếu có cache hit hợp lệ thì trả về ngay)
+    try {
+      const cachedData = await getPublicLotCache({
+        pool,
+        lotCode: code,
+        inMemoryCache: defaultInMemoryCache,
+        inMemoryRecallOrders,
+      });
+      if (cachedData) {
+        res.set("X-Cache", "HIT");
+        res.set("Cache-Control", "public, max-age=60");
+        return res.status(200).json(cachedData);
+      }
+    } catch (cacheErr) {
+      console.error("[PublicLotCache Read Error]:", cacheErr);
+    }
+
     try {
       const mapData = await getPublicLotMapData({
         pool,
-        lotCode: code.trim(),
+        lotCode: code,
         inMemoryLots,
         inMemoryBatchRelations,
         inMemoryBatchEvents,
@@ -710,8 +789,24 @@ app.get(
         inMemoryFarms,
         inMemoryLocations,
         inMemoryTransfers,
+        inMemoryRecallOrders,
       });
 
+      // S-50: Lưu kết quả vào cache 60s
+      try {
+        await setPublicLotCache({
+          pool,
+          lotCode: code,
+          payload: mapData,
+          ttlSeconds: 60,
+          inMemoryCache: defaultInMemoryCache,
+        });
+      } catch (cacheErr) {
+        console.error("[PublicLotCache Write Error]:", cacheErr);
+      }
+
+      res.set("X-Cache", "MISS");
+      res.set("Cache-Control", "public, max-age=60");
       return res.status(200).json(mapData);
     } catch (err) {
       if (err.statusCode === 404 || err.code === "LOT_NOT_FOUND" || err.message?.includes("Không tìm thấy lô hàng")) {
@@ -1513,6 +1608,9 @@ app.get(
     const orgId = req.auth.organizationId;
 
     const search = typeof req.query.search === "string" ? req.query.search.trim() : "";
+    const farmId = typeof req.query.farmId === "string" ? req.query.farmId.trim() : "";
+    const harvestedFrom = typeof req.query.harvestedFrom === "string" ? req.query.harvestedFrom.trim() : "";
+    const harvestedTo = typeof req.query.harvestedTo === "string" ? req.query.harvestedTo.trim() : "";
     const productId = typeof req.query.productId === "string" ? req.query.productId.trim() : "";
     const status = typeof req.query.status === "string" ? req.query.status.trim() : "";
     const limit = Math.min(Math.max(Number(req.query.limit) || 20, 1), 50);
@@ -1533,6 +1631,7 @@ app.get(
         let sql = `
           SELECT
             l.id, l.name, l.status, l.organization_id, l.created_at,
+            o.name AS organization_name,
             l.farm_id, f.name AS farm_name,
             l.product_id, p.name AS product_name, p.unit AS product_unit,
             l.initial_quantity, l.remaining_quantity, l.harvested_at,
@@ -1540,6 +1639,7 @@ app.get(
             o_to.name AS pending_to_org_name, lt.created_at AS pending_created_at,
             lt.is_overdue AS pending_is_overdue, lt.overdue_at AS pending_overdue_at
           FROM lots l
+          LEFT JOIN organizations o ON l.organization_id = o.id
           LEFT JOIN farms f ON l.farm_id = f.id
           LEFT JOIN products p ON l.product_id = p.id
           LEFT JOIN lot_transfers lt ON l.id = lt.lot_id AND lt.status = 'PENDING'
@@ -1554,10 +1654,26 @@ app.get(
           conditions.push(`l.organization_id = $${params.length}`);
         }
 
-        // 2. Tìm kiếm mã lô không phân biệt hoa/thường (S-14)
+        // 2. Tìm kiếm mã lô hoặc tên lô không phân biệt hoa/thường (S-14, S-52)
         if (search) {
           params.push(`%${search}%`);
-          conditions.push(`l.id ILIKE $${params.length}`);
+          conditions.push(`(l.id ILIKE $${params.length} OR l.name ILIKE $${params.length})`);
+        }
+
+        // 2b. Lọc theo vùng trồng / thửa đất (S-52)
+        if (farmId) {
+          params.push(farmId);
+          conditions.push(`l.farm_id = $${params.length}`);
+        }
+
+        // 2c. Lọc theo khoảng ngày thu hoạch (S-52)
+        if (harvestedFrom && /^\d{4}-\d{2}-\d{2}$/.test(harvestedFrom)) {
+          params.push(harvestedFrom);
+          conditions.push(`l.harvested_at >= $${params.length}`);
+        }
+        if (harvestedTo && /^\d{4}-\d{2}-\d{2}$/.test(harvestedTo)) {
+          params.push(harvestedTo);
+          conditions.push(`l.harvested_at <= $${params.length}`);
         }
 
         // 3. Lọc theo sản phẩm (S-14)
@@ -1615,6 +1731,38 @@ app.get(
           ).toString("base64url");
         }
 
+        // S-52: Ghi nhận nhật ký thao tác kiểm toán S-31 cho cán bộ kiểm tra
+        if (isInspector || req.auth.roleId === "inspector") {
+          try {
+            await recordAuditLog({
+              pool,
+              inMemoryLogs: inMemoryAuditLogs,
+              actorUserId: req.auth.id || req.auth.userId,
+              actorEmail: req.auth.email,
+              organizationId: req.auth.organizationId || "org-inspector",
+              action: "INSPECTOR_LOT_SEARCH",
+              resourceType: "lot",
+              resourceId: search || (rows.length === 1 ? rows[0].id : null),
+              ipAddress: req.ip || req.connection?.remoteAddress || "127.0.0.1",
+              userAgent: req.get("User-Agent"),
+              details: {
+                criteria: {
+                  search: search || null,
+                  farmId: farmId || null,
+                  harvestedFrom: harvestedFrom || null,
+                  harvestedTo: harvestedTo || null,
+                  productId: productId || null,
+                  status: status || null,
+                },
+                resultCount: rows.length,
+                hasMore,
+              },
+            });
+          } catch (auditErr) {
+            console.error("[S-52 AUDIT LOG ERROR]", auditErr.message);
+          }
+        }
+
         return res.status(200).json({
           organizationId: orgId,
           lots: rows.map((r) => ({
@@ -1622,6 +1770,7 @@ app.get(
             name: r.name,
             status: r.status,
             organizationId: r.organization_id,
+            organizationName: r.organization_name || r.organization_id,
             farmId: r.farm_id,
             farmName: r.farm_name,
             productId: r.product_id,
@@ -1656,7 +1805,29 @@ app.get(
 
     if (search) {
       const searchLower = search.toLowerCase();
-      filtered = filtered.filter((l) => l.id && l.id.toLowerCase().includes(searchLower));
+      filtered = filtered.filter(
+        (l) =>
+          (l.id && l.id.toLowerCase().includes(searchLower)) ||
+          (l.name && l.name.toLowerCase().includes(searchLower))
+      );
+    }
+
+    if (farmId) {
+      filtered = filtered.filter((l) => (l.farmId || l.farm_id) === farmId);
+    }
+
+    if (harvestedFrom && /^\d{4}-\d{2}-\d{2}$/.test(harvestedFrom)) {
+      filtered = filtered.filter((l) => {
+        const hAt = (l.harvestedAt || l.harvested_at || "").substring(0, 10);
+        return hAt && hAt >= harvestedFrom;
+      });
+    }
+
+    if (harvestedTo && /^\d{4}-\d{2}-\d{2}$/.test(harvestedTo)) {
+      filtered = filtered.filter((l) => {
+        const hAt = (l.harvestedAt || l.harvested_at || "").substring(0, 10);
+        return hAt && hAt <= harvestedTo;
+      });
     }
 
     if (productId) {
@@ -1711,6 +1882,38 @@ app.get(
       ).toString("base64url");
     }
 
+    // S-52: Ghi nhận nhật ký thao tác kiểm toán S-31 cho cán bộ kiểm tra (in-memory)
+    if (isInspector || req.auth.roleId === "inspector") {
+      try {
+        await recordAuditLog({
+          pool: null,
+          inMemoryLogs: inMemoryAuditLogs,
+          actorUserId: req.auth.id || req.auth.userId,
+          actorEmail: req.auth.email,
+          organizationId: req.auth.organizationId || "org-inspector",
+          action: "INSPECTOR_LOT_SEARCH",
+          resourceType: "lot",
+          resourceId: search || (sliced.length === 1 ? sliced[0].id : null),
+          ipAddress: req.ip || req.connection?.remoteAddress || "127.0.0.1",
+          userAgent: req.get("User-Agent"),
+          details: {
+            criteria: {
+              search: search || null,
+              farmId: farmId || null,
+              harvestedFrom: harvestedFrom || null,
+              harvestedTo: harvestedTo || null,
+              productId: productId || null,
+              status: status || null,
+            },
+            resultCount: sliced.length,
+            hasMore,
+          },
+        });
+      } catch (auditErr) {
+        console.error("[S-52 AUDIT LOG ERROR]", auditErr.message);
+      }
+    }
+
     return res.status(200).json({
       organizationId: orgId,
       lots: sliced.map((l) => {
@@ -1718,11 +1921,13 @@ app.get(
         const product = inMemoryProducts.find((p) => p.id === l.productId);
         const pending = inMemoryTransfers.find((t) => t.lotId === l.id && t.status === "PENDING");
         const toOrg = pending ? inMemoryOrganizations.find((o) => o.id === pending.toOrganizationId) : null;
+        const org = inMemoryOrganizations.find((o) => o.id === (l.organizationId || l.organization_id));
         return {
           id: l.id,
           name: l.name,
           status: l.status,
           organizationId: l.organizationId,
+          organizationName: org ? org.name : (ORG_NAME_FALLBACKS[l.organizationId] || l.organizationId),
           farmId: l.farmId,
           farmName: farm ? farm.name : null,
           productId: l.productId,
@@ -2154,13 +2359,124 @@ app.get(
 
       lot.pendingTransfer = pendingTransfer;
 
-      if (lot.hasTemperatureViolation === undefined) {
-        lot.hasTemperatureViolation = false;
+      if (lot && (req.auth?.isInspector || req.auth?.roleId === "inspector")) {
+        try {
+          await recordAuditLog({
+            pool,
+            inMemoryLogs: inMemoryAuditLogs,
+            actorUserId: req.auth.id || req.auth.userId,
+            actorEmail: req.auth.email,
+            organizationId: req.auth.organizationId || "org-inspector",
+            action: "INSPECTOR_LOT_VIEW",
+            resourceType: "lot",
+            resourceId: lot.id,
+            ipAddress: req.ip || req.connection?.remoteAddress || "127.0.0.1",
+            userAgent: req.get("User-Agent"),
+            details: {
+              lotId: lot.id,
+              lotName: lot.name,
+              organizationId: lot.organizationId,
+            },
+          });
+        } catch (auditErr) {
+          console.error("[S-52 AUDIT LOG ERROR]", auditErr.message);
+        }
       }
 
       return res.status(200).json({ lot });
     } catch (err) {
       return res.status(500).json({ message: err.message });
+    }
+  }
+);
+
+/**
+ * Xuất hồ sơ truy xuất đầy đủ của một lô ra tệp PDF kèm kết quả kiểm toàn vẹn và head hash (Story S-53 / Jira N2-121)
+ */
+app.get(
+  ["/api/lots/:id/export-pdf", "/api/organization/lots/:id/export-pdf"],
+  requirePermission(["producer", "cooperative", "transporter", "distributor", "inspector", "org_admin", "admin"]),
+  async (req, res) => {
+    const lotId = req.params.id;
+    try {
+      const callerOrgId = req.auth?.organizationId || req.auth?.organization_id || null;
+      const isPrivileged = Boolean(
+        req.auth?.isInspector ||
+        req.auth?.roleId === "admin" ||
+        req.auth?.roleId === "inspector" ||
+        req.auth?.role === "admin" ||
+        req.auth?.role === "inspector"
+      );
+
+      const pdfResult = await exportLotDossierToPdf({
+        pool,
+        lotId,
+        actorEmail: req.auth?.email || "inspector@example.com",
+        callerOrgId,
+        isPrivileged,
+        inMemoryContext: {
+          inMemoryLots,
+          inMemoryOrgs,
+          inMemoryFarms,
+          inMemoryProducts,
+          inMemoryBatchEvents,
+          inMemoryBatchRelations,
+          inMemoryShipments,
+          inMemoryViolations,
+          inMemoryRecallOrders,
+        },
+      });
+
+      if (pdfResult.status === 403) {
+        return res.status(403).json({
+          error: "FORBIDDEN",
+          message: pdfResult.message || "Bạn không có quyền xuất hồ sơ lô hàng của tổ chức khác.",
+        });
+      }
+
+      if (pdfResult.status === 404) {
+        return res.status(404).json({
+          error: "LOT_NOT_FOUND",
+          message: pdfResult.message,
+        });
+      }
+
+      if (req.auth?.isInspector || req.auth?.roleId === "inspector") {
+        try {
+          await recordAuditLog({
+            pool,
+            inMemoryLogs: inMemoryAuditLogs,
+            actorUserId: req.auth.id || req.auth.userId,
+            actorEmail: req.auth.email,
+            organizationId: req.auth.organizationId || "org-inspector",
+            action: "INSPECTOR_LOT_PDF_EXPORT",
+            resourceType: "lot",
+            resourceId: lotId,
+            ipAddress: req.ip || req.connection?.remoteAddress || "127.0.0.1",
+            userAgent: req.get("User-Agent"),
+            details: {
+              lotId,
+              headHash: pdfResult.headHash,
+              integrityValid: pdfResult.integrityValid,
+              eventCount: pdfResult.eventCount,
+            },
+          });
+        } catch (auditErr) {
+          console.error("[S-53 AUDIT LOG ERROR]", auditErr.message);
+        }
+      }
+
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader("Content-Disposition", `attachment; filename="${pdfResult.filename}"`);
+      res.setHeader("X-Lot-Head-Hash", pdfResult.headHash ? String(pdfResult.headHash) : "Chưa có dữ liệu");
+      res.setHeader("X-Integrity-Valid", String(pdfResult.integrityValid));
+      return res.status(200).send(pdfResult.pdfBuffer);
+    } catch (err) {
+      console.error("[S-53 PDF Export Error]:", err);
+      return res.status(500).json({
+        error: "INTERNAL_SERVER_ERROR",
+        message: "Lỗi kết xuất hồ sơ PDF: " + err.message,
+      });
     }
   }
 );
@@ -4605,13 +4921,20 @@ app.get(
         });
         return res.status(200).json({
           organizationId: orgId,
-          farms: queryRes.rows.map((r) => ({
-            id: r.id,
-            name: r.name,
-            area: parseFloat(r.area),
-            coordinates: r.coordinates,
-            organizationId: r.organization_id,
-          })),
+          farms: queryRes.rows.map((r) =>
+            sanitizeFarmData({
+              id: r.id,
+              name: r.name,
+              area: parseFloat(r.area),
+              coordinates: r.coordinates,
+              organizationId: r.organization_id,
+              farmerName: r.farmer_name,
+              farmerPhone: r.farmer_phone,
+              farmerAddress: r.farmer_address,
+              isAnonymized: Boolean(r.is_anonymized),
+              anonymizedAt: r.anonymized_at,
+            })
+          ),
         });
       } catch (err) {
         return res.status(500).json({ message: err.message });
@@ -4624,7 +4947,7 @@ app.get(
 
     return res.status(200).json({
       organizationId: orgId,
-      farms: filtered,
+      farms: filtered.map((f) => sanitizeFarmData(f)),
     });
   }
 );
@@ -4668,6 +4991,11 @@ app.get(
             area: parseFloat(q.row.area),
             coordinates: q.row.coordinates,
             organizationId: q.row.organization_id,
+            farmerName: q.row.farmer_name,
+            farmerPhone: q.row.farmer_phone,
+            farmerAddress: q.row.farmer_address,
+            isAnonymized: Boolean(q.row.is_anonymized),
+            anonymizedAt: q.row.anonymized_at,
           };
         }
       } catch (err) {
@@ -4701,7 +5029,7 @@ app.get(
       return res.status(404).json({ message: "Không tìm thấy thửa đất." });
     }
 
-    return res.status(200).json({ farm });
+    return res.status(200).json({ farm: sanitizeFarmData(farm) });
   }
 );
 
@@ -6497,7 +6825,7 @@ app.get("/login", (req, res) => {
   if (fs.existsSync(frontendIndexPath)) {
     return sendFrontendFile(res, frontendIndexPath);
   }
-  return res.redirect("http://localhost:8080/index.html");
+  return res.redirect("/index.html");
 });
 
 const frontendFarmsPath = path.join(__dirname, "../../frontend/farms.html");
@@ -6506,14 +6834,14 @@ app.get("/farms", requireAuth, (req, res) => {
   if (fs.existsSync(frontendFarmsPath)) {
     return sendFrontendFile(res, frontendFarmsPath);
   }
-  return res.redirect("http://localhost:8080/farms.html");
+  return res.redirect("/farms.html");
 });
 
 app.get("/lots", requireAuth, (req, res) => {
   if (fs.existsSync(frontendLotsPath)) {
     return sendFrontendFile(res, frontendLotsPath);
   }
-  return res.redirect("http://localhost:8080/lots.html");
+  return res.redirect("/lots.html");
 });
 
 const frontendProductsPath = path.join(__dirname, "../../frontend/products.html");
@@ -6523,14 +6851,14 @@ app.get("/products", requireAuth, (req, res) => {
   if (fs.existsSync(frontendProductsPath)) {
     return sendFrontendFile(res, frontendProductsPath);
   }
-  return res.redirect("http://localhost:8080/products.html");
+  return res.redirect("/products.html");
 });
 
 app.get("/harvest", requireAuth, (req, res) => {
   if (fs.existsSync(frontendHarvestPath)) {
     return sendFrontendFile(res, frontendHarvestPath);
   }
-  return res.redirect("http://localhost:8080/harvest.html");
+  return res.redirect("/harvest.html");
 });
 
 
@@ -6551,7 +6879,16 @@ app.get(["/lot-detail", "/lot-detail.html"], requireAuth, (req, res) => {
     return sendFrontendFile(res, frontendLotDetailPath);
   }
   const query = req.url.includes("?") ? req.url.substring(req.url.indexOf("?")) : "";
-  return res.redirect("http://localhost:8080/lot-detail.html" + query);
+  return res.redirect("/lot-detail.html" + query);
+});
+
+const frontendTransporterViolationsPath = path.join(__dirname, "../../frontend/transporter-violations.html");
+
+app.get(["/reports/transporter-violations", "/transporter-violations", "/transporter-violations.html"], requireAuth, (req, res) => {
+  if (fs.existsSync(frontendTransporterViolationsPath)) {
+    return sendFrontendFile(res, frontendTransporterViolationsPath);
+  }
+  return res.redirect("/transporter-violations.html");
 });
 
 if (fs.existsSync(path.join(__dirname, "../../frontend"))) {
@@ -7082,6 +7419,7 @@ app.patch(
       inMemoryProducts,
       inMemoryFarms,
       inMemoryLocations,
+      inMemoryRecallOrders,
     });
 
     return res.status(200).json({
@@ -7266,6 +7604,18 @@ app.post(
 
           await client.query("COMMIT");
 
+          // S-50: Vô hiệu hóa cache ngay lập tức khi lô bị thu hồi, không đợi 60s
+          try {
+            await invalidatePublicLotCache({
+              pool,
+              lotCodes: [lot.code],
+              lotIds: [lotId],
+              inMemoryCache: defaultInMemoryCache,
+            });
+          } catch (invErr) {
+            console.error("[invalidatePublicLotCache recall error]:", invErr);
+          }
+
           return res.status(201).json({
             message: "Mở lệnh thu hồi thành công.",
             recallOrder: {
@@ -7334,6 +7684,18 @@ app.post(
           userAgent: req.get("User-Agent"),
           details: { recallOrderId, lotId, reason, severity: upperSeverity },
         });
+
+        // S-50: Vô hiệu hóa cache ngay lập tức khi lô bị thu hồi, không đợi 60s
+        try {
+          await invalidatePublicLotCache({
+            pool: null,
+            lotCodes: [lot.code],
+            lotIds: [lotId],
+            inMemoryCache: defaultInMemoryCache,
+          });
+        } catch (invErr) {
+          console.error("[invalidatePublicLotCache recall inMemory error]:", invErr);
+        }
 
         return res.status(201).json({
           message: "Mở lệnh thu hồi thành công.",
@@ -8321,6 +8683,301 @@ app.get(
 );
 
 /**
+ * S-51 (Jira N2-114): Truy vấn dữ liệu nhiệt độ tổng hợp theo giờ cho chuyến vận chuyển
+ */
+app.get(
+  ["/api/shipments/:id/temperatures/hourly", "/api/temperatures/:id/hourly"],
+  requirePermission(["producer", "cooperative", "transporter", "distributor", "inspector", "org_admin", "admin"]),
+  async (req, res) => {
+    try {
+      // Đảm bảo tuân thủ cách ly và kiểm tra quyền truy cập chuyến vận chuyển
+      const shipmentCheck = await getShipmentTemperatures({
+        pool,
+        authContext: req.auth,
+        shipmentId: req.params.id,
+      });
+      if (shipmentCheck.status && shipmentCheck.status !== 200) {
+        return res.status(shipmentCheck.status).json(shipmentCheck);
+      }
+
+      const hourlyData = await getHourlyAggregatesForShipment({
+        pool,
+        shipmentId: req.params.id,
+      });
+
+      return res.status(200).json({
+        success: true,
+        shipmentId: req.params.id,
+        count: hourlyData.length,
+        temperatures: hourlyData,
+        data: hourlyData,
+      });
+    } catch (err) {
+      return res.status(500).json({ error: "INTERNAL_SERVER_ERROR", message: err.message });
+    }
+  }
+);
+
+/**
+ * S-51 (Jira N2-114): Endpoint quản trị kích hoạt job nén/tổng hợp nhiệt độ
+ */
+app.post(
+  "/api/maintenance/aggregate-temperatures",
+  requirePermission(["admin", "org_admin"]),
+  async (req, res) => {
+    try {
+      const parsedDays = parseInt(req.body?.cutoffDays || req.query?.cutoffDays, 10);
+      const cutoffDays = !isNaN(parsedDays) && parsedDays > 0 ? parsedDays : DEFAULT_CUTOFF_DAYS;
+
+      const result = await runTemperatureHourlyAggregationJob({
+        pool,
+        cutoffDays,
+        now: new Date(),
+      });
+
+      return res.status(200).json({
+        success: true,
+        message: "Thực thi job tổng hợp nhiệt độ theo giờ thành công.",
+        result,
+      });
+    } catch (err) {
+      return res.status(500).json({
+        error: "AGGREGATION_JOB_ERROR",
+        message: "Lỗi thực thi job tổng hợp nhiệt độ: " + err.message,
+      });
+    }
+  }
+);
+
+/**
+ * Story S-55 (Jira N2-123): Job kiểm tra toàn vẹn định kỳ mọi lô và cảnh báo khi phát hiện đứt mạch
+ */
+app.post(
+  "/api/admin/integrity-audits/run",
+  requirePermission(["admin"]),
+  async (req, res) => {
+    try {
+      const batchSize = Math.min(Math.max(Number(req.body?.batchSize) || 25, 1), 100);
+      const result = await runIntegrityAuditJob({
+        pool,
+        batchSize,
+        actorEmail: req.auth?.email || "admin@example.com",
+        inMemoryContext: {
+          inMemoryLots,
+          inMemoryBatchEvents,
+          inMemoryAuditLogs,
+        },
+      });
+
+      return res.status(200).json({
+        success: result.success,
+        message: result.status === "FAILED"
+          ? "Job kiểm tra toàn vẹn thất bại do lỗi cơ sở dữ liệu: " + (result.error || "")
+          : "Thực thi job kiểm tra toàn vẹn chuỗi hash thành công.",
+        result,
+      });
+    } catch (err) {
+      console.error("[S-55 Job API Error]:", err);
+      return res.status(500).json({
+        error: "INTEGRITY_JOB_ERROR",
+        message: "Lỗi thực thi job kiểm tra toàn vẹn: " + err.message,
+      });
+    }
+  }
+);
+
+app.get(
+  "/api/admin/integrity-audits/latest",
+  requirePermission(["admin"]),
+  async (req, res) => {
+    try {
+      const audit = await getLatestIntegrityAudit({
+        pool,
+        inMemoryContext: { inMemoryLots, inMemoryBatchEvents },
+      });
+      return res.status(200).json(audit);
+    } catch (err) {
+      return res.status(500).json({ error: "INTERNAL_SERVER_ERROR", message: err.message });
+    }
+  }
+);
+
+app.get(
+  "/api/admin/integrity-audits",
+  requirePermission(["admin"]),
+  async (req, res) => {
+    try {
+      if (pool) {
+        const jobsRes = await pool.query(
+          "SELECT * FROM integrity_audit_jobs ORDER BY started_at DESC LIMIT 50"
+        );
+        return res.status(200).json({ jobs: jobsRes.rows });
+      }
+      return res.status(200).json({ jobs: inMemoryIntegrityJobs });
+    } catch (err) {
+      return res.status(500).json({ error: "INTERNAL_SERVER_ERROR", message: err.message });
+    }
+  }
+);
+
+/**
+ * S-57 (Jira N2-125): Trạng thái sao lưu cơ sở dữ liệu hằng đêm
+ * Quyền: Chỉ admin hệ thống mới có quyền truy cập
+ */
+app.get(
+  "/api/admin/backup-status",
+  requirePermission(["admin"]),
+  async (req, res) => {
+    try {
+      const backupDir = process.env.BACKUP_DIR || DEFAULT_BACKUP_DIR;
+      const manifestPath = path.join(backupDir, "backup-manifest.json");
+
+      let manifest = null;
+      let manifestExists = false;
+
+      if (fs.existsSync(manifestPath)) {
+        try {
+          const raw = fs.readFileSync(manifestPath, "utf8");
+          manifest = JSON.parse(raw);
+          manifestExists = true;
+        } catch (parseErr) {
+          console.warn("[Backup Status API] Lỗi phân tích cú pháp manifest:", parseErr.message);
+        }
+      }
+
+      const backups = manifest && Array.isArray(manifest.backups) ? manifest.backups : [];
+      const latestBackup = backups.length > 0 ? backups[0] : null;
+      const totalBackups = backups.length;
+      const lastStatus = latestBackup
+        ? latestBackup.status
+        : manifest && manifest.lastStatus
+        ? manifest.lastStatus
+        : manifestExists
+        ? "NO_BACKUPS"
+        : "NOT_INITIALIZED";
+      const lastBackupAt = latestBackup ? latestBackup.createdAt : null;
+
+      return res.status(200).json({
+        status: "OK",
+        backupDir,
+        manifestExists,
+        manifestLastUpdated: manifest ? manifest.lastUpdated : null,
+        totalBackups,
+        latestBackup,
+        lastStatus,
+        lastBackupAt,
+        lastError: manifest && manifest.lastError ? manifest.lastError : null,
+        manifest,
+      });
+    } catch (err) {
+      console.error("[Backup Status Error]:", err);
+      return res.status(500).json({ error: "INTERNAL_SERVER_ERROR", message: err.message });
+    }
+  }
+);
+
+/**
+ * S-56 (Jira N2-124): Quyền xóa dữ liệu định danh nông hộ (Right to Erasure theo Nghị định 13/2023/NĐ-CP)
+ * Đảm bảo xóa sạch thông tin cá nhân (họ tên, SĐT, địa chỉ) mà không phá vỡ chuỗi hash mật mã học (S-12).
+ */
+app.post(
+  "/api/privacy/farmers/:id/anonymize",
+  requirePermission(["admin", "org_admin"]),
+  async (req, res) => {
+    try {
+      const farmId = req.params.id;
+      const { requesterName, requesterPhone, legalBasis, notes } = req.body || {};
+
+      // S-56: Lấy organizationId từ phiên xác thực phía server (req.auth), không lấy từ client payload
+      const callerRole = req.auth ? req.auth.roleId : null;
+      const callerOrgId = req.auth ? (req.auth.organizationId || req.auth.organization_id) : null;
+      const isSystemAdmin = callerRole === "admin";
+      const organizationId = isSystemAdmin ? null : callerOrgId;
+
+      const result = await anonymizeFarmerData({
+        pool,
+        farmId,
+        organizationId,
+        isSystemAdmin,
+        requesterName: requesterName || "Nông hộ chủ vườn",
+        requesterPhone: requesterPhone || null,
+        legalBasis: legalBasis || "Nghị định 13/2023/NĐ-CP",
+        processedBy: (req.auth && (req.auth.email || req.auth.userId)) || "privacy-officer@agri-trace.internal",
+        notes: notes || "Xóa thông tin cá nhân theo quyền của chủ thể dữ liệu",
+        inMemoryContext: {
+          inMemoryFarms,
+          inMemoryLots,
+          inMemoryBatchEvents,
+          inMemoryAuditLogs,
+        },
+      });
+
+      return res.status(result.status || 200).json(result);
+    } catch (err) {
+      return res.status(500).json({ error: "INTERNAL_SERVER_ERROR", message: err.message });
+    }
+  }
+);
+
+app.get(
+  "/api/privacy/anonymization-requests",
+  requirePermission(["admin", "org_admin", "inspector"]),
+  async (req, res) => {
+    try {
+      const callerRole = req.auth ? req.auth.roleId : null;
+      const callerOrgId = req.auth ? (req.auth.organizationId || req.auth.organization_id) : null;
+      const isPrivileged = callerRole === "admin" || callerRole === "inspector" || Boolean(req.auth && req.auth.isInspector);
+
+      const sanitizeRequestRecord = (r) => ({
+        ...r,
+        requesterName: ANONYMIZED_REQUESTER_TAG,
+        requester_name: ANONYMIZED_REQUESTER_TAG,
+        requesterPhone: null,
+        requester_phone: null,
+        notes: sanitizeNotes(r.notes),
+      });
+
+      if (pool) {
+        if (isPrivileged) {
+          const queryRes = await pool.query(
+            "SELECT * FROM farmer_anonymization_requests ORDER BY processed_at DESC LIMIT 100"
+          );
+          return res.status(200).json({ requests: queryRes.rows.map(sanitizeRequestRecord) });
+        } else {
+          // org_admin: Chỉ xem các yêu cầu thuộc phạm vi tổ chức của mình, chống IDOR / rò rỉ dữ liệu chéo tổ chức
+          const queryRes = await pool.query(
+            `SELECT r.*
+             FROM farmer_anonymization_requests r
+             JOIN farms f ON r.farm_id = f.id
+             WHERE f.organization_id = $1
+             ORDER BY r.processed_at DESC LIMIT 100`,
+            [callerOrgId]
+          );
+          return res.status(200).json({ requests: queryRes.rows.map(sanitizeRequestRecord) });
+        }
+      }
+
+      if (isPrivileged) {
+        return res.status(200).json({ requests: inMemoryAnonymizationRequests.map(sanitizeRequestRecord) });
+      }
+
+      // In-memory: Lọc theo organizationId của nông hộ
+      const orgFarmIds = new Set(
+        inMemoryFarms
+          .filter((f) => (f.organizationId || f.organization_id) === callerOrgId)
+          .map((f) => f.id)
+      );
+      const filtered = inMemoryAnonymizationRequests.filter((r) =>
+        r.organizationId === callerOrgId || orgFarmIds.has(r.farmId || r.farm_id)
+      );
+      return res.status(200).json({ requests: filtered.map(sanitizeRequestRecord) });
+    } catch (err) {
+      return res.status(500).json({ error: "INTERNAL_SERVER_ERROR", message: err.message });
+    }
+  }
+);
+
+/**
  * S-43 Phase 2 (Jira N2-111): REST Violation Routes & RBAC Enforcement
  */
 app.get(
@@ -8354,6 +9011,44 @@ app.get(
       return res.status(result.status || 200).json(result);
     } catch (err) {
       return res.status(500).json({ error: "INTERNAL_SERVER_ERROR", message: err.message });
+    }
+  }
+);
+
+/**
+ * S-54 (Jira N2-122): Báo cáo thống kê vi phạm chuỗi lạnh theo đơn vị vận chuyển
+ * Phân quyền: distributor, cooperative, producer, transporter, inspector, admin, org_admin
+ * Bảo mật: Tenant Isolation T-12 (nhà phân phối chỉ thấy chuyến chở lô hàng của mình)
+ */
+app.get(
+  ["/api/reports/transporter-violations", "/api/reports/transporters/violations"],
+  requirePermission(["distributor", "cooperative", "producer", "transporter", "inspector", "admin", "org_admin"]),
+  async (req, res) => {
+    try {
+      const fromDate = req.query.from || req.query.fromDate;
+      const toDate = req.query.to || req.query.toDate;
+      const targetOrgId = req.query.orgId || req.query.targetOrgId;
+
+      const report = await getTransporterViolationReport({
+        pool,
+        authContext: req.auth,
+        fromDate,
+        toDate,
+        targetOrgId,
+        inMemoryShipmentsList: inMemoryShipments,
+        inMemoryShipmentLotsList: inMemoryShipmentLots,
+        inMemoryViolationsList: inMemoryViolations,
+        inMemoryLotsList: inMemoryLots,
+        inMemoryOrgsList: inMemoryOrgs,
+      });
+
+      return res.status(report.status || 200).json(report);
+    } catch (err) {
+      console.error("[getTransporterViolationReport API Error]:", err);
+      return res.status(500).json({
+        error: "INTERNAL_SERVER_ERROR",
+        message: "Lỗi máy chủ khi trích xuất báo cáo thống kê vi phạm đơn vị vận chuyển: " + err.message,
+      });
     }
   }
 );
@@ -8462,6 +9157,18 @@ async function start() {
   // Khởi động job rà soát bàn giao quá hạn định kỳ (S-24 / T-56)
   startTransferOverdueJob({ pool, inMemoryTransfers });
 
+  // Khởi động job kiểm tra tính toàn vẹn chuỗi sự kiện định kỳ lúc 2:00 sáng (S-55 / N2-123)
+  initIntegrityCheckJob({ pool });
+
+  // Khởi động job tổng hợp nhiệt độ định kỳ ban đêm (S-51 / N2-114)
+  startNightlyTemperatureAggregationCron({ pool });
+
+  // Khởi động job sao lưu tự động ban đêm nếu bật ENABLE_BACKUP_CRON === 'true' (S-57 / Jira N2-125)
+  if (process.env.ENABLE_BACKUP_CRON === "true") {
+    console.log("[Backup S-57 Server] ENABLE_BACKUP_CRON='true' - Khởi động cron sao lưu tự động ban đêm...");
+    startNightlyBackupCron({ pool });
+  }
+
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`Backend server running at http://0.0.0.0:${PORT}`);
   });
@@ -8520,6 +9227,8 @@ module.exports = {
   setAppendHookForTesting,
   markOverdueTransfers,
   startTransferOverdueJob,
+  initIntegrityCheckJob,
+  startIntegrityCheckJob,
   validateMergeLotInput,
   collectAncestorLotIds,
   collectDescendantLotIds,
@@ -8549,30 +9258,52 @@ module.exports = {
   getActiveShipmentForLot,
   recordShipmentTemperature,
   getShipmentTemperatures,
-  seedS22Data: () =>
-    seedS22InMemory({
+  seedS22Data: () => {
+    defaultInMemoryCache.clear();
+    defaultInMemoryRateLimiter.clear();
+    return seedS22InMemory({
       inMemoryLots,
       inMemoryBatchRelations,
       inMemoryBatchEvents,
       inMemoryOrgs,
       inMemoryProducts,
       inMemoryFarms,
-    }),
-  seedS39Data: () =>
-    seedS39InMemory({
+    });
+  },
+  seedS39Data: () => {
+    defaultInMemoryCache.clear();
+    defaultInMemoryRateLimiter.clear();
+    return seedS39InMemory({
       inMemoryLots,
       inMemoryBatchRelations,
       inMemoryBatchEvents,
       inMemoryOrgs,
       inMemoryProducts,
       inMemoryFarms,
-    }),
+    });
+  },
   inMemoryRecallOrders,
   getRecallOrderWithLiveDescendants,
   checkLotRecallStatus,
   handleAcceptedTemperatureReading,
   getViolations,
   getShipmentViolations,
+  runTemperatureHourlyAggregationJob,
+  getHourlyAggregatesForShipment,
+  startNightlyTemperatureAggregationCron,
+  getClientIp,
+  checkPublicLotRateLimit,
+  getPublicLotCache,
+  setPublicLotCache,
+  invalidatePublicLotCache,
+  defaultInMemoryRateLimiter,
+  defaultInMemoryCache,
+  getTransporterViolationReport,
+  anonymizeFarmerData,
+  sanitizeFarmData,
+  inMemoryAnonymizationRequests,
+  ANONYMIZED_REQUESTER_TAG,
+  startNightlyBackupCron,
 };
 
 // --- S-46: Sinh và xuất mã QR cho lô hàng (PNG / SVG) ---

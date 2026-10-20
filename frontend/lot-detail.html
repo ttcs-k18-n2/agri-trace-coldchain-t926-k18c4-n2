@@ -1667,7 +1667,7 @@
       if (!currentUser) return;
 
       const urlParams = new URLSearchParams(window.location.search);
-      const lotId = urlParams.get("id") || urlParams.get("lotId");
+      const lotId = urlParams.get("id") || urlParams.get("lotId") || urlParams.get("lotCode") || urlParams.get("code");
 
       if (!lotId) {
         renderError("Thiếu mã định danh lô hàng", "Vui lòng chọn một lô hàng từ danh sách để xem chi tiết.");
@@ -1831,7 +1831,22 @@
         : "--";
       const harvestDateFormatted = formatDate(lot.harvestedAt || lot.createdAt);
       const displayName = lot.name || lot.productName || "Nông sản";
-      const farmDisplay = lot.farmName || lot.farmId || "Thửa chưa gán";
+      const isLotFarmAnon = Boolean(
+        lot.isAnonymized ||
+        lot.is_anonymized ||
+        lot.farmIsAnonymized ||
+        lot.farm_is_anonymized ||
+        (lot.farm && (lot.farm.isAnonymized || lot.farm.is_anonymized)) ||
+        (lot.farmName && (lot.farmName.includes("Đã ẩn danh theo NĐ 13/2023") || lot.farmName.includes("[ĐÃ ẨN DANH"))) ||
+        (lot.farm && lot.farm.name && (lot.farm.name.includes("Đã ẩn danh theo NĐ 13/2023") || lot.farm.name.includes("[ĐÃ ẨN DANH")))
+      );
+      const farmId = lot.farmId || (lot.farm && (lot.farm.id || lot.farm.farmId)) || "";
+      let farmDisplay = lot.farmName || (lot.farm && lot.farm.name) || (farmId ? `Thửa đất ${farmId}` : "Thửa chưa gán");
+      if (isLotFarmAnon) {
+        farmDisplay = (farmDisplay && farmDisplay.includes("Đã ẩn danh theo NĐ 13/2023"))
+          ? farmDisplay
+          : (farmId ? `Vùng trồng ${farmId} (Đã ẩn danh theo NĐ 13/2023)` : "Vùng trồng (Đã ẩn danh theo NĐ 13/2023)");
+      }
       const orgDisplay = lot.organizationName || lot.organizationId || "--";
 
       const contentArea = document.getElementById("contentArea");
@@ -1902,9 +1917,18 @@
                 </button>
               ` : ""}
 
+              <a href="/api/lots/${encodeURIComponent(lot.id)}/export-pdf" class="btn btn-secondary" id="btnExportPdfHero" target="_blank" style="height: 32px; padding: 0 14px; font-size: 13px; display: inline-flex; align-items: center; gap: 6px; cursor: pointer; border-radius: var(--radius-sm); border-color: #2563eb; color: #2563eb; font-weight: 600;" title="Xuất hồ sơ truy xuất đầy đủ ra PDF kèm kết quả toàn vẹn (S-53)">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+                <span>Xuất PDF</span>
+              </a>
+
               <div class="dropdown-menu-wrapper">
                 <button type="button" class="btn-icon-kebab" id="btn-hero-more" onclick="toggleHeroDropdown(event)" title="Thao tác khác" aria-label="Thao tác khác">•••</button>
                 <div class="dropdown-popover" id="dropdown-hero-lot">
+                  <a href="/api/lots/${encodeURIComponent(lot.id)}/export-pdf" class="dropdown-item" id="btnExportPdfDropdown" target="_blank">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                    <span>Xuất hồ sơ PDF (S-53)</span>
+                  </a>
                   ${isInspectorOrAdmin ? `
                     <button type="button" class="dropdown-item" id="btnOpenRecallFromDropdown" style="color: #dc2626; font-weight: 600;">
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/></svg>
@@ -2039,7 +2063,14 @@
             </div>
             <div class="hero-stat-item">
               <span class="hero-stat-label">Thửa đất sản xuất</span>
-              <span class="hero-stat-val">${escapeHtml(farmDisplay)}</span>
+              <span class="hero-stat-val">
+                ${escapeHtml(farmDisplay)}
+                ${isLotFarmAnon ? `
+                  <span style="display: inline-flex; align-items: center; gap: 4px; padding: 2px 6px; border-radius: 4px; background: rgba(14, 165, 233, 0.12); color: #0284c7; font-size: 11px; font-weight: 600; border: 1px solid rgba(14, 165, 233, 0.3); margin-left: 6px;">
+                    [ĐÃ ẨN DANH THEO NĐ 13/2023]
+                  </span>
+                ` : ""}
+              </span>
             </div>
             <div class="hero-stat-item">
               <span class="hero-stat-label">Tổ chức nắm giữ</span>
@@ -2146,11 +2177,18 @@
               </h3>
               <div class="meta-row">
                 <span class="meta-key">Tên thửa</span>
-                <span class="meta-val">${escapeHtml(farmDisplay)}</span>
+                <span class="meta-val">
+                  ${escapeHtml(farmDisplay)}
+                  ${isLotFarmAnon ? `
+                    <span style="display: inline-flex; align-items: center; gap: 4px; padding: 2px 6px; border-radius: 4px; background: rgba(14, 165, 233, 0.12); color: #0284c7; font-size: 11px; font-weight: 600; border: 1px solid rgba(14, 165, 233, 0.3); margin-left: 6px;">
+                      [ĐÃ ẨN DANH THEO NĐ 13/2023]
+                    </span>
+                  ` : ""}
+                </span>
               </div>
               <div class="meta-row">
                 <span class="meta-key">Mã thửa đất</span>
-                <span class="meta-val font-mono">${escapeHtml(lot.farmId || "--")}</span>
+                <span class="meta-val font-mono">${escapeHtml(farmId || lot.farmId || "--")}</span>
               </div>
               <div class="meta-row">
                 <span class="meta-key">Ngày ghi nhận lô</span>
@@ -2383,16 +2421,43 @@
                 <div class="farm-origins-grid">
                   ${rootLots.map(rl => {
                     const farm = rl.farm || {};
-                    const farmName = farm.name || farm.farm_name || rl.farmName || "Chưa gán thửa đất";
-                    const coords = farm.coordinates || rl.farmCoordinates || null;
-                    const area = farm.area !== null && farm.area !== undefined ? farm.area : (rl.farmArea || null);
+                    const isFarmAnon = Boolean(
+                      rl.isAnonymized ||
+                      rl.is_anonymized ||
+                      farm.isAnonymized ||
+                      farm.is_anonymized ||
+                      (farm.name && farm.name.includes("Đã ẩn danh theo NĐ 13/2023")) ||
+                      (rl.farmName && rl.farmName.includes("Đã ẩn danh theo NĐ 13/2023")) ||
+                      (farm.farmerName && farm.farmerName.includes("ĐÃ ẨN DANH"))
+                    );
+                    const rootFarmId = farm.id || rl.farmId || "";
+                    let farmName = farm.name || farm.farm_name || rl.farmName || "Chưa gán thửa đất";
+                    if (isFarmAnon) {
+                      farmName = (farmName && farmName.includes("Đã ẩn danh theo NĐ 13/2023"))
+                        ? farmName
+                        : (rootFarmId ? `Vùng trồng ${rootFarmId} (Đã ẩn danh theo NĐ 13/2023)` : "Vùng trồng (Đã ẩn danh theo NĐ 13/2023)");
+                    }
+                    const coords = isFarmAnon ? null : (farm.coordinates || rl.farmCoordinates || null);
+                    const area = isFarmAnon ? null : (farm.area !== null && farm.area !== undefined ? farm.area : (rl.farmArea || null));
                     const orgName = rl.organizationName || rl.organizationId || "--";
+
+                    const anonBadgeHtml = isFarmAnon ? `
+                      <span style="display: inline-flex; align-items: center; gap: 4px; padding: 2px 6px; border-radius: 4px; background: rgba(14, 165, 233, 0.12); color: #0284c7; font-size: 11px; font-weight: 600; border: 1px solid rgba(14, 165, 233, 0.3); margin-left: 6px;">
+                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                        [ĐÃ ẨN DANH THEO NĐ 13/2023]
+                      </span>
+                    ` : "";
 
                     return `
                     <div class="farm-origin-box">
                       <div class="farm-origin-title">
                         <span>🌱</span>
                         <span>${escapeHtml(farmName)}</span>
+                        ${anonBadgeHtml}
+                      </div>
+                      <div class="farm-origin-meta-row">
+                        <span><strong>Mã thửa:</strong></span>
+                        <span class="font-mono">${escapeHtml(rootFarmId || "--")}</span>
                       </div>
                       <div class="farm-origin-meta-row">
                         <span><strong>Lô gốc:</strong></span>
@@ -2617,11 +2682,23 @@
                           <div style="font-size: 12px; color: var(--color-text-muted);">
                             <span>Tổ chức: <strong>${escapeHtml(l.organizationName || l.organizationId || "--")}</strong></span>
                           </div>
-                          ${l.farm && l.farm.name ? `
+                          ${l.farm && (l.farm.name || l.farm.id) ? (() => {
+                            const isAncestorFarmAnon = Boolean(
+                              l.isAnonymized ||
+                              l.is_anonymized ||
+                              (l.farm && (l.farm.isAnonymized || l.farm.is_anonymized)) ||
+                              (l.farm && l.farm.name && l.farm.name.includes("Đã ẩn danh theo NĐ 13/2023"))
+                            );
+                            const ancFarmName = isAncestorFarmAnon
+                              ? ((l.farm.name && l.farm.name.includes("Đã ẩn danh theo NĐ 13/2023")) ? l.farm.name : `Vùng trồng ${l.farm.id || l.farmId || ""} (Đã ẩn danh theo NĐ 13/2023)`)
+                              : l.farm.name;
+                            return `
                             <div style="font-size: 11.5px; color: #059669;">
-                              <span>🌱 Thửa: ${escapeHtml(l.farm.name)}</span>
+                              <span>🌱 Thửa: ${escapeHtml(ancFarmName)}</span>
+                              ${isAncestorFarmAnon ? `<span style="font-size: 10px; color: #0284c7; font-weight: 600; margin-left: 4px;">[ĐÃ ẨN DANH THEO NĐ 13/2023]</span>` : ""}
                             </div>
-                          ` : ""}
+                            `;
+                          })() : ""}
                           <div style="margin-top: 4px; padding-top: 6px; border-top: 1px dashed var(--color-border); display: flex; justify-content: flex-end;">
                             <a href="/lot-detail.html?id=${encodeURIComponent(l.id)}" style="font-size: 11.5px; color: var(--color-primary); font-weight: 600; display: inline-flex; align-items: center; gap: 4px;">
                               <span>Xem chi tiết</span>
@@ -4438,7 +4515,7 @@
             closeDetailRejectModal();
             alert("✓ Đã từ chối tiếp nhận bàn giao lô hàng thành công. Lô hàng vẫn thuộc quyền sở hữu của bên gửi.");
             const urlParams = new URLSearchParams(window.location.search);
-            const lotId = urlParams.get("id") || urlParams.get("lotId");
+            const lotId = urlParams.get("id") || urlParams.get("lotId") || urlParams.get("lotCode") || urlParams.get("code") || (lotData && lotData.id);
             await loadLotDetail(lotId);
           } catch (err) {
             if (alertBox) {
@@ -5492,7 +5569,7 @@
     // --- S-46: Tải mã QR truy xuất nguồn gốc (PNG / SVG) ---
     async function downloadLotQr(format) {
       const urlParams = new URLSearchParams(window.location.search);
-      const lotId = urlParams.get("id") || (lotData && lotData.id);
+      const lotId = urlParams.get("id") || urlParams.get("lotId") || urlParams.get("lotCode") || urlParams.get("code") || (lotData && lotData.id);
 
       if (!lotId) {
         alert("Không tìm thấy thông tin lô hàng để tải mã QR!");

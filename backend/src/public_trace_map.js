@@ -10,6 +10,16 @@
 
 const { traceLotOrigins } = require("./lot_genealogy");
 const { getLocationById } = require("./location_service");
+const { checkLotRecallStatus } = require("./recall_service");
+const {
+  PUBLIC_LOT_ALLOWLIST,
+  PUBLIC_ORIGIN_ALLOWLIST,
+  PUBLIC_JOURNEY_ALLOWLIST,
+  PUBLIC_ROUTE_ALLOWLIST,
+  PUBLIC_SUMMARY_ALLOWLIST,
+  PUBLIC_RECALL_ALLOWLIST,
+  PUBLIC_COLDCHAIN_ALLOWLIST,
+} = require("./public_allowlist");
 
 /**
  * Danh mục tọa độ đại diện cấp xã / khu vực mặc định (In-memory fallback & seed mapping)
@@ -267,17 +277,53 @@ function getLocationTypeLabel(type) {
   }
 }
 
-function getSafePublicOrgName(orgName, orgId, orgMap, fallback = "Đối tác chuỗi cung ứng") {
+function getSafePublicProducerName(orgName, orgId, orgMap, fallback = "Hợp tác xã sản xuất") {
   if (orgName && typeof orgName === "string" && !orgName.toLowerCase().startsWith("org-")) {
     return orgName;
   }
   if (orgId && orgMap && orgMap.has(orgId)) {
     const mapped = orgMap.get(orgId);
-    if (mapped && typeof mapped === "string" && !mapped.toLowerCase().startsWith("org-")) {
-      return mapped;
+    const mName = typeof mapped === "object" ? mapped.name : mapped;
+    if (mName && typeof mName === "string" && !mName.toLowerCase().startsWith("org-")) {
+      return mName;
     }
   }
   return fallback;
+}
+
+function getPublicPartnerTypeLabel(orgTypeOrRole, fallback = "Đối tác chuỗi cung ứng") {
+  const norm = String(orgTypeOrRole || "").toLowerCase().trim();
+  if (norm.includes("trans") || norm.includes("vận chuyển") || norm.includes("carrier") || norm.includes("logistics")) {
+    return "Đơn vị vận chuyển";
+  }
+  if (norm.includes("dist") || norm.includes("phân phối") || norm.includes("retail") || norm.includes("store") || norm.includes("bán lẻ")) {
+    return "Nhà phân phối";
+  }
+  if (norm.includes("coop") || norm.includes("hợp tác xã") || norm.includes("htx")) {
+    return "Hợp tác xã";
+  }
+  if (norm.includes("storage") || norm.includes("warehouse") || norm.includes("kho") || norm.includes("cold")) {
+    return "Kho bảo quản";
+  }
+  if (norm.includes("producer") || norm.includes("farm") || norm.includes("sản xuất")) {
+    return "Cơ sở sản xuất";
+  }
+  return fallback;
+}
+
+function getSafeIntermediatePartnerName(orgId, orgType, orgMap, fallback = "Đối tác chuỗi cung ứng") {
+  let typeCandidate = orgType;
+  if (!typeCandidate && orgId && orgMap && orgMap.has(orgId)) {
+    const mapped = orgMap.get(orgId);
+    if (typeof mapped === "object") {
+      typeCandidate = mapped.type;
+    }
+  }
+  return getPublicPartnerTypeLabel(typeCandidate, fallback);
+}
+
+function getSafePublicOrgName(orgName, orgId, orgMap, fallback = "Đối tác chuỗi cung ứng") {
+  return getSafePublicProducerName(orgName, orgId, orgMap, fallback);
 }
 
 /**
@@ -307,6 +353,7 @@ async function getPublicLotMapData(options = {}) {
     inMemoryProducts = [],
     inMemoryFarms = [],
     inMemoryLocations = [],
+    inMemoryRecallOrders = [],
   } = options;
 
   if (!lotCode || typeof lotCode !== "string" || !lotCode.trim()) {
@@ -322,10 +369,19 @@ async function getPublicLotMapData(options = {}) {
   let lotRecord = null;
   const orgMap = new Map();
   for (const o of inMemoryOrgs) {
-    orgMap.set(o.id, o.name || o.id);
+    orgMap.set(o.id, { name: o.name || o.id, type: o.type });
   }
 
   if (pool && typeof pool.query === "function") {
+    try {
+      const orgsRes = await pool.query("SELECT id, name, type FROM organizations");
+      for (const o of orgsRes.rows) {
+        orgMap.set(o.id, { name: o.name || o.id, type: o.type });
+      }
+    } catch {
+      // Ignored if table doesn't exist
+    }
+
     const lotRes = await pool.query(
       `SELECT 
         l.id, l.name, l.status, l.organization_id, l.farm_id, l.product_id,
@@ -499,7 +555,6 @@ async function getPublicLotMapData(options = {}) {
   // Nếu lô gốc không gắn farm hoặc danh sách rỗng, tạo mốc mặc định an toàn
   if (origins.length === 0) {
     origins.push({
-      originLotId: lotRecord.id,
       farmName: lotRecord.farmName || "Khu vực sản xuất ban đầu",
       area: lotRecord.farmArea || null,
       organizationName: lotRecord.organizationName,
@@ -511,22 +566,22 @@ async function getPublicLotMapData(options = {}) {
     });
   }
 
-  // 4. Đọc lịch sử di chuyển thực tế từ TRANSFER_CONFIRMED và LOCATION_CHANGED (S-15, S-16, S-30)
+  // 4. Đọc lịch sử di chuyển và sự kiện vi phạm nhiệt độ (S-15, S-16, S-30, S-45, S-49)
   // Lấy danh sách ID của lô hiện tại và các lô tổ tiên trực tiếp để thu thập lịch sử
   const relevantLotIds = [lotRecord.id, ...(originsTrace.ancestorIds || [])];
 
-  let rawEvents = [];
+  let allLoadedEvents = [];
   if (pool && typeof pool.query === "function") {
     const eventsRes = await pool.query(
       `SELECT 
         id, batch_id, sequence_no, event_type, payload, organization_id, occurred_at
       FROM batch_events
       WHERE batch_id = ANY($1) 
-        AND event_type IN ('LOCATION_CHANGED', 'TRANSFER_CONFIRMED')
+        AND event_type IN ('LOCATION_CHANGED', 'TRANSFER_CONFIRMED', 'TEMPERATURE_VIOLATION')
       ORDER BY occurred_at ASC, sequence_no ASC`,
       [relevantLotIds]
     );
-    rawEvents = eventsRes.rows.map((r) => ({
+    allLoadedEvents = eventsRes.rows.map((r) => ({
       id: r.id,
       batchId: r.batch_id,
       sequenceNo: r.sequence_no,
@@ -536,11 +591,11 @@ async function getPublicLotMapData(options = {}) {
       occurredAt: r.occurred_at,
     }));
   } else {
-    rawEvents = inMemoryBatchEvents
+    allLoadedEvents = inMemoryBatchEvents
       .filter(
         (e) =>
           relevantLotIds.includes(e.batchId || e.batch_id) &&
-          ["LOCATION_CHANGED", "TRANSFER_CONFIRMED"].includes(e.eventType || e.event_type)
+          ["LOCATION_CHANGED", "TRANSFER_CONFIRMED", "TEMPERATURE_VIOLATION"].includes(e.eventType || e.event_type)
       )
       .map((e) => ({
         id: e.id,
@@ -552,6 +607,150 @@ async function getPublicLotMapData(options = {}) {
         occurredAt: e.occurredAt || e.created_at || new Date().toISOString(),
       }))
       .sort((a, b) => new Date(a.occurredAt).getTime() - new Date(b.occurredAt).getTime());
+  }
+
+  const rawEvents = allLoadedEvents.filter((e) => e.eventType !== "TEMPERATURE_VIOLATION");
+  const violationEvents = allLoadedEvents.filter((e) => e.eventType === "TEMPERATURE_VIOLATION");
+
+  // Kiểm tra thêm bảng temperature_violations trên PostgreSQL nếu có
+  let dbViolations = [];
+  if (pool && typeof pool.query === "function") {
+    try {
+      const tvRes = await pool.query(
+        `SELECT tv.id, tv.shipment_id, tv.threshold, tv.start_time, tv.end_time, 
+                tv.duration_minutes, tv.peak_temperature, tv.rule, tv.status
+         FROM temperature_violations tv
+         JOIN shipment_lots sl ON tv.shipment_id = sl.shipment_id
+         WHERE sl.lot_id = ANY($1)
+         ORDER BY tv.start_time ASC`,
+        [relevantLotIds]
+      );
+      dbViolations = tvRes.rows || [];
+    } catch {
+      dbViolations = [];
+    }
+  }
+
+  // 4a. Tổng hợp thông tin vi phạm chuỗi lạnh (Story S-49 / N2-114)
+  const allViolationItems = [];
+  const seenViolationKeys = new Set();
+
+  for (const ve of violationEvents) {
+    const p = ve.payload || {};
+    const vId = p.violationId || ve.id;
+    if (!seenViolationKeys.has(vId)) {
+      seenViolationKeys.add(vId);
+      allViolationItems.push({
+        id: vId,
+        occurredAt: ve.occurredAt || p.startTime || p.endTime,
+        peakTemperature: p.peakTemperature !== undefined ? Number(p.peakTemperature) : null,
+        threshold: p.threshold !== undefined ? Number(p.threshold) : null,
+        durationMinutes: p.durationMinutes !== undefined ? Number(p.durationMinutes) : (p.durationSeconds ? Number((p.durationSeconds / 60).toFixed(1)) : null),
+        rule: p.rule || "Vượt ngưỡng nhiệt độ bảo quản",
+        shipmentId: p.shipmentId || null,
+      });
+    }
+  }
+
+  for (const tv of dbViolations) {
+    if (!seenViolationKeys.has(tv.id)) {
+      seenViolationKeys.add(tv.id);
+      allViolationItems.push({
+        id: tv.id,
+        occurredAt: tv.start_time || tv.end_time,
+        peakTemperature: tv.peak_temperature !== null && tv.peak_temperature !== undefined ? Number(tv.peak_temperature) : null,
+        threshold: tv.threshold !== null && tv.threshold !== undefined ? Number(tv.threshold) : null,
+        durationMinutes: tv.duration_minutes !== null && tv.duration_minutes !== undefined ? Number(tv.duration_minutes) : null,
+        rule: tv.rule || "Vượt ngưỡng nhiệt độ bảo quản",
+        shipmentId: tv.shipment_id || null,
+      });
+    }
+  }
+
+  let coldChainInfo = {
+    hasViolation: false,
+    violationCount: 0,
+    firstViolationAt: null,
+    lastViolationAt: null,
+    message: null,
+  };
+
+  if (allViolationItems.length > 0) {
+    const count = allViolationItems.length;
+    allViolationItems.sort((a, b) => new Date(a.occurredAt || 0).getTime() - new Date(b.occurredAt || 0).getTime());
+    const firstAt = allViolationItems[0].occurredAt;
+    const lastAt = allViolationItems[allViolationItems.length - 1].occurredAt;
+
+    coldChainInfo = {
+      hasViolation: true,
+      violationCount: count,
+      firstViolationAt: firstAt,
+      lastViolationAt: lastAt,
+      message: "Lô hàng từng ghi nhận sự cố chênh lệch nhiệt độ bảo quản trong quá trình vận chuyển chuỗi lạnh. Chất lượng sản phẩm có thể bị ảnh hưởng.",
+    };
+  }
+
+  // 4b. Kiểm tra trạng thái thu hồi của lô hàng (Story S-49 / N2-114)
+  let recallInfo = {
+    isRecalled: false,
+    status: "NONE",
+    reason: null,
+    recallOrderId: null,
+  };
+
+  try {
+    const recallCheck = await checkLotRecallStatus({
+      lotId: lotRecord.id,
+      lot: lotRecord,
+      pool,
+      inMemoryRecallOrders,
+      inMemoryLots,
+    });
+
+    const isProblemLot = Boolean(
+      recallCheck.isBlocked ||
+      lotRecord.status === "Có sự cố" ||
+      lotRecord.status === "Đang thu hồi" ||
+      lotRecord.status === "Đã thu hồi"
+    );
+
+    if (isProblemLot) {
+      recallInfo = {
+        isRecalled: true,
+        status: recallCheck.status || lotRecord.status || "RECALLED",
+        reason: recallCheck.message || `Lô nông sản ${lotRecord.code} đang thuộc diện thu hồi do cảnh báo sự cố chất lượng.`,
+        recallOrderId: recallCheck.recallOrderId || null,
+      };
+    } else {
+      // Kiểm tra các lô nguồn gốc / tổ tiên trực tiếp
+      for (const aId of relevantLotIds) {
+        if (aId === lotRecord.id) continue;
+        const aCheck = await checkLotRecallStatus({
+          lotId: aId,
+          pool,
+          inMemoryRecallOrders,
+          inMemoryLots,
+        });
+        if (aCheck.isBlocked) {
+          recallInfo = {
+            isRecalled: true,
+            status: aCheck.status || "RECALLED",
+            reason: `Lô nguồn gốc ${aId} của sản phẩm này đang thuộc diện thu hồi: ${aCheck.message || aCheck.blockReason}`,
+            recallOrderId: aCheck.recallOrderId || null,
+          };
+          break;
+        }
+      }
+    }
+  } catch (recErr) {
+    console.error("[getPublicLotMapData recall check error]:", recErr.message);
+  }
+
+  let safetyStatus = "VERIFIED_SAFE";
+  if (recallInfo.isRecalled) {
+    safetyStatus = "RECALLED";
+  } else if (coldChainInfo.hasViolation) {
+    safetyStatus = "TEMPERATURE_VIOLATED";
   }
 
   // 5. Chuẩn bị danh sách các mốc hành trình (Journey Milestones) theo thứ tự
@@ -589,7 +788,7 @@ async function getPublicLotMapData(options = {}) {
         locObj = await getLocationById(pool, inMemoryLocations, locId);
       }
 
-      const locName = locObj ? locObj.name : (ev.payload.locationName || `Kho #${locId}`);
+      const locName = locObj ? locObj.name : (ev.payload.locationName || "Điểm lưu kho bảo quản");
       const locAddress = locObj ? locObj.address : (ev.payload.address || null);
       const locType = locObj ? locObj.locationType : (ev.payload.locationType || "warehouse");
       const locCoords = locObj ? parseCoordinates(locObj.coordinates) : parseCoordinates(ev.payload.coordinates);
@@ -603,7 +802,7 @@ async function getPublicLotMapData(options = {}) {
           typeLabel: getLocationTypeLabel(locType),
           title: locName,
           locationName: locName,
-          organizationName: getSafePublicOrgName(null, ev.organizationId, orgMap, "Đơn vị lưu kho chuỗi lạnh"),
+          organizationName: getSafeIntermediatePartnerName(ev.organizationId, locType, orgMap, "Kho bảo quản"),
           address: locAddress,
           coordinates: locCoords,
           hasCoordinates: Boolean(locCoords),
@@ -614,23 +813,39 @@ async function getPublicLotMapData(options = {}) {
         });
       }
     } else if (ev.eventType === "TRANSFER_CONFIRMED") {
-      const fromOrg = getSafePublicOrgName(ev.payload.fromOrganizationName, ev.payload.fromOrganizationId, orgMap, "Bên giao");
-      const toOrg = getSafePublicOrgName(ev.payload.toOrganizationName, ev.payload.toOrganizationId, orgMap, "Bên nhận");
+      const fromType = getSafeIntermediatePartnerName(
+        ev.payload.fromOrganizationId,
+        ev.payload.fromOrganizationType || ev.payload.fromType,
+        orgMap,
+        "Hợp tác xã"
+      );
+      const toType = getSafeIntermediatePartnerName(
+        ev.payload.toOrganizationId,
+        ev.payload.toOrganizationType || ev.payload.toType,
+        orgMap,
+        "Đơn vị vận chuyển"
+      );
+      const stepHasViolation = coldChainInfo.hasViolation && (
+        ev.payload.hasViolation ||
+        allViolationItems.some((v) => v.shipmentId && (v.shipmentId === ev.payload?.shipmentId || v.shipmentId === ev.payload?.transferId))
+      );
       journey.push({
         step: currentStep++,
         type: "transit",
         typeLabel: "Bàn giao vận chuyển chuỗi lạnh",
-        title: `Bàn giao vận chuyển: ${fromOrg} ➔ ${toOrg}`,
+        title: `Bàn giao vận chuyển: ${fromType} ➔ ${toType}`,
         locationName: "Điểm bàn giao chuỗi lạnh",
-        organizationName: toOrg,
+        organizationName: toType,
         address: "Hành trình vận chuyển chuyên dụng giữa các đối tác",
         coordinates: null,
         hasCoordinates: false,
         verified: false,
         occurredAt: ev.occurredAt,
-        description: "Xác nhận bàn giao lô hàng qua chuỗi lạnh an toàn",
+        description: stepHasViolation ? "Bàn giao vận chuyển chuỗi lạnh (từng ghi nhận sự cố nhiệt độ)" : "Xác nhận bàn giao lô hàng qua chuỗi lạnh an toàn",
         isOrigin: false,
         isTransfer: true,
+        hasViolation: Boolean(stepHasViolation),
+        warning: stepHasViolation ? "Ghi nhận vi phạm nhiệt độ bảo quản trong chặng vận chuyển này" : null,
       });
     }
   }
@@ -649,7 +864,7 @@ async function getPublicLotMapData(options = {}) {
 
       const curCoords = curLoc ? parseCoordinates(curLoc.coordinates) : parseCoordinates(lotRecord.locationCoordinates);
       const locType = curLoc ? curLoc.locationType : (lotRecord.locationType || "store");
-      const locName = curLoc ? curLoc.name : (lotRecord.locationName || `Kho #${lotRecord.locationId}`);
+      const locName = curLoc ? curLoc.name : (lotRecord.locationName || "Điểm lưu kho bảo quản");
 
       // Lấy thời gian từ sự kiện chuyển kho thực tế thay vì lấy ngày tạo lô (Issue 11)
       const locEvent = [...rawEvents].reverse().find(
@@ -663,7 +878,7 @@ async function getPublicLotMapData(options = {}) {
         typeLabel: getLocationTypeLabel(locType),
         title: locName,
         locationName: locName,
-        organizationName: lotRecord.organizationName,
+        organizationName: getSafeIntermediatePartnerName(lotRecord.organizationId, locType, orgMap, "Nhà phân phối"),
         address: curLoc ? curLoc.address : (lotRecord.locationAddress || null),
         coordinates: curCoords,
         hasCoordinates: Boolean(curCoords),
@@ -735,6 +950,32 @@ async function getPublicLotMapData(options = {}) {
     }
   }
 
+  // Bổ sung các mốc sự kiện vi phạm nhiệt độ chuỗi lạnh vào dòng thời gian (Story S-49 / N2-114)
+  for (const vItem of allViolationItems) {
+    journey.push({
+      step: currentStep++,
+      type: "transit",
+      typeLabel: "Cảnh báo vi phạm chuỗi lạnh",
+      title: "Sự cố vi phạm nhiệt độ chuỗi lạnh",
+      locationName: "Chặng vận chuyển chuỗi lạnh",
+      organizationName: getSafeIntermediatePartnerName(null, "transit", orgMap, "Đơn vị vận chuyển"),
+      address: "Hành trình vận chuyển chuyên dụng",
+      coordinates: null,
+      hasCoordinates: false,
+      verified: false,
+      occurredAt: vItem.occurredAt,
+      description: "Ghi nhận sự cố chênh lệch nhiệt độ bảo quản so với tiêu chuẩn chuỗi lạnh trong chặng vận chuyển.",
+      isOrigin: false,
+      hasViolation: true,
+      warning: "Vi phạm tiêu chuẩn nhiệt độ chuỗi lạnh",
+    });
+  }
+
+  // Đánh lại số thứ tự bước hành trình chuẩn xác
+  journey.forEach((item, idx) => {
+    item.step = idx + 1;
+  });
+
   // 6. Xây dựng các đoạn đường nối sơ đồ hóa (Schematic Routes)
   // Chỉ nối các điểm đã được xác minh tọa độ (verified). Không nối trực tiếp các nhánh độc lập trước khi gộp.
   const routes = [];
@@ -802,7 +1043,7 @@ async function getPublicLotMapData(options = {}) {
   const verifiedCount = journey.filter((s) => s.hasCoordinates && s.verified).length;
   const unlocatedCount = journey.length - verifiedCount;
 
-  return {
+  const rawData = {
     lot: {
       code: lotRecord.code || lotRecord.id,
       name: lotRecord.name,
@@ -812,6 +1053,9 @@ async function getPublicLotMapData(options = {}) {
       organizationName: lotRecord.organizationName,
       harvestedAt: lotRecord.harvestedAt,
       isMerged,
+      recall: recallInfo,
+      coldChain: coldChainInfo,
+      safetyStatus,
     },
     origins,
     journey,
@@ -826,11 +1070,93 @@ async function getPublicLotMapData(options = {}) {
       disclaimer: "Tọa độ vùng trồng hiển thị theo tâm khu vực hành chính (xã/phường) nhằm bảo vệ quyền riêng tư nông hộ. Các tuyến đường trên bản đồ mang tính chất sơ đồ hóa chuỗi cung ứng, không phải định vị GPS thời gian thực.",
     },
   };
+
+  return sanitizePublicTracePayload(rawData);
+}
+
+/**
+ * Hàm lọc an toàn dữ liệu công khai theo cơ chế Whitelisting nghiêm ngặt (Story S-48)
+ * Loại bỏ toàn bộ các trường nội bộ, số điện thoại, thông tin định danh người dùng, biển số xe,
+ * và các thông tin nhạy cảm khác trước khi trả về cho người tiêu dùng.
+ */
+function sanitizePublicTracePayload(data) {
+  if (!data || typeof data !== "object") return data;
+
+  const sanitizeObject = (obj, allowedKeys) => {
+    if (!obj || typeof obj !== "object") return null;
+    const sanitized = {};
+    for (const key of allowedKeys) {
+      if (obj[key] !== undefined) {
+        sanitized[key] = obj[key];
+      }
+    }
+    return sanitized;
+  };
+
+  const sanitizeCoords = (coords) => {
+    if (!coords || typeof coords !== "object") return null;
+    const lat = Number(coords.lat);
+    const lng = Number(coords.lng);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+    return { lat, lng };
+  };
+
+  const lot = sanitizeObject(data.lot, PUBLIC_LOT_ALLOWLIST);
+  if (lot && lot.recall && typeof lot.recall === "object") {
+    lot.recall = sanitizeObject(lot.recall, PUBLIC_RECALL_ALLOWLIST);
+  }
+  if (lot && lot.coldChain && typeof lot.coldChain === "object") {
+    lot.coldChain = sanitizeObject(lot.coldChain, PUBLIC_COLDCHAIN_ALLOWLIST);
+  }
+
+
+  const origins = Array.isArray(data.origins)
+    ? data.origins.map((orig) => {
+        const item = sanitizeObject(orig, PUBLIC_ORIGIN_ALLOWLIST);
+        if (item && item.coordinates) {
+          item.coordinates = sanitizeCoords(item.coordinates);
+        }
+        return item;
+      })
+    : [];
+
+  const journey = Array.isArray(data.journey)
+    ? data.journey.map((stop) => {
+        const item = sanitizeObject(stop, PUBLIC_JOURNEY_ALLOWLIST);
+        if (item && item.coordinates) {
+          item.coordinates = sanitizeCoords(item.coordinates);
+        }
+        return item;
+      })
+    : [];
+
+  const routes = Array.isArray(data.routes)
+    ? data.routes.map((rt) => {
+        const item = sanitizeObject(rt, PUBLIC_ROUTE_ALLOWLIST);
+        if (item && Array.isArray(item.coordinates)) {
+          item.coordinates = item.coordinates
+            .filter((pair) => Array.isArray(pair) && pair.length === 2)
+            .map(([lng, lat]) => [Number(lng), Number(lat)]);
+        }
+        return item;
+      })
+    : [];
+
+  const summary = sanitizeObject(data.summary, PUBLIC_SUMMARY_ALLOWLIST);
+
+  return {
+    lot,
+    origins,
+    journey,
+    routes,
+    summary,
+  };
 }
 
 module.exports = {
   getPublicLotMapData,
   resolveRepresentativeArea,
   parseCoordinates,
+  sanitizePublicTracePayload,
   DEFAULT_MAP_AREAS,
 };

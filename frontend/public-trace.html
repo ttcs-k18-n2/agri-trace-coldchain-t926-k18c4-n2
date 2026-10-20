@@ -276,6 +276,28 @@
       </div>
     </div>
 
+    <!-- Cảnh báo Thu hồi lô hàng (Story S-49 / N2-114) -->
+    <div id="lot-recall-alert" role="alert" aria-live="assertive" class="public-alert-box alert-recall" style="display: none;">
+      <div class="alert-box-icon">
+        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+      </div>
+      <div class="alert-box-content">
+        <h4 class="alert-box-title">🚨 CẢNH BÁO THU HỒI NÔNG SẢN</h4>
+        <p class="alert-box-message" id="recall-reason-message">Lô nông sản này đang thuộc diện thu hồi do phát hiện sự cố an toàn chất lượng. Người tiêu dùng khuyến cáo không nên sử dụng sản phẩm.</p>
+      </div>
+    </div>
+
+    <!-- Cảnh báo Vi phạm chuỗi lạnh (Story S-49 / N2-114) -->
+    <div id="lot-coldchain-alert" role="alert" aria-live="polite" class="public-alert-box alert-coldchain" style="display: none;">
+      <div class="alert-box-icon">
+        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M14 14.76V3.5a2.5 2.5 0 0 0-5 0v11.26a4.5 4.5 0 1 0 5 0z"/><line x1="12" y1="9" x2="12" y2="13"/></svg>
+      </div>
+      <div class="alert-box-content">
+        <h4 class="alert-box-title">⚠️ CẢNH BÁO VI PHẠM CHUỖI LẠNH</h4>
+        <p class="alert-box-message" id="coldchain-violation-message">Lô hàng từng ghi nhận vi phạm nhiệt độ bảo quản trong quá trình vận chuyển chuỗi lạnh.</p>
+      </div>
+    </div>
+
     <!-- Thông tin tổng quan nông sản sau khi quét -->
     <div class="lot-info-card" id="lot-summary-card">
       <div class="lot-info-header">
@@ -283,7 +305,7 @@
           <h2 id="lot-product-name">Nông sản sạch</h2>
           <span class="lot-code-tag" id="lot-code-display">Mã lô: LOT-XXXXX</span>
         </div>
-        <div class="verified-banner">
+        <div class="verified-banner" id="lot-safety-banner">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
             <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
           </svg>
@@ -379,7 +401,11 @@
       const mapContainer = document.getElementById("trace-map");
       const timelineContainer = document.getElementById("trace-timeline");
       const summaryCard = document.getElementById("lot-summary-card");
+      const recallAlert = document.getElementById("lot-recall-alert");
+      const coldchainAlert = document.getElementById("lot-coldchain-alert");
       if (summaryCard) summaryCard.style.display = "none";
+      if (recallAlert) recallAlert.style.display = "none";
+      if (coldchainAlert) coldchainAlert.style.display = "none";
 
       if (mapContainer) {
         mapContainer.innerHTML = `
@@ -415,6 +441,10 @@
 
     async function loadLotTrace(code) {
       const summaryCard = document.getElementById("lot-summary-card");
+      const recallAlert = document.getElementById("lot-recall-alert");
+      const coldchainAlert = document.getElementById("lot-coldchain-alert");
+      const safetyBanner = document.getElementById("lot-safety-banner");
+
       const data = await traceMap.loadAndRender(code);
 
       if (data && data.lot) {
@@ -429,8 +459,62 @@
         document.getElementById("lot-origin-type").textContent = data.lot.isMerged
           ? `Lô gộp (${data.origins ? data.origins.length : 2} nguồn trồng gốc)`
           : "Đơn nguồn (1 vùng trồng gốc)";
+
+        // Xử lý cảnh báo Story S-49 (Thu hồi & Vi phạm chuỗi lạnh)
+        const recall = data.lot.recall || {};
+        const coldChain = data.lot.coldChain || {};
+
+        if (recall.isRecalled) {
+          if (recallAlert) {
+            recallAlert.style.display = "flex";
+            const msgEl = document.getElementById("recall-reason-message");
+            if (msgEl) {
+              msgEl.textContent = recall.reason || "Lô nông sản này đang trong danh sách thu hồi. Người tiêu dùng tuyệt đối không nên sử dụng sản phẩm.";
+            }
+          }
+        } else {
+          if (recallAlert) recallAlert.style.display = "none";
+        }
+
+        if (coldChain.hasViolation) {
+          if (coldchainAlert) {
+            coldchainAlert.style.display = "flex";
+            const msgEl = document.getElementById("coldchain-violation-message");
+            if (msgEl) {
+              msgEl.textContent = coldChain.message || "Lô hàng từng ghi nhận vi phạm nhiệt độ bảo quản trong quá trình vận chuyển chuỗi lạnh.";
+            }
+          }
+        } else {
+          if (coldchainAlert) coldchainAlert.style.display = "none";
+        }
+
+        // Cập nhật huy hiệu an toàn toàn vẹn (Safety Badge)
+        if (safetyBanner) {
+          if (recall.isRecalled) {
+            safetyBanner.className = "verified-banner badge-danger";
+            safetyBanner.innerHTML = `
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+              <span>🚨 Đang thu hồi / Có sự cố</span>
+            `;
+          } else if (coldChain.hasViolation) {
+            safetyBanner.className = "verified-banner badge-warning";
+            safetyBanner.innerHTML = `
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M14 14.76V3.5a2.5 2.5 0 0 0-5 0v11.26a4.5 4.5 0 1 0 5 0z"/><line x1="12" y1="9" x2="12" y2="13"/></svg>
+              <span>⚠️ Cảnh báo chuỗi lạnh</span>
+            `;
+          } else {
+            safetyBanner.className = "verified-banner badge-success";
+            safetyBanner.innerHTML = `
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+              <span>Truy xuất được & Chuỗi lạnh an toàn</span>
+            `;
+          }
+        }
       } else {
         summaryCard.style.display = "none";
+        if (recallAlert) recallAlert.style.display = "none";
+        if (coldchainAlert) coldchainAlert.style.display = "none";
+        if (safetyBanner) safetyBanner.style.display = "none";
       }
     }
 

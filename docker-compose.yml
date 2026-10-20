@@ -36,11 +36,37 @@ services:
       MIGRATION_DATABASE_URL: ${MIGRATION_DATABASE_URL:-}
       SESSION_SECRET: ${SESSION_SECRET:-}
       COOKIE_SECURE: ${COOKIE_SECURE:-true}
+      BACKUP_DIR: ${BACKUP_DIR:-/backups}
+      ENABLE_BACKUP_CRON: ${ENABLE_BACKUP_CRON:-false}
+      TZ: ${TZ:-Asia/Ho_Chi_Minh}
     volumes:
       - ./db/migrations:/app/db/migrations:ro
       - ./db/seed_s22.sql:/db/seed_s22.sql:ro
+      - backup_data:/backups
     ports:
       - "${BACKEND_PORT:-3000}:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  backup-scheduler:
+    image: agri-trace-backend:${BACKEND_TAG:-latest}
+    build:
+      context: ./backend
+      args:
+        GIT_COMMIT: ${GIT_COMMIT:-unknown}
+    container_name: agri-trace-backup-scheduler
+    restart: unless-stopped
+    command: ["node", "scripts/backup_nightly.js", "--schedule"]
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      BACKUP_ENCRYPTION_KEY: ${BACKUP_ENCRYPTION_KEY}
+      BACKUP_DIR: /backups
+      TZ: Asia/Ho_Chi_Minh
+    volumes:
+      - backup_data:/backups
     depends_on:
       postgres:
         condition: service_healthy
@@ -60,3 +86,4 @@ services:
 
 volumes:
   postgres_data:
+  backup_data:

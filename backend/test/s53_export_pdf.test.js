@@ -1,0 +1,450 @@
+"use strict";
+
+const test = require("node:test");
+const assert = require("node:assert/strict");
+const request = require("supertest");
+
+const {
+  app,
+  seedDemoUser,
+  inMemoryLots,
+  inMemoryFarms,
+  inMemoryProducts,
+  inMemoryOrgs,
+  inMemoryBatchEvents,
+  inMemoryBatchRelations,
+  inMemoryRecallOrders,
+  inMemoryAuditLogs,
+} = require("../src/server");
+const { inMemoryViolations } = require("../src/cold_chain_violation_service");
+const { exportLotDossierToPdf, extractPdfText } = require("../src/lot_pdf_export_service");
+const { calculateEventHash, GENESIS_HASH } = require("../src/integrity");
+const { getAuditLogs } = require("../src/audit_logger");
+
+async function loginAs(email, password = "Password@123") {
+  const agent = request.agent(app);
+  const res = await agent.post("/api/login").send({ email, password });
+  assert.equal(res.status, 200, `Login failed for ${email}`);
+  return agent;
+}
+
+function setupS53Dataset() {
+  inMemoryLots.length = 0;
+  inMemoryFarms.length = 0;
+  inMemoryProducts.length = 0;
+  inMemoryOrgs.length = 0;
+  inMemoryBatchEvents.length = 0;
+  inMemoryBatchRelations.length = 0;
+  inMemoryViolations.length = 0;
+  inMemoryRecallOrders.length = 0;
+  inMemoryAuditLogs.length = 0;
+
+  // Organizations
+  inMemoryOrgs.push(
+    { id: "org-001", name: "HTX Nông nghiệp Đà Lạt Hữu Cơ", type: "cooperative" },
+    { id: "org-inspector", name: "Cục Kiểm tra An toàn Thực phẩm", type: "inspector" }
+  );
+
+  // Farms & Products
+  inMemoryFarms.push({ id: "FARM-DL-01", name: "Vườn rau hữu cơ Thung Lũng Vàng", organizationId: "org-001" });
+  inMemoryProducts.push({ id: "PROD-TOMATO", name: "Cà chua bi hữu cơ", unit: "kg" });
+
+  // Lots
+  inMemoryLots.push({
+    id: "LOT-S53-VERIFIED",
+    code: "LOT-S53-VERIFIED",
+    name: "Cà chua bi thu hoạch đợt 1",
+    organizationId: "org-001",
+    farmId: "FARM-DL-01",
+    productId: "PROD-TOMATO",
+    initialQuantity: 1000,
+    remainingQuantity: 850,
+    harvestedAt: "2026-10-10",
+    createdAt: "2026-10-10T07:00:00.000Z",
+    status: "Đang lưu thông",
+  });
+
+  // Valid Event Hash Chain
+  const ev1Data = {
+    batchId: "LOT-S53-VERIFIED",
+    sequenceNo: 1,
+    eventType: "HARVEST_CREATED",
+    organizationId: "org-001",
+    actorUserId: "usr-001",
+    occurredAt: "2026-10-10T07:00:00.000Z",
+    payload: { farmId: "FARM-DL-01", quantityKg: 1000 },
+  };
+  const ev1Hash = calculateEventHash(GENESIS_HASH, ev1Data);
+
+  const ev2Data = {
+    batchId: "LOT-S53-VERIFIED",
+    sequenceNo: 2,
+    eventType: "TEMPERATURE_RECORDED",
+    organizationId: "org-001",
+    actorUserId: "usr-001",
+    occurredAt: "2026-10-10T09:00:00.000Z",
+    payload: { temperatureC: 4.5, humidityPercent: 85 },
+  };
+  const ev2Hash = calculateEventHash(ev1Hash, ev2Data);
+
+  inMemoryBatchEvents.push(
+    {
+      id: "ev-s53-1",
+      ...ev1Data,
+      previousHash: GENESIS_HASH,
+      eventHash: ev1Hash,
+    },
+    {
+      id: "ev-s53-2",
+      ...ev2Data,
+      previousHash: ev1Hash,
+      eventHash: ev2Hash,
+    }
+  );
+
+  return { ev1Hash, ev2Hash };
+}
+
+test("Story S-53: Xuất hồ sơ truy xuất đầy đủ của một lô ra PDF kèm kết quả kiểm toàn vẹn (Jira N2-121)", async (t) => {
+  await seedDemoUser();
+
+  await t.test(
+    "N2-237: Kết xuất hồ sơ PDF hợp lệ (chuẩn PDF-1.4, header binary %PDF-1.4, nhúng TrueType font và ToUnicode CMap)",
+    async () => {
+      setupS53Dataset();
+
+      const result = await exportLotDossierToPdf({
+        lotId: "LOT-S53-VERIFIED",
+        actorEmail: "inspector@example.com",
+        inMemoryContext: {
+          inMemoryLots,
+          inMemoryOrgs,
+          inMemoryFarms,
+          inMemoryProducts,
+          inMemoryBatchEvents,
+          inMemoryViolations,
+          inMemoryRecallOrders,
+        },
+      });
+
+      assert.equal(result.status, 200);
+      assert.equal(result.contentType, "application/pdf");
+      assert.ok(result.filename.endsWith(".pdf"));
+      assert.ok(Buffer.isBuffer(result.pdfBuffer), "Kết quả phải là một Buffer nhị phân");
+
+      // Đối soát tiêu chuẩn PDF
+      const pdfStr = result.pdfBuffer.toString("latin1");
+      assert.ok(pdfStr.startsWith("%PDF-1.4"), "Tệp PDF phải bắt đầu bằng magic header %PDF-1.4");
+      assert.ok(pdfStr.trim().endsWith("%%EOF"), "Tệp PDF phải kết thúc bằng %%EOF");
+      assert.ok(pdfStr.includes("/Root"), "Tệp PDF phải có Root catalog");
+      assert.ok(pdfStr.includes("xref"), "Tệp PDF phải có bảng tham chiếu xref");
+
+      // Đối soát cơ chế nhúng font Unicode tiếng Việt theo chuẩn ISO 32000-1
+      assert.ok(pdfStr.includes("/Identity-H"), "Tệp PDF phải cấu hình font với bảng mã /Identity-H");
+      assert.ok(pdfStr.includes("/ToUnicode"), "Tệp PDF phải nhúng bảng /ToUnicode CMap để giải mã tiếng Việt chuẩn xác");
+    }
+  );
+
+  await t.test(
+    "N2-238: Nội dung PDF chứa đầy đủ thông tin lô, phả hệ, chuỗi lạnh, thu hồi và in Head Hash",
+    async () => {
+      const { ev2Hash } = setupS53Dataset();
+
+      const result = await exportLotDossierToPdf({
+        lotId: "LOT-S53-VERIFIED",
+        actorEmail: "inspector@example.com",
+        inMemoryContext: {
+          inMemoryLots,
+          inMemoryOrgs,
+          inMemoryFarms,
+          inMemoryProducts,
+          inMemoryBatchEvents,
+          inMemoryViolations,
+          inMemoryRecallOrders,
+        },
+      });
+
+      // 1. Trích xuất văn bản thực tế từ PDF thông qua cơ chế giải mã ToUnicode CMap
+      const extractedText = extractPdfText(result.pdfBuffer);
+
+      // Thông tin lô hàng - Bảo đảm hiển thị tiếng Việt trọn vẹn dấu
+      assert.ok(extractedText.includes("LOT-S53-VERIFIED"), "Phải chứa mã lô hàng");
+      assert.ok(extractedText.includes("Cà chua bi"), "Phải chứa tên sản phẩm có dấu tiếng Việt");
+      assert.ok(extractedText.includes("Thung Lũng Vàng"), "Phải chứa tên vùng trồng có dấu tiếng Việt");
+      assert.ok(extractedText.includes("2026-10-10"), "Phải hiển thị đúng ngày thu hoạch thực tế");
+
+      // 2. Kiểm tra toàn vẹn và Head Hash (NFR N2-121)
+      assert.equal(result.integrityValid, true, "Chuỗi sự kiện phải hợp lệ");
+      assert.equal(result.headHash, ev2Hash, "Head Hash phải khớp với mã băm sự kiện cuối");
+      assert.ok(extractedText.includes(ev2Hash), "Phải in chính xác mã băm đỉnh 64 ký tự lên hồ sơ PDF");
+      assert.ok(extractedText.includes("TOAN VEN"), "Phải có trạng thái toàn vẹn ĐẠT TIÊU CHUẨN");
+
+      // 3. Phả hệ & Chuỗi lạnh & Thu hồi
+      assert.ok(extractedText.includes("PHA HE NGUON GOC"), "Phải có phần phả hệ");
+      assert.ok(extractedText.includes("GIAM SAT CHUOI LANH"), "Phải có phần giám sát chuỗi lạnh");
+      assert.ok(extractedText.includes("TINH TRANG THU HOI"), "Phải có phần tình trạng thu hồi");
+    }
+  );
+
+  await t.test(
+    "N2-284: REST API GET /api/lots/:id/export-pdf, kiểm tra RBAC và ghi nhật ký kiểm toán S-31",
+    async () => {
+      setupS53Dataset();
+
+      // 1. Chưa đăng nhập -> 401
+      const unauthRes = await request(app).get("/api/lots/LOT-S53-VERIFIED/export-pdf");
+      assert.equal(unauthRes.status, 401);
+
+      // 2. Đăng nhập Cán bộ kiểm tra -> 200, Content-Type application/pdf
+      const inspectorAgent = await loginAs("inspector@example.com");
+      const exportRes = await inspectorAgent.get("/api/lots/LOT-S53-VERIFIED/export-pdf");
+      assert.equal(exportRes.status, 200);
+      assert.equal(exportRes.headers["content-type"], "application/pdf");
+      assert.ok(exportRes.headers["content-disposition"].includes("Ho-So-Truy-Xuat-LOT-S53-VERIFIED.pdf"));
+      assert.ok(exportRes.headers["x-lot-head-hash"].length === 64);
+      assert.equal(exportRes.headers["x-integrity-valid"], "true");
+
+      // 3. Kiểm tra ghi nhận S-31 nhật ký kiểm toán
+      const auditRes = await getAuditLogs({
+        inMemoryLogs: inMemoryAuditLogs,
+        action: "INSPECTOR_LOT_PDF_EXPORT",
+      });
+      assert.equal(auditRes.total, 1, "Phải ghi nhận đúng 1 log INSPECTOR_LOT_PDF_EXPORT");
+      assert.equal(auditRes.logs[0].actorEmail, "inspector@example.com");
+      assert.equal(auditRes.logs[0].resourceId, "LOT-S53-VERIFIED");
+      assert.equal(auditRes.logs[0].details.integrityValid, true);
+
+      // 4. Lô không tồn tại -> 404 chuẩn
+      const notFoundRes = await inspectorAgent.get("/api/lots/LOT-NOT-EXIST/export-pdf");
+      assert.equal(notFoundRes.status, 404);
+      assert.equal(notFoundRes.body.error, "LOT_NOT_FOUND");
+    }
+  );
+
+  await t.test(
+    "N2-238-VN: Kiểm thử xuất hồ sơ PDF với tiếng Việt đầy đủ dấu, tên dài, nhiều trang và dữ liệu thiếu (không bịa dữ liệu)",
+    async () => {
+      // 1. Lô có tên rất dài, nhiều ký tự tiếng Việt đặc thù (ơ, ư, đ, ê, dấu hỏi/ngã/nặng)
+      const longNameLotId = "LOT-S53-LONG-NAME-001";
+      const complexVietnameseLot = {
+        id: longNameLotId,
+        code: longNameLotId,
+        name: "Bưởi da xanh ruột hồng xuất khẩu chuẩn VietGAP tiêu chuẩn chất lượng cao vùng đồng bằng sông Cửu Long",
+        product_name: "Bưởi da xanh ruột hồng xuất khẩu chuẩn VietGAP tiêu chuẩn chất lượng cao vùng đồng bằng sông Cửu Long",
+        farm_name: "Hợp tác xã nông nghiệp hữu cơ ứng dụng công nghệ cao xã Mỹ Hòa Huyện Bình Minh Tỉnh Vĩnh Long",
+        organization_name: "Liên minh Hợp tác xã Nông nghiệp Sạch Miền Tây Nam Bộ",
+        status: "Đang lưu kho bảo quản lạnh sâu",
+        product_unit: "thùng 10kg",
+        initialQuantity: 5000,
+        remainingQuantity: 4800,
+      };
+
+      const resultLong = await exportLotDossierToPdf({
+        lotId: longNameLotId,
+        actorEmail: "inspector_vn@agri.gov.vn",
+        inMemoryContext: {
+          inMemoryLots: [complexVietnameseLot],
+          inMemoryOrgs: [],
+          inMemoryFarms: [],
+          inMemoryProducts: [],
+          inMemoryBatchEvents: [],
+        },
+      });
+
+      assert.equal(resultLong.status, 200);
+      assert.ok(resultLong.pdfBuffer.length > 500);
+      const textLong = extractPdfText(resultLong.pdfBuffer);
+      assert.ok(textLong.includes("Bưởi da xanh ruột hồng"), "Phải giữ trọn vẹn dấu tiếng Việt tên sản phẩm dài");
+      assert.ok(textLong.includes("Vĩnh Long"), "Phải giữ trọn vẹn dấu tiếng Việt tên vùng trồng");
+      assert.ok(textLong.includes("CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM"), "Phải in quốc hiệu tiếng Việt có dấu");
+
+      // 2. Lô dữ liệu thiếu (không có ngày thu hoạch, không có nông trại, không có sản phẩm, không có sự kiện)
+      const emptyLotId = "LOT-S53-SPARSE";
+      const resultSparse = await exportLotDossierToPdf({
+        lotId: emptyLotId,
+        actorEmail: "test@sparse.org",
+        inMemoryContext: {
+          inMemoryLots: [{ id: emptyLotId, code: emptyLotId }],
+        },
+      });
+
+      assert.equal(resultSparse.status, 200);
+      assert.ok(resultSparse.pdfBuffer.length > 500);
+      assert.equal(resultSparse.eventCount, 0);
+      assert.equal(resultSparse.integrityValid, true);
+
+      // Yêu cầu 1: Xóa ngày thu hoạch giả mặc định 2026-09-30
+      // Yêu cầu 2: Không được sinh mã hash giả 000000... nếu không có chuỗi sự kiện
+      // Yêu cầu 3: Nếu dữ liệu thiếu, thể hiện chính xác là "Chưa có dữ liệu" hoặc "Không thể xác minh"
+      assert.equal(resultSparse.headHash, null, "Không được sinh mã hash giả trong đối tượng trả về");
+      const textSparse = extractPdfText(resultSparse.pdfBuffer);
+      assert.ok(!textSparse.includes("2026-09-30"), "Tuyệt đối không được sinh ngày thu hoạch giả 2026-09-30");
+      assert.ok(!textSparse.includes("0000000000000000000000000000000000000000000000000000000000000000"), "Tuyệt đối không được in chuỗi hash giả 000000...");
+      assert.ok(textSparse.includes("Chưa có dữ liệu"), "Dữ liệu thiếu phải được ghi rõ là Chưa có dữ liệu");
+    }
+  );
+
+  await t.test(
+    "N2-238-TAMPER: Kiểm thử phát hiện chuỗi hash bị sửa đổi trái phép và hiển thị cảnh báo",
+    async () => {
+      setupS53Dataset();
+
+      // Sửa đổi trái phép hash của sự kiện 1 trong chuỗi
+      inMemoryBatchEvents[0].eventHash = "badhash111111111111111111111111111111111111111111111111111111111";
+
+      const resultTampered = await exportLotDossierToPdf({
+        lotId: "LOT-S53-VERIFIED",
+        actorEmail: "security_auditor@agri.gov.vn",
+        inMemoryContext: {
+          inMemoryLots,
+          inMemoryOrgs,
+          inMemoryFarms,
+          inMemoryProducts,
+          inMemoryBatchEvents,
+          inMemoryViolations,
+          inMemoryRecallOrders,
+        },
+      });
+
+      assert.equal(resultTampered.status, 200);
+      assert.equal(resultTampered.integrityValid, false, "Chuỗi hash bị sửa đổi phải trả về integrityValid = false");
+
+      const textTampered = extractPdfText(resultTampered.pdfBuffer);
+      assert.ok(
+        textTampered.includes("CẢNH BÁO: CHUỖI HASH BỊ ĐỨT MẠCH HOẶC BỊ SỬA ĐỔI TRÁI PHÉP"),
+        "Hồ sơ PDF phải hiển thị cảnh báo chuỗi hash bị can thiệp trái phép"
+      );
+      assert.ok(
+        textTampered.includes("Không thể xác minh"),
+        "Hồ sơ PDF phải thể hiện trạng thái Không thể xác minh khi chuỗi bị phá hủy"
+      );
+    }
+  );
+
+  await t.test(
+    "N2-284-RBAC: Kiểm tra phân quyền xuất PDF cho các vai trò hợp lệ",
+    async () => {
+      setupS53Dataset();
+
+      // Các vai trò được cấp phép xuất PDF hồ sơ: producer, cooperative, transporter, distributor, inspector, org_admin, admin
+      const producerAgent = await loginAs("user@example.com"); // producer
+      const prodRes = await producerAgent.get("/api/lots/LOT-S53-VERIFIED/export-pdf");
+      assert.equal(prodRes.status, 200);
+      assert.equal(prodRes.headers["content-type"], "application/pdf");
+
+      const adminAgent = await loginAs("admin@example.com"); // admin
+      const adminRes = await adminAgent.get("/api/lots/LOT-S53-VERIFIED/export-pdf");
+      assert.equal(adminRes.status, 200);
+      assert.equal(adminRes.headers["content-type"], "application/pdf");
+    }
+  );
+
+  await t.test(
+    "N2-238-GENEALOGY-RECALL: Xuất hồ sơ PDF hiển thị chính xác phả hệ tổ tiên/hậu duệ và cảnh báo thu hồi đang hiệu lực",
+    async () => {
+      setupS53Dataset();
+
+      // Thiết lập phả hệ: LOT-PARENT-01 -> LOT-S53-VERIFIED -> LOT-CHILD-01
+      inMemoryLots.push(
+        {
+          id: "LOT-PARENT-01",
+          code: "LOT-PARENT-01",
+          name: "Lô Cà chua gốc nông trại",
+          organizationId: "org-001",
+          farmId: "FARM-DL-01",
+          status: "Đã phân tách",
+          initialQuantity: 2000,
+          remainingQuantity: 0,
+        },
+        {
+          id: "LOT-CHILD-01",
+          code: "LOT-CHILD-01",
+          name: "Lô con phân phối siêu thị",
+          organizationId: "org-001",
+          status: "Đang lưu thông",
+          initialQuantity: 300,
+          remainingQuantity: 300,
+        }
+      );
+
+      // Quan hệ cha-con
+      inMemoryBatchRelations.push(
+        {
+          parentBatchId: "LOT-PARENT-01",
+          childBatchId: "LOT-S53-VERIFIED",
+          relationType: "SPLIT",
+          quantity: 1000,
+        },
+        {
+          parentBatchId: "LOT-S53-VERIFIED",
+          childBatchId: "LOT-CHILD-01",
+          relationType: "SPLIT",
+          quantity: 300,
+        }
+      );
+
+      // Lệnh thu hồi đang hiệu lực cho lô này
+      inMemoryRecallOrders.push({
+        id: "REC-2026-001",
+        lotId: "LOT-S53-VERIFIED",
+        status: "OPEN",
+        reason: "Phát hiện dư lượng thuốc BVTV vượt ngưỡng quy định",
+        severity: "CRITICAL",
+        createdAt: "2026-10-18T12:00:00.000Z",
+      });
+
+      const result = await exportLotDossierToPdf({
+        lotId: "LOT-S53-VERIFIED",
+        actorEmail: "inspector@example.com",
+        inMemoryContext: {
+          inMemoryLots,
+          inMemoryOrgs,
+          inMemoryFarms,
+          inMemoryProducts,
+          inMemoryBatchEvents,
+          inMemoryBatchRelations,
+          inMemoryViolations,
+          inMemoryRecallOrders,
+        },
+      });
+
+      assert.equal(result.status, 200);
+      assert.ok(Buffer.isBuffer(result.pdfBuffer));
+
+      const pdfText = extractPdfText(result.pdfBuffer);
+
+      // Kiểm tra phả hệ: phải có mã lô mẹ và lô con
+      assert.ok(pdfText.includes("PHA HE NGUON GOC"), "Phải có tiêu đề phả hệ nguồn gốc");
+      assert.ok(pdfText.includes("LOT-PARENT-01"), "Phải hiển thị mã lô mẹ LOT-PARENT-01");
+      assert.ok(pdfText.includes("LOT-CHILD-01"), "Phải hiển thị mã lô con LOT-CHILD-01");
+
+      // Kiểm tra cảnh báo thu hồi
+      assert.ok(pdfText.includes("TINH TRANG THU HOI"), "Phải có tiêu đề tình trạng thu hồi");
+      assert.ok(pdfText.includes("CẢNH BÁO KHẨN: LÔ HÀNG ĐANG CÓ LỆNH THU HỒI HIỆU LỰC"), "Phải có thông báo cảnh báo thu hồi khẩn");
+    }
+  );
+
+  await t.test(
+    "N2-284-TENANT-ISOLATION: Chặn người dùng xuất hồ sơ PDF của tổ chức khác (403 Forbidden)",
+    async () => {
+      setupS53Dataset();
+
+      // LOT-S53-VERIFIED thuộc org-001
+      // user2@example.com thuộc org-002 (role: cooperative)
+      const user2Agent = await loginAs("user2@example.com");
+      const crossOrgRes = await user2Agent.get("/api/lots/LOT-S53-VERIFIED/export-pdf");
+      assert.equal(crossOrgRes.status, 403, "Người dùng thuộc tổ chức khác phải bị chặn với 403 Forbidden");
+      assert.equal(crossOrgRes.body.error, "FORBIDDEN");
+
+      // user@example.com thuộc org-001 được xuất thành công lô của org-001
+      const user1Agent = await loginAs("user@example.com");
+      const sameOrgRes = await user1Agent.get("/api/lots/LOT-S53-VERIFIED/export-pdf");
+      assert.equal(sameOrgRes.status, 200, "Người dùng cùng tổ chức phải xuất được PDF thành công");
+
+      // inspector@example.com (role: inspector) được xuất bất kỳ tổ chức nào
+      const inspectorAgent = await loginAs("inspector@example.com");
+      const inspectorRes = await inspectorAgent.get("/api/lots/LOT-S53-VERIFIED/export-pdf");
+      assert.equal(inspectorRes.status, 200, "Thanh tra viên được xuất PDF của mọi tổ chức");
+    }
+  );
+});
