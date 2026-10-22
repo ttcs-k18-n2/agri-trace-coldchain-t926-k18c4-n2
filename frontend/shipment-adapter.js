@@ -488,10 +488,21 @@
               ? Number(l.current_quantity)
               : (l.quantity != null ? Number(l.quantity) : 0)));
         const st = String(l.status || "").toUpperCase();
-        return qty <= 0 || isNaN(qty) || st === "CONSUMED" || st === "RECALLED" || l.status === "Đã bán hết" || l.status === "Đã tiêu thụ" || l.status === "Có sự cố";
+        const isShipped = Boolean(
+          l.isShipped ||
+          l.hasActiveShipment ||
+          l.inActiveShipment ||
+          st === "IN_TRANSIT" ||
+          st === "SHIPPED" ||
+          st === "DELIVERED" ||
+          st === "COMPLETED" ||
+          l.status === "Đang vận chuyển" ||
+          l.status === "Đã vận chuyển"
+        );
+        return isShipped || qty <= 0 || isNaN(qty) || st === "CONSUMED" || st === "RECALLED" || l.status === "Đã bán hết" || l.status === "Đã tiêu thụ" || l.status === "Có sự cố";
       });
       if (invalidLots.length > 0) {
-        errors.lotIds = `Lô hàng ${invalidLots.map((l) => l.id).join(", ")} không còn khối lượng khả dụng (0 kg) hoặc đã kết thúc, không thể đưa vào chuyến.`;
+        errors.lotIds = `Lô hàng ${invalidLots.map((l) => l.id).join(", ")} không còn khối lượng khả dụng (0 kg), đã được vận chuyển hoặc đã tiêu thụ, không thể đưa vào chuyến.`;
       }
     }
 
@@ -824,7 +835,7 @@
       const cursor = options && options.cursor ? String(options.cursor).trim() : "";
       const limit = (options && Number(options.limit)) || 50;
 
-      let url = `/api/organization/lots?limit=${encodeURIComponent(limit)}`;
+      let url = `/api/organization/lots?limit=${encodeURIComponent(limit)}&availableForShipment=true`;
       if (search) url += `&search=${encodeURIComponent(search)}`;
       if (cursor) url += `&cursor=${encodeURIComponent(cursor)}`;
 
@@ -842,6 +853,38 @@
         const data = await res.json();
         const rawLots = Array.isArray(data.lots) ? data.lots : (Array.isArray(data) ? data : []);
 
+        // Tập hợp danh sách các mã lô đã được vận chuyển từ options hoặc từ API shipments
+        let shippedLotIds = new Set(
+          Array.isArray(options.shippedLotIds) ? options.shippedLotIds : []
+        );
+
+        // Nếu options chưa có shippedLotIds, lấy danh sách chuyến để trích xuất các lô đã/đang vận chuyển
+        if (shippedLotIds.size === 0) {
+          try {
+            const shipRes = await fetch("/api/shipments?limit=200", {
+              headers: { Accept: "application/json" },
+              credentials: "same-origin",
+            });
+            if (shipRes.ok) {
+              const shipData = await shipRes.json();
+              const shipList = Array.isArray(shipData)
+                ? shipData
+                : (shipData.shipments || shipData.data || []);
+              shipList.forEach((s) => {
+                if (s && s.status !== "CANCELLED") {
+                  (s.lotIds || []).forEach((id) => shippedLotIds.add(id));
+                  (s.lots || []).forEach((l) => {
+                    const lid = typeof l === "string" ? l : (l.lotId || l.id);
+                    if (lid) shippedLotIds.add(lid);
+                  });
+                }
+              });
+            }
+          } catch {
+            /* ignore */
+          }
+        }
+
         const blockedStatuses = new Set([
           "CONSUMED",
           "RECALLED",
@@ -850,6 +893,12 @@
           "Đang thu hồi",
           "Đã thu hồi",
           "Có sự cố",
+          "Đang vận chuyển",
+          "Đã vận chuyển",
+          "IN_TRANSIT",
+          "SHIPPED",
+          "DELIVERED",
+          "COMPLETED",
         ]);
 
         function normalizeLot(l) {
@@ -860,10 +909,18 @@
           const initParsed = initialQty == null || initialQty === "" ? null : Number(initialQty);
           const status = l.status || "ACTIVE";
           const pendingTransfer = l.pendingTransfer ?? null;
+          const isShipped = Boolean(
+            l.isShipped ||
+            l.hasActiveShipment ||
+            l.inActiveShipment ||
+            shippedLotIds.has(l.id) ||
+            blockedStatuses.has(status)
+          );
 
           const isEligible = (
             Number.isFinite(qty) &&
             qty > 0 &&
+            !isShipped &&
             !blockedStatuses.has(status) &&
             !pendingTransfer
           );
@@ -880,6 +937,7 @@
             unit: l.productUnit ?? l.product_unit ?? l.unit ?? "kg",
             status: status,
             pendingTransfer: pendingTransfer,
+            isShipped: isShipped,
             isEligible: isEligible,
             harvested_at: l.harvested_at || l.harvestDate || l.created_at,
           };
@@ -887,8 +945,8 @@
 
         const normalizedLots = rawLots.map(normalizeLot).filter(Boolean);
 
-        // Lọc các lô còn khả dụng: phải có khối lượng > 0 và trạng thái hợp lệ
-        const availableLots = normalizedLots.filter((l) => l.isEligible);
+        // Lọc các lô còn khả dụng: phải có khối lượng > 0, chưa từng được vận chuyển và trạng thái hợp lệ
+        const availableLots = normalizedLots.filter((l) => l.isEligible && !shippedLotIds.has(l.id));
         return {
           success: true,
           lots: availableLots,

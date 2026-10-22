@@ -1613,6 +1613,7 @@ app.get(
     const harvestedTo = typeof req.query.harvestedTo === "string" ? req.query.harvestedTo.trim() : "";
     const productId = typeof req.query.productId === "string" ? req.query.productId.trim() : "";
     const status = typeof req.query.status === "string" ? req.query.status.trim() : "";
+    const availableForShipment = req.query.availableForShipment === "true" || req.query.forShipment === "true" || req.query.excludeShipped === "true";
     const limit = Math.min(Math.max(Number(req.query.limit) || 20, 1), 50);
     const cursor = req.query.cursor ? String(req.query.cursor).trim() : null;
 
@@ -1628,6 +1629,16 @@ app.get(
 
     if (pool) {
       try {
+        let hasShipmentTable = false;
+        try {
+          const tChk = await pool.query(
+            "SELECT 1 FROM information_schema.tables WHERE table_name = 'shipment_lots' LIMIT 1"
+          );
+          hasShipmentTable = tChk.rows.length > 0;
+        } catch {
+          hasShipmentTable = false;
+        }
+
         let sql = `
           SELECT
             l.id, l.name, l.status, l.organization_id, l.created_at,
@@ -1638,6 +1649,26 @@ app.get(
             lt.id AS pending_transfer_id, lt.to_organization_id AS pending_to_org_id,
             o_to.name AS pending_to_org_name, lt.created_at AS pending_created_at,
             lt.is_overdue AS pending_is_overdue, lt.overdue_at AS pending_overdue_at
+            ${hasShipmentTable ? `,
+            COALESCE((
+              SELECT s_cur.status FROM shipment_lots sl_cur
+              JOIN shipments s_cur ON sl_cur.shipment_id = s_cur.id
+              WHERE sl_cur.lot_id = l.id AND s_cur.status != 'CANCELLED'
+              ORDER BY sl_cur.created_at DESC LIMIT 1
+            ), NULL) AS shipment_status,
+            EXISTS (
+              SELECT 1 FROM shipment_lots sl_act
+              JOIN shipments s_act ON sl_act.shipment_id = s_act.id
+              WHERE sl_act.lot_id = l.id AND s_act.status != 'CANCELLED'
+            ) AS is_shipped,
+            EXISTS (
+              SELECT 1 FROM shipment_lots sl_run
+              JOIN shipments s_run ON sl_run.shipment_id = s_run.id
+              WHERE sl_run.lot_id = l.id AND sl_run.is_active = TRUE AND s_run.status = 'IN_TRANSIT'
+            ) AS has_active_shipment` : `,
+            NULL AS shipment_status,
+            FALSE AS is_shipped,
+            FALSE AS has_active_shipment`}
           FROM lots l
           LEFT JOIN organizations o ON l.organization_id = o.id
           LEFT JOIN farms f ON l.farm_id = f.id
@@ -1686,6 +1717,20 @@ app.get(
         if (status) {
           params.push(status);
           conditions.push(`l.status = $${params.length}`);
+        }
+
+        // 3c. Lọc các đơn/lô khả dụng cho vận chuyển lạnh: loại trừ đơn hàng đã được vận chuyển hoặc đang vận chuyển
+        if (availableForShipment) {
+          conditions.push(`l.status NOT IN ('CONSUMED', 'RECALLED', 'Đã bán hết', 'Đã tiêu thụ', 'Đang thu hồi', 'Đã thu hồi', 'Có sự cố', 'Đang vận chuyển', 'Đã vận chuyển', 'IN_TRANSIT', 'SHIPPED', 'DELIVERED', 'COMPLETED')`);
+          conditions.push(`(l.remaining_quantity IS NULL OR l.remaining_quantity > 0)`);
+          conditions.push(`lt.id IS NULL`);
+          if (hasShipmentTable) {
+            conditions.push(`NOT EXISTS (
+              SELECT 1 FROM shipment_lots sl_ex
+              JOIN shipments s_ex ON sl_ex.shipment_id = s_ex.id
+              WHERE sl_ex.lot_id = l.id AND s_ex.status != 'CANCELLED'
+            )`);
+          }
         }
 
         // 4. Cursor pagination (T-33): (harvested_at, created_at, id) < (cursorHarvest, cursorCreated, cursorId)
@@ -1783,6 +1828,12 @@ app.get(
             remaining_quantity: r.remaining_quantity !== null && r.remaining_quantity !== undefined ? Number(r.remaining_quantity) : (r.initial_quantity !== null && r.initial_quantity !== undefined ? Number(r.initial_quantity) : null),
             current_quantity: r.remaining_quantity !== null && r.remaining_quantity !== undefined ? Number(r.remaining_quantity) : (r.initial_quantity !== null && r.initial_quantity !== undefined ? Number(r.initial_quantity) : 0),
             quantity: r.remaining_quantity !== null && r.remaining_quantity !== undefined ? Number(r.remaining_quantity) : (r.initial_quantity !== null && r.initial_quantity !== undefined ? Number(r.initial_quantity) : 0),
+            isShipped: Boolean(
+              r.is_shipped ||
+              ["Đang vận chuyển", "Đã vận chuyển", "IN_TRANSIT", "SHIPPED", "DELIVERED", "COMPLETED"].includes(r.status)
+            ),
+            hasActiveShipment: Boolean(r.has_active_shipment),
+            shipmentStatus: r.shipment_status || null,
             harvestedAt: r.harvested_at,
             createdAt: r.created_at,
             pendingTransfer: r.pending_transfer_id ? {
@@ -1807,6 +1858,49 @@ app.get(
     let filtered = isInspector || req.auth.roleId === "admin"
       ? [...inMemoryLots]
       : inMemoryLots.filter((lot) => lot.organizationId === orgId);
+
+    const shippedLotIdsInMemory = new Set(
+      (inMemoryShipmentLots || [])
+        .filter((sl) => {
+          const s = (inMemoryShipments || []).find((ship) => ship.id === sl.shipmentId);
+          return s ? s.status !== "CANCELLED" : sl.isActive !== false;
+        })
+        .map((sl) => sl.lotId)
+    );
+
+    if (availableForShipment) {
+      filtered = filtered.filter((l) => {
+        const remainingVal = Number(
+          l.remainingQuantity !== undefined && l.remainingQuantity !== null
+            ? l.remainingQuantity
+            : (l.remaining_quantity !== undefined && l.remaining_quantity !== null
+                ? l.remaining_quantity
+                : (l.current_quantity !== undefined && l.current_quantity !== null
+                    ? l.current_quantity
+                    : (l.initialQuantity || l.initial_quantity || l.quantity || 0)))
+        );
+        const statusUpper = String(l.status || "").toUpperCase();
+        const isBlockedStatus = [
+          "CONSUMED",
+          "RECALLED",
+          "ĐÃ BÁN HẾT",
+          "ĐÃ TIÊU THỤ",
+          "ĐANG THU HỒI",
+          "ĐÃ THU HỒI",
+          "CÓ SỰ CỐ",
+          "ĐANG VẬN CHUYỂN",
+          "ĐÃ VẬN CHUYỂN",
+          "IN_TRANSIT",
+          "SHIPPED",
+          "DELIVERED",
+          "COMPLETED",
+        ].includes(statusUpper);
+        const isPending = l.pendingTransfer && l.pendingTransfer.status === "PENDING";
+        const isShipped = shippedLotIdsInMemory.has(l.id);
+
+        return !isBlockedStatus && !isShipped && !isPending && remainingVal > 0;
+      });
+    }
 
     if (search) {
       const searchLower = search.toLowerCase();
@@ -1948,6 +2042,21 @@ app.get(
           remaining_quantity: remQ,
           current_quantity: remQ,
           quantity: remQ,
+          isShipped: Boolean(
+            shippedLotIdsInMemory.has(l.id) ||
+            [
+              "CONSUMED",
+              "ĐANG VẬN CHUYỂN",
+              "ĐÃ VẬN CHUYỂN",
+              "IN_TRANSIT",
+              "SHIPPED",
+              "DELIVERED",
+              "COMPLETED",
+            ].includes(String(l.status || "").toUpperCase())
+          ),
+          hasActiveShipment: (inMemoryShipmentLots || []).some(
+            (sl) => sl.lotId === l.id && sl.isActive
+          ),
           harvestedAt: l.harvestedAt || "2026-09-30",
           createdAt: l.createdAt || "2026-09-30T00:00:00.000Z",
           pendingTransfer: pending ? {

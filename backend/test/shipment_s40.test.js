@@ -968,6 +968,43 @@ test("S-40 (Jira N2-211): Mở chuyến vận chuyển gắn nhiều lô và m�
     );
     assert.equal(createSoldRes.status, 400, "Lô Đã bán hết phải bị chặn");
     assert.equal(createSoldRes.body.error, "LOT_ALREADY_CONSUMED");
+
+    // 11.9 Kiểm tra lọc bỏ các đơn/lô hàng đã hoặc đang vận chuyển qua availableForShipment=true
+    inMemoryLots.push({
+      id: "LOT-SHIPPED-STATUS",
+      name: "Lô đã vận chuyển",
+      status: "Đã vận chuyển",
+      organizationId: "org-001",
+      remainingQuantity: 100,
+    });
+    inMemoryLots.push({
+      id: "LOT-INTRANSIT-STATUS",
+      name: "Lô đang vận chuyển",
+      status: "Đang vận chuyển",
+      organizationId: "org-001",
+      remainingQuantity: 100,
+    });
+
+    const filterAvailRes = await request(server, {
+      hostname: "127.0.0.1",
+      port,
+      path: "/api/organization/lots?availableForShipment=true",
+      method: "GET",
+      headers: { Cookie: producerCookie },
+    });
+    assert.equal(filterAvailRes.status, 200);
+    assert.ok(
+      !filterAvailRes.body.lots.some((l) => l.id === "LOT-S40-01"),
+      "Lô LOT-S40-01 đang trong chuyến vận chuyển không được hiện trong danh sách khả dụng"
+    );
+    assert.ok(
+      !filterAvailRes.body.lots.some((l) => l.id === "LOT-SHIPPED-STATUS"),
+      "Lô có trạng thái Đã vận chuyển không được hiện trong danh sách khả dụng"
+    );
+    assert.ok(
+      !filterAvailRes.body.lots.some((l) => l.id === "LOT-INTRANSIT-STATUS"),
+      "Lô có trạng thái Đang vận chuyển không được hiện trong danh sách khả dụng"
+    );
   });
 });
 

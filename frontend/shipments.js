@@ -548,10 +548,25 @@
     }
 
     try {
+      // Thu thập toàn bộ mã lô đã được vận chuyển hoặc đang vận chuyển từ danh sách chuyến hiện tại
+      const shippedLotIds = new Set();
+      if (Array.isArray(currentShipments)) {
+        currentShipments.forEach((s) => {
+          if (s && s.status !== "CANCELLED") {
+            (s.lotIds || []).forEach((id) => shippedLotIds.add(id));
+            (s.lots || []).forEach((l) => {
+              const lid = typeof l === "string" ? l : (l.lotId || l.id);
+              if (lid) shippedLotIds.add(lid);
+            });
+          }
+        });
+      }
+
       const res = await window.ShipmentAdapter.fetchAvailableLots({
         search: currentLotSearch,
         cursor: isAppend ? lotsNextCursor : null,
         limit: 50,
+        shippedLotIds: Array.from(shippedLotIds),
       });
 
       lotsNextCursor = res.nextCursor || null;
@@ -591,12 +606,17 @@
     if (!elements.lotsTableBody) return;
     elements.lotsTableBody.innerHTML = "";
 
-    if (lotsToRender.length === 0) {
-      elements.lotsTableBody.innerHTML = '<tr><td colspan="5" class="table-empty">Không tìm thấy lô hàng nào phù hợp với từ khóa.</td></tr>';
+    // Chỉ hiển thị các đơn/lô hàng khả dụng và CHƯA từng được vận chuyển
+    const displayLots = (lotsToRender || []).filter(
+      (lot) => lot.isEligible !== false && !lot.isShipped && !lot.hasActiveShipment
+    );
+
+    if (displayLots.length === 0) {
+      elements.lotsTableBody.innerHTML = '<tr><td colspan="5" class="table-empty">Không có lô hàng khả dụng nào để đưa vào chuyến (các đơn hàng đã được vận chuyển hoặc không đủ điều kiện đã được lọc ra).</td></tr>';
       return;
     }
 
-    lotsToRender.forEach((lot) => {
+    displayLots.forEach((lot) => {
       const tr = document.createElement("tr");
       const isChecked = selectedLotIds.has(lot.id);
       const qty = lot.current_quantity;
@@ -1143,7 +1163,7 @@
   function selectAllLots() {
     const targetLots = availableLots.filter((l) => {
       const q = l.current_quantity != null ? Number(l.current_quantity) : 0;
-      return l.isEligible !== false && Number.isFinite(q) && q > 0;
+      return l.isEligible !== false && !l.isShipped && !l.hasActiveShipment && Number.isFinite(q) && q > 0;
     });
 
     targetLots.forEach((l) => {
