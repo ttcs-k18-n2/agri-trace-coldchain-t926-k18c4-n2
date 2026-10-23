@@ -9374,14 +9374,14 @@ app.get(["/api/lots/qrcode/:lotCode", "/api/lots/:id/qrcode"], async (req, res) 
     let lotExists = false;
     if (pool) {
       try {
-        const lotRes = await pool.query("SELECT id, name FROM lots WHERE id = $1 LIMIT 1", [lotCode]);
+        const lotRes = await pool.query("SELECT id, name FROM lots WHERE UPPER(id) = UPPER($1) LIMIT 1", [lotCode]);
         lotExists = lotRes.rows.length > 0;
       } catch (_) {
         /* ignore db error and fallback to in-memory */
       }
     }
     if (!lotExists) {
-      lotExists = (inMemoryLots || []).some((l) => l.id === lotCode);
+      lotExists = (inMemoryLots || []).some((l) => l.id && l.id.toUpperCase() === lotCode.toUpperCase());
     }
 
     if (!lotExists) {
@@ -9390,7 +9390,48 @@ app.get(["/api/lots/qrcode/:lotCode", "/api/lots/:id/qrcode"], async (req, res) 
 
     const host = req.get("host");
     const protocol = req.protocol || "http";
-    const baseUrl = process.env.PUBLIC_URL || process.env.BASE_URL || process.env.FRONTEND_URL || `${protocol}://${host}`;
+    let baseUrl = process.env.PUBLIC_URL || process.env.BASE_URL;
+    if (!baseUrl && (req.query.baseUrl || req.query.origin)) {
+      const candidate = String(req.query.baseUrl || req.query.origin).trim();
+      if (/^https?:\/\/[a-zA-Z0-9.-]+(?::[0-9]+)?$/i.test(candidate)) {
+        baseUrl = candidate;
+      }
+    }
+    if (!baseUrl) {
+      baseUrl = process.env.FRONTEND_URL || `${protocol}://${host}`;
+    }
+
+    if (!process.env.PUBLIC_URL && (baseUrl.includes("localhost") || baseUrl.includes("127.0.0.1"))) {
+      try {
+        const os = require("os");
+        const ifaces = os.networkInterfaces();
+        let lanIp = null;
+        for (const name of Object.keys(ifaces)) {
+          if (/vEthernet|docker|wsl|br-/i.test(name)) continue;
+          for (const iface of ifaces[name]) {
+            if (iface.family === "IPv4" && !iface.internal) {
+              lanIp = iface.address;
+              break;
+            }
+          }
+          if (lanIp) break;
+        }
+        if (!lanIp) {
+          for (const name of Object.keys(ifaces)) {
+            for (const iface of ifaces[name]) {
+              if (iface.family === "IPv4" && !iface.internal) {
+                lanIp = iface.address;
+                break;
+              }
+            }
+            if (lanIp) break;
+          }
+        }
+        if (lanIp) {
+          baseUrl = baseUrl.replace("localhost", lanIp).replace("127.0.0.1", lanIp);
+        }
+      } catch (_) {}
+    }
     const publicUrl = `${baseUrl}/public-trace.html?code=${encodeURIComponent(lotCode)}`;
 
     if (format === "svg") {

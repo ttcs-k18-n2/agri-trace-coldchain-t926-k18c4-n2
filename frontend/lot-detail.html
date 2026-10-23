@@ -1806,15 +1806,11 @@
           </button>
         `;
 
-        // Nút tải mã QR truy xuất nguồn gốc (Story S-46)
+        // Nút tải mã QR truy xuất nguồn gốc (Story S-46 - Chỉ giữ lại tải ảnh QR PNG)
         actionButtonsHtml += `
-          <button type="button" onclick="downloadLotQr('png')" class="btn btn-secondary" id="btnDownloadQrPng" style="gap: 6px; font-weight: 600;" title="Tải mã QR định dạng hình ảnh PNG để in">
+          <button type="button" onclick="downloadLotQr('png')" class="btn btn-secondary" id="btnDownloadQrPng" style="gap: 6px; font-weight: 600;" title="Tải mã QR định dạng hình ảnh PNG để in hoặc quét">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
-            <span>📥 Tải QR (PNG)</span>
-          </button>
-          <button type="button" onclick="downloadLotQr('svg')" class="btn btn-secondary" id="btnDownloadQrSvg" style="gap: 6px; font-weight: 600;" title="Tải mã QR định dạng vector SVG sắc nét">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-            <span>📥 Tải QR (SVG)</span>
+            <span>📥 Tải ảnh QR (PNG)</span>
           </button>
         `;
 
@@ -5566,8 +5562,8 @@
       }
     }
 
-    // --- S-46: Tải mã QR truy xuất nguồn gốc (PNG / SVG) ---
-    async function downloadLotQr(format) {
+    // --- S-46: Tải mã QR truy xuất nguồn gốc (Chỉ giữ lại ảnh PNG) ---
+    async function downloadLotQr(format = "png") {
       const urlParams = new URLSearchParams(window.location.search);
       const lotId = urlParams.get("id") || urlParams.get("lotId") || urlParams.get("lotCode") || urlParams.get("code") || (lotData && lotData.id);
 
@@ -5577,7 +5573,7 @@
       }
 
       const btnId = format === "svg" ? "btnDownloadQrSvg" : "btnDownloadQrPng";
-      const btn = document.getElementById(btnId);
+      const btn = document.getElementById(btnId) || document.getElementById("btnDownloadQrPng");
       const originalHtml = btn ? btn.innerHTML : "";
 
       if (btn) {
@@ -5586,7 +5582,8 @@
       }
 
       try {
-        const apiUrl = `/api/lots/qrcode/${encodeURIComponent(lotId)}?format=${encodeURIComponent(format)}`;
+        const currentOrigin = window.location.origin;
+        const apiUrl = `/api/lots/qrcode/${encodeURIComponent(lotId)}?format=${encodeURIComponent(format)}&baseUrl=${encodeURIComponent(currentOrigin)}`;
         const res = await fetch(apiUrl, { credentials: "same-origin" });
 
         if (!res.ok) {
