@@ -390,6 +390,16 @@
 
       if (codeFromUrl) {
         document.getElementById("lot-code-input").value = codeFromUrl;
+        const summaryCard = document.getElementById("lot-summary-card");
+        if (summaryCard) {
+          summaryCard.style.display = "block";
+          document.getElementById("lot-product-name").textContent = "Đang truy xuất thông tin sản phẩm...";
+          document.getElementById("lot-code-display").textContent = "Mã lô: " + codeFromUrl;
+          document.getElementById("lot-org-name").textContent = "Đang tải dữ liệu chuỗi lạnh...";
+          setTimeout(() => {
+            summaryCard.scrollIntoView({ behavior: "smooth", block: "start" });
+          }, 150);
+        }
         loadLotTrace(codeFromUrl);
       } else {
         // Trang chờ quét mã QR hoặc nhập mã tra cứu, không tự động tải ngầm LOT-001 (Issue 24)
@@ -445,12 +455,18 @@
       const coldchainAlert = document.getElementById("lot-coldchain-alert");
       const safetyBanner = document.getElementById("lot-safety-banner");
 
+      if (summaryCard) {
+        summaryCard.style.display = "block";
+        document.getElementById("lot-product-name").textContent = "Đang truy xuất thông tin sản phẩm...";
+        document.getElementById("lot-code-display").textContent = "Mã lô: " + code;
+      }
+
       const data = await traceMap.loadAndRender(code);
 
       if (data && data.lot) {
         summaryCard.style.display = "block";
         document.getElementById("lot-product-name").textContent = data.lot.productName || data.lot.name || "Nông sản";
-        document.getElementById("lot-code-display").textContent = "Mã lô: " + data.lot.code;
+        document.getElementById("lot-code-display").textContent = "Mã lô: " + (data.lot.code || code);
         document.getElementById("lot-org-name").textContent = data.lot.organizationName || "Hợp tác xã nông nghiệp";
         
         const hDate = data.lot.harvestedAt ? new Date(data.lot.harvestedAt).toLocaleDateString("vi-VN") : "Đang cập nhật";
@@ -511,10 +527,22 @@
           }
         }
       } else {
-        summaryCard.style.display = "none";
+        if (summaryCard) {
+          summaryCard.style.display = "block";
+          document.getElementById("lot-product-name").textContent = "Không tìm thấy thông tin sản phẩm";
+          document.getElementById("lot-code-display").textContent = "Mã tra cứu: " + code;
+          document.getElementById("lot-org-name").textContent = "Không có dữ liệu trên hệ thống truy xuất công khai.";
+          document.getElementById("lot-harvest-date").textContent = "--";
+          document.getElementById("lot-status").textContent = "Không tồn tại";
+          document.getElementById("lot-origin-type").textContent = "--";
+        }
         if (recallAlert) recallAlert.style.display = "none";
         if (coldchainAlert) coldchainAlert.style.display = "none";
-        if (safetyBanner) safetyBanner.style.display = "none";
+        if (safetyBanner) {
+          safetyBanner.style.display = "inline-flex";
+          safetyBanner.className = "verified-banner badge-danger";
+          safetyBanner.innerHTML = `<span>❌ Mã không hợp lệ</span>`;
+        }
       }
     }
 
