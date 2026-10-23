@@ -439,3 +439,68 @@ test("S-40 Modal Scroll & Layout: shipments.html has proper flex container and s
   // Verify responsive media query for small/zoomed screens (max-height: 800px)
   assert.match(htmlContent, /@media\s*\(\s*max-height:\s*800px\s*\)/i);
 });
+
+test("S-40 Fix: Lọc bỏ đơn hàng đã được vận chuyển hoặc đang vận chuyển trong nút thêm vận chuyển", async () => {
+  const originalFetch = global.fetch;
+  try {
+    global.fetch = async (url) => {
+      if (url.includes("/api/shipments")) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            shipments: [
+              { id: "shp-01", status: "IN_TRANSIT", lotIds: ["LOT-IN-TRANSIT-01"] },
+              { id: "shp-02", status: "COMPLETED", lotIds: ["LOT-COMPLETED-01"] },
+              { id: "shp-03", status: "CANCELLED", lotIds: ["LOT-CANCELLED-01"] },
+            ],
+          }),
+        };
+      }
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          lots: [
+            { id: "LOT-AVAILABLE-01", name: "Lô khả dụng", remainingQuantity: 100, status: "ACTIVE" },
+            { id: "LOT-IN-TRANSIT-01", name: "Lô đang vận chuyển", remainingQuantity: 100, status: "ACTIVE" },
+            { id: "LOT-COMPLETED-01", name: "Lô đã vận chuyển xong", remainingQuantity: 100, status: "ACTIVE" },
+            { id: "LOT-CANCELLED-01", name: "Lô chuyến bị hủy", remainingQuantity: 100, status: "ACTIVE" },
+            { id: "LOT-STATUS-SHIPPED", name: "Lô trạng thái đã vận chuyển", remainingQuantity: 100, status: "Đã vận chuyển" },
+            { id: "LOT-STATUS-INTRANSIT", name: "Lô trạng thái đang vận chuyển", remainingQuantity: 100, status: "Đang vận chuyển" },
+          ],
+        }),
+      };
+    };
+
+    const res = await ShipmentAdapter.fetchAvailableLots();
+    assert.equal(res.success, true);
+    assert.ok(res.lots.some((l) => l.id === "LOT-AVAILABLE-01"), "LOT-AVAILABLE-01 phải có trong danh sách");
+    assert.ok(res.lots.some((l) => l.id === "LOT-CANCELLED-01"), "LOT-CANCELLED-01 phải có trong danh sách");
+    assert.ok(!res.lots.some((l) => l.id === "LOT-IN-TRANSIT-01"), "LOT-IN-TRANSIT-01 không được hiện trong nút thêm vận chuyển");
+    assert.ok(!res.lots.some((l) => l.id === "LOT-COMPLETED-01"), "LOT-COMPLETED-01 không được hiện trong nút thêm vận chuyển");
+    assert.ok(!res.lots.some((l) => l.id === "LOT-STATUS-SHIPPED"), "LOT-STATUS-SHIPPED không được hiện trong nút thêm vận chuyển");
+    assert.ok(!res.lots.some((l) => l.id === "LOT-STATUS-INTRANSIT"), "LOT-STATUS-INTRANSIT không được hiện trong nút thêm vận chuyển");
+
+    // Test with explicit options.shippedLotIds
+    const resWithOpts = await ShipmentAdapter.fetchAvailableLots({
+      shippedLotIds: ["LOT-AVAILABLE-01"],
+    });
+    assert.ok(!resWithOpts.lots.some((l) => l.id === "LOT-AVAILABLE-01"), "Lô trong shippedLotIds không được hiện");
+
+    // Validation rejects already shipped lot
+    const validationRes = ShipmentAdapter.validateShipmentPayload({
+      shipmentCode: "SHP-FIX-01",
+      containerId: "CONT-01",
+      lotIds: ["LOT-IN-TRANSIT-01"],
+      origin: "Kho A",
+      destination: "Kho B",
+      departureTime: new Date().toISOString(),
+      selectedLotsList: [{ id: "LOT-IN-TRANSIT-01", remainingQuantity: 50, isShipped: true }],
+    });
+    assert.equal(validationRes.isValid, false);
+    assert.match(validationRes.errors.lotIds, /vận chuyển/);
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
